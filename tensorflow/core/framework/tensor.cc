@@ -29,10 +29,16 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -44,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/variant_coding.h"
 
 namespace tensorflow {
 namespace {
@@ -51,7 +58,7 @@ namespace {
 // An un-templated base class for Buffer.
 class BufferBase : public TensorBuffer {
  public:
-  BufferBase(Allocator* alloc) : alloc_(alloc) {}
+  explicit BufferBase(Allocator* alloc) : alloc_(alloc) {}
 
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
@@ -217,6 +224,36 @@ struct Helper<ResourceHandle> {
   }
 };
 
+template <>
+struct Helper<Variant> {
+  // Encodes "n" elements of type Variant stored in "in" into destination
+  // "out", which is usually the TensorProto::tensor_content.
+  template <typename Destination>
+  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+    port::EncodeVariantList(in->base<const Variant>(), n, out);
+  }
+
+  // Decodes "n" elements of type Variant from "in" and constructs a
+  // buffer out of it. Returns nullptr if the decoding fails. "in" is
+  // usually the TensorProto::tensor_content.
+  template <typename Source>
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+    auto* buf = new Buffer<Variant>(a, n);
+    Variant* ps = buf->template base<Variant>();
+    if (ps == nullptr || !port::DecodeVariantList(in, ps, n)) {
+      buf->Unref();
+      return nullptr;
+    }
+    return buf;
+  }
+
+  // Returns the estimated memory usage of "n" elements of type T
+  // stored in buffer "in".
+  static int64 TotalBytes(TensorBuffer* in, int n) {
+    return n * sizeof(Variant);
+  }
+};
+
 template <typename T>
 struct ProtoHelper {};
 
@@ -270,7 +307,7 @@ struct ProtoHelper<int64> {
 
 template <>
 struct ProtoHelper<ResourceHandle> {
-  static protobuf::RepeatedPtrField<ResourceHandle>::const_iterator Begin(
+  static protobuf::RepeatedPtrField<ResourceHandleProto>::const_iterator Begin(
       const TensorProto& proto) {
     return proto.resource_handle_val().begin();
   }
@@ -278,8 +315,31 @@ struct ProtoHelper<ResourceHandle> {
     return proto.resource_handle_val().size();
   }
   static void Fill(const ResourceHandle* data, size_t n, TensorProto* proto) {
-    protobuf::RepeatedPtrField<ResourceHandle> copy(data, data + n);
-    proto->mutable_resource_handle_val()->Swap(&copy);
+    auto* handles = proto->mutable_resource_handle_val();
+    handles->Clear();
+    for (size_t i = 0; i < n; i++) {
+      data[i].AsProto(handles->Add());
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<Variant> {
+  static protobuf::RepeatedPtrField<VariantTensorDataProto>::const_iterator
+  Begin(const TensorProto& proto) {
+    return proto.variant_val().begin();
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.variant_val().size();
+  }
+  static void Fill(const Variant* data, size_t n, TensorProto* proto) {
+    auto* variant_values = proto->mutable_variant_val();
+    variant_values->Clear();
+    for (size_t i = 0; i < n; ++i) {
+      VariantTensorData tmp;
+      data[i].Encode(&tmp);
+      tmp.ToProto(variant_values->Add());
+    }
   }
 };
 
@@ -370,10 +430,10 @@ Buffer<T>::Buffer(Allocator* a, int64 n,
 
 template <typename T>
 Buffer<T>::~Buffer() {
-  if (LogMemory::IsEnabled()) {
-    RecordDeallocation();
-  }
   if (data_) {
+    if (LogMemory::IsEnabled()) {
+      RecordDeallocation();
+    }
     alloc_->Deallocate<T>(data_, elem_);
   }
 }
@@ -412,6 +472,30 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
     }
   }
 
+  return buf;
+}
+
+template <>
+TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
+                                      int64 n) {
+  CHECK_GT(n, 0);
+  Buffer<Variant>* buf = new Buffer<Variant>(a, n);
+  Variant* data = buf->template base<Variant>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64 in_n = ProtoHelper<Variant>::NumElements(in);
+  if (in_n <= 0) {
+    std::fill_n(data, n, Variant());
+  } else {
+    for (int64 i = 0; i < in_n; ++i) {
+      data[i] = in.variant_val(i);
+    }
+    for (int64 i = in_n; i < n; ++i) {
+      data[i] = Variant();
+    }
+  }
   return buf;
 }
 
@@ -526,6 +610,14 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
   }
 }
 
+// Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
+// For the latter case, we have to make sure that the refcount is
+// one both for the SubBuffer _and_ the underlying TensorBuffer.
+bool Tensor::RefCountIsOne() const {
+  return buf_ != nullptr && buf_->RefCountIsOne() &&
+         buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
+}
+
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__
@@ -557,6 +649,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     CASE(bfloat16, SINGLE_ARG(STMTS))                          \
     CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
     CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
+    CASE(Variant, SINGLE_ARG(STMTS))                           \
     case DT_INVALID:                                           \
       INVALID;                                                 \
       break;                                                   \
@@ -722,6 +815,18 @@ size_t Tensor::TotalBytes() const {
   return 0;  // Makes compiler happy.
 }
 
+size_t Tensor::AllocatedBytes() const {
+  TensorDescription tensor_description;
+  FillDescription(&tensor_description);
+  if (tensor_description.has_allocation_description() &&
+      tensor_description.allocation_description().allocated_bytes() > 0) {
+    return tensor_description.allocation_description().allocated_bytes();
+  } else {
+    // Fall back to TotalBytes() if the allocator doesn't have its size.
+    return TotalBytes();
+  }
+}
+
 bool Tensor::CanUseDMA() const {
   CASES(dtype(), return is_simple_type<T>::value);
   return false;  // Makes compiler happy.
@@ -882,42 +987,27 @@ void Tensor::FillDescription(TensorDescription* description) const {
 }
 
 gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
-    int64 num_out_dims) const {
-  if (num_out_dims == dims()) {
-    return shape_.dim_sizes();
-  }
+    gtl::ArraySlice<int64> orig, int64 num_out_dims) {
   gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
-  const int64 num_elements = NumElements();
-  int64 prod_out_dims = 1;
-  for (int64 out_dim = num_out_dims - 1; out_dim > 0; --out_dim) {
-    const int64 in_dim = out_dim + (dims() - num_out_dims);
-    out_dims[out_dim] = (in_dim >= dims() || in_dim < 0) ? 1 : dim_size(in_dim);
-    prod_out_dims *= out_dims[out_dim];
+  int64 offset = orig.size() - num_out_dims;
+  for (int64 out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
+    const int64 in_dim = out_dim + offset;
+    out_dims[out_dim] = in_dim < 0 ? 1 : orig[in_dim];
   }
-  if (prod_out_dims != 0) {
-    out_dims[0] = num_elements / prod_out_dims;
-  } else {
-    out_dims[0] = 0;
+  for (int64 in_dim = 0; in_dim < offset; ++in_dim) {
+    out_dims[0] *= orig[in_dim];
   }
   return out_dims;
 }
 
 gtl::InlinedVector<int64, 4> Tensor::ComputeFlatOuterDims(
-    int64 num_out_dims) const {
-  if (num_out_dims == dims()) {
-    return shape_.dim_sizes();
-  }
+    gtl::ArraySlice<int64> orig, int64 num_out_dims) {
   gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
-  const int64 num_elements = NumElements();
-  int64 prod_out_dims = 1;
-  for (int64 out_dim = 0; out_dim < num_out_dims - 1; ++out_dim) {
-    out_dims[out_dim] = out_dim >= dims() ? 1 : dim_size(out_dim);
-    prod_out_dims *= out_dims[out_dim];
+  for (int64 out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
+    out_dims[out_dim] = out_dim >= orig.size() ? 1 : orig[out_dim];
   }
-  if (prod_out_dims != 0) {
-    out_dims[num_out_dims - 1] = num_elements / prod_out_dims;
-  } else {
-    out_dims[num_out_dims - 1] = 0;
+  for (int64 in_dim = num_out_dims; in_dim < orig.size(); ++in_dim) {
+    out_dims[num_out_dims - 1] *= orig[in_dim];
   }
   return out_dims;
 }

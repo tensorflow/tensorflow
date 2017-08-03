@@ -23,6 +23,7 @@
 @@mean_absolute_error
 @@mean_cosine_distance
 @@mean_iou
+@@mean_per_class_accuracy
 @@mean_relative_error
 @@mean_squared_error
 @@mean_tensor

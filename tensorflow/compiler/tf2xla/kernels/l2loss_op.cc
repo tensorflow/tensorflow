@@ -47,7 +47,7 @@ class L2LossOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("L2Loss", L2LossOp);
+REGISTER_XLA_OP(Name("L2Loss"), L2LossOp);
 
 }  // namespace
 }  // namespace tensorflow

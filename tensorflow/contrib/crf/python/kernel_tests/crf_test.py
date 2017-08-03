@@ -19,14 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import sys
 
 import numpy as np
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.crf.python.ops import crf
 from tensorflow.python.framework import constant_op

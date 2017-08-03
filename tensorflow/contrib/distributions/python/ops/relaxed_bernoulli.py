@@ -18,14 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
-from tensorflow.contrib.distributions.python.ops.bijectors import sigmoid as sigmoid_lib
+# Bijectors must be directly imported because `remove_undocumented` prevents
+# individual file imports.
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
@@ -50,7 +52,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   the RelaxedBernoulli can suffer from underflow issues. In many case loss
   functions such as these are invariant under invertible transformations of
   the random variables. The KL divergence, found in the variational autoencoder
-  loss, is an example. Because RelaxedBernoullis are sampled by by a Logistic
+  loss, is an example. Because RelaxedBernoullis are sampled by a Logistic
   random variable followed by a `tf.sigmoid` op, one solution is to treat
   the Logistic as the random variable and `tf.sigmoid` as downstream. The
   KL divergences of two Logistics, which are always followed by a `tf.sigmoid`
@@ -164,21 +166,22 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       ValueError: If both `probs` and `logits` are passed, or if neither.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits, probs=probs, validate_args=validate_args)
       super(RelaxedBernoulli, self).__init__(
-          distribution=logistic.Logistic(self._logits / self._temperature,
-                                         1. / self._temperature,
-                                         validate_args=validate_args,
-                                         allow_nan_stats=allow_nan_stats,
-                                         name=ns),
-          bijector=sigmoid_lib.Sigmoid(validate_args=validate_args),
+          distribution=logistic.Logistic(
+              self._logits / self._temperature,
+              1. / self._temperature,
+              validate_args=validate_args,
+              allow_nan_stats=allow_nan_stats,
+              name=name + "/Logistic"),
+          bijector=Sigmoid(validate_args=validate_args),
           validate_args=validate_args,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
   @staticmethod

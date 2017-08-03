@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -27,6 +25,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 _binomial_sample_note = """
@@ -40,6 +40,28 @@ can be broadcast with `self.probs` and `self.total_count`. `value` is only legal
 if it is less than or equal to `self.total_count` and its components are equal
 to integer values.
 """
+
+
+def _bdtr(k, n, p):
+  """The binomial cumulative distribution function.
+
+  Args:
+    k: floating point `Tensor`.
+    n: floating point `Tensor`.
+    p: floating point `Tensor`.
+
+  Returns:
+    `sum_{j=0}^k p^j (1 - p)^(n - j)`.
+  """
+  # Trick for getting safe backprop/gradients into n, k when
+  #   betainc(a = 0, ..) = nan
+  # Write:
+  #   where(unsafe, safe_output, betainc(where(unsafe, safe_input, input)))
+  ones = array_ops.ones_like(n - k)
+  k_eq_n = math_ops.equal(k, n)
+  safe_dn = array_ops.where(k_eq_n, ones, n - k)
+  dk = math_ops.betainc(a=safe_dn, b=k + 1, x=1 - p)
+  return array_ops.where(k_eq_n, ones, dk)
 
 
 class Binomial(distribution.Distribution):
@@ -65,7 +87,7 @@ class Binomial(distribution.Distribution):
   where:
   * `total_count = n`,
   * `probs = p`,
-  * `Z` is the normalizaing constant, and,
+  * `Z` is the normalizing constant, and,
   * `n!` is the factorial of `n`.
 
   #### Examples
@@ -142,7 +164,7 @@ class Binomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    with ops.name_scope(name, values=[total_count, logits, probs]):
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -153,7 +175,6 @@ class Binomial(distribution.Distribution):
           name=name)
     super(Binomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -161,7 +182,7 @@ class Binomial(distribution.Distribution):
         graph_parents=[self._total_count,
                        self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):
@@ -175,7 +196,7 @@ class Binomial(distribution.Distribution):
 
   @property
   def probs(self):
-    """Probability of of drawing a `1`."""
+    """Probability of drawing a `1`."""
     return self._probs
 
   def _batch_shape_tensor(self):
@@ -201,6 +222,18 @@ class Binomial(distribution.Distribution):
   @distribution_util.AppendDocstring(_binomial_sample_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
+
+  def _cdf(self, counts):
+    counts = self._maybe_assert_valid_sample(counts)
+    probs = self.probs
+    if not (counts.shape.is_fully_defined()
+            and self.probs.shape.is_fully_defined()
+            and counts.shape.is_compatible_with(self.probs.shape)):
+      # If both shapes are well defined and equal, we skip broadcasting.
+      probs += array_ops.zeros_like(counts)
+      counts += array_ops.zeros_like(self.probs)
+
+    return _bdtr(k=counts, n=self.total_count, p=probs)
 
   def _log_unnormalized_prob(self, counts):
     counts = self._maybe_assert_valid_sample(counts)
@@ -236,16 +269,14 @@ class Binomial(distribution.Distribution):
             message="total_count must be non-negative."),
         distribution_util.assert_integer_form(
             total_count,
-            message="total_count cannot contain fractional componentes."),
+            message="total_count cannot contain fractional components."),
     ], total_count)
 
-  def _maybe_assert_valid_sample(self, counts, check_integer=True):
+  def _maybe_assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
-
-    counts = distribution_util.embed_check_nonnegative_discrete(
-        counts, check_integer=check_integer)
+    counts = distribution_util.embed_check_nonnegative_integer_form(counts)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less_equal(
             counts, self.total_count,

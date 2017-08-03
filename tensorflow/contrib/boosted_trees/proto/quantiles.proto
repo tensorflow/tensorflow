@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package boosted_trees;
+
+message QuantileConfig {
+  // Maximum eps error when computing quantile summaries.
+  double eps = 1;
+  // Number of quantiles to generate.
+  int64 num_quantiles = 2;
+}
+
+message QuantileEntry {
+  // Value for the entry.
+  float value = 1;
+  // Weight for the entry.
+  float weight = 2;
+  // We need the minimum and maximum rank possible for this entry.
+  // Rank is 0.0 for the absolute minimum and sum of the weights for the maximum
+  // value in the input.
+  float min_rank = 3;
+  float max_rank = 4;
+}
+
+message QuantileSummaryState {
+  repeated QuantileEntry entries = 1;
+}
+
+message QuantileStreamState {
+  repeated QuantileSummaryState summaries = 1;
+}

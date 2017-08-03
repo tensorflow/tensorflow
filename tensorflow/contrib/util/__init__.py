@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilities for dealing with Tensors. See @{$python/contrib.util} guide.
+"""Utilities for dealing with Tensors.
+
+See @{$python/contrib.util} guide.
 
 @@constant_value
 @@make_tensor_proto

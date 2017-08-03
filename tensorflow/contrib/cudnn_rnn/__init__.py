@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for fused Cudnn RNN models."""
+"""Ops for fused Cudnn RNN models.
+
+@@CudnnGRU
+@@CudnnLSTM
+@@CudnnRNNRelu
+@@CudnnRNNTanh
+@@RNNParamsSaveable
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,4 +32,13 @@ from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNTanh
 from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import RNNParamsSaveable
 
 from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    "CudnnGRU",
+    "CudnnLSTM",
+    "CudnnRNNRelu",
+    "CudnnRNNTanh",
+    "RNNParamsSaveable",
+]
+
 remove_undocumented(__name__)

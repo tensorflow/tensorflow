@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.python.framework.ops."""
+"""Tests for tensorflow.python.framework.random_seed."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,6 +34,9 @@ class RandomSeedTest(test.TestCase):
         ((None, 1), (random_seed.DEFAULT_GRAPH_SEED, 1)),
         ((1, None), (1, 0)),  # 0 will be the default_graph._lastid.
         ((1, 1), (1, 1)),
+        ((0, 0), (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
+        ((2**31 - 1, 0), (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
+        ((0, 2**31 - 1), (0, 2**31 - 1)),  # Wrapping for the other argument
     ]
     for tc in test_cases:
       tinput, toutput = tc[0], tc[1]

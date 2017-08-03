@@ -40,6 +40,10 @@ class WorkerInterface {
                               GetStatusResponse* response,
                               StatusCallback done) = 0;
 
+  virtual void CreateWorkerSessionAsync(
+      const CreateWorkerSessionRequest* request,
+      CreateWorkerSessionResponse* response, StatusCallback done) = 0;
+
   virtual void RegisterGraphAsync(const RegisterGraphRequest* request,
                                   RegisterGraphResponse* response,
                                   StatusCallback done) = 0;
@@ -107,6 +111,11 @@ class WorkerInterface {
   Status GetStatus(const GetStatusRequest* request,
                    GetStatusResponse* response) {
     return CallAndWait(&ME::GetStatusAsync, request, response);
+  }
+
+  Status CreateWorkerSession(const CreateWorkerSessionRequest* request,
+                             CreateWorkerSessionResponse* response) {
+    return CallAndWait(&ME::CreateWorkerSessionAsync, request, response);
   }
 
   Status RegisterGraph(const RegisterGraphRequest* request,

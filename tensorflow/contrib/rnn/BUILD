@@ -9,6 +9,7 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -16,22 +17,33 @@ load(
     "tf_py_test",
     "tf_gen_op_libs",
     "tf_kernel_library",
+    "tf_gen_op_wrapper_py",
 )
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "rnn_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
-    data = [
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
+        "python/tools/checkpoint_convert.py",
+    ],
+    dso = [
         ":python/ops/_gru_ops.so",
         ":python/ops/_lstm_ops.so",
+    ],
+    kernels = [
+        ":gru_ops_kernels",
+        ":lstm_ops_kernels",
+        ":gru_ops_op_lib",
+        ":lstm_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":gru_ops",
+        ":lstm_ops",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/util:util_py",
@@ -41,6 +53,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:partitioned_variables",
@@ -54,7 +67,7 @@ py_library(
 
 cuda_py_tests(
     name = "rnn_cell_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -72,6 +85,11 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "noasan",  # times out b/63678675
+        "notsan",  # http://b/62135981
+    ],
+    xla_enabled = True,
 )
 
 cuda_py_tests(
@@ -195,6 +213,11 @@ tf_custom_op_library(
     ],
 )
 
+tf_gen_op_wrapper_py(
+    name = "lstm_ops",
+    deps = [":lstm_ops_op_lib"],
+)
+
 tf_custom_op_library(
     name = "python/ops/_gru_ops.so",
     srcs = [
@@ -212,6 +235,11 @@ tf_custom_op_library(
     deps = [
         "//tensorflow/core/kernels:eigen_helpers",
     ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gru_ops",
+    deps = [":gru_ops_op_lib"],
 )
 
 cuda_py_tests(
@@ -282,6 +310,7 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+            "tools/**",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -327,5 +356,36 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
+    ],
+)
+
+py_binary(
+    name = "checkpoint_convert",
+    srcs = ["python/tools/checkpoint_convert.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "checkpoint_convert_test",
+    size = "small",
+    srcs = ["python/tools/checkpoint_convert_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":checkpoint_convert",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )

@@ -22,30 +22,28 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/StringRef.h"
-#include "external/llvm/include/llvm/Analysis/TargetLibraryInfo.h"
-#include "external/llvm/include/llvm/Analysis/TargetTransformInfo.h"
-#include "external/llvm/include/llvm/ExecutionEngine/ObjectMemoryBuffer.h"
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/IR/Verifier.h"
-#include "external/llvm/include/llvm/MC/MCContext.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Support/raw_ostream.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
-#include "external/llvm/include/llvm/Transforms/IPO.h"
-#include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
-#include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/ExecutionEngine/ObjectMemoryBuffer.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
+#include "tensorflow/compiler/xla/service/cpu/llvm_ir_runtime.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -66,14 +64,9 @@ operator()(llvm::Module& module) const {
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
-  legacy_flags::CompilerFunctorFlags* flags =
-      legacy_flags::GetCompilerFunctorFlags();
-  string dump_path = flags->xla_debug_cpu_dump_ir;
-  if (!dump_path.empty()) {
-    std::unique_ptr<tensorflow::WritableFile> f;
-    TF_CHECK_OK(tensorflow::Env::Default()->NewAppendableFile(dump_path, &f));
-    TF_CHECK_OK(f->Append(llvm_ir::DumpModuleToString(module)));
-    TF_CHECK_OK(f->Close());
+
+  if (pre_optimization_hook_) {
+    TF_CHECK_OK(pre_optimization_hook_(module));
   }
 
   // Build up optimization pipeline.
@@ -81,11 +74,18 @@ operator()(llvm::Module& module) const {
 
   // Run optimization passes on module.
   function_passes.doInitialization();
+
+  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+
   for (auto func = module.begin(); func != module.end(); ++func) {
     function_passes.run(*func);
   }
   function_passes.doFinalization();
   module_passes.run(module);
+
+  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+
+  runtime::RewriteIRRuntimeFunctions(&module);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;
@@ -93,6 +93,10 @@ operator()(llvm::Module& module) const {
 
   VLOG(2) << "IR after optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
+
+  if (post_optimization_hook_) {
+    TF_CHECK_OK(post_optimization_hook_(module));
+  }
 
   // Generate code.
   llvm::MCContext* mc_context;
@@ -130,33 +134,32 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
   std::vector<llvm::VecDesc> vector_functions;
 
   const llvm::VecDesc four_wide_vector_functions[] = {
-      {"expf", runtime::kExpV4F32, 4},
-      {"llvm.exp.f32", runtime::kExpV4F32, 4},
+      {"expf", runtime::kExpV4F32SymbolName, 4},
+      {"llvm.exp.f32", runtime::kExpV4F32SymbolName, 4},
 
-      {"logf", runtime::kLogV4F32, 4},
-      {"llvm.log.f32", runtime::kLogV4F32, 4},
-
-      {"tanhf", runtime::kTanhV4F32, 4},
-      {"llvm.tanh.f32", runtime::kTanhV4F32, 4},
+      {"logf", runtime::kLogV4F32SymbolName, 4},
+      {"llvm.log.f32", runtime::kLogV4F32SymbolName, 4},
   };
 
   const llvm::VecDesc eight_wide_vector_functions[] = {
-      {"expf", runtime::kExpV8F32, 8},
-      {"llvm.exp.f32", runtime::kExpV8F32, 8},
+      {"expf", runtime::kExpV8F32SymbolName, 8},
+      {"llvm.exp.f32", runtime::kExpV8F32SymbolName, 8},
 
-      {"logf", runtime::kLogV8F32, 8},
-      {"llvm.log.f32", runtime::kLogV8F32, 8},
-
-      {"tanhf", runtime::kTanhV8F32, 8},
-      {"llvm.tanh.f32", runtime::kTanhV8F32, 8},
+      {"logf", runtime::kLogV8F32SymbolName, 8},
+      {"llvm.log.f32", runtime::kLogV8F32SymbolName, 8},
   };
 
-  // Our vectorized library calls are currently implement by calling into Eigen.
-  // As such, only emit calls to these routines if --xla_cpu_use_eigen is
-  // enabled.
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (flags->xla_cpu_use_eigen &&
-      (arch == llvm::Triple::x86 || llvm::Triple::x86_64)) {
+  // These functions are generated by XLA as LLVM IR, so they're always
+  // available.
+  const llvm::VecDesc ir_vector_functions[] = {
+      {"tanhf", runtime::kTanhV4F32SymbolName, 4},
+      {"llvm.tanh.f32", runtime::kTanhV4F32SymbolName, 4},
+
+      {"tanhf", runtime::kTanhV8F32SymbolName, 8},
+      {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName, 8},
+  };
+
+  if (arch == llvm::Triple::x86 || llvm::Triple::x86_64) {
     llvm::SmallVector<llvm::StringRef, 32> features;
     feature_string.split(features, ',', -1, /*KeepEmpty=*/false);
     if (std::find(features.begin(), features.end(), "+sse4.1") !=
@@ -173,6 +176,10 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
                               std::end(eight_wide_vector_functions));
     }
   }
+
+  vector_functions.insert(vector_functions.end(),
+                          std::begin(ir_vector_functions),
+                          std::end(ir_vector_functions));
   return vector_functions;
 }
 }  // namespace
@@ -192,8 +199,6 @@ void CompilerFunctor::AddOptimizationPasses(
   module_passes->add(createTargetTransformInfoWrapperPass(
       target_machine_->getTargetIRAnalysis()));
 
-  module_passes->add(llvm::createVerifierPass());
-
   llvm::PassManagerBuilder builder;
   builder.OptLevel = opt_level_;
   builder.SizeLevel = 0;
@@ -212,8 +217,6 @@ void CompilerFunctor::AddOptimizationPasses(
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);
-
-  module_passes->add(llvm::createVerifierPass());
 }
 
 }  // namespace cpu

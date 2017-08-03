@@ -373,15 +373,16 @@ class QuantizedDistributionTest(test.TestCase):
 
   def testCutoffsMustBeIntegerValuedIfValidateArgsTrue(self):
     with self.test_session():
+      low = array_ops.placeholder(dtypes.float32)
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(loc=0., scale=1.),
-          low=1.5,
+          low=low,
           high=10.,
           validate_args=True)
 
       self.assertTrue(qdist.validate_args)  # Default is True.
       with self.assertRaisesOpError("has non-integer components"):
-        qdist.sample().eval()
+        qdist.sample().eval(feed_dict={low: 1.5})
 
   def testCutoffsCanBeFloatValuedIfValidateArgsFalse(self):
     with self.test_session():

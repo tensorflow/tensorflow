@@ -19,13 +19,16 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 
 namespace tensorflow {
 
 class CancellationManager;
 class Device;
-class WorkerEnv;
+struct WorkerEnv;
+struct WorkerSession;
 
 // A TensorFlow Worker runs registered graphs and supports worker-to-worker
 // Tensor transfer.
@@ -44,6 +47,10 @@ class Worker : public WorkerInterface {
   void GetStatusAsync(const GetStatusRequest* request,
                       GetStatusResponse* response,
                       StatusCallback done) override;
+
+  void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
+                                CreateWorkerSessionResponse* response,
+                                StatusCallback done) override;
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
@@ -87,33 +94,10 @@ class Worker : public WorkerInterface {
   void AbortStep(int64);
 
  private:
+  PartialRunMgr partial_run_mgr_;
+
   mutex mu_;
   CancellationManager* cancellation_manager_ GUARDED_BY(mu_);
-
-  struct PartialRunState {
-    CancellationManager* cancellation_manager;
-    Notification executor_done;
-
-    explicit PartialRunState(CancellationManager* cm)
-        : cancellation_manager(cm) {}
-  };
-  struct PairHash {
-    std::size_t operator()(std::pair<string, int> const& p) const {
-      return Hash64Combine(std::hash<string>()(p.first),
-                           std::hash<int>()(p.second));
-    }
-  };
-  std::unordered_map<std::pair<string, int>, std::unique_ptr<PartialRunState>,
-                     PairHash>
-      partial_runs_ GUARDED_BY(mu_);
-
-  PartialRunState* FindPartialRun(const string& graph_handle, int step_id);
-
-  void InsertPartialRunLocked(const string& graph_handle, int step_id,
-                              PartialRunState* partial_run_state)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  void RemovePartialRun(const string& graph_handle, int step_id);
 
   Status PrepareRunGraph(RunGraphRequestWrapper* req,
                          GraphMgr::NamedTensors* in,

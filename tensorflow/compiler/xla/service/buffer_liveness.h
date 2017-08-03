@@ -36,6 +36,8 @@ namespace xla {
 // interference.
 class BufferLiveness {
  public:
+  using Colorer = std::function<Status(const BufferLiveness& buffer_liveness)>;
+
   // Constructs a buffer liveness object for the given module assuming the given
   // HLO instruction ordering.
   static StatusOr<std::unique_ptr<BufferLiveness>> Run(
@@ -51,12 +53,33 @@ class BufferLiveness {
   // the entry computation.
   bool MaybeLiveOut(const LogicalBuffer& buffer) const;
 
+  // Returns the complete set of buffers that may be live out of the module.
+  const tensorflow::gtl::FlatSet<const LogicalBuffer*>& maybe_live_out_buffers()
+      const {
+    return maybe_live_out_buffers_;
+  }
+
   // Returns the underlying points-to analysis used for this liveness analysis.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return *points_to_analysis_;
   }
 
+  // Returns the underlying hlo ordering used for this liveness analysis.
+  const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
+
+  const HloModule& module() const { return *module_; }
+
   string ToString() const;
+
+  static Colorer DefaultColorer() {
+    return [](const BufferLiveness& buffer_liveness) {
+      for (auto& buffer :
+           buffer_liveness.points_to_analysis().logical_buffers()) {
+        buffer->set_color(LogicalBuffer::Color(0));
+      }
+      return Status::OK();
+    };
+  }
 
  private:
   explicit BufferLiveness(const HloModule* module,

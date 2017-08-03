@@ -22,11 +22,21 @@ py_library(
     ],
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "labeled_tensor_pip",
+    deps = [
+        ":labeled_tensor",
+        ":test_util",
+    ],
+)
+
 py_library(
     name = "_typecheck",
     srcs = ["python/ops/_typecheck.py"],
     srcs_version = "PY2AND3",
     visibility = [":__subpackages__"],
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
@@ -39,6 +49,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -47,8 +58,6 @@ py_library(
     srcs = ["python/ops/test_util.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":_typecheck",
-        ":core",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
     ],
@@ -83,6 +92,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
+        "@six_archive//:six",
     ],
 )
 
@@ -96,7 +106,6 @@ py_test(
     deps = [
         ":core",
         ":io_ops",
-        ":ops",
         ":test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -142,11 +151,13 @@ py_library(
         ":core",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:numerics",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -166,6 +177,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -179,6 +191,7 @@ py_library(
         ":core",
         ":ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "@six_archive//:six",
     ],
 )
 

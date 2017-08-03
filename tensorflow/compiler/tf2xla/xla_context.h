@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -30,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+class XlaOpKernelContext;
 
 // The XlaContext is the data structure that holds the state of an XLA
 // compilation, that is accessible from OpKernelContexts when compiling a
@@ -43,15 +44,30 @@ class XlaContext : public ResourceBase {
     bool is_constant;
     Tensor constant_value;  // Must be in host memory.
 
-    // If this is not a constant, a computation handle.
+    // If this is not a constant, a computation handle. Since the mapping from
+    // Tensorflow types to XLA types is not necessarily injective (one-to-one),
+    // we also require the Tensorflow type.
+    DataType type;
     xla::ComputationDataHandle handle;
+  };
+
+  struct Argument {
+    XlaCompiler::Argument::Kind kind;
+
+    // Descriptive name for the resource, for use in error messages.
+    string name;
+
+    // Is this a resource?
+    bool is_resource = false;
+
+    HandleOrConstant value;
+
+    int64 tensor_array_size = -1;
   };
 
   // Retrieves the XlaContext of the current compilation.
   static XlaContext& Get(const OpKernelContext* ctx);
-  static XlaContext& Get(const XlaOpKernelContext* ctx) {
-    return Get(ctx->op_kernel_context());
-  }
+  static XlaContext& Get(const XlaOpKernelContext* ctx);
 
   // Creates a new XlaContext.
   XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
@@ -69,8 +85,8 @@ class XlaContext : public ResourceBase {
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
   bool has_context_parameter() const { return has_context_parameter_; }
 
-  const std::vector<HandleOrConstant>& args() const { return args_; }
-  void set_args(std::vector<HandleOrConstant> args);
+  const std::vector<Argument>& args() const { return args_; }
+  void set_args(std::vector<Argument> args);
 
   // Get the runtime context parameter, adding one if it does not already exist.
   // Dies if not compiling a local executable.
@@ -80,7 +96,8 @@ class XlaContext : public ResourceBase {
 
   // This is called by the Retval Op to associate a computed value
   // with a specific return value of the subgraph.
-  void AddRetval(int retval_index, const xla::ComputationDataHandle& handle);
+  void AddRetval(int retval_index, DataType type,
+                 const xla::ComputationDataHandle& handle);
 
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
@@ -91,6 +108,17 @@ class XlaContext : public ResourceBase {
 
   bool has_side_effects() const { return has_side_effects_; }
 
+  // Creates a resource with resource `kind` and initial type `type` and
+  // value `handle`. `name` is a descriptive name for use in error messages.
+  // Fails if the resource already exists.
+  Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
+                        DataType type, const xla::ComputationDataHandle& handle,
+                        XlaResource** resource);
+
+  const std::vector<std::unique_ptr<XlaResource>>& resources() {
+    return resources_;
+  }
+
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
@@ -100,11 +128,6 @@ class XlaContext : public ResourceBase {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
-
-  // Get an XLA lambda to compute Sigmoid. This is cached in the
-  // XlaContext since it may be used by multiple Ops. There is a
-  // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateSigmoid(const DataType type);
 
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
@@ -132,13 +155,16 @@ class XlaContext : public ResourceBase {
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
-  std::vector<HandleOrConstant> args_;
+  std::vector<Argument> args_;
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
   std::vector<HandleOrConstant> retvals_;
 
   // Does the computation have side effects, i.e., Send() calls?
   bool has_side_effects_ = false;
+
+  // Holds ownership of resources. The resources are not ordered.
+  std::vector<std::unique_ptr<XlaResource>> resources_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::Computation>;

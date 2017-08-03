@@ -24,6 +24,25 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+namespace {
+
+Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
+  auto* t = c->input_handle_shapes_and_types(0);
+  if (t != nullptr && t->size() == c->num_outputs()) {
+    for (int i = 0; i < c->num_outputs(); ++i) {
+      ShapeHandle combined_shape;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(n_shape, (*t)[i].shape, &combined_shape));
+      c->set_output(i, combined_shape);
+    }
+    return Status::OK();
+  } else {
+    return shape_inference::UnknownShape(c);
+  }
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("DynamicPartition")
@@ -101,8 +120,10 @@ For example:
     outputs[1] = [30, 40]
 ```
 
+See `dynamic_stitch` for an example on how to merge partitions back.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/DynamicPartition.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 </div>
 
 partitions: Any shape.  Indices in the range `[0, num_partitions)`.
@@ -120,7 +141,7 @@ REGISTER_OP("DynamicStitch")
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
       ShapeHandle extra_shape = c->UnknownShape();
-      for (int i = 0; i < num_partitions; ++i) {
+      for (int64 i = 0; i < num_partitions; ++i) {
         ShapeHandle indices_shape = c->input(i);
         ShapeHandle data_shape = c->input(i + num_partitions);
         if (!c->RankKnown(indices_shape)) {
@@ -189,8 +210,26 @@ For example:
               [51, 52], [61, 62]]
 ```
 
+This method can be used to merge partitions created by `dynamic_partition`
+as illustrated on the following example:
+
+```python
+    # Apply function (increments x_i) on elements for which a certain condition
+    # apply (x_i != -1 in this example).
+    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+    condition_mask=tf.not_equal(x,tf.constant(-1.))
+    partitioned_data = tf.dynamic_partition(
+        x, tf.cast(condition_mask, tf.int32) , 2)
+    partitioned_data[1] = partitioned_data[1] + 1.0
+    condition_indices = tf.dynamic_partition(
+        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+    x = tf.dynamic_stitch(condition_indices, partitioned_data)
+    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+    # unchanged.
+```
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/DynamicStitch.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
 </div>
 )doc");
 
@@ -210,8 +249,27 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   return Status::OK();
 }
 
+Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
+  ShapeHandle handle;
+  DimensionHandle unused_handle;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+  for (int i = 1; i < c->num_inputs(); ++i) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &handle));
+    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_handle));
+  }
+  for (int i = 0; i < c->num_outputs(); ++i) {
+    c->set_output(i, c->Scalar());
+  }
+  return Status::OK();
+}
+
 Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
+  return Status::OK();
+}
+
+Status ScalarOutput(InferenceContext* c) {
+  c->set_output(0, c->Scalar());
   return Status::OK();
 }
 }  // namespace
@@ -604,7 +662,17 @@ REGISTER_OP("QueueDequeueV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      auto* t = c->input_handle_shapes_and_types(0);
+      if (t != nullptr && t->size() == c->num_outputs()) {
+        for (int i = 0; i < c->num_outputs(); ++i) {
+          c->set_output(i, (*t)[i].shape);
+        }
+        return Status::OK();
+      } else {
+        return shape_inference::UnknownShape(c);
+      }
+    })
     .Doc(R"doc(
 Dequeues a tuple of one or more tensors from the given queue.
 
@@ -631,20 +699,20 @@ REGISTER_OP("QueueDequeueMany")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
-If the queue is closed and there are fewer than n elements, then an
+If the queue is closed and there are fewer than `n` elements, then an
 OutOfRange error is returned.
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size n in the 0th dimension.
+in the dequeued tuple will have size `n` in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
-N.B. If the queue is empty, this operation will block until n elements
+N.B. If the queue is empty, this operation will block until `n` elements
 have been dequeued (or 'timeout_ms' elapses, if specified).
 
 handle: The handle to a queue.
@@ -662,22 +730,34 @@ REGISTER_OP("QueueDequeueManyV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle n_shape;
+      if (c->input_tensor(1) == nullptr) {
+        n_shape = c->Vector(InferenceContext::kUnknownDim);
+      } else {
+        const int32 n = c->input_tensor(1)->scalar<int32>()();
+        if (n < 0) {
+          return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
+        }
+        n_shape = c->Vector(n);
+      }
+      return DequeueManyV2Shape(c, n_shape);
+    })
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
-If the queue is closed and there are fewer than n elements, then an
+If the queue is closed and there are fewer than `n` elements, then an
 OutOfRange error is returned.
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size n in the 0th dimension.
+in the dequeued tuple will have size `n` in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
-N.B. If the queue is empty, this operation will block until n elements
+N.B. If the queue is empty, this operation will block until `n` elements
 have been dequeued (or 'timeout_ms' elapses, if specified).
 
 handle: The handle to a queue.
@@ -697,24 +777,24 @@ REGISTER_OP("QueueDequeueUpTo")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
 This operation is not supported by all queues.  If a queue does not support
 DequeueUpTo, then an Unimplemented error is returned.
 
-If the queue is closed and there are more than 0 but less than n elements
-remaining, then instead of returning an OutOfRange error like
-QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
-is closed and there are 0 elements left in the queue, then an OutOfRange
-error is returned just like in QueueDequeueMany.  Otherwise the behavior
-is identical to QueueDequeueMany:
+If the queue is closed and there are more than 0 but less than `n`
+elements remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If
+the queue is closed and there are 0 elements left in the queue, then
+an OutOfRange error is returned just like in QueueDequeueMany.
+Otherwise the behavior is identical to QueueDequeueMany:
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size n in the 0th dimension.
+in the dequeued tuple will have size `n` in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has k outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
 handle: The handle to a queue.
@@ -732,26 +812,28 @@ REGISTER_OP("QueueDequeueUpToV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return DequeueManyV2Shape(c, c->Vector(InferenceContext::kUnknownDim));
+    })
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
 This operation is not supported by all queues.  If a queue does not support
 DequeueUpTo, then an Unimplemented error is returned.
 
-If the queue is closed and there are more than 0 but less than n elements
-remaining, then instead of returning an OutOfRange error like
-QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
-is closed and there are 0 elements left in the queue, then an OutOfRange
-error is returned just like in QueueDequeueMany.  Otherwise the behavior
-is identical to QueueDequeueMany:
+If the queue is closed and there are more than 0 but less than `n`
+elements remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If
+the queue is closed and there are 0 elements left in the queue, then
+an OutOfRange error is returned just like in QueueDequeueMany.
+Otherwise the behavior is identical to QueueDequeueMany:
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
 in the dequeued tuple will have size n in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
 handle: The handle to a queue.
@@ -778,7 +860,7 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
 )doc");
 
 REGISTER_OP("QueueCloseV2")
@@ -796,7 +878,33 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
+)doc");
+
+REGISTER_OP("QueueIsClosed")
+    .Input("handle: Ref(string)")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
+)doc");
+
+REGISTER_OP("QueueIsClosedV2")
+    .Input("handle: resource")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
 )doc");
 
 REGISTER_OP("QueueSize")
@@ -843,8 +951,10 @@ REGISTER_OP("AccumulatorSetGlobalStep")
       return Status::OK();
     })
     .Doc(R"doc(
-Updates the accumulator with a new value for global_step. Logs warning if the
-accumulator's value is already higher than new_global_step.
+Updates the accumulator with a new value for global_step.
+
+Logs warning if the accumulator's value is already higher than
+new_global_step.
 
 handle: The handle to an accumulator.
 new_global_step: The new global_step value to set.
@@ -862,20 +972,22 @@ REGISTER_OP("ConditionalAccumulator")
       return Status::OK();
     })
     .Doc(R"doc(
-A conditional accumulator for aggregating gradients. The accumulator accepts
-gradients marked with local_step greater or equal to the most recent global_step
-known to the accumulator. The average can be extracted from the accumulator,
-provided sufficient gradients have been accumulated. Extracting the average
-automatically resets the aggregate to 0, and increments the global_step recorded
-by the accumulator.
+A conditional accumulator for aggregating gradients.
+
+The accumulator accepts gradients marked with local_step greater or
+equal to the most recent global_step known to the accumulator. The
+average can be extracted from the accumulator, provided sufficient
+gradients have been accumulated. Extracting the average automatically
+resets the aggregate to 0, and increments the global_step recorded by
+the accumulator.
 
 handle: The handle to the accumulator.
 dtype: The type of the value being accumulated.
 shape: The shape of the values, can be [], in which case shape is unknown.
 container: If non-empty, this accumulator is placed in the given container.
   Otherwise, a default container is used.
-shared_name: If non-empty, this accumulator will be shared under the given name
-  across multiple sessions.
+shared_name: If non-empty, this accumulator will be shared under the
+  given name across multiple sessions.
 )doc");
 
 REGISTER_OP("AccumulatorApplyGradient")
@@ -889,8 +1001,9 @@ REGISTER_OP("AccumulatorApplyGradient")
       return Status::OK();
     })
     .Doc(R"doc(
-Applies a gradient to a given accumulator. Does not add if local_step is lesser
-than the accumulator's global_step.
+Applies a gradient to a given accumulator.
+
+Does not add if local_step is lesser than the accumulator's global_step.
 
 handle: The handle to a accumulator.
 local_step: The local_step value at which the gradient was computed.
@@ -913,13 +1026,13 @@ REGISTER_OP("AccumulatorTakeGradient")
     })
     .Attr("dtype: numbertype")
     .Doc(R"doc(
-Extracts the average gradient in the given ConditionalAccumulator, provided
-that sufficient (i.e., more than num_required) gradients have been accumulated.
-The op blocks until sufficient gradients have been accumulated.
-If the accumulator has already aggregated more than num_required gradients, it
-returns the average of the accumulated gradients.
-Also automatically increments the recorded global_step in the accumulator by 1,
-and resets the aggregate to 0.
+Extracts the average gradient in the given ConditionalAccumulator.
+
+The op blocks until sufficient (i.e., more than num_required)
+gradients have been accumulated.  If the accumulator has already
+aggregated more than num_required gradients, it returns the average of
+the accumulated gradients.  Also automatically increments the recorded
+global_step in the accumulator by 1, and resets the aggregate to 0.
 
 handle: The handle to an accumulator.
 num_required: Number of gradients required before we return an aggregate.
@@ -940,12 +1053,14 @@ REGISTER_OP("SparseConditionalAccumulator")
       return Status::OK();
     })
     .Doc(R"doc(
-A conditional accumulator for aggregating sparse gradients. The accumulator
-accepts gradients marked with local_step greater or equal to the most recent
-global_step known to the accumulator. The average can be extracted from the
-accumulator, provided sufficient gradients have been accumulated. Extracting the
-average automatically resets the aggregate to 0, and increments the global_step
-recorded by the accumulator.
+A conditional accumulator for aggregating sparse gradients.
+
+The accumulator accepts gradients marked with local_step greater or
+equal to the most recent global_step known to the accumulator. The
+average can be extracted from the accumulator, provided sufficient
+gradients have been accumulated. Extracting the average automatically
+resets the aggregate to 0, and increments the global_step recorded by
+the accumulator.
 
 handle: The handle to the accumulator.
 dtype: The type of the value being accumulated.
@@ -970,8 +1085,10 @@ REGISTER_OP("SparseAccumulatorApplyGradient")
       return Status::OK();
     })
     .Doc(R"doc(
-Applies a sparse gradient to a given accumulator. Does not add if local_step is
-lesser than the accumulator's global_step.
+Applies a sparse gradient to a given accumulator.
+
+Does not add if local_step is smaller than the accumulator's
+global_step.
 
 handle: The handle to a accumulator.
 local_step: The local_step value at which the sparse gradient was computed.
@@ -1003,13 +1120,14 @@ REGISTER_OP("SparseAccumulatorTakeGradient")
       return shape_inference::UnknownShape(c);
     })
     .Doc(R"doc(
-Extracts the average sparse gradient in the given SparseConditionalAccumulator,
-provided that sufficient (i.e., more than num_required) gradients have been
-accumulated. The op will blocks until sufficient gradients have been
-accumulated. If the accumulator has already aggregated more than num_required
-gradients, it will return its average of the accumulated gradients.
-Also automatically increments the recorded global_step in the accumulator by 1,
-and resets the aggregate to 0.
+Extracts the average sparse gradient in a SparseConditionalAccumulator.
+
+The op will blocks until sufficient (i.e., more than num_required)
+gradients have been accumulated. If the accumulator has already
+aggregated more than num_required gradients, it will return its
+average of the accumulated gradients.  Also automatically increments
+the recorded global_step in the accumulator by 1, and resets the
+aggregate to 0.
 
 handle: The handle to a SparseConditionalAccumulator.
 num_required: Number of gradients required before we return an aggregate.
@@ -1022,8 +1140,9 @@ dtype: The data type of accumulated gradients. Needs to correspond to the type
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("Stack")
-    .Output("handle: Ref(string)")
+REGISTER_OP("StackV2")
+    .Input("max_size: int32")
+    .Output("handle: resource")
     .Attr("elem_type: type")
     .Attr("stack_name: string = ''")
     .SetIsStateful()
@@ -1031,19 +1150,24 @@ REGISTER_OP("Stack")
     .Doc(R"doc(
 A stack that produces elements in first-in last-out order.
 
+max_size: The maximum size of the stack if non-negative. If negative, the stack
+  size is unlimited.
 handle: The handle to the stack.
 elem_type: The type of the elements on the stack.
 stack_name: Overrides the name used for the temporary stack resource. Default
 value is the name of the 'Stack' op (which is guaranteed unique).
 )doc");
 
-REGISTER_OP("StackPush")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPushV2")
+    .Input("handle: resource")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
     .Attr("swap_memory: bool = false")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Push an element onto the stack.
 
@@ -1053,8 +1177,8 @@ output: The same tensor as the input 'elem'.
 swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
-REGISTER_OP("StackPop")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPopV2")
+    .Input("handle: resource")
     .Output("elem: elem_type")
     .Attr("elem_type: type")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -1066,13 +1190,55 @@ elem: The tensor that is popped from the top of the stack.
 elem_type: The type of the elem that is popped.
 )doc");
 
-REGISTER_OP("StackClose")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackCloseV2")
+    .Input("handle: resource")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
     .Doc(R"doc(
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// Deprecated ref-typed variants of stack.
+
+REGISTER_OP("Stack")
+    .Output("handle: Ref(string)")
+    .Attr("elem_type: type")
+    .Attr("stack_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Deprecated, use StackV2.
+)doc");
+
+REGISTER_OP("StackPush")
+    .Input("handle: Ref(string)")
+    .Input("elem: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("swap_memory: bool = false")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Deprecated, use StackPushV2.
+)doc");
+
+REGISTER_OP("StackPop")
+    .Input("handle: Ref(string)")
+    .Output("elem: elem_type")
+    .Attr("elem_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Deprecated, use StackPopV2.
+)doc");
+
+REGISTER_OP("StackClose")
+    .Input("handle: Ref(string)")
+    .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Doc(R"doc(
+Deprecated, use StackCloseV2.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1091,11 +1257,13 @@ REGISTER_OP("TensorArrayV3")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(2));
+      c->set_output(1, c->Scalar());
       return Status::OK();
     })
     .Doc(R"doc(
-An array of Tensors of given size, with data written via Write and read
-via Read or Pack.
+An array of Tensors of given size.
+
+Write data via Write and read via Read or Pack.
 
 handle: The handle to the TensorArray.
 flow: A scalar used to control gradient flow.
@@ -1127,6 +1295,7 @@ REGISTER_OP("TensorArrayGradV3")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       c->set_output(0, c->Vector(2));
+      c->set_output(1, c->Scalar());
       return Status::OK();
     })
     .Doc(R"doc(
@@ -1156,7 +1325,7 @@ of the forward TensorArray is known when this operation is called.
 
 TensorArray gradient calls use an accumulator TensorArray object.  If
 multiple gradients are calculated and run in the same session, the multiple
-gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+gradient nodes may accidentally flow through the same accumulator TensorArray.
 This double counts and generally breaks the TensorArray gradient flow.
 
 The solution is to identify which gradient call this particular
@@ -1410,8 +1579,10 @@ REGISTER_OP("TensorArrayCloseV3")
       return Status::OK();
     })
     .Doc(R"doc(
-Delete the TensorArray from its resource container.  This enables
-the user to close and release the resource in the middle of a step/run.
+Delete the TensorArray from its resource container.
+
+This enables the user to close and release the resource in the middle
+of a step/run.
 
 handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
 )doc");
@@ -1429,7 +1600,7 @@ REGISTER_OP("TensorArray")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .Output("handle: Ref(string)")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayV2")
@@ -1454,7 +1625,7 @@ REGISTER_OP("TensorArrayGrad")
     .Output("grad_handle: Ref(string)")
     .Attr("source: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGradV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayGradV2")
@@ -1479,7 +1650,7 @@ REGISTER_OP("TensorArrayWrite")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayWriteV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayWriteV2")
@@ -1507,7 +1678,7 @@ REGISTER_OP("TensorArrayRead")
     .Input("flow_in: float")
     .Output("value: dtype")
     .Attr("dtype: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayReadV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayReadV2")
@@ -1533,7 +1704,7 @@ REGISTER_OP("TensorArrayPack")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGatherV3 with RangeOp");
 REGISTER_OP("TensorArrayUnpack")
     .Input("handle: Ref(string)")
@@ -1541,7 +1712,7 @@ REGISTER_OP("TensorArrayUnpack")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(20, "Use TensorArrayScatterV3 with RangeOp");
 REGISTER_OP("TensorArrayGather")
     .Input("handle: Ref(string)")
@@ -1550,7 +1721,7 @@ REGISTER_OP("TensorArrayGather")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGatherV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayGatherV2")
@@ -1577,7 +1748,7 @@ REGISTER_OP("TensorArrayScatter")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(19, "Use TensorArrayGradV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayScatterV2")
@@ -1604,7 +1775,7 @@ REGISTER_OP("TensorArrayConcat")
     .Output("lengths: int64")
     .Attr("dtype: type")
     .Attr("element_shape_except0: shape = { unknown_rank: true }")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGradV3");
 REGISTER_OP("TensorArrayConcatV2")
     .Input("handle: string")
@@ -1632,7 +1803,7 @@ REGISTER_OP("TensorArraySplit")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArraySplitV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArraySplitV2")
@@ -1657,7 +1828,7 @@ REGISTER_OP("TensorArraySize")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")
     .Output("size: int32")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArraySizeV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArraySizeV2")
@@ -1812,7 +1983,7 @@ Subsequent TakeMany operations that would block will fail immediately.
 
 handle: The handle to a barrier.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the barrier's queue will be cancelled. InsertMany will fail, even
+  blocked on the barrier's queue will be canceled. InsertMany will fail, even
   if no new key is introduced.
 )doc");
 
@@ -1842,311 +2013,6 @@ size: The number of incomplete elements (i.e. those with some of their value
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("LookupTableFind")
-    .Input("table_handle: Ref(string)")
-    .Input("keys: Tin")
-    .Input("default_value: Tout")
-    .Output("values: Tout")
-    .Attr("Tin: type")
-    .Attr("Tout: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle handle;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-
-      // Default value must be scalar or vector.
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &unused));
-      c->set_output(0, c->UnknownShape());
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Looks up keys in a table, outputs the corresponding values.
-
-The tensor `keys` must of the same type as the keys of the table.
-The output `values` is of the type of the table values.
-
-The scalar `default_value` is the value output for keys not present in the
-table. It must also be of the same type as the table values.
-
-table_handle: Handle to the table.
-keys:  Any shape.  Keys to look up.
-values: Same shape as `keys`.  Values found in the table, or `default_values`
-   for missing keys.
-)doc");
-
-REGISTER_OP("LookupTableInsert")
-    .Input("table_handle: Ref(string)")
-    .Input("keys: Tin")
-    .Input("values: Tout")
-    .Attr("Tin: type")
-    .Attr("Tout: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle handle;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-
-      // TODO: Validate keys and values shape.
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Updates the table to associates keys with values.
-
-The tensor `keys` must be of the same type as the keys of the table.
-The tensor `values` must be of the type of the table values.
-
-table_handle: Handle to the table.
-keys:  Any shape.  Keys to look up.
-values: Values to associate with keys.
-)doc");
-
-REGISTER_OP("LookupTableSize")
-    .Input("table_handle: Ref(string)")
-    .Output("size: int64")
-    .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
-    .Doc(R"doc(
-Computes the number of elements in the given table.
-
-table_handle: Handle to the table.
-size: Scalar that contains number of elements in the table.
-)doc");
-
-REGISTER_OP("LookupTableExport")
-    .Input("table_handle: Ref(string)")
-    .Output("keys: Tkeys")
-    .Output("values: Tvalues")
-    .Attr("Tkeys: type")
-    .Attr("Tvalues: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle handle;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-
-      ShapeHandle values = c->UnknownShape();
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(values, 1, &values));
-      ShapeHandle keys = c->Vector(c->Dim(values, 0));
-      c->set_output(0, keys);
-      c->set_output(1, values);
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Outputs all keys and values in the table.
-
-table_handle: Handle to the table.
-keys: Vector of all keys present in the table.
-values: Tensor of all values in the table. Indexed in parallel with `keys`.
-)doc");
-
-REGISTER_OP("LookupTableImport")
-    .Input("table_handle: Ref(string)")
-    .Input("keys: Tin")
-    .Input("values: Tout")
-    .Attr("Tin: type")
-    .Attr("Tout: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle handle;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-
-      // TODO: Validate keys and values shape.
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Replaces the contents of the table with the specified keys and values.
-
-The tensor `keys` must be of the same type as the keys of the table.
-The tensor `values` must be of the type of the table values.
-
-table_handle: Handle to the table.
-keys:  Any shape.  Keys to look up.
-values: Values to associate with keys.
-)doc");
-
-REGISTER_OP("HashTable")
-    .Output("table_handle: Ref(string)")
-    .Attr("container: string = ''")
-    .Attr("shared_name: string = ''")
-    .Attr("use_node_name_sharing: bool = false")
-    .Attr("key_dtype: type")
-    .Attr("value_dtype: type")
-    .SetIsStateful()
-    .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-Creates a non-initialized hash table.
-
-This op creates a hash table, specifying the type of its keys and values.
-Before using the table you will have to initialize it.  After initialization the
-table will be immutable.
-
-table_handle: Handle to a table.
-container: If non-empty, this table is placed in the given container.
-  Otherwise, a default container is used.
-shared_name: If non-empty, this table is shared under the given name across
-  multiple sessions.
-use_node_name_sharing: If true and shared_name is empty, the table is shared
-  using the node name.
-key_dtype: Type of the table keys.
-value_dtype: Type of the table values.
-)doc");
-
-REGISTER_OP("MutableHashTable")
-    .Output("table_handle: Ref(string)")
-    .Attr("container: string = ''")
-    .Attr("shared_name: string = ''")
-    .Attr("use_node_name_sharing: bool = false")
-    .Attr("key_dtype: type")
-    .Attr("value_dtype: type")
-    .SetIsStateful()
-    .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-Creates an empty hash table.
-
-This op creates a mutable hash table, specifying the type of its keys and
-values. Each value must be a scalar. Data can be inserted into the table using
-the insert operations. It does not support the initialization operation.
-
-table_handle: Handle to a table.
-container: If non-empty, this table is placed in the given container.
-  Otherwise, a default container is used.
-shared_name: If non-empty, this table is shared under the given name across
-  multiple sessions.
-use_node_name_sharing: If true and shared_name is empty, the table is shared
-  using the node name.
-key_dtype: Type of the table keys.
-value_dtype: Type of the table values.
-)doc");
-
-REGISTER_OP("MutableHashTableOfTensors")
-    .Output("table_handle: Ref(string)")
-    .Attr("container: string = ''")
-    .Attr("shared_name: string = ''")
-    .Attr("use_node_name_sharing: bool = false")
-    .Attr("key_dtype: type")
-    .Attr("value_dtype: type")
-    .Attr("value_shape: shape = {}")
-    .SetIsStateful()
-    .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-Creates an empty hash table.
-
-This op creates a mutable hash table, specifying the type of its keys and
-values. Each value must be a vector. Data can be inserted into the table using
-the insert operations. It does not support the initialization operation.
-
-table_handle: Handle to a table.
-container: If non-empty, this table is placed in the given container.
-  Otherwise, a default container is used.
-shared_name: If non-empty, this table is shared under the given name across
-  multiple sessions.
-key_dtype: Type of the table keys.
-value_dtype: Type of the table values.
-)doc");
-
-REGISTER_OP("MutableDenseHashTable")
-    .Input("empty_key: key_dtype")
-    .Output("table_handle: Ref(string)")
-    .Attr("container: string = ''")
-    .Attr("shared_name: string = ''")
-    .Attr("use_node_name_sharing: bool = false")
-    .Attr("key_dtype: type")
-    .Attr("value_dtype: type")
-    .Attr("value_shape: shape = {}")
-    .Attr("initial_num_buckets: int = 131072")  // 2^17
-    .Attr("max_load_factor: float = 0.8")
-    .SetIsStateful()
-    .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-Creates an empty hash table that uses tensors as the backing store. It uses
-"open addressing" with quadratic reprobing to resolve collisions.
-
-This op creates a mutable hash table, specifying the type of its keys and
-values. Each value must be a scalar. Data can be inserted into the table using
-the insert operations. It does not support the initialization operation.
-
-empty_key: The key used to represent empty key buckets internally. Must not
-  be used in insert or lookup operations.
-table_handle: Handle to a table.
-container: If non-empty, this table is placed in the given container.
-  Otherwise, a default container is used.
-shared_name: If non-empty, this table is shared under the given name across
-  multiple sessions.
-key_dtype: Type of the table keys.
-value_dtype: Type of the table values.
-value_shape: The shape of each value.
-initial_num_buckets: The initial number of hash table buckets. Must be a power
-  to 2.
-max_load_factor: The maximum ratio between number of entries and number of
-  buckets before growing the table. Must be between 0 and 1.
-)doc");
-
-REGISTER_OP("InitializeTable")
-    .Input("table_handle: Ref(string)")
-    .Input("keys: Tkey")
-    .Input("values: Tval")
-    .Attr("Tkey: type")
-    .Attr("Tval: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle handle;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-
-      ShapeHandle keys;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &keys));
-      TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Table initializer that takes two tensors for keys and values respectively.
-
-table_handle: Handle to a table which will be initialized.
-keys: Keys of type Tkey.
-values: Values of type Tval.
-)doc");
-
-REGISTER_OP("InitializeTableFromTextFile")
-    .Input("table_handle: Ref(string)")
-    .Input("filename: string")
-    .Attr("key_index: int >= -2")
-    .Attr("value_index: int >= -2")
-    .Attr("vocab_size: int >= -1 = -1")
-    .Attr("delimiter: string = '\t'")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle handle;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Initializes a table from a text file.
-
-It inserts one key-value pair into the table for each line of the file.
-The key and value is extracted from the whole line content, elements from the
-split line based on `delimiter` or the line number (starting from zero).
-Where to extract the key and value from a line is specified by `key_index` and
-`value_index`.
-
-- A value of -1 means use the line number(starting from zero), expects `int64`.
-- A value of -2 means use the whole line content, expects `string`.
-- A value >= 0 means use the index (starting at zero) of the split line based
-  on `delimiter`.
-
-table_handle: Handle to a table which will be initialized.
-filename: Filename of a vocabulary text file.
-key_index: Column index in a line to get the table `key` values from.
-value_index: Column index that represents information of a line to get the table
-  `value` values from.
-vocab_size: Number of elements of the file, use -1 if unknown.
-delimiter: Delimiter to separate fields in a line.
-)doc");
-
 REGISTER_OP("GetSessionHandle")
     .Input("value: T")
     .Output("handle: string")
@@ -2156,7 +2022,21 @@ REGISTER_OP("GetSessionHandle")
 Store the input tensor in the state of the current session.
 
 value: The tensor to be stored.
-handle: The handle for the tensor stored in the session state.
+handle: The handle for the tensor stored in the session state, represented
+  as a string.
+)doc");
+
+REGISTER_OP("GetSessionHandleV2")
+    .Input("value: T")
+    .Output("handle: resource")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Store the input tensor in the state of the current session.
+
+value: The tensor to be stored.
+handle: The handle for the tensor stored in the session state, represented
+  as a ResourceHandle object.
 )doc");
 
 REGISTER_OP("GetSessionTensor")
@@ -2191,33 +2071,321 @@ handle: The handle for a tensor stored in the session state.
 
 REGISTER_OP("Stage")
     .Input("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::UnknownShape)
     .SetIsStateful()
     .Doc(R"doc(
-Stage values similar to a lightweight Enqueue.  The basic functionality of this
-Op is similar to a queue with many fewer capabilities and options.  This Op is
-optimized for performance.
+Stage values similar to a lightweight Enqueue.
+
+The basic functionality of this Op is similar to a queue with many
+fewer capabilities and options.  This Op is optimized for performance.
 
 values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+memory_limit: The maximum number of bytes allowed for Tensors in the Staging Area.
+  If > 0, inserts will block until sufficient space is available.
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
-    )doc");
+)doc");
 
 REGISTER_OP("Unstage")
     .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::UnknownShape)
     .SetIsStateful()
     .Doc(R"doc(
-Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
-dequeue with many fewer capabilities and options.  This Op is optimized for
+Op is similar to a lightweight Dequeue.
+
+The basic functionality is similar to dequeue with many fewer
+capabilities and options.  This Op is optimized for performance.
+)doc");
+
+REGISTER_OP("StagePeek")
+    .Input("index: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op peeks at the values at the specified index.  If the
+underlying container does not contain sufficient elements
+this op will block until it does.   This Op is optimized for
 performance.
+    )doc");
+
+
+REGISTER_OP("StageSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
+
+REGISTER_OP("StageClear")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
+
+// UnorderedMap
+REGISTER_OP("MapStage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Input("values: fake_dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("fake_dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Stage (key, values) in the underlying container which behaves like a hashtable.
+
+key: int64
+values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+)doc");
+
+REGISTER_OP("MapPeek")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op peeks at the values at the specified key.  If the
+underlying container does not contain this key
+this op will block until it does.
+    )doc");
+
+REGISTER_OP("MapUnstage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns the values associated with the key
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+    )doc");
+
+REGISTER_OP("MapUnstageNoKey")
+    .Input("indices: int32")
+    .Output("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns a random (key, value)
+from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+      )doc");
+
+REGISTER_OP("MapSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
+
+REGISTER_OP("MapIncompleteSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of incomplete elements in the underlying container.
+    )doc");
+
+
+REGISTER_OP("MapClear")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
+
+
+// OrderedMap
+REGISTER_OP("OrderedMapStage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Input("values: fake_dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("fake_dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Stage (key, values) in the underlying container which behaves like a ordered
+associative container.   Elements are ordered by key.
+
+key: int64
+values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+)doc");
+
+REGISTER_OP("OrderedMapPeek")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op peeks at the values at the specified key.  If the
+underlying container does not contain this key
+this op will block until it does.   This Op is optimized for
+performance.
+    )doc");
+
+REGISTER_OP("OrderedMapUnstage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns the values associated with the key
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+    )doc");
+
+REGISTER_OP("OrderedMapUnstageNoKey")
+    .Input("indices: int32")
+    .Output("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns the (key, value) element with the smallest
+key from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+      )doc");
+
+REGISTER_OP("OrderedMapSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
+
+REGISTER_OP("OrderedMapIncompleteSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of incomplete elements in the underlying container.
+    )doc");
+
+REGISTER_OP("OrderedMapClear")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
     )doc");
 
 REGISTER_OP("RecordInput")

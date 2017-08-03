@@ -24,8 +24,8 @@ import six
 
 from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.contrib.linalg.python.ops import linear_operator_diag
+from tensorflow.contrib.linalg.python.ops import linear_operator_full_matrix
 from tensorflow.contrib.linalg.python.ops import linear_operator_identity
-from tensorflow.contrib.linalg.python.ops import linear_operator_matrix
 from tensorflow.contrib.linalg.python.ops import linear_operator_tril
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -43,7 +43,7 @@ def add_operators(operators,
   Given operators `[A1, A2,...]`, this `Op` returns a possibly shorter list of
   operators `[B1, B2,...]` such that
 
-  ```sum_k Ak.apply(x) = sum_k Bk.apply(x).```
+  ```sum_k Ak.matmul(x) = sum_k Bk.matmul(x).```
 
   The operators `Bk` result by adding some of the `Ak`, as allowed by
   `addition_tiers`.
@@ -138,7 +138,7 @@ def add_operators(operators,
 
 
 def _pop_a_match_at_tier(op1, operator_list, tier):
-  # Search from the back of list the the front in order to create nice default
+  # Search from the back of list to the front in order to create nice default
   # order of operations.
   for i in range(1, len(operator_list) + 1):
     op2 = operator_list[-i]
@@ -356,7 +356,7 @@ class _AddAndReturnTriL(_Adder):
 
 
 class _AddAndReturnMatrix(_Adder):
-  """"Handles additions resulting in a `LinearOperatorMatrix`."""
+  """"Handles additions resulting in a `LinearOperatorFullMatrix`."""
 
   def can_add(self, op1, op2):  # pylint: disable=unused-argument
     return isinstance(op1, linear_operator.LinearOperator) and isinstance(
@@ -367,7 +367,7 @@ class _AddAndReturnMatrix(_Adder):
       op_add_to_tensor, op_other = op1, op2
     else:
       op_add_to_tensor, op_other = op2, op1
-    return linear_operator_matrix.LinearOperatorMatrix(
+    return linear_operator_full_matrix.LinearOperatorFullMatrix(
         matrix=op_add_to_tensor.add_to_tensor(op_other.to_dense()),
         is_non_singular=hints.is_non_singular,
         is_self_adjoint=hints.is_self_adjoint,
@@ -399,7 +399,7 @@ def _type(operator):
     return _DIAG
   if isinstance(operator, linear_operator_tril.LinearOperatorTriL):
     return _TRIL
-  if isinstance(operator, linear_operator_matrix.LinearOperatorMatrix):
+  if isinstance(operator, linear_operator_full_matrix.LinearOperatorFullMatrix):
     return _MATRIX
   if isinstance(operator, linear_operator_identity.LinearOperatorIdentity):
     return _IDENTITY

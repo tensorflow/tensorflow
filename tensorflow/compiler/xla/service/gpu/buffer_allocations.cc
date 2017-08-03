@@ -87,7 +87,8 @@ tensorflow::Status BufferAllocations::TearDown(
     const std::set<se::DeviceMemoryBase>& live_addresses,
     const BufferAssignment& buffer_assignment) {
   // Deallocate temporary buffers.
-  for (auto i = 0; i < buffer_assignment.Allocations().size(); ++i) {
+  const int64 num_buffers = buffer_assignment.Allocations().size();
+  for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = buffer_assignment.GetAllocation(i);
     se::DeviceMemoryBase buffer_address = GetDeviceAddress(allocation.index());
     // Deallocate buffers marked "maybe_live_out" but aren't actually live out,

@@ -19,11 +19,11 @@ set -e
 
 usage() {
   echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-s:t:Tx:X]"
+  echo "-E enable experimental hexnn ops"
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
   echo "-T only build tensorflow"
   echo "-x [hexagon library path] copy and hexagon libraries in the specified path"
-  echo "-X download hexagon deps and run hexagon_graph_execution"
   exit 1
 }
 
@@ -32,13 +32,13 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-while getopts "s:t:Tx:X" opt_name; do
+while getopts "Es:t:Tx:" opt_name; do
   case "$opt_name" in
+    E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
     s) SUB_MAKEFILES="${OPTARG}";;
     t) BUILD_TARGET="${OPTARG}";;
     T) ONLY_MAKE_TENSORFLOW="true";;
     x) HEXAGON_LIB_PATH="${OPTARG}";;
-    X) DOWNLOAD_AND_USE_HEXAGON="true";;
     *) usage;;
   esac
 done
@@ -67,28 +67,6 @@ else
   make -f tensorflow/contrib/makefile/Makefile clean_except_protobuf_libs
 fi
 
-if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
-    echo "Download hexagon libraries and dependencies"
-
-    URL_BASE="https://storage.googleapis.com/download.tensorflow.org"
-
-    rm -rf "${HEXAGON_DOWNLOAD_PATH}"
-    mkdir -p "${HEXAGON_DOWNLOAD_PATH}/libs"
-
-    download_and_push "${URL_BASE}/deps/hexagon/libhexagon_controller.so" \
-"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_controller.so" "/data/local/tmp"
-
-    download_and_push "${URL_BASE}/deps/hexagon/libhexagon_nn_skel.so" \
-"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_nn_skel.so" "/vendor/lib/rfsa/adsp"
-
-    download_and_push "${URL_BASE}/example_images/img_299x299.bmp" \
-"${HEXAGON_DOWNLOAD_PATH}/img_299x299.bmp" "/data/local/tmp"
-
-    USE_HEXAGON="true"
-    SUB_MAKEFILES="$(pwd)/tensorflow/contrib/makefile/sub_makefiles/hexagon_graph_execution/Makefile.in"
-    BUILD_TARGET="hexagon_graph_execution"
-fi
-
 if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
     echo "Copy hexagon libraries from ${HEXAGON_LIB_PATH}"
 
@@ -104,28 +82,23 @@ fi
 if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" >/dev/null && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" >/dev/null && pwd)
+    HEXAGON_INCLUDE=$(cd "tensorflow/core/kernels/hexagon" >/dev/null && pwd)
+fi
+
+if [[ "${ENABLE_EXPERIMENTAL_HEXNN_OPS}" == "true" ]]; then
+    EXTRA_MAKE_ARGS+=("ENABLE_EXPERIMENTAL_HEXNN_OPS=true")
 fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}"
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${EXTRA_MAKE_ARGS[@]}
 else
+    # BUILD_TARGET explicitly uncommented to allow multiple targets to be
+    # passed to make in a single build_all_android.sh invocation.
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}" "${BUILD_TARGET}"
-fi
-
-if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
-    ANDROID_EXEC_FILE_MODE=755
-    echo "Run hexagon_graph_execution"
-    adb push -p "./tensorflow/contrib/makefile/gen/bin/hexagon_graph_execution" "/data/local/tmp/"
-    adb wait-for-device
-    adb shell chmod "${ANDROID_EXEC_FILE_MODE}" "/data/local/tmp/hexagon_graph_execution"
-    adb wait-for-device
-    adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
-    "/data/local/tmp/hexagon_graph_execution"
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${EXTRA_MAKE_ARGS[@]} ${BUILD_TARGET}
 fi

@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -44,6 +45,8 @@ from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -272,28 +275,6 @@ def _VerifyGeneratedGradients(grads, op):
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-    for i in xrange(len(grads)):
-      grad = grads[i]
-      inp = op.inputs[i]
-      if grad is None:
-        continue
-      if grad.dtype.is_floating:
-        if not inp.dtype.is_floating:
-          raise TypeError("Gradient type %s generated for real-valued op %s "
-                           "with type %s must be real" %
-                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                            dtypes.as_dtype(inp.dtype).name))
-      elif grad.dtype.is_complex:
-        if not inp.dtype.is_complex:
-          raise TypeError("Gradient type %s generated for complex-valued op %s"
-                           " with type %s must be complex" %
-                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                            dtypes.as_dtype(inp.dtype).name))
-      else:
-        raise TypeError("Gradient type %s generated for op %s "
-                         "with type %s must be either real or complex" %
-                         (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                          dtypes.as_dtype(inp.dtype).name))
 
 
 def _StopOps(from_ops, pending_count):
@@ -354,10 +335,14 @@ def _MaybeCompile(scope, op, func, grad_fn):
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
     xla_compile = func.definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.definition.attr[
+        "_XlaSeparateCompiledGradients"].b
     xla_scope = func.definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
+      xla_separate_compiled_gradients = op.get_attr(
+          "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
       return grad_fn()  # Exit early
@@ -365,9 +350,19 @@ def _MaybeCompile(scope, op, func, grad_fn):
   if not xla_compile:
     return grad_fn()  # Exit early
 
-  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
-           "_XlaScope": attr_value_pb2.AttrValue(
-               s=("%s_grad_%s" % (xla_scope, scope)).encode())}
+  # If the gradients are supposed to be compiled separately, we give them a
+  # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
+  # they just inherit the existing _XlaScope name, which lets them be merged
+  # together with the non-gradient computation.
+  if xla_separate_compiled_gradients:
+    xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)
+  else:
+    xla_grad_scope = xla_scope
+
+  attrs = {
+      "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
+      "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
+  }
   with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
 
@@ -446,6 +441,8 @@ def gradients(ys,
 
     # Initialize the pending count for ops in the connected subgraph from ys
     # to the xs.
+    if len(ys) > 1:
+      ys = [array_ops.identity(y) if y.consumers() else y for y in ys]
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     pending_count, loop_state = _PendingCount(ops.get_default_graph(), to_ops,
@@ -920,13 +917,11 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
     aggregation_method: See `gradients()` documentation for details.
 
   Returns:
-    A list of Hessian matrices of `sum(y)` for each `x` in `xs`.
+    A list of Hessian matrices of `sum(ys)` for each `x` in `xs`.
 
   Raises:
     LookupError: if one of the operations between `xs` and `ys` does not
       have a registered gradient function.
-    ValueError: if the arguments are invalid or not supported. Currently,
-      this function only supports one-dimensional `x` in `xs`.
   """
   xs = _AsList(xs)
   kwargs = {
@@ -934,28 +929,30 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       'gate_gradients': gate_gradients,
       'aggregation_method': aggregation_method
     }
-  # Compute a hessian matrix for each x in xs
+  # Compute first-order derivatives and iterate for each x in xs.
   hessians = []
-  for i, x in enumerate(xs):
-    # Check dimensions
-    ndims = x.get_shape().ndims
-    if ndims is None:
-      raise ValueError('Cannot compute Hessian because the dimensionality of '
-                       'element number %d of `xs` cannot be determined' % i)
-    elif ndims != 1:
-      raise ValueError('Computing hessians is currently only supported for '
-                       'one-dimensional tensors. Element number %d of `xs` has '
-                       '%d dimensions.' % (i, ndims))
-    with ops.name_scope(name + '_first_derivative'):
-      # Compute the partial derivatives of the input with respect to all
-      # elements of `x`
-      _gradients = gradients(ys, x, **kwargs)[0]
-      # Unpack the gradients into a list so we can take derivatives with
-      # respect to each element
-      _gradients = array_ops.unstack(_gradients)
-    with ops.name_scope(name + '_second_derivative'):
-      # Compute the partial derivatives with respect to each element of the list
-      _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
-      # Pack the list into a matrix and add to the list of hessians
-      hessians.append(array_ops.stack(_hess, name=name))
+  _gradients = gradients(ys, xs, **kwargs)
+  for i, _gradient, x in zip(range(len(xs)), _gradients, xs):
+    # Ensure that x is a vector.
+    check_rank = check_ops.assert_rank(
+      x, 1, message='Cannot compute Hessian because element %d of `xs` does '
+      'not have rank one.' % i
+    )
+    with ops.control_dependencies([check_rank]):
+      # Declare an iterator and tensor array loop variables for the gradients.
+      n = array_ops.size(x)
+      loop_vars = [
+        array_ops.constant(0, dtypes.int32),
+        tensor_array_ops.TensorArray(x.dtype, n)
+      ]
+      # Iterate over all elements of the gradient and compute second order
+      # derivatives.
+      _, hessian = control_flow_ops.while_loop(
+          lambda j, _: j < n,
+          lambda j, result: (j + 1,
+                             result.write(j, gradients(_gradient[j], x)[0])),
+          loop_vars
+      )
+
+      hessians.append(hessian.stack())
   return hessians

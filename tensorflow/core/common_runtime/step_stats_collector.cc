@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -186,7 +188,7 @@ void StepStatsCollector::BuildCostModel(
                                               .allocation_description()
                                               .allocation_id());
         }
-        cm->RecordAllocatorMemory(node, stats.memory());
+        cm->RecordMemoryStats(node, stats.memory_stats());
         // Use hardware stats to record the execution time if they're available,
         // otherwise use the regular (less accurate) stats
         string node_name = dev_stats.regular_stats->node_stats(i).node_name();

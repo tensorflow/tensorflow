@@ -136,6 +136,12 @@ class Env {
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   Status FileExists(const string& fname);
 
+  /// Returns true if all the listed files exist, false otherwise.
+  /// if status is not null, populate the vector with a detailed status
+  /// for each file.
+  bool FilesExist(const std::vector<string>& files,
+                  std::vector<Status>* status);
+
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".
   ///
@@ -209,6 +215,9 @@ class Env {
   /// symlinks if there is any.
   string GetExecutablePath();
 
+  /// Creates a local unique temporary file name. Returns true if success.
+  bool LocalTempFilename(string* filename);
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
@@ -273,6 +282,9 @@ class Env {
       const string& version) = 0;
 
  private:
+  // Returns a possible list of local temporary directories.
+  void GetLocalTempDirectories(std::vector<string>* list);
+
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
   EnvTime* envTime = EnvTime::Default();
@@ -394,8 +406,9 @@ namespace register_file_system {
 template <typename Factory>
 struct Register {
   Register(Env* env, const string& scheme) {
-    env->RegisterFileSystem(scheme,
-                            []() -> FileSystem* { return new Factory; });
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
+        .IgnoreError();
   }
 };
 

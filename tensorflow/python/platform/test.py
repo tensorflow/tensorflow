@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Testing. See the @{$python/test} guide.
+"""Testing.
+
+See the @{$python/test} guide.
+
+Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
+depending on the python version.
 
 @@main
 @@TestCase
@@ -25,11 +30,14 @@
 @@gpu_device_name
 @@compute_gradient
 @@compute_gradient_error
+@@create_local_cluster
+
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python.client import device_lib as _device_lib
@@ -39,7 +47,9 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
+from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
+from tensorflow.python.framework.test_util import gpu_device_name
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
@@ -53,6 +63,9 @@ else:
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
+
+# Import StubOutForTesting class
+StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
 
 def main(argv=None):
@@ -106,18 +119,11 @@ def is_gpu_available(cuda_only=False):
                for x in _device_lib.list_local_devices())
 
 
-def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
-  for x in _device_lib.list_local_devices():
-    if x.device_type == 'GPU' or x.device_type == 'SYCL':
-      return x.name
-  return ''
-
-
 _allowed_symbols = [
     # We piggy-back googletest documentation.
     'Benchmark',
     'mock',
+    'StubOutForTesting',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

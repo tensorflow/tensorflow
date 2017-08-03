@@ -1,16 +1,18 @@
-// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -45,7 +47,11 @@ type SavedModel struct {
 // https://www.tensorflow.org/code/tensorflow/python/saved_model/
 func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*SavedModel, error) {
 	status := newStatus()
-	cOpt := options.c()
+	cOpt, doneOpt, err := options.c()
+	defer doneOpt()
+	if err != nil {
+		return nil, err
+	}
 	cExportDir := C.CString(exportDir)
 	cTags := make([]*C.char, len(tags))
 	for i := range tags {
@@ -58,7 +64,6 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 		C.free(unsafe.Pointer(cTags[i]))
 	}
 	C.free(unsafe.Pointer(cExportDir))
-	C.TF_DeleteSessionOptions(cOpt)
 
 	if err := status.Err(); err != nil {
 		return nil, err

@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import linalg
-from tensorflow.contrib.distributions.python.ops.bijectors import affine_linear_operator as affine_linear_operator_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
 from tensorflow.python.platform import test
 
 
@@ -29,7 +29,7 @@ class AffineLinearOperatorTest(test.TestCase):
 
   def testIdentity(self):
     with self.test_session():
-      affine = affine_linear_operator_lib.AffineLinearOperator(
+      affine = AffineLinearOperator(
           validate_args=True)
       x = np.array([[1, 0, -1], [2, 3, 4]], dtype=np.float32)
       y = x
@@ -48,7 +48,7 @@ class AffineLinearOperatorTest(test.TestCase):
       diag = np.array([[1, 2, 3],
                        [2, 5, 6]], dtype=np.float32)
       scale = linalg.LinearOperatorDiag(diag, is_non_singular=True)
-      affine = affine_linear_operator_lib.AffineLinearOperator(
+      affine = AffineLinearOperator(
           shift=shift, scale=scale, validate_args=True)
 
       x = np.array([[1, 0, -1], [2, 3, 4]], dtype=np.float32)
@@ -73,7 +73,7 @@ class AffineLinearOperatorTest(test.TestCase):
                         [4, 3, 2]]],
                       dtype=np.float32)
       scale = linalg.LinearOperatorTriL(tril, is_non_singular=True)
-      affine = affine_linear_operator_lib.AffineLinearOperator(
+      affine = AffineLinearOperator(
           shift=shift, scale=scale, validate_args=True)
 
       x = np.array([[[1, 0, -1],

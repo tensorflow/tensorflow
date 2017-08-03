@@ -40,6 +40,8 @@ struct ThreadPoolDevice;
 namespace xla {
 
 class DeviceMemoryAllocator;
+class DeviceAssignment;
+class ExecutionProfile;
 
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {
@@ -74,12 +76,22 @@ class ExecutableRunOptions {
       const Eigen::ThreadPoolDevice* intra_op_thread_pool);
   const Eigen::ThreadPoolDevice* intra_op_thread_pool() const;
 
+  // If set, profiling information is written to 'profile'.
+  ExecutionProfile* execution_profile() const;
+  ExecutableRunOptions& set_execution_profile(ExecutionProfile* profile);
+
+  ExecutableRunOptions& set_device_assignment(
+      DeviceAssignment* device_assignment);
+  DeviceAssignment* device_assignment() const;
+
  private:
   DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
+  DeviceAssignment* device_assignment_ = nullptr;
   perftools::gputools::Stream* stream_ = nullptr;
   tensorflow::thread::ThreadPool* inter_op_thread_pool_ = nullptr;
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
+  ExecutionProfile* execution_profile_ = nullptr;
 };
 
 }  // namespace xla

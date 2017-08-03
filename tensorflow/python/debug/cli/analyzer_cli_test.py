@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import shutil
 import tempfile
 
@@ -24,12 +25,15 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_utils
+from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -37,6 +41,18 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
+
+
+def no_rewrite_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
+
+
+def line_number_above():
+  return tf_inspect.stack()[1][2] - 1
 
 
 def parse_op_and_node(line):
@@ -490,11 +506,15 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
-    cls._sess = session.Session()
+    cls._curr_file_path = os.path.abspath(
+        tf_inspect.getfile(tf_inspect.currentframe()))
+
+    cls._sess = session.Session(config=no_rewrite_session_config())
     with cls._sess as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
@@ -502,14 +522,19 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       u_name = "simple_mul_add/u"
       v_name = "simple_mul_add/v"
 
-      u_init = constant_op.constant(u_init_val, shape=[2, 2])
+      u_init = constant_op.constant(u_init_val, shape=[2, 2], name="u_init")
       u = variables.Variable(u_init, name=u_name)
-      v_init = constant_op.constant(v_init_val, shape=[2, 1])
+      cls._u_line_number = line_number_above()
+
+      v_init = constant_op.constant(v_init_val, shape=[2, 1], name="v_init")
       v = variables.Variable(v_init, name=v_name)
+      cls._v_line_number = line_number_above()
 
       w = math_ops.matmul(u, v, name="simple_mul_add/matmul")
+      cls._w_line_number = line_number_above()
 
       x = math_ops.add(w, w, name="simple_mul_add/add")
+      cls._x_line_number = line_number_above()
 
       u.initializer.run()
       v.initializer.run()
@@ -550,6 +575,16 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         cls._analyzer.print_tensor,
         cls._analyzer.get_help("print_tensor"),
         prefix_aliases=["pt"])
+    cls._registry.register_command_handler(
+        "print_source",
+        cls._analyzer.print_source,
+        cls._analyzer.get_help("print_source"),
+        prefix_aliases=["ps"])
+    cls._registry.register_command_handler(
+        "list_source",
+        cls._analyzer.list_source,
+        cls._analyzer.get_help("list_source"),
+        prefix_aliases=["ls"])
 
   @classmethod
   def tearDownClass(cls):
@@ -887,7 +922,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ["ERROR: There is no node named \"bar\" in the partition graphs"],
         out.lines)
     # Check color indicating error.
-    self.assertEqual({0: [(0, 59, "red")]}, out.font_attr_segs)
+    self.assertEqual({0: [(0, 59, cli_shared.COLOR_RED)]}, out.font_attr_segs)
     check_main_menu(self, out, list_tensors_enabled=True)
 
   def testPrintTensor(self):
@@ -965,6 +1000,34 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         node_info_node_name=node_name,
         list_inputs_node_name=node_name,
         list_outputs_node_name=node_name)
+
+  def testPrintTensorHighlightingRangesAndIncludingNumericSummary(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command(
+        "print_tensor", [tensor_name, "--ranges", "[-inf, 0.0]", "-s"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"%s:DebugIdentity\": " % tensor_name +
+        "Highlighted([-inf, 0.0]): 1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "Numeric summary:",
+        "| - + | total |",
+        "| 1 1 |     2 |",
+        "|  min  max mean  std |",
+        "| -2.0  7.0  2.5  4.5 |",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(10, out.annotations)
+    self.assertIn(11, out.annotations)
+    self.assertEqual([(8, 11, "bold")], out.font_attr_segs[11])
 
   def testPrintTensorWithSlicing(self):
     node_name = "simple_mul_add/matmul"
@@ -1116,6 +1179,238 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                                  "There is no tensor filter named \"bar\""):
       analyzer.get_tensor_filter("bar")
 
+  def _findSourceLine(self, annotated_source, line_number):
+    """Find line of given line number in annotated source.
+
+    Args:
+      annotated_source: (debugger_cli_common.RichTextLines) the annotated source
+      line_number: (int) 1-based line number
+
+    Returns:
+      (int) If line_number is found, 0-based line index in
+        annotated_source.lines. Otherwise, None.
+    """
+
+    index = None
+    for i, line in enumerate(annotated_source.lines):
+      if line.startswith("L%d " % line_number):
+        index = i
+        break
+    return index
+
+  def testPrintSourceForOpNamesWholeFileWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source", [self._curr_file_path], screen_info={"cols": 80})
+
+    # Verify the annotation of the line that creates u.
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u",
+         "    simple_mul_add/u/Assign",
+         "    simple_mul_add/u/read"],
+        out.lines[index : index + 4])
+    self.assertEqual("pt simple_mul_add/u",
+                     out.font_attr_segs[index + 1][0][2].content)
+    # simple_mul_add/u/Assign is not used in this run because the Variable has
+    # already been initialized.
+    self.assertEqual(cli_shared.COLOR_BLUE, out.font_attr_segs[index + 2][0][2])
+    self.assertEqual("pt simple_mul_add/u/read",
+                     out.font_attr_segs[index + 3][0][2].content)
+
+    # Verify the annotation of the line that creates v.
+    index = self._findSourceLine(out, self._v_line_number)
+    self.assertEqual(
+        ["L%d         v = variables.Variable(v_init, name=v_name)" %
+         self._v_line_number,
+         "    simple_mul_add/v"],
+        out.lines[index : index + 2])
+    self.assertEqual("pt simple_mul_add/v",
+                     out.font_attr_segs[index + 1][0][2].content)
+
+    # Verify the annotation of the line that creates w.
+    index = self._findSourceLine(out, self._w_line_number)
+    self.assertEqual(
+        ["L%d         " % self._w_line_number +
+         "w = math_ops.matmul(u, v, name=\"simple_mul_add/matmul\")",
+         "    simple_mul_add/matmul"],
+        out.lines[index : index + 2])
+    self.assertEqual("pt simple_mul_add/matmul",
+                     out.font_attr_segs[index + 1][0][2].content)
+
+    # Verify the annotation of the line that creates x.
+    index = self._findSourceLine(out, self._x_line_number)
+    self.assertEqual(
+        ["L%d         " % self._x_line_number +
+         "x = math_ops.add(w, w, name=\"simple_mul_add/add\")",
+         "    simple_mul_add/add"],
+        out.lines[index : index + 2])
+    self.assertEqual("pt simple_mul_add/add",
+                     out.font_attr_segs[index + 1][0][2].content)
+
+  def testPrintSourceForTensorNamesWholeFileWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source",
+        [self._curr_file_path, "--tensors"],
+        screen_info={"cols": 80})
+
+    # Verify the annotation of the line that creates u.
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u/read:0",
+         "    simple_mul_add/u:0"],
+        out.lines[index : index + 3])
+    self.assertEqual("pt simple_mul_add/u/read:0",
+                     out.font_attr_segs[index + 1][0][2].content)
+    self.assertEqual("pt simple_mul_add/u:0",
+                     out.font_attr_segs[index + 2][0][2].content)
+
+  def testPrintSourceForOpNamesStartingAtSpecifiedLineWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source",
+        [self._curr_file_path, "-b", "3"],
+        screen_info={"cols": 80})
+
+    self.assertEqual(
+        2, out.annotations[debugger_cli_common.INIT_SCROLL_POS_KEY])
+
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u",
+         "    simple_mul_add/u/Assign",
+         "    simple_mul_add/u/read"],
+        out.lines[index : index + 4])
+    self.assertEqual("pt simple_mul_add/u",
+                     out.font_attr_segs[index + 1][0][2].content)
+    # simple_mul_add/u/Assign is not used in this run because the Variable has
+    # already been initialized.
+    self.assertEqual(cli_shared.COLOR_BLUE, out.font_attr_segs[index + 2][0][2])
+    self.assertEqual("pt simple_mul_add/u/read",
+                     out.font_attr_segs[index + 3][0][2].content)
+
+  def testPrintSourceForOpNameSettingMaximumElementCountWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source",
+        [self._curr_file_path, "-m", "1"],
+        screen_info={"cols": 80})
+
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u",
+         "    (... Omitted 2 of 3 op(s) ...) +5"],
+        out.lines[index : index + 3])
+    self.assertEqual("pt simple_mul_add/u",
+                     out.font_attr_segs[index + 1][0][2].content)
+    more_elements_command = out.font_attr_segs[index + 2][-1][2].content
+    self.assertStartsWith(more_elements_command,
+                          "ps %s " % self._curr_file_path)
+    self.assertIn(" -m 6", more_elements_command)
+
+  def testListSourceWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command("list_source", [])
+
+    non_tf_lib_files_start = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("Source file path")][0] + 1
+    non_tf_lib_files_end = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("TensorFlow Python library file(s):")][0] - 1
+    non_tf_lib_files = [
+        line.split(" ")[0] for line
+        in out.lines[non_tf_lib_files_start : non_tf_lib_files_end]]
+    self.assertIn(self._curr_file_path, non_tf_lib_files)
+
+    # Check that the TF library files are marked with special color attribute.
+    for i in xrange(non_tf_lib_files_end + 1, len(out.lines)):
+      if not out.lines[i]:
+        continue
+      for attr_seg in  out.font_attr_segs[i]:
+        self.assertTrue(cli_shared.COLOR_GRAY in attr_seg[2] or
+                        attr_seg[2] == cli_shared.COLOR_GRAY)
+
+  def testListSourceWithNodeNameFilterWithMatchesWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command("list_source", ["-n", ".*/read"])
+
+    self.assertStartsWith(out.lines[1], "Node name regex filter: \".*/read\"")
+
+    non_tf_lib_files_start = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("Source file path")][0] + 1
+    non_tf_lib_files_end = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("TensorFlow Python library file(s):")][0] - 1
+    non_tf_lib_files = [
+        line.split(" ")[0] for line
+        in out.lines[non_tf_lib_files_start : non_tf_lib_files_end]]
+    self.assertIn(self._curr_file_path, non_tf_lib_files)
+
+    # Check that the TF library files are marked with special color attribute.
+    for i in xrange(non_tf_lib_files_end + 1, len(out.lines)):
+      if not out.lines[i]:
+        continue
+      for attr_seg in  out.font_attr_segs[i]:
+        self.assertTrue(cli_shared.COLOR_GRAY in attr_seg[2] or
+                        attr_seg[2] == cli_shared.COLOR_GRAY)
+
+  def testListSourceWithNodeNameFilterWithNoMatchesWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command("list_source", ["-n", "^$"])
+
+    self.assertEqual([
+        "List of source files that created nodes in this run",
+        "Node name regex filter: \"^$\"", "",
+        "[No source file information.]"], out.lines)
+
+  def testListSourceWithPathAndNodeNameFiltersWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "list_source", ["-p", self._curr_file_path, "-n", ".*read"])
+
+    self.assertEqual([
+        "List of source files that created nodes in this run",
+        "File path regex filter: \"%s\"" % self._curr_file_path,
+        "Node name regex filter: \".*read\"", ""], out.lines[:4])
+
+  def testListSourceWithCompiledPythonSourceWorks(self):
+    def fake_list_source_files_against_dump(dump,
+                                            path_regex_whitelist=None,
+                                            node_name_regex_whitelist=None):
+      del dump, path_regex_whitelist, node_name_regex_whitelist
+      return [("compiled_1.pyc", False, 10, 20, 30, 4),
+              ("compiled_2.pyo", False, 10, 20, 30, 5),
+              ("uncompiled.py", False, 10, 20, 30, 6)]
+
+    with test.mock.patch.object(
+        source_utils, "list_source_files_against_dump",
+        side_effect=fake_list_source_files_against_dump):
+      out = self._registry.dispatch_command("list_source", [])
+
+      self.assertStartsWith(out.lines[4], "compiled_1.pyc")
+      self.assertEqual((0, 14, [cli_shared.COLOR_WHITE]),
+                       out.font_attr_segs[4][0])
+      self.assertStartsWith(out.lines[5], "compiled_2.pyo")
+      self.assertEqual((0, 14, [cli_shared.COLOR_WHITE]),
+                       out.font_attr_segs[5][0])
+      self.assertStartsWith(out.lines[6], "uncompiled.py")
+      self.assertEqual(0, out.font_attr_segs[6][0][0])
+      self.assertEqual(13, out.font_attr_segs[6][0][1])
+      self.assertEqual(cli_shared.COLOR_WHITE, out.font_attr_segs[6][0][2][0])
+      self.assertEqual("ps uncompiled.py -b 6",
+                       out.font_attr_segs[6][0][2][1].content)
+
 
 class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
 
@@ -1123,7 +1418,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       # 2400 elements should exceed the default threshold (2000).
       x = constant_op.constant(np.zeros([300, 8]), name="large_tensors/x")
 
@@ -1195,11 +1490,12 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])
       x_init = constant_op.constant(x_init_val, shape=[2])
       x = variables.Variable(x_init, name="control_deps/x")
@@ -1281,7 +1577,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     # Verify the menu items (command shortcuts) in the output.
     check_menu_item(self, out, 10,
                     len(out.lines[10]) - len("control_deps/x/read"),
-                    len(out.lines[10]), "ni -a -d control_deps/x/read")
+                    len(out.lines[10]), "ni -a -d -t control_deps/x/read")
     if out.lines[13].endswith("control_deps/ctrl_dep_y"):
       y_line = 13
       z_line = 14
@@ -1290,10 +1586,12 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
       z_line = 13
     check_menu_item(self, out, y_line,
                     len(out.lines[y_line]) - len("control_deps/ctrl_dep_y"),
-                    len(out.lines[y_line]), "ni -a -d control_deps/ctrl_dep_y")
+                    len(out.lines[y_line]),
+                    "ni -a -d -t control_deps/ctrl_dep_y")
     check_menu_item(self, out, z_line,
                     len(out.lines[z_line]) - len("control_deps/ctrl_dep_z"),
-                    len(out.lines[z_line]), "ni -a -d control_deps/ctrl_dep_z")
+                    len(out.lines[z_line]),
+                    "ni -a -d -t control_deps/ctrl_dep_z")
 
   def testListInputsNonRecursiveNoControl(self):
     """List inputs non-recursively, without any control inputs."""
@@ -1537,7 +1835,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       loop_var = constant_op.constant(0, name="while_loop_test/loop_var")
       cond = lambda loop_var: math_ops.less(loop_var, 10)
       body = lambda loop_var: math_ops.add(loop_var, 1)

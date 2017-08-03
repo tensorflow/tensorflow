@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 ########################################################
 # RELATIVE_PROTOBUF_GENERATE_CPP function
 ########################################################
@@ -93,6 +107,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
@@ -103,8 +118,11 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/types.proto"
     "tensorflow/core/framework/versions.proto"
     "tensorflow/core/lib/core/error_codes.proto"
+    "tensorflow/core/protobuf/cluster.proto"
     "tensorflow/core/protobuf/config.proto"
     "tensorflow/core/protobuf/debug.proto"
+    "tensorflow/core/protobuf/device_properties.proto"
+    "tensorflow/core/protobuf/rewriter_config.proto"
     "tensorflow/core/protobuf/tensor_bundle.proto"
     "tensorflow/core/protobuf/saver.proto"
     "tensorflow/core/util/memmapped_file_system.proto"
@@ -129,13 +147,24 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/platform/*.h"
     "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc")
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc")
 if (NOT tensorflow_ENABLE_GPU)
   file(GLOB tf_core_platform_gpu_srcs
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
       "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+else()
+  file(GLOB tf_core_platform_srcs_exclude
+      "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc")
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
+
+file(GLOB tf_core_platform_exclude_srcs
+  "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc")
+list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_exclude_srcs})
+
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)
@@ -197,7 +226,6 @@ add_custom_command(OUTPUT
     COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
     --raw_generate ${VERSION_INFO_CC}
     DEPENDS __force_rebuild)
-
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -206,6 +234,12 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.h"
+    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
@@ -214,18 +248,19 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/public/*.h"
 )
 
-file(GLOB_RECURSE tf_core_framework_test_srcs
+file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
 )
 
-list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
+list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}
@@ -236,3 +271,9 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+if(WIN32)
+  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
+  # Instead of defining this global, limit it to tf_core_framework where its used.
+  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
+endif()

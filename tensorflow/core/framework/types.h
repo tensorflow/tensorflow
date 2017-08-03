@@ -28,8 +28,9 @@ limitations under the License.
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -57,6 +58,7 @@ class DeviceType {
   explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
 
   const char* type() const { return type_.c_str(); }
+  const string& type_string() const { return type_; }
 
   bool operator<(const DeviceType& other) const;
   bool operator==(const DeviceType& other) const;
@@ -68,9 +70,9 @@ class DeviceType {
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 // Convenient constants that can be passed to a DeviceType constructor
-extern const char* const DEVICE_CPU;   // "CPU"
-extern const char* const DEVICE_GPU;   // "GPU"
-extern const char* const DEVICE_SYCL;  // "SYCL"
+TF_EXPORT extern const char* const DEVICE_CPU;   // "CPU"
+TF_EXPORT extern const char* const DEVICE_GPU;   // "GPU"
+TF_EXPORT extern const char* const DEVICE_SYCL;  // "SYCL"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
@@ -82,7 +84,7 @@ typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
 
 // Convert the enums to strings for errors:
 string DataTypeString(DataType dtype);
-string DeviceTypeString(DeviceType device_type);
+string DeviceTypeString(const DeviceType& device_type);
 string DataTypeSliceString(const DataTypeSlice dtypes);
 inline string DataTypeVectorString(const DataTypeVector& dtypes) {
   return DataTypeSliceString(dtypes);
@@ -180,6 +182,7 @@ MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
+MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
 #undef MATCH_TYPE_AND_ENUM
 

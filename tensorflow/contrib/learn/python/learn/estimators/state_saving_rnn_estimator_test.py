@@ -18,13 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -34,14 +28,15 @@ from tensorflow.contrib.layers.python.layers import target_column as target_colu
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.contrib.learn.python.learn.estimators import rnn_common
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import state_saving_rnn_estimator as ssre
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -60,7 +55,7 @@ class PrepareInputsForRnnTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.initialize_all_tables())
+      sess.run(lookup_ops.tables_initializer())
       features_val = sess.run(features_by_time)
       self.assertAllEqual(expected, features_val)
 
@@ -288,7 +283,7 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     ]
 
     expected_sequence = {
-        ssre.RNNKeys.LABELS_KEY:
+        rnn_common.RNNKeys.LABELS_KEY:
             np.array([5., 5., 5., 5.]),
         seq_feature_name:
             np.array([1., 1., 1., 1.]),
@@ -321,84 +316,29 @@ class StateSavingRnnEstimatorTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.initialize_all_tables())
+      sess.run(lookup_ops.tables_initializer())
       actual_sequence, actual_context = sess.run(
           [sequence, context])
       assert_equal(expected_sequence, actual_sequence)
       assert_equal(expected_context, actual_context)
 
-  def testMaskActivationsAndLabels(self):
-    """Test `mask_activations_and_labels`."""
-    batch_size = 4
-    padded_length = 6
-    num_classes = 4
-    np.random.seed(1234)
-    sequence_length = np.random.randint(0, padded_length + 1, batch_size)
-    activations = np.random.rand(batch_size, padded_length, num_classes)
-    labels = np.random.randint(0, num_classes, [batch_size, padded_length])
-    (activations_masked_t, labels_masked_t) = ssre.mask_activations_and_labels(
-        constant_op.constant(
-            activations, dtype=dtypes.float32),
-        constant_op.constant(
-            labels, dtype=dtypes.int32),
-        constant_op.constant(
-            sequence_length, dtype=dtypes.int32))
-
-    with self.test_session() as sess:
-      activations_masked, labels_masked = sess.run(
-          [activations_masked_t, labels_masked_t])
-
-    expected_activations_shape = [sum(sequence_length), num_classes]
-    np.testing.assert_equal(
-        expected_activations_shape, activations_masked.shape,
-        'Wrong activations shape. Expected {}; got {}.'.format(
-            expected_activations_shape, activations_masked.shape))
-
-    expected_labels_shape = [sum(sequence_length)]
-    np.testing.assert_equal(expected_labels_shape, labels_masked.shape,
-                            'Wrong labels shape. Expected {}; got {}.'.format(
-                                expected_labels_shape, labels_masked.shape))
-    masked_index = 0
-    for i in range(batch_size):
-      for j in range(sequence_length[i]):
-        actual_activations = activations_masked[masked_index]
-        expected_activations = activations[i, j, :]
-        np.testing.assert_almost_equal(
-            expected_activations,
-            actual_activations,
-            err_msg='Unexpected logit value at index [{}, {}, :].'
-            '  Expected {}; got {}.'.format(i, j, expected_activations,
-                                            actual_activations))
-
-        actual_labels = labels_masked[masked_index]
-        expected_labels = labels[i, j]
-        np.testing.assert_almost_equal(
-            expected_labels,
-            actual_labels,
-            err_msg='Unexpected logit value at index [{}, {}].'
-            ' Expected {}; got {}.'.format(i, j, expected_labels,
-                                           actual_labels))
-        masked_index += 1
-
   def _getModelFnOpsForMode(self, mode):
     """Helper for testGetRnnModelFn{Train,Eval,Infer}()."""
-    cell_size = 4
-    num_layers = 1
-    cell = ssre.lstm_cell(cell_size, num_layers)
+    num_units = [4]
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=1)
     ]
     features = {
         'inputs': constant_op.constant([1., 2., 3.]),
     }
     labels = constant_op.constant([1., 0., 1.])
     model_fn = ssre._get_rnn_model_fn(
-        cell=cell,
+        cell_type='basic_rnn',
         target_column=target_column_lib.multi_class_target(n_classes=2),
         optimizer='SGD',
         num_unroll=2,
-        num_layers=num_layers,
+        num_units=num_units,
         num_threads=1,
         queue_capacity=10,
         batch_size=1,
@@ -439,14 +379,14 @@ class StateSavingRnnEstimatorTest(test.TestCase):
   def testExport(self):
     input_feature_key = 'magic_input_feature_key'
     batch_size = 8
-    cell_size = 4
+    num_units = [4]
     sequence_length = 10
     num_unroll = 2
     num_classes = 2
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=4)
     ]
 
     def get_input_fn(mode, seed):
@@ -473,7 +413,7 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     def estimator_fn():
       return ssre.StateSavingRnnEstimator(
           constants.ProblemType.CLASSIFICATION,
-          num_units=cell_size,
+          num_units=num_units,
           num_unroll=num_unroll,
           batch_size=batch_size,
           sequence_feature_columns=seq_columns,
@@ -515,56 +455,6 @@ class LegacyConstructorTest(test.TestCase):
       return {'inputs': inputs}, labels
     return input_fn
 
-  def testClassifierConstructor(self):
-    batch_size = 16
-    num_classes = 2
-    num_unroll = 32
-    sequence_length = 32
-    num_units = 4
-    learning_rate = 0.5
-    steps = 100
-    input_fn = self._get_input_fn(sequence_length,
-                                  seed=1234)
-    model_dir = tempfile.mkdtemp()
-    seq_columns = [
-        feature_column.real_valued_column(
-            'inputs', dimension=num_units)
-    ]
-    estimator = ssre.multi_value_rnn_classifier(num_classes,
-                                                num_units,
-                                                num_unroll,
-                                                batch_size,
-                                                seq_columns,
-                                                learning_rate=learning_rate,
-                                                model_dir=model_dir,
-                                                queue_capacity=batch_size+2,
-                                                seed=1234)
-    estimator.fit(input_fn=input_fn, steps=steps)
-
-  def testRegressorConstructor(self):
-    batch_size = 16
-    num_unroll = 32
-    sequence_length = 32
-    num_units = 4
-    learning_rate = 0.5
-    steps = 100
-    input_fn = self._get_input_fn(sequence_length,
-                                  seed=4321)
-    model_dir = tempfile.mkdtemp()
-    seq_columns = [
-        feature_column.real_valued_column(
-            'inputs', dimension=num_units)
-    ]
-    estimator = ssre.multi_value_rnn_regressor(num_units,
-                                               num_unroll,
-                                               batch_size,
-                                               seq_columns,
-                                               learning_rate=learning_rate,
-                                               model_dir=model_dir,
-                                               queue_capacity=batch_size+2,
-                                               seed=1234)
-    estimator.fit(input_fn=input_fn, steps=steps)
-
 
 # TODO(jtbates): move all tests below to a benchmark test.
 class StateSavingRNNEstimatorLearningTest(test.TestCase):
@@ -577,7 +467,8 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_length = 64
     train_steps = 250
     eval_steps = 20
-    num_units = 4
+    num_rnn_layers = 1
+    num_units = [4] * num_rnn_layers
     learning_rate = 0.3
     loss_threshold = 0.035
 
@@ -597,18 +488,19 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     config = run_config.RunConfig(tf_random_seed=1234)
+    dropout_keep_probabilities = [0.9] * (num_rnn_layers + 1)
     sequence_estimator = ssre.StateSavingRnnEstimator(
         constants.ProblemType.LINEAR_REGRESSION,
         num_units=num_units,
+        cell_type='lstm',
         num_unroll=num_unroll,
         batch_size=batch_size,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
-        input_keep_probability=0.9,
-        output_keep_probability=0.9,
+        dropout_keep_probabilities=dropout_keep_probabilities,
         config=config,
         queue_capacity=2 * batch_size,
         seed=1234)
@@ -633,9 +525,9 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     num_classes = 2
     num_unroll = 32
     sequence_length = 32
-    train_steps = 200
+    train_steps = 300
     eval_steps = 20
-    num_units = 4
+    num_units = [4]
     learning_rate = 0.5
     accuracy_threshold = 0.9
 
@@ -653,12 +545,13 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     config = run_config.RunConfig(tf_random_seed=21212)
     sequence_estimator = ssre.StateSavingRnnEstimator(
         constants.ProblemType.CLASSIFICATION,
         num_units=num_units,
+        cell_type='lstm',
         num_unroll=num_unroll,
         batch_size=batch_size,
         sequence_feature_columns=seq_columns,
@@ -703,12 +596,12 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     vocab = set(lyrics_list)
     batch_size = 16
     num_classes = len(vocab)
-    num_unroll = 5  # not a divisor of sequence_length
-    train_steps = 300
+    num_unroll = 7  # not a divisor of sequence_length
+    train_steps = 350
     eval_steps = 30
-    num_units = 4
+    num_units = [4]
     learning_rate = 0.4
-    accuracy_threshold = 0.70
+    accuracy_threshold = 0.65
 
     def get_lyrics_input_fn(seed):
 
@@ -741,6 +634,7 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_estimator = ssre.StateSavingRnnEstimator(
         constants.ProblemType.CLASSIFICATION,
         num_units=num_units,
+        cell_type='basic_rnn',
         num_unroll=num_unroll,
         batch_size=batch_size,
         sequence_feature_columns=sequence_feature_columns,

@@ -11,7 +11,10 @@ It will print a list of errors it finds that it can't fix. You can also run
 it on a directory tree:
 
 ```
+# just upgrade the .py files
 tf_upgrade.py --intree coolcode --outtree coolcode-upgraded
+# after upgrade the .py files, then copy all the other files to the outtree
+tf_upgrade.py --intree coolcode --outtree coolcode-upgraded --copyotherfiles True
 ```
 
 In either case, it will also dump out a report e.g. which will detail changes

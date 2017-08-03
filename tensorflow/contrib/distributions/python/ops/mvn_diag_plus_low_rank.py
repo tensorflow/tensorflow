@@ -155,8 +155,8 @@ class MultivariateNormalDiagPlusLowRank(
     The `batch_shape` is the broadcast shape between `loc` and `scale`
     arguments.
 
-    The `event_shape` is given by the last dimension of `loc` or the last
-    dimension of the matrix implied by `scale`.
+    The `event_shape` is given by last dimension of the matrix implied by
+    `scale`. The last dimension of `loc` (if provided) must broadcast with this.
 
     Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix is:
 
@@ -218,7 +218,7 @@ class MultivariateNormalDiagPlusLowRank(
     parameters = locals()
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier, scale_perturb_factor,
           scale_perturb_diag]):
@@ -240,8 +240,8 @@ class MultivariateNormalDiagPlusLowRank(
           scale = linalg.LinearOperatorUDVHUpdate(
               scale,
               u=scale_perturb_factor,
-              diag=scale_perturb_diag,
-              is_diag_positive=scale_perturb_diag is None,
+              diag_update=scale_perturb_diag,
+              is_diag_update_positive=scale_perturb_diag is None,
               is_non_singular=True,  # Implied by is_positive_definite=True.
               is_self_adjoint=True,
               is_positive_definite=True,
@@ -251,5 +251,5 @@ class MultivariateNormalDiagPlusLowRank(
         scale=scale,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        name=ns)
+        name=name)
     self._parameters = parameters

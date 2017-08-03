@@ -18,13 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import threading
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
@@ -1064,7 +1058,7 @@ class SdcaFprintTest(SdcaModelTest):
   def testFprint(self):
     with self._single_threaded_test_session():
       in_data = constant_op.constant(['abc', 'very looooooong string', 'def'])
-      out_data = gen_sdca_ops._sdca_fprint(in_data)
+      out_data = gen_sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual([[4143508125394299908, -6879828354153669051],
                            [5849691694103072671, -4874542629849009556],
                            [603227410218889250, 8762207001949257490]],

@@ -62,6 +62,30 @@ TEST(AllocatorAttributesTest, AllCombos) {
   }
 }
 
+TEST(AllocatorAttributesTest, IsEqualOrLessRestrictiveThan) {
+  AllocatorAttributes a, b;
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  b.set_gpu_compatible(true);
+  // The set of flags in b is not a subset of those in a.
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  a.set_nic_compatible(true);
+  // Neither a nor b is a subset of the other.
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+
+  a.set_gpu_compatible(true);
+  // The set of flags in b is a proper subset of those in a.
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
+}
+
 TEST(CPUAllocatorTest, Simple) {
   EnableCPUAllocatorStats(true);
   Allocator* a = cpu_allocator();

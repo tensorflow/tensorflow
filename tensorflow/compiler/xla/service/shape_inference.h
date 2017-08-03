@@ -64,6 +64,21 @@ class ShapeInference {
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       const ProgramShape& to_apply);
 
+  // Infers the shape produced by InferBatchNormTraining with the given
+  // operands.
+  static StatusOr<Shape> InferBatchNormTrainingShape(const Shape& operand_shape,
+                                                     const Shape& offset_shape,
+                                                     const Shape& scale_shape,
+                                                     int64 feature_index);
+
+  // Infers the shape produced by InferBatchNormGrad with the given operands.
+  static StatusOr<Shape> InferBatchNormGradShape(const Shape& operand_shape,
+                                                 const Shape& scale_shape,
+                                                 const Shape& mean_shape,
+                                                 const Shape& var_shape,
+                                                 const Shape& output_grad_shape,
+                                                 int64 feature_index);
+
   // Infers the shape produced by applying the given convolutional
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(
@@ -109,7 +124,8 @@ class ShapeInference {
   // e.g. slice f32[32x32] 0:16 0:16 -> f32[16x16]
   static StatusOr<Shape> InferSliceShape(
       const Shape& arg, tensorflow::gtl::ArraySlice<int64> starts,
-      tensorflow::gtl::ArraySlice<int64> limits);
+      tensorflow::gtl::ArraySlice<int64> limits,
+      tensorflow::gtl::ArraySlice<int64> strides);
 
   // Infers the shape produced by a dynamic slice operation of size specified
   // in 'slice_sizes', with dynamic start indices shape 'start_indices_shape'.
@@ -164,6 +180,12 @@ class ShapeInference {
   static StatusOr<Shape> InferConvertShape(const Shape& operand_shape,
                                            PrimitiveType new_element_type);
 
+  // Helper that validates the input data type for a reduce-precision operation,
+  // and returns the result shape.
+  static StatusOr<Shape> InferReducePrecisionShape(const Shape& operand_shape,
+                                                   const int exponent_bits,
+                                                   const int mantissa_bits);
+
   // Helper that infers the shape produced by a pad operation based on the
   // padding configuration.
   static StatusOr<Shape> InferPadShape(const Shape& operand_shape,
@@ -189,6 +211,10 @@ class ShapeInference {
   static StatusOr<Shape> InferElementwiseBinaryOpShape(
       BinaryOperation operation, const Shape& lhs, const Shape& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
+  // Helper for inferring the shape of Clamp ops.
+  static StatusOr<Shape> InferClampShape(const Shape& min, const Shape& operand,
+                                         const Shape& max);
 
   // Helper for inferring the shape of Select ops.
   static StatusOr<Shape> InferSelectShape(const Shape& pred,

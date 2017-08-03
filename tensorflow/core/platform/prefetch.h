@@ -44,7 +44,9 @@ void prefetch(const void* x);
 // ---------------------------------------------------------------------------
 template <PrefetchHint hint>
 inline void prefetch(const void* x) {
-#if defined(__llvm__) || defined(COMPILER_GCC)
+// Check of COMPILER_GCC macro below is kept only for backward-compatibility
+// reasons. COMPILER_GCC3 is the macro that actually enables prefetch.
+#if defined(__llvm__) || defined(COMPILER_GCC) || defined(COMPILER_GCC3)
   __builtin_prefetch(x, 0, hint);
 #else
 // You get no effect.  Feel free to add more sections above.

@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <sys/stat.h>
 #include <deque>
+#include <utility>
 #include <vector>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -29,7 +31,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -95,7 +100,7 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
 
 Status Env::RegisterFileSystem(const string& scheme,
                                FileSystemRegistry::Factory factory) {
-  return file_system_registry_->Register(scheme, factory);
+  return file_system_registry_->Register(scheme, std::move(factory));
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
@@ -130,6 +135,52 @@ Status Env::FileExists(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
+}
+
+bool Env::FilesExist(const std::vector<string>& files,
+                     std::vector<Status>* status) {
+  std::unordered_map<string, std::vector<string>> files_per_fs;
+  for (const auto& file : files) {
+    StringPiece scheme, host, path;
+    io::ParseURI(file, &scheme, &host, &path);
+    files_per_fs[scheme.ToString()].push_back(file);
+  }
+
+  std::unordered_map<string, Status> per_file_status;
+  bool result = true;
+  for (auto itr : files_per_fs) {
+    FileSystem* file_system = file_system_registry_->Lookup(itr.first);
+    bool fs_result;
+    std::vector<Status> local_status;
+    std::vector<Status>* fs_status = status ? &local_status : nullptr;
+    if (!file_system) {
+      fs_result = false;
+      if (fs_status) {
+        Status s = errors::Unimplemented("File system scheme ", itr.first,
+                                         " not implemented");
+        local_status.resize(itr.second.size(), s);
+      }
+    } else {
+      fs_result = file_system->FilesExist(itr.second, fs_status);
+    }
+    if (fs_status) {
+      result &= fs_result;
+      for (int i = 0; i < itr.second.size(); ++i) {
+        per_file_status[itr.second[i]] = fs_status->at(i);
+      }
+    } else if (!fs_result) {
+      // Return early
+      return false;
+    }
+  }
+
+  if (status) {
+    for (const auto& file : files) {
+      status->push_back(per_file_status[file]);
+    }
+  }
+
+  return result;
 }
 
 Status Env::GetChildren(const string& dir, std::vector<string>* result) {
@@ -224,6 +275,39 @@ string Env::GetExecutablePath() {
   exe_path[sizeof(exe_path) - 1] = 0;
 
   return exe_path;
+}
+
+bool Env::LocalTempFilename(string* filename) {
+  std::vector<string> dirs;
+  GetLocalTempDirectories(&dirs);
+
+  // Try each directory, as they might be full, have inappropriate
+  // permissions or have different problems at times.
+  for (const string& dir : dirs) {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    int32 tid = static_cast<int32>(tid64);
+    int32 pid = static_cast<int32>(getpid());
+#elif defined(PLATFORM_WINDOWS)
+    int32 tid = static_cast<int32>(GetCurrentThreadId());
+    int32 pid = static_cast<int32>(GetCurrentProcessId());
+#else
+    int32 tid = static_cast<int32>(pthread_self());
+    int32 pid = static_cast<int32>(getpid());
+#endif
+    uint64 now_microsec = NowMicros();
+
+    *filename = io::JoinPath(
+        dir, strings::Printf("tempfile-%s-%x-%d-%llx", port::Hostname().c_str(),
+                             tid, pid, now_microsec));
+    if (FileExists(*filename).ok()) {
+      filename->clear();
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 Thread::~Thread() {}

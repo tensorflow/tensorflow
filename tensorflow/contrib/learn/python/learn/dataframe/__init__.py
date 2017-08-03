@@ -40,18 +40,23 @@ from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source im
 #     .transforms.split_mask import SplitMask
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.sum import Sum
 
-
-# pylint: disable=g-import-not-at-top,g-bad-import-order
-
-# Unary Transform registration
+# pylint: disable=g-bad-import-order
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import unary_transforms as _ut
-for ut_def in _ut.UNARY_TRANSFORMS:
-  _ut.register_unary_op(*ut_def)
-
-# Comparison Transform registration
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import binary_transforms as _bt
-for bt_def in _bt.BINARY_TRANSFORMS:
-  _bt.register_binary_op(*bt_def)
+
+from tensorflow.python.util import deprecation
+
+
+# Suppress deprecation warnings in these registrations.
+with deprecation.silence():
+  # Unary Transform registration
+  for ut_def in _ut.UNARY_TRANSFORMS:
+    _ut.register_unary_op(*ut_def)
+
+  # Comparison Transform registration
+  for bt_def in _bt.BINARY_TRANSFORMS:
+    _bt.register_binary_op(*bt_def)
+
 
 __all__ = ['DataFrame', 'Series', 'PredefinedSeries', 'TransformedSeries',
            'TensorFlowDataFrame', 'TensorFlowTransform', 'parameter',

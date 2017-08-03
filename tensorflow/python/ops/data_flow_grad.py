@@ -78,5 +78,6 @@ ops.NotDifferentiable("StackPop")
 ops.NotDifferentiable("StackClose")
 
 ops.NotDifferentiable("GetSessionHandle")
+ops.NotDifferentiable("GetSessionHandleV2")
 ops.NotDifferentiable("GetSessionTensor")
 ops.NotDifferentiable("DeleteSessionTensor")

@@ -32,7 +32,7 @@ template <typename T>
 Status GetValue(int index, XlaOpKernelContext* ctx, T* value) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ctx->ConstantInput(index, &literal));
-  *value = xla::LiteralUtil::Get<T>(literal, {});
+  *value = literal.Get<T>({});
   return Status::OK();
 }
 
@@ -41,10 +41,10 @@ Status GetIntValue(int index, XlaOpKernelContext* ctx, int64* value) {
   TF_RETURN_IF_ERROR(ctx->ConstantInput(index, &literal));
   switch (literal.shape().element_type()) {
     case xla::S32:
-      *value = xla::LiteralUtil::Get<int32>(literal, {});
+      *value = literal.Get<int32>({});
       break;
     case xla::S64:
-      *value = xla::LiteralUtil::Get<int64>(literal, {});
+      *value = literal.Get<int64>({});
       break;
     default:
       return errors::InvalidArgument("Invalid argument type for argument",
@@ -58,9 +58,9 @@ template <typename T>
 Status CreateRangeTensor(const xla::Literal& start_literal,
                          const xla::Literal& limit_literal,
                          const xla::Literal& delta_literal, Tensor* output) {
-  T start = xla::LiteralUtil::Get<T>(start_literal, {});
-  T limit = xla::LiteralUtil::Get<T>(limit_literal, {});
-  T delta = xla::LiteralUtil::Get<T>(delta_literal, {});
+  T start = start_literal.Get<T>({});
+  T limit = limit_literal.Get<T>({});
+  T delta = delta_literal.Get<T>({});
 
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0: ", delta);
@@ -138,7 +138,7 @@ class RangeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Range", RangeOp);
+REGISTER_XLA_OP(Name("Range"), RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
  public:
@@ -207,7 +207,7 @@ class LinSpaceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("LinSpace", LinSpaceOp);
+REGISTER_XLA_OP(Name("LinSpace"), LinSpaceOp);
 
 }  // namespace
 }  // namespace tensorflow

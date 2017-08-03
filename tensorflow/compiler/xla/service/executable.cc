@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -25,7 +26,7 @@ namespace xla {
 
 StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
 Executable::ExecuteOnStreams(
-    tensorflow::gtl::ArraySlice<const ExecutableRunOptions> run_options,
+    tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions> run_options,
     tensorflow::gtl::ArraySlice<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
         arguments) {
@@ -40,7 +41,7 @@ Executable::ExecuteOnStreams(
 
   std::vector<perftools::gputools::DeviceMemoryBase> return_values(
       run_options.size());
-  for (int64 i = 0; i < run_options.size(); ++i) {
+  for (size_t i = 0; i < run_options.size(); ++i) {
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
@@ -56,8 +57,8 @@ Executable::ExecuteOnStreams(
 
 Status Executable::DumpSessionModule() {
   TF_RET_CHECK(dumping());
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_executions_to;
+  const string& directory_path =
+      module_config().debug_options().xla_dump_executions_to();
   VersionedComputationHandle versioned_handle = entry_computation_handle();
   // This filename does not include the version number because the computation
   // is only ever executed at one version.
@@ -68,13 +69,23 @@ Status Executable::DumpSessionModule() {
                                      *session_module_);
 }
 
+// Removes illegal characters from filenames.
+static void SanitizeFilename(string* name) {
+  for (char& c : *name) {
+    if (c == '/' || c == '\\' || c == '[' || c == ']') {
+      c = '_';
+    }
+  }
+}
+
 /* static */ Status Executable::DumpToDirectory(
-    const string& directory_path, const string& filename,
+    const string& directory_path, string filename,
     const SessionModule& session_module) {
   tensorflow::Env* env = tensorflow::Env::Default();
   if (!env->IsDirectory(directory_path).ok()) {
     TF_RETURN_IF_ERROR(env->CreateDir(directory_path));
   }
+  SanitizeFilename(&filename);
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
   return tensorflow::WriteBinaryProto(env, file_path, session_module);
 }

@@ -19,7 +19,8 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.python.framework import load_library
+from tensorflow.contrib.tensor_forest.hybrid.ops import gen_training_ops
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -52,7 +53,7 @@ def _RoutingFunctionGradient(op, grad):
   Returns:
     Gradients with respect to the input of the RoutingFunction op.
   """
-  routing_gradient = _training_ops.routing_gradient
+  routing_gradient = gen_training_ops.routing_gradient
 
   input_data_tensor = op.inputs[0]
   tree_weights_tensor = op.inputs[1]
@@ -129,8 +130,8 @@ def _StochasticHardRoutingFunctionGradient(op, routing_grad, unused_path_grad):
   Returns:
     Gradients with respect to the input of the RoutingFunction op.
   """
-  gradient_op = _training_ops.stochastic_hard_routing_gradient
-  unpack_path_op = _training_ops.unpack_path
+  gradient_op = gen_training_ops.stochastic_hard_routing_gradient
+  unpack_path_op = gen_training_ops.unpack_path
 
   input_data_tensor = op.inputs[0]
   tree_weights_tensor = op.inputs[1]
@@ -208,7 +209,7 @@ def _KFeatureRoutingFunctionGradient(op, grad):
   Returns:
     Gradients with respect to the input of the RoutingFunction op.
   """
-  gradient_op = _training_ops.k_feature_gradient
+  gradient_op = gen_training_ops.k_feature_gradient
 
   input_data_tensor = op.inputs[0]
   tree_weights_tensor = op.inputs[1]
@@ -287,7 +288,7 @@ def Load():
     if not _training_ops:
       ops_path = resource_loader.get_path_to_datafile(TRAINING_OPS_FILE)
       logging.info('data path: %s', ops_path)
-      _training_ops = load_library.load_op_library(ops_path)
+      _training_ops = loader.load_op_library(ops_path)
 
       assert _training_ops, 'Could not load _training_ops.so'
   return _training_ops

@@ -37,7 +37,7 @@ constexpr int kNumThreads = 8;
 
 // Run a function in parallel using a ThreadPool, but skip the ThreadPool
 // on the iOS platform due to its problems with more than a few threads.
-void ForEach(int first, int last, std::function<void(int)> f) {
+void ForEach(int first, int last, const std::function<void(int)>& f) {
 #if TARGET_OS_IPHONE
   for (int i = first; i < last; i++) {
     f(i);
@@ -76,15 +76,37 @@ WritableFile::~WritableFile() {}
 
 FileSystemRegistry::~FileSystemRegistry() {}
 
+bool FileSystem::FilesExist(const std::vector<string>& files,
+                            std::vector<Status>* status) {
+  bool result = true;
+  for (const auto& file : files) {
+    Status s = FileExists(file);
+    result &= s.ok();
+    if (status != nullptr) {
+      status->push_back(s);
+    } else if (!result) {
+      // Return early since there is no need to check other files.
+      return false;
+    }
+  }
+  return result;
+}
+
 Status FileSystem::GetMatchingPaths(const string& pattern,
                                     std::vector<string>* results) {
   results->clear();
   // Find the fixed prefix by looking for the first wildcard.
-  const string& fixed_prefix =
-      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
+  string eval_pattern = pattern;
   std::vector<string> all_files;
   string dir = io::Dirname(fixed_prefix).ToString();
-  if (dir.empty()) dir = ".";
+  // If dir is empty then we need to fix up fixed_prefix and eval_pattern to
+  // include . as the top level directory.
+  if (dir.empty()) {
+    dir = ".";
+    fixed_prefix = io::JoinPath(dir, fixed_prefix);
+    eval_pattern = io::JoinPath(dir, pattern);
+  }
 
   // Setup a BFS to explore everything under dir.
   std::deque<string> dir_q;
@@ -132,7 +154,7 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
 
   // Match all obtained files to the input pattern.
   for (const auto& f : all_files) {
-    if (Env::Default()->MatchPath(f, pattern)) {
+    if (Env::Default()->MatchPath(f, eval_pattern)) {
       results->push_back(f);
     }
   }

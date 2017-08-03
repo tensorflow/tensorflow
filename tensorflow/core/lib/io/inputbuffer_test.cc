@@ -298,9 +298,9 @@ TEST(InputBuffer, ReadVarint32) {
   // Generates data.
   std::vector<uint32> data;
   uint32 i = 0;
-  for (; i < (1 << 10); i += 1) data.push_back(i);
-  for (; i < (1 << 15); i += 5) data.push_back(i);
-  for (; i < (1 << 31); i += 132817) data.push_back(i);
+  for (; i < (1U << 10); i += 1) data.push_back(i);
+  for (; i < (1U << 15); i += 5) data.push_back(i);
+  for (; i < (1U << 31); i += 132817) data.push_back(i);
   data.push_back(std::numeric_limits<uint32>::max());
 
   // Writes the varints.

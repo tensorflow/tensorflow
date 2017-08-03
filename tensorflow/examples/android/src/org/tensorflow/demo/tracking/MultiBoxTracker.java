@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.demo.tracking;
 
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
@@ -24,9 +25,9 @@ import android.graphics.Paint.Join;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.util.Pair;
 import android.util.TypedValue;
+import android.widget.Toast;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -69,6 +70,7 @@ public class MultiBoxTracker {
 
   private static class TrackedRecognition {
     ObjectTracker.TrackedObject trackedObject;
+    RectF location;
     float detectionConfidence;
     int color;
     String title;
@@ -87,8 +89,10 @@ public class MultiBoxTracker {
   private int frameHeight;
 
   private int sensorOrientation;
+  private Context context;
 
-  public MultiBoxTracker(final DisplayMetrics metrics) {
+  public MultiBoxTracker(final Context context) {
+    this.context = context;
     for (final int color : COLORS) {
       availableColors.add(color);
     }
@@ -100,7 +104,9 @@ public class MultiBoxTracker {
     boxPaint.setStrokeJoin(Join.ROUND);
     boxPaint.setStrokeMiter(100);
 
-    textSizePx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, metrics);
+    textSizePx =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, context.getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
   }
 
@@ -152,10 +158,6 @@ public class MultiBoxTracker {
   }
 
   public synchronized void draw(final Canvas canvas) {
-    if (objectTracker == null) {
-      return;
-    }
-
     // TODO(andrewharp): This may not work for non-90 deg rotations.
     final float multiplier =
         Math.min(canvas.getWidth() / (float) frameHeight, canvas.getHeight() / (float) frameWidth);
@@ -168,9 +170,11 @@ public class MultiBoxTracker {
             sensorOrientation,
             false);
     for (final TrackedRecognition recognition : trackedObjects) {
-      final ObjectTracker.TrackedObject trackedObject = recognition.trackedObject;
+      final RectF trackedPos =
+          (objectTracker != null)
+              ? recognition.trackedObject.getTrackedPositionInPreviewFrame()
+              : new RectF(recognition.location);
 
-      final RectF trackedPos = trackedObject.getTrackedPositionInPreviewFrame();
       getFrameToCanvasMatrix().mapRect(trackedPos);
       boxPaint.setColor(recognition.color);
 
@@ -185,6 +189,8 @@ public class MultiBoxTracker {
     }
   }
 
+  private boolean initialized = false;
+
   public synchronized void onFrame(
       final int w,
       final int h,
@@ -192,7 +198,7 @@ public class MultiBoxTracker {
       final int sensorOrienation,
       final byte[] frame,
       final long timestamp) {
-    if (objectTracker == null) {
+    if (objectTracker == null && !initialized) {
       ObjectTracker.clearInstance();
 
       logger.i("Initializing ObjectTracker: %dx%d", w, h);
@@ -200,6 +206,19 @@ public class MultiBoxTracker {
       frameWidth = w;
       frameHeight = h;
       this.sensorOrientation = sensorOrienation;
+      initialized = true;
+
+      if (objectTracker == null) {
+        String message =
+            "Object tracking support not found. "
+                + "See tensorflow/examples/android/README.md for details.";
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show();
+        logger.e(message);
+      }
+    }
+
+    if (objectTracker == null) {
+      return;
     }
 
     objectTracker.nextFrame(frame, null, timestamp, null, true);
@@ -255,7 +274,20 @@ public class MultiBoxTracker {
     }
 
     if (objectTracker == null) {
-      logger.w("No ObjectTracker, can't track anything!");
+      trackedObjects.clear();
+      for (final Pair<Float, Recognition> potential : rectsToTrack) {
+        final TrackedRecognition trackedRecognition = new TrackedRecognition();
+        trackedRecognition.detectionConfidence = potential.first;
+        trackedRecognition.location = new RectF(potential.second.getLocation());
+        trackedRecognition.trackedObject = null;
+        trackedRecognition.title = potential.second.getTitle();
+        trackedRecognition.color = COLORS[trackedObjects.size()];
+        trackedObjects.add(trackedRecognition);
+
+        if (trackedObjects.size() >= COLORS.length) {
+          break;
+        }
+      }
       return;
     }
 

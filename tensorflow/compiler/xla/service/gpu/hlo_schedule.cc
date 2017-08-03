@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -36,53 +38,69 @@ class GpuHloOrdering : public PredecessorHloOrdering {
                  const std::vector<const HloInstruction*>& thunk_launch_order);
   ~GpuHloOrdering() override = default;
 
+  // Only the entry computation can possibly be sequentially ordered, and only
+  // if we've assigned all instructions to a single stream.
+  const std::vector<const HloInstruction*>* SequentialOrder(
+      const HloComputation& computation) const override {
+    return &computation == module_->entry_computation() ? entry_sequence_.get()
+                                                        : nullptr;
+  }
+
   string ToString() const override { return ToStringHelper("GpuHloOrdering"); }
+
+ private:
+  std::unique_ptr<std::vector<const HloInstruction*>> entry_sequence_;
 };
 
 GpuHloOrdering::GpuHloOrdering(
     const HloModule* module, const StreamAssignment& stream_assignment,
     const std::vector<const HloInstruction*>& thunk_launch_order)
     : PredecessorHloOrdering(module) {
+  // The entry computation has a total order when there's only one stream.
+  if (stream_assignment.StreamCount() == 1) {
+    entry_sequence_ =
+        MakeUnique<std::vector<const HloInstruction*>>(thunk_launch_order);
+  }
+
   // The ordering of instructions for the entry computation is determined by the
   // total order of thunk launches, and stream assignment. Instructions are
   // sequential within a stream and concurrent across streams. In addition, the
   // GpuExecutable adds cross-stream dependency edges to ensure each instruction
   // waits for its operands before executing.
   //
-  // The predecessor map is built incrementally, in thunk launch
-  // order. We record the instructions already visited per stream in
-  // 'instructions_per_stream'. This lets us quickly determine the
-  // same-stream predecessors of each instruction. To capture
-  // cross-stream dependency edges, we use the predecessor map to
-  // insert each operand as well as its transitive closure of
-  // dependencies.
+  // The predecessor map is built incrementally, in thunk launch order. We
+  // record the most-recently seen instructions per stream in
+  // 'last_instruction_per_stream'. This lets us quickly determine the
+  // same-stream predecessors of each instruction.
 
-  // Compute the set of all instructions we will want to set reachability on
-  auto predecessor_map = MakeUnique<HloComputation::ReachabilityMap>(
+  // Compute the set of all instructions we will want to set reachability on.
+  auto predecessor_map = MakeUnique<HloReachabilityMap>(
       module->entry_computation()->MakeInstructionPostOrder());
 
-  std::vector<std::vector<const HloInstruction*>> instructions_per_stream(
-      stream_assignment.StreamCount());
+  // The most recently visited instruction per stream.
+  std::vector<const HloInstruction*> last_instruction_per_stream(
+      stream_assignment.StreamCount(), nullptr);
 
   for (const HloInstruction* hlo : thunk_launch_order) {
+    predecessor_map->SetReachable(hlo, hlo);
     if (stream_assignment.HasStreamAssigned(*hlo)) {
+      // Gather all instruction which are immediate predecessors of 'hlo' in the
+      // reachability graph.
+      std::vector<const HloInstruction*> immediate_preds;
+      immediate_preds.insert(immediate_preds.end(), hlo->operands().begin(),
+                             hlo->operands().end());
+      immediate_preds.insert(immediate_preds.end(),
+                             hlo->control_predecessors().begin(),
+                             hlo->control_predecessors().end());
+
       // All ops already queued on the same instruction stream, and their
-      // transitive predecessors, are predecessors. Since the relation is
-      // transitive, we just set the transitive closure of the previous op.
+      // transitive predecessors, are predecessors.
       const int stream_no = stream_assignment.StreamNumberForHlo(*hlo);
-      std::vector<const HloInstruction*>* instructions =
-          &instructions_per_stream[stream_no];
-      if (!instructions->empty()) {
-        const HloInstruction* back = instructions->back();
-        predecessor_map->SetReachableAndTransitiveClosure(hlo, back);
+      if (last_instruction_per_stream[stream_no] != nullptr) {
+        immediate_preds.push_back(last_instruction_per_stream[stream_no]);
       }
-      // All operands and their transitive predecessors are predecessors. Each
-      // operand must already exist in 'predecessor_map', since we're iterating
-      // in thunk launch order.
-      for (const HloInstruction* operand : hlo->operands()) {
-        predecessor_map->SetReachableAndTransitiveClosure(hlo, operand);
-      }
-      instructions->push_back(hlo);
+      predecessor_map->SetReachabilityToUnion(immediate_preds, hlo);
+      last_instruction_per_stream[stream_no] = hlo;
     } else {
       // Only parameters and constants don't have an assigned stream, since they
       // don't require a thunk. These ops don't have any predecessors.
@@ -91,40 +109,23 @@ GpuHloOrdering::GpuHloOrdering(
       CHECK_EQ(hlo->operand_count(), 0);
     }
   }
-  strict_predecessors_.emplace(module->entry_computation(),
-                               std::move(predecessor_map));
+  predecessors_.emplace(module->entry_computation(),
+                        std::move(predecessor_map));
 
-  // The ordering of instructions in subcomputations is based solely on data
-  // dependencies. I.e. the strict predecessors of each subcomputation
-  // instruction is its transitive operands.
+  // The ordering of instructions in subcomputations is based solely on control
+  // and data dependencies.
   //
-  // TODO(toddw): Each subcomputation is actually emitted as a function in
-  // DFS
-  // postorder, so we can do better and establish the total order here. We
-  // don't
-  // do that yet since it's hard to ensure that the order here is the order
-  // used
+  // TODO(toddw): Each subcomputation is actually emitted as a function in DFS
+  // postorder, so we can do better and establish the total order here. We don't
+  // do that yet since it's hard to ensure that the order here is the order used
   // by IrEmitterNested. And mismatched ordering bugs would be hard to find.
   for (auto& computation : module->computations()) {
-    if (computation.get() != module->entry_computation()) {
-      strict_predecessors_.emplace(computation.get(),
-                                   computation->ComputeTransitiveOperands());
+    if (computation.get() != module->entry_computation() &&
+        !computation->IsFusionComputation()) {
+      predecessors_.emplace(computation.get(),
+                            computation->ComputeReachability());
     }
   }
-}
-
-// Computes a topological launch_order based on depth-first order, visiting
-// operands in essentially an arbitrary order.
-//
-// TODO(b/32006145): Use an ordering that minimizes memory pressure.
-tensorflow::Status DFSLaunchOrder(
-    const HloComputation* computation,
-    std::vector<const HloInstruction*>* launch_order) {
-  return computation->root_instruction()->Accept(
-      [launch_order](HloInstruction* hlo) {
-        launch_order->push_back(hlo);
-        return tensorflow::Status::OK();
-      });
 }
 
 // Computes a topological launch_order that is close to a breadth-first
@@ -187,19 +188,24 @@ HloSchedule::HloSchedule() {}
 
 /* static */
 StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
-    const HloModule& module, const StreamAssignment& stream_assignment) {
+    const HloModule& module, const StreamAssignment& stream_assignment,
+    int64 pointer_size) {
   std::unique_ptr<HloSchedule> schedule(new HloSchedule);
 
   // Initialize thunk_launch_order_, the total order of thunk launches.
-  const HloComputation* computation = module.entry_computation();
+  const HloComputation* entry_computation = module.entry_computation();
   if (stream_assignment.StreamCount() == 1) {
-    // DFS tends to increase buffer reuse, reducing memory usage.  All kernels
-    // are launched on a single stream, so there's no loss of concurrency.
-    TF_RETURN_IF_ERROR(
-        DFSLaunchOrder(computation, &schedule->thunk_launch_order_));
+    // All kernels are launched on a single stream, so there's no loss of
+    // concurrency by optimizing for minimal memory usage.
+    TF_ASSIGN_OR_RETURN(
+        schedule->thunk_launch_order_,
+        CreateMemoryMinimizingSequence(
+            *entry_computation, [pointer_size](const LogicalBuffer& buffer) {
+              return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
+            }));
   } else {
     // BFS tends to increase concurrency, but also increases memory usage.
-    BFSLaunchOrder(computation, &schedule->thunk_launch_order_);
+    BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
   }
 
   schedule->hlo_ordering_ = MakeUnique<GpuHloOrdering>(

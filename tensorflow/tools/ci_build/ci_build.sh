@@ -18,7 +18,7 @@
 #                    <COMMAND>
 #
 # CONTAINER_TYPE: Type of the docker container used the run the build:
-#                 e.g., (cpu | gpu | android | tensorboard)
+#                 e.g., (cpu | gpu | gpu_clang | android | tensorboard)
 #
 # DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
 #                  If this optional value is not supplied (via the
@@ -26,7 +26,7 @@
 #                  directory as this script will be used.
 #
 # COMMAND: Command to be executed in the docker container, e.g.,
-#          tensorflow/tools/ci_build/builds/pip.sh gpu
+#          tensorflow/tools/ci_build/builds/pip.sh gpu -c opt --config=cuda
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds/builds_common.sh"
@@ -80,11 +80,11 @@ fi
 
 # cmake (CPU) builds do not require configuration.
 if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
-  CI_COMMAND_PREFIX=""
+  CI_COMMAND_PREFIX=("")
 fi
 
 # Use nvidia-docker if the container is GPU.
-if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
+if [[ "${CONTAINER_TYPE}" == "gpu" ]] || [[ "${CONTAINER_TYPE}" == "gpu_clang" ]]; then
   DOCKER_BINARY="nvidia-docker"
 else
   DOCKER_BINARY="docker"
@@ -104,7 +104,7 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 # Add extra params for cuda devices and libraries for GPU container.
 # And clear them if we are not building for GPU.
-if [ "${CONTAINER_TYPE}" != "gpu" ]; then
+if [[ "${CONTAINER_TYPE}" != "gpu" ]] && [[ "${CONTAINER_TYPE}" != "gpu_clang" ]]; then
   GPU_EXTRA_PARAMS=""
 fi
 
@@ -120,9 +120,9 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
 echo "WORKSPACE: ${WORKSPACE}"
-echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
-echo "COMMAND: ${COMMAND[@]}"
-echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
+echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[*]}"
+echo "COMMAND: ${COMMAND[*]}"
+echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[*]}"
 echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
 echo "BUILD_TAG: ${BUILD_TAG}"
 echo "  (docker container name will be ${DOCKER_IMG_NAME})"
@@ -140,7 +140,7 @@ if [[ $? != "0" ]]; then
 fi
 
 # Run the command inside the container.
-echo "Running '${COMMAND[@]}' inside ${DOCKER_IMG_NAME}..."
+echo "Running '${COMMAND[*]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 # By default we cleanup - remove the container once it finish running (--rm)
 # and share the PID namespace (--pid=host) so the process inside does not have

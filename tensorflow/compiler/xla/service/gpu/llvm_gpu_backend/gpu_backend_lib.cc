@@ -20,39 +20,40 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/gpu_backend_lib_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
-#include "external/llvm/include/llvm/ADT/STLExtras.h"
-#include "external/llvm/include/llvm/ADT/StringMap.h"
-#include "external/llvm/include/llvm/ADT/StringSet.h"
-#include "external/llvm/include/llvm/Analysis/TargetLibraryInfo.h"
-#include "external/llvm/include/llvm/Analysis/TargetTransformInfo.h"
-#include "external/llvm/include/llvm/Bitcode/BitcodeReader.h"
-#include "external/llvm/include/llvm/Bitcode/BitcodeWriter.h"
-#include "external/llvm/include/llvm/CodeGen/CommandFlags.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/LinkAllIR.h"
-#include "external/llvm/include/llvm/LinkAllPasses.h"
-#include "external/llvm/include/llvm/Linker/Linker.h"
-#include "external/llvm/include/llvm/PassRegistry.h"
-#include "external/llvm/include/llvm/Support/CommandLine.h"
-#include "external/llvm/include/llvm/Support/FileSystem.h"
-#include "external/llvm/include/llvm/Support/FormattedStream.h"
-#include "external/llvm/include/llvm/Support/TargetRegistry.h"
-#include "external/llvm/include/llvm/Support/TargetSelect.h"
-#include "external/llvm/include/llvm/Support/ToolOutputFile.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
-#include "external/llvm/include/llvm/Transforms/IPO.h"
-#include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
-#include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/LinkAllIR.h"
+#include "llvm/LinkAllPasses.h"
+#include "llvm/Linker/Linker.h"
+#include "llvm/PassRegistry.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
+#include "llvm/Transforms/IPO/Internalize.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -68,42 +69,72 @@ namespace {
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Information about a GPU architecture for the backend.
-struct GpuBackendInfo {
-  string libdevice_name;
-  string sm_name;
-};
-
-// Maps supported CUDA compute capability to a libdevice file to link for this
-// capability.
-std::map<string, GpuBackendInfo> gpu_info_map = {
-    {"compute_20", {"libdevice.compute_20.10.bc", "sm_20"}},
-    {"compute_30", {"libdevice.compute_30.10.bc", "sm_30"}},
-    {"compute_35", {"libdevice.compute_35.10.bc", "sm_35"}},
-
-    // NVIDIA does not provide a separate libdevice for CC 3.7, but we can use
-    // the one for 3.5.
-    {"compute_37", {"libdevice.compute_35.10.bc", "sm_37"}},
-};
-
-// Validate the --gpu_architecture command-line flag.
-static void ValidateGPUArchitecture(const string& value) {
-  if (!gpu_info_map.count(value)) {
-    LOG(FATAL) << "value for --gpu_architecture must be compute_{20,30,35,37}";
+// Gets the libdevice filename for a particular compute capability.  When
+// presented with a GPU we don't recognize, we just return the libdevice from
+// compute_20.
+static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
+  // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
+  // version gets mapped to one of these.  Note in particular that sm_60 and
+  // sm_61 map to libdevice.compute_30.
+  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
+                                                           {{2, 1}, 20},
+                                                           {{3, 0}, 30},
+                                                           {{3, 2}, 30},
+                                                           {{3, 5}, 35},
+                                                           {{3, 7}, 35},
+                                                           {{5, 0}, 50},
+                                                           {{5, 2}, 50},
+                                                           {{5, 3}, 50},
+                                                           {{6, 0}, 30},
+                                                           {{6, 1}, 30},
+                                                           {{6, 2}, 30}});
+  int libdevice_version = 20;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    libdevice_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to libdevice for compute_" << libdevice_version;
   }
+  return tensorflow::strings::StrCat("libdevice.compute_", libdevice_version,
+                                     ".10.bc");
+}
+
+// Gets the GPU name as it's known to LLVM for a given compute capability.  If
+// we see an unrecognized compute capability, we return "sm_20".
+static string GetSmName(std::pair<int, int> compute_capability) {
+  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
+                                                           {{2, 1}, 21},
+                                                           {{3, 0}, 30},
+                                                           {{3, 2}, 32},
+                                                           {{3, 5}, 35},
+                                                           {{3, 7}, 37},
+                                                           {{5, 0}, 50},
+                                                           {{5, 2}, 52},
+                                                           {{5, 3}, 53},
+                                                           {{6, 0}, 60},
+                                                           {{6, 1}, 61},
+                                                           {{6, 2}, 62}});
+  int sm_version = 20;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    sm_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to telling LLVM that we're compiling for sm_"
+                 << sm_version;
+  }
+  return tensorflow::strings::StrCat("sm_", sm_version);
 }
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
 string MakeNameForTempProduct(const std::string& input_filename,
                               tensorflow::StringPiece extension) {
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  return tensorflow::io::JoinPath(
-      flags->dump_temp_products_to,
-      ReplaceFilenameExtension(
-          tensorflow::io::Basename(llvm_ir::AsString(input_filename)),
-          extension));
+  return ReplaceFilenameExtension(
+      tensorflow::io::Basename(llvm_ir::AsString(input_filename)), extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -135,23 +166,21 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  // Set options from hlo_module_config (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(hlo_module_config, &target_options);
+  llvm_ir::SetTargetOptions(
+      /*fast_math_enabled=*/hlo_module_config.debug_options()
+          .xla_enable_fast_math(),
+      &target_options);
 
-  // Enable FMA synthesis if desired.
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  if (flags->fma) {
-    target_options.AllowFPOpFusion = FPOpFusion::Fast;
-  }
+  // Enable FMA synthesis.
+  target_options.AllowFPOpFusion = FPOpFusion::Fast;
 
   // Set the verbose assembly options.
-  target_options.MCOptions.AsmVerbose = flags->verbose_ptx_asm;
+  target_options.MCOptions.AsmVerbose = false;
 
   // The selection of codegen optimization level is copied from function
-  // GetCodeGenOptLevel in //external/llvm/tools/opt/opt.cpp.
+  // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
   CodeGenOpt::Level codegen_opt_level;
-  switch (flags->opt_level) {
+  switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
       codegen_opt_level = CodeGenOpt::Less;
       break;
@@ -223,12 +252,10 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     // The extension is stripped by IrDumpingPassManager, so we need to
     // get creative to add a suffix.
     string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
-    legacy_flags::GpuBackendLibFlags* flags =
-        legacy_flags::GetGpuBackendLibFlags();
     IrDumpingPassManager codegen_passes(
         ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
                                  "-nvptx.dummy"),
-        flags->dump_temp_products_to, flags->dump_ir_before_passes);
+        "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
 
@@ -270,70 +297,55 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-tensorflow::Status LinkLibdeviceIfNecessary(const string& libdevice_dir_path,
-                                            llvm::Module* module) {
+tensorflow::Status LinkLibdeviceIfNecessary(
+    llvm::Module* module, std::pair<int, int> compute_capability,
+    const string& libdevice_dir_path) {
   if (!CouldNeedLibdevice(*module)) {
     return tensorflow::Status::OK();
   }
 
   llvm::Linker linker(*module);
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  ValidateGPUArchitecture(flags->gpu_architecture);
-  string libdevice_bc_filename =
-      gpu_info_map[flags->gpu_architecture].libdevice_name;
-  string libdevice_bc_fullpath =
-      tensorflow::io::JoinPath(libdevice_dir_path, libdevice_bc_filename);
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->FileExists(libdevice_bc_fullpath));
+  string libdevice_path = tensorflow::io::JoinPath(
+      libdevice_dir_path, GetLibdeviceFilename(compute_capability));
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(libdevice_path));
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
-      LoadIRModule(libdevice_bc_fullpath, &module->getContext());
-  VLOG(1) << "Linking with libdevice from: " << libdevice_bc_fullpath;
-  if (linker.linkInModule(std::move(libdevice_module),
-                          llvm::Linker::Flags::InternalizeLinkedSymbols |
-                              llvm::Linker::Flags::LinkOnlyNeeded)) {
-    LOG(FATAL) << "Error linking libdevice from " << libdevice_bc_fullpath;
+      LoadIRModule(libdevice_path, &module->getContext());
+  if (linker.linkInModule(
+          std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
+          [](Module& M, const StringSet<>& GVS) {
+            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+            });
+          })) {
+    return tensorflow::errors::Internal(tensorflow::strings::StrCat(
+        "Error linking libdevice from ", libdevice_path));
   }
   return tensorflow::Status::OK();
 }
 
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,
+                                    std::pair<int, int> compute_capability,
                                     const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(libdevice_dir_path, module));
-
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  if (!flags->dump_temp_products_to.empty()) {
-    string linked_filename =
-        MakeNameForTempProduct(module->getModuleIdentifier(), "linked.bc");
-    LOG(INFO) << "dumping bitcode after linking libdevice to: "
-              << linked_filename;
-    EmitBitcodeToFile(*module, linked_filename);
-  }
+  TF_RETURN_IF_ERROR(
+      LinkLibdeviceIfNecessary(module, compute_capability, libdevice_dir_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
-  module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz", flags->ftz);
+  module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
+                        hlo_module_config.debug_options().xla_gpu_ftz());
 
   // If ftz is enabled, set it as an attribute on every function in the module.
-  if (flags->ftz) {
+  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
       fn.addFnAttr("nvptx-f32ftz", "true");
     }
   }
 
-  // Run IR-level optimizations.
-  if (flags->dump_ir_before_passes && flags->dump_temp_products_to.empty()) {
-    LOG(FATAL) << "--dump_ir_before_passes must be specified with "
-                  "--dump_temp_products_to";
-  }
-
-  IrDumpingPassManager module_passes(module->getModuleIdentifier(),
-                                     flags->dump_temp_products_to,
-                                     flags->dump_ir_before_passes);
+  IrDumpingPassManager module_passes(module->getModuleIdentifier(), "", false);
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   llvm::TargetLibraryInfoWrapperPass* tliwp =
@@ -351,33 +363,38 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
-  ValidateGPUArchitecture(flags->gpu_architecture);
-  string cpu_name = gpu_info_map[flags->gpu_architecture].sm_name;
-
-  std::unique_ptr<llvm::TargetMachine> target_machine =
-      GetTargetMachine(target_triple, cpu_name, hlo_module_config);
+  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
+      target_triple, GetSmName(compute_capability), hlo_module_config);
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
   // The LLVM IR verifier performs sanity checking on the IR. This helps
   // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions becasue of unfulfilled invariants.
+  // later passes report obscure assertions because of unfulfilled invariants.
   module_passes.add(llvm::createVerifierPass());
 
   // Create the function-level pass manager. It needs data layout information
   // too.
   llvm::legacy::FunctionPassManager function_passes(module);
 
-  AddOptimizationPasses(flags->opt_level, /*size_level=*/0,
-                        target_machine.get(), &module_passes, &function_passes);
-  // Loop unrolling exposes more opportunites for SROA. Therefore, we run SROA
+  int32 opt_level =
+      hlo_module_config.debug_options().xla_backend_optimization_level();
+
+  CHECK_GE(opt_level, 2)
+      << "The XLA GPU backend doesn't support unoptimized code generation";
+
+  AddOptimizationPasses(opt_level,
+                        /*size_level=*/0, target_machine.get(), &module_passes,
+                        &function_passes);
+
+  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunites, such
+  // TODO(jingyue): SROA may further expose more optimization opportunities, such
   // as more precise alias analysis and more function inlining (SROA may change
   // the inlining cost of a function). For now, running SROA already emits good
   // enough code for the evaluated benchmarks. We may want to run more
   // optimizations later.
-  if (flags->opt_level > 0) {
+  if (opt_level > 0) {
     // LLVM's optimizer turns on SROA when the optimization level is greater
     // than 0. We mimic this behavior here.
     module_passes.add(llvm::createSROAPass());
@@ -394,14 +411,6 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   }
   function_passes.doFinalization();
   module_passes.run(*module);
-
-  if (!flags->dump_temp_products_to.empty()) {
-    string optimized_filename =
-        MakeNameForTempProduct(module->getModuleIdentifier(), "optimized.bc");
-    LOG(INFO) << "dumping bitcode after optimizations to: "
-              << optimized_filename;
-    EmitBitcodeToFile(*module, optimized_filename);
-  }
 
   // Finally, produce PTX.
   return EmitModuleToPTX(module, target_machine.get());
@@ -435,22 +444,6 @@ void GPUBackendInit() {
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  if (!flags->llvm_cl_opts.empty()) {
-    std::vector<string> opts =
-        tensorflow::str_util::Split(flags->llvm_cl_opts, ',');
-    FeedLLVMWithFlags(opts);
-  }
-
-  if (flags->llvm_dump_passes) {
-    // Enable LLVM pass debugging dump. LLVM dumps this information when a pass
-    // manager is initialized for execution. It's done to stderr (this is
-    // hardcoded within LLVM to the dbgs() stream, we can't change it from the
-    // outside).
-    FeedLLVMWithFlags({"-debug-pass=Arguments"});
-  }
-
   // Initialize the NVPTX target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.
   LLVMInitializeNVPTXTarget();
@@ -466,6 +459,7 @@ void GPUBackendInit() {
 }  // namespace
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
+                              std::pair<int, int> compute_capability,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
@@ -477,7 +471,8 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
         "Compile module " + llvm_ir::AsString(module->getName()),
         /*vlog_level=*/2);
     TF_ASSIGN_OR_RETURN(
-        ptx, CompileModuleToPtx(module, hlo_module_config, libdevice_dir_path));
+        ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
+                                libdevice_dir_path));
   }
   return ptx;
 }

@@ -13,6 +13,7 @@
 // the License.
 // ==============================================================================
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -28,6 +29,7 @@ REGISTER_OP("WALSComputePartialLhsAndRhs")
     .Input("input_is_transpose: bool")
     .Output("partial_lhs: float32")
     .Output("partial_rhs: float32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"(
 Computes the partial left-hand side and right-hand side of WALS update.
 
@@ -50,6 +52,7 @@ REGISTER_OP("MaskedMatmul")
     .Input("transpose_a: bool")
     .Input("transpose_b: bool")
     .Output("prod_values: float32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"(
 Computes the product a * b, but only for indices (i, j) in mask_indices. The
 result is stored in prod_values, a rank 1 tensor, such that for all i,

@@ -23,6 +23,7 @@ import itertools
 import numpy as np
 from six.moves import zip_longest
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
@@ -221,6 +222,7 @@ class CTCGreedyDecoderTest(test.TestCase):
                     [1, 3], dtype=np.int64)),
     ]
 
+    # Test correct decoding.
     self._testCTCDecoder(
         ctc_ops.ctc_beam_search_decoder,
         inputs,
@@ -229,6 +231,19 @@ class CTCGreedyDecoderTest(test.TestCase):
         decode_truth,
         beam_width=2,
         top_paths=2)
+
+    # Requesting more paths than the beam width allows.
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 (".*requested more paths than the beam "
+                                  "width.*")):
+      self._testCTCDecoder(
+          ctc_ops.ctc_beam_search_decoder,
+          inputs,
+          seq_lens,
+          log_prob_truth,
+          decode_truth,
+          beam_width=2,
+          top_paths=3)
 
 
 if __name__ == "__main__":

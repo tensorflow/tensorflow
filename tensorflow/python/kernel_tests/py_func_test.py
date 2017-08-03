@@ -113,8 +113,8 @@ class PyOpTest(test.TestCase):
     # returns a tuple, Tout and inp a tuple
     with self.test_session():
       x = constant_op.constant(0.0, dtypes.float64)
-      y, z = script_ops.py_func(tuple_func, (x,),
-                                (dtypes.float64, dtypes.float64))
+      y, z = script_ops.py_func(tuple_func, (x,), (dtypes.float64,
+                                                   dtypes.float64))
       self.assertAllClose(y.eval(), 0.0)
       self.assertAllClose(z.eval(), 1.0)
 
@@ -160,6 +160,14 @@ class PyOpTest(test.TestCase):
         _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
     self.assertTrue(script_ops._py_funcs.size() < 100)
 
+  def testAlias(self):
+    with self.test_session():
+      np_array = np.array([1.0, 2.0], dtype=np.float32)
+      tf_array = script_ops.py_func(lambda: np_array, [], [dtypes.float32])
+      value = tf_array + constant_op.constant([2.0, 3.0], dtype=dtypes.float32)
+      value.op.run()
+      self.assertAllEqual(np_array, [1.0, 2.0])
+
   def testBadNumpyReturnType(self):
     with self.test_session():
 
@@ -178,13 +186,28 @@ class PyOpTest(test.TestCase):
 
       def bad():
         # Non-string python objects aren't supported.
-        return dtypes.float32
+        return {"foo": dtypes.float32}
 
-      z, = script_ops.py_func(bad, [], [dtypes.float64])
+      z, = script_ops.py_func(bad, [], [dtypes.int64])
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):
         z.eval()
+
+  def testReturnInput(self):
+    with self.test_session():
+
+      def ident(x):
+        return x[0]
+
+      p = array_ops.placeholder(dtypes.float32)
+
+      # Create a numpy array aliasing a tensor and a tensor aliasing this array
+      z, = script_ops.py_func(ident, [p], [dtypes.float32])
+      z += 0.0  # Makes sure we release the tensor aliasing the numpy array x[0]
+                # above instead of using its memory as the return value of
+                # session.run
+      self.assertEqual(0.0, z.eval(feed_dict={p: [0.0]}))
 
   def testStateful(self):
     # Not using self.test_session(), which disables optimization.
@@ -217,7 +240,8 @@ class PyOpTest(test.TestCase):
   def testCOrder(self):
     with self.test_session():
       val = [[1, 2], [3, 4]]
-      x, = script_ops.py_func(lambda: np.array(val, order="F"), [], [dtypes.int64])
+      x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
+                              [dtypes.int64])
       self.assertAllEqual(val, x.eval())
 
   def testParallel(self):
@@ -274,6 +298,28 @@ class PyOpTest(test.TestCase):
         do_nothing, [constant_op.constant(3, dtypes.int64)], [], stateful=False)
     with self.test_session() as sess:
       self.assertEqual(sess.run(f), [])
+
+  def _testExceptionHandling(self, py_exp, tf_exp):
+
+    def raise_exception():
+      raise py_exp("blah")  # pylint: disable=not-callable
+
+    f = script_ops.py_func(raise_exception, [], [])
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(tf_exp, "blah"):
+        sess.run(f)
+
+  def testExceptionHandling(self):
+    self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
+    self._testExceptionHandling(TypeError, errors.InvalidArgumentError)
+    self._testExceptionHandling(StopIteration, errors.OutOfRangeError)
+    self._testExceptionHandling(MemoryError, errors.ResourceExhaustedError)
+    self._testExceptionHandling(NotImplementedError, errors.UnimplementedError)
+
+    class WeirdError(Exception):
+      pass
+
+    self._testExceptionHandling(WeirdError, errors.UnknownError)
 
 
 if __name__ == "__main__":

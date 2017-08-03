@@ -142,7 +142,8 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
       # initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
       use_mini_batch=True)
 
-  all_scores, _, clustering_scores, kmeans_training_op = kmeans.training_graph()
+  (all_scores, _, clustering_scores, _, kmeans_init,
+   kmeans_training_op) = kmeans.training_graph()
   # Some heuristics to approximately whiten this output.
   all_scores = (all_scores[0] - 0.5) * 5
   # Here we avoid passing the gradients from the supervised objective back to
@@ -176,7 +177,7 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
     biases = tf.Variable(tf.zeros([NUM_CLASSES]),
                          name='biases')
     logits = tf.matmul(hidden2, weights) + biases
-  return logits, clustering_loss, kmeans_training_op
+  return logits, clustering_loss, kmeans_init, kmeans_training_op
 
 
 def run_training():
@@ -192,10 +193,11 @@ def run_training():
     images_placeholder, labels_placeholder = placeholder_inputs()
 
     # Build a Graph that computes predictions from the inference model.
-    logits, clustering_loss, kmeans_training_op = inference(images_placeholder,
-                                                            FLAGS.num_clusters,
-                                                            FLAGS.hidden1,
-                                                            FLAGS.hidden2)
+    logits, clustering_loss, kmeans_init, kmeans_training_op = inference(
+        images_placeholder,
+        FLAGS.num_clusters,
+        FLAGS.hidden1,
+        FLAGS.hidden2)
 
     # Add to the Graph the Ops for loss calculation.
     loss = mnist.loss(logits, labels_placeholder)
@@ -213,12 +215,15 @@ def run_training():
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
+    # Run the Op to initialize the variables.
+    sess.run(init)
+
     feed_dict = fill_feed_dict(data_sets.train,
                                images_placeholder,
                                labels_placeholder,
                                batch_size=max(FLAGS.batch_size, 5000))
-    # Run the Op to initialize the variables.
-    sess.run(init, feed_dict=feed_dict)
+    # Run the Op to initialize the clusters.
+    sess.run(kmeans_init, feed_dict=feed_dict)
 
     # Start the training loop.
     max_test_prec = 0

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is a helper struct to package up the input and ouput
+// This is a helper struct to package up the input and output
 // parameters of an image resizer (the height, widths, etc.).  To
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
@@ -122,7 +122,7 @@ struct ImageResizerState {
   int64 channels;
   float height_scale;
   float width_scale;
-  Tensor* output;
+  Tensor* output = nullptr;
 
  private:
   bool align_corners_;

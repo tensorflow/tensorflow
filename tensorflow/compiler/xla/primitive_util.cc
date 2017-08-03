@@ -78,6 +78,11 @@ PrimitiveType NativeToPrimitiveType<double>() {
   return F64;
 }
 
+template <>
+PrimitiveType NativeToPrimitiveType<half>() {
+  return F16;
+}
+
 bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64;
 }

@@ -38,13 +38,13 @@ Status InitializeSession(int num_threads, const string& graph,
 // Does a single run of the model that's been loaded into the given session.
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
                     const std::vector<string>& outputs, Session* session,
-                    StatSummarizer* stats);
+                    StatSummarizer* stats, int64* inference_time_us);
 
 // Runs the model multiple time, keeping track of timing information.
 Status TimeMultipleRuns(double sleep_seconds, int num_runs,
                         const std::vector<InputLayerInfo>& inputs,
                         const std::vector<string>& outputs, Session* session,
-                        StatSummarizer* stats);
+                        StatSummarizer* stats, int64* total_time_us);
 
 // Handles all setup and argument parsing.
 int Main(int argc, char** argv);

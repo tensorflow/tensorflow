@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace graph_transforms {
@@ -110,7 +109,7 @@ string CanonicalInputName(const string& input_name) {
   string node_name;
   string suffix;
   NodeNamePartsFromInput(input_name, &prefix, &node_name, &suffix);
-  if (suffix == "") {
+  if (suffix.empty()) {
     suffix = ":0";
   }
   return prefix + node_name + suffix;
@@ -146,7 +145,7 @@ void CopyNodeAttr(const NodeDef& source, const string& source_key,
                   const string& dest_key, NodeDef* dest) {
   CHECK_NE(0, source.attr().count(source_key))
       << "No key '" << source_key << "' found in " << source.DebugString();
-  (*(dest->mutable_attr()))[dest_key].CopyFrom(source.attr().at(source_key));
+  (*(dest->mutable_attr()))[dest_key] = source.attr().at(source_key);
 }
 
 Tensor GetNodeTensorAttr(const NodeDef& node, const string& key) {
@@ -162,7 +161,7 @@ void FilterGraphDef(const GraphDef& input_graph_def,
   output_graph_def->mutable_node()->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     if (selector(node)) {
-      output_graph_def->mutable_node()->Add()->CopyFrom(node);
+      *output_graph_def->mutable_node()->Add() = node;
     }
   }
 }
@@ -173,7 +172,7 @@ void RemoveAttributes(const GraphDef& input_graph_def,
   output_graph_def->mutable_node()->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
-    new_node->CopyFrom(node);
+    *new_node = node;
     for (const string& attribute : attributes) {
       new_node->mutable_attr()->erase(attribute);
     }
@@ -237,7 +236,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
     ready.pop_back();
     ++processed;
     const NodeDef& node_def(input_graph_def.node(o));
-    output_graph_def->mutable_node()->Add()->CopyFrom(node_def);
+    *output_graph_def->mutable_node()->Add() = node_def;
 
     // Update pending_count for outputs.
     for (size_t i = 0; i < outputs[o].size(); ++i) {
@@ -446,18 +445,18 @@ Status ReplaceMatchingOpTypes(
         MatchedNodesAsArray(*match, &old_nodes);
         for (const NodeDef& old_node : old_nodes) {
           NodeDef* added_node = output_graph_def->mutable_node()->Add();
-          added_node->CopyFrom(old_node);
+          *added_node = old_node;
         }
       } else {
         for (const NodeDef& new_node : new_nodes) {
           NodeDef* added_node = output_graph_def->mutable_node()->Add();
-          added_node->CopyFrom(new_node);
+          *added_node = new_node;
         }
       }
     } else if (!matched_nodes.count(input_node.name())) {
       // This node isn't part of any match, so just copy it over.
       NodeDef* added_node = output_graph_def->mutable_node()->Add();
-      added_node->CopyFrom(input_node);
+      *added_node = input_node;
     } else {
       // Do nothing, because this is an internal part of a matching subgraph,
       // and so will have been replaced by a new replacement subgraph.
@@ -481,7 +480,7 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
-    new_node->CopyFrom(node);
+    *new_node = node;
     new_node->mutable_input()->Clear();
     for (const string& input_name : node.input()) {
       std::set<string> already_visited;
@@ -585,28 +584,6 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   TF_RETURN_IF_ERROR(InOutTypesForNode(node_def, *op_def, inputs, outputs));
   return Status::OK();
-}
-
-Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def) {
-  string file_data;
-  Status load_file_status =
-      ReadFileToString(Env::Default(), file_name, &file_data);
-  if (!load_file_status.ok()) {
-    errors::AppendToMessage(&load_file_status, " (for file ", file_name, ")");
-    return load_file_status;
-  }
-  // Try to load in binary format first, and then try ascii if that fails.
-  Status load_status = ReadBinaryProto(Env::Default(), file_name, graph_def);
-  if (!load_status.ok()) {
-    if (protobuf::TextFormat::ParseFromString(file_data, graph_def)) {
-      load_status = Status::OK();
-    } else {
-      errors::AppendToMessage(&load_status,
-                              " (both text and binary parsing failed for file ",
-                              file_name, ")");
-    }
-  }
-  return load_status;
 }
 
 int TransformFuncContext::CountParameters(const string& name) const {

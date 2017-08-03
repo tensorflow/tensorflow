@@ -1,0 +1,35 @@
+path: "tensorflow.saved_model"
+tf_module {
+  member {
+    name: "builder"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "loader"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "main_op"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signature_constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signature_def_utils"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tag_constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "utils"
+    mtype: "<type \'module\'>"
+  }
+}

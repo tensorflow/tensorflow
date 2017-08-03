@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import math
 import numpy as np
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
 
 
 class _Gumbel(distribution.Distribution):
@@ -45,7 +44,7 @@ class _Gumbel(distribution.Distribution):
 
   where `loc = mu` and `scale = sigma`.
 
-  The cumulative densifyt function of this distribution is,
+  The cumulative density function of this distribution is,
 
   ```cdf(x; mu, sigma) = exp(-exp(-(x - mu) / sigma))```
 
@@ -124,21 +123,20 @@ class _Gumbel(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]) as ns:
+    with ops.name_scope(name, values=[loc, scale]):
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
+        check_ops.assert_same_float_dtype([self._loc, self._scale])
     super(_Gumbel, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._loc, self._scale],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

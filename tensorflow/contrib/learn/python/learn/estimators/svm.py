@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -42,9 +43,9 @@ class SVM(estimator.Estimator):
   num_loss_partitions is larger or equal to this value, convergence is
   guaranteed but becomes slower as num_loss_partitions increases. If it is set
   to a smaller value, the optimizer is more aggressive in reducing the global
-  loss but convergence is not guaranteed. The recommended value in tf.learn
-  (where there is one process per worker) is the number of workers running the
-  train steps. It defaults to 1 (single machine).
+  loss but convergence is not guaranteed. The recommended value in an
+  `Estimator` (where there is one process per worker) is the number of workers
+  running the train steps. It defaults to 1 (single machine).
 
   Example:
 
@@ -138,7 +139,7 @@ class SVM(estimator.Estimator):
         model_dir=model_dir,
         config=config,
         params={
-            "head": head_lib._binary_svm_head(  # pylint: disable=protected-access
+            "head": head_lib.binary_svm_head(
                 weight_column_name=weight_column_name,
                 enable_centered_bias=False),
             "feature_columns": feature_columns,
@@ -183,6 +184,7 @@ class SVM(estimator.Estimator):
     return preds[key]
   # pylint: enable=protected-access
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
              exports_to_keep=None):
@@ -194,6 +196,7 @@ class SVM(estimator.Estimator):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export_with_defaults(
       self,
       export_dir,

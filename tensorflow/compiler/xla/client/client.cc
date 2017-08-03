@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -58,34 +60,13 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-
-  return WrapUnique(response.release_literal());
-}
-
-Status Client::TransferInProcess(const GlobalData& data, void* destination) {
-  TransferToClientInProcessRequest request;
-  *request.mutable_data() = data.handle();
-  request.set_buffer(reinterpret_cast<uint64>(destination));
-  TransferToClientInProcessResponse response;
-
-  VLOG(1) << "making transfer in-process request";
-  VLOG(3) << "TransferToClientInProcessRequest: {" << request.DebugString()
-          << "}";
-  Status s = stub_->TransferToClientInProcess(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-  VLOG(3) << "TransferToClientInProcessResponse: {" << response.DebugString()
-          << "}";
-  return Status::OK();
+  return MakeUnique<Literal>(response.literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
     const Literal& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -113,7 +94,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
 Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -130,6 +111,39 @@ Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
   return Status::OK();
+}
+
+StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
+    const Shape* shape_with_layout, int64 replica_id,
+    const DeviceHandle* device_handle) {
+  TransferFromOutfeedRequest request;
+  if (device_handle) {
+    *request.mutable_device_handle() = *device_handle;
+  }
+  request.set_replica_id(replica_id);
+  if (shape_with_layout != nullptr) {
+    *request.mutable_shape_with_layout() = *shape_with_layout;
+  }
+  TransferFromOutfeedResponse response;
+
+  VLOG(1) << "making transfer from outfeed request";
+  VLOG(3) << "TransferFromOutfeedRequest: {" << request.DebugString() << "}";
+  Status s = stub_->TransferFromOutfeed(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+  VLOG(3) << "TransferFromOutfeedResponse: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return FailedPrecondition(
+        "server provided response without a literal in "
+        "TransferToClient request");
+  }
+
+  Literal literal(response.literal());
+  return MakeUnique<Literal>(literal);
 }
 
 Status Client::ResetDevice() {
@@ -164,34 +178,6 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
-StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServerInProcess(
-    const Shape& shape, const void* buffer) {
-  TransferToServerInProcessRequest request;
-  request.set_buffer(reinterpret_cast<uint64>(buffer));
-  *request.mutable_shape() = shape;
-  TransferToServerInProcessResponse response;
-
-  VLOG(1) << "making transfer to server in-process request";
-  VLOG(3) << "TransferToServerInProcessRequest: {" << request.DebugString()
-          << "}";
-  Status s = stub_->TransferToServerInProcess(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-  VLOG(3) << "TransferToServerInProcessResponse: {" << response.DebugString()
-          << "}";
-
-  if (!response.has_data()) {
-    return FailedPrecondition(
-        "server provided response without a data handle in "
-        "TransferToServerInProcess request");
-  }
-
-  return MakeUnique<GlobalData>(stub_, response.data());
-}
-
 StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
   LoadComputationSnapshotRequest request;
   *request.mutable_module() = module;
@@ -213,7 +199,10 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     ExecutionProfile* execution_profile) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
-  if (execution_options != nullptr) {
+
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
     *request.mutable_execution_options() = *execution_options;
   }
   for (GlobalData* argument : arguments) {
@@ -269,7 +258,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   std::vector<std::unique_ptr<GlobalData>> outputs;
-  for (int64 i = 0; i < computations.size(); ++i) {
+  for (size_t i = 0; i < computations.size(); ++i) {
     outputs.push_back(
         MakeUnique<GlobalData>(stub_, response.responses(i).output()));
     if (computations[i].execution_profile != nullptr) {
@@ -303,59 +292,6 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   }
 
   return device_handles;
-}
-
-StatusOr<ExecutionHandle> Client::ExecuteAsync(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const ExecutionOptions* execution_options) {
-  ExecuteAsyncRequest request;
-  *request.mutable_computation() = computation.handle();
-  for (GlobalData* argument : arguments) {
-    *request.add_arguments() = argument->handle();
-  }
-  if (execution_options != nullptr) {
-    *request.mutable_execution_options() = *execution_options;
-  }
-
-  ExecuteAsyncResponse response;
-  VLOG(1) << "making execute async request: " << request.ShortDebugString();
-  Status s = stub_->ExecuteAsync(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  return response.execution();
-}
-
-StatusOr<std::unique_ptr<GlobalData>> Client::WaitForExecution(
-    const Computation& computation, const ExecutionHandle& execution,
-    ExecutionProfile* execution_profile) {
-  WaitForExecutionRequest request;
-  *request.mutable_execution() = execution;
-
-  WaitForExecutionResponse response;
-  VLOG(1) << "making wait-for-execute request: " << request.ShortDebugString();
-  Status s = stub_->WaitForExecution(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  if (execution_profile != nullptr) {
-    *execution_profile = response.profile();
-    if (VLOG_IS_ON(1)) {
-      TF_ASSIGN_OR_RETURN(
-          auto execution_stats,
-          ExecutionStatsAsString(computation, response.profile()));
-      VLOG(1) << execution_stats;
-    }
-  }
-
-  return MakeUnique<GlobalData>(stub_, response.output());
 }
 
 Status Client::Unregister(const GlobalData& data) {
@@ -392,9 +328,10 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 }
 
 StatusOr<ComputationStats> Client::GetComputationStats(
-    const Computation& computation) const {
+    const Computation& computation, const DebugOptions& debug_options) const {
   ComputationStatsRequest request;
   *request.mutable_computation() = computation.handle();
+  *request.mutable_debug_options() = debug_options;
   ComputationStatsResponse response;
 
   VLOG(1) << "making computation stats request";
@@ -443,7 +380,10 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
 
 StatusOr<string> Client::ExecutionStatsAsString(
     const Computation& computation, const ExecutionProfile& profile) {
-  TF_ASSIGN_OR_RETURN(auto computation_stats, GetComputationStats(computation));
+  TF_ASSIGN_OR_RETURN(
+      auto computation_stats,
+      GetComputationStats(computation,
+                          legacy_flags::GetDebugOptionsFromFlags()));
   int64 total_flops =
       computation_stats.flop_count() + computation_stats.transcendental_count();
   if (profile.compute_time_ns() > 0) {

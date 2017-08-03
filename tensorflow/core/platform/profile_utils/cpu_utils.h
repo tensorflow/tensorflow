@@ -53,11 +53,7 @@ class CpuUtils {
   // is less than 2 ^ 61.
   static inline uint64 GetCurrentClockCycle() {
 #if defined(__ANDROID__)
-#if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
     return GetCpuUtilsHelperSingletonInstance().GetCurrentClockCycle();
-#else   // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-    return DUMMY_CYCLE_CLOCK;
-#endif  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
 // ----------------------------------------------------------------
 #elif defined(__x86_64__) || defined(__amd64__)
     uint64_t high, low;
@@ -101,7 +97,11 @@ class CpuUtils {
   // Return cycle counter frequency.
   // As this method caches the cpu frequency internally,
   // the first call will incur overhead, but not subsequent calls.
-  static int64 GetCycleCounterFrequency();
+  #if defined(__powerpc__) || defined(__ppc__) && ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+     static uint64 GetCycleCounterFrequency();
+  #else
+     static int64 GetCycleCounterFrequency();
+  #endif
 
   // Return micro secound per each clock
   // As this method caches the cpu frequency internally,

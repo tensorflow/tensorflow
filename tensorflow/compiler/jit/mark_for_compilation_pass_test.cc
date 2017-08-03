@@ -18,6 +18,9 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -56,7 +59,7 @@ std::unordered_map<string, string> GetClusters(const Graph& graph) {
   std::unordered_map<string, string> ids;
   for (Node* node : graph.nodes()) {
     string cluster;
-    if (GetNodeAttr(node->def(), kXlaClusterAttr, &cluster).ok()) {
+    if (GetNodeAttr(node->attrs(), kXlaClusterAttr, &cluster).ok()) {
       CHECK(!cluster.empty());
       ids[node->name()] = cluster;
     }
@@ -183,13 +186,20 @@ TEST(XlaCompilationTest, ConcatWithConstArg) {
 }
 
 TEST(XlaCompilationTest, FunctionCalls) {
-  FunctionDefLibrary flib;
-  *flib.add_function() = FunctionDefHelper::Define(
+  FunctionDef compilable = FunctionDefHelper::Define(
       "CompilableFn", {"n_a:float", "n_b:float"}, {"n_c:float"}, {},
       {{{"n_c"}, "Add", {"n_a", "n_b"}, {{"T", DT_FLOAT}}}});
-  *flib.add_function() =
+  FunctionDef uncompilable =
       FunctionDefHelper::Define("UncompilableFn", {"n_a:float"}, {"n_c:float"},
                                 {}, {{{"n_c"}, "UncompilableUnary", {"n_a"}}});
+  FunctionDef noinline = compilable;
+  noinline.mutable_signature()->set_name("NoInlineFn");
+  AddAttr("_noinline", bool(true), noinline.mutable_attr());
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = compilable;
+  *flib.add_function() = uncompilable;
+  *flib.add_function() = noinline;
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
 
   std::unique_ptr<Graph> graph(new Graph(&flib_def));
@@ -201,6 +211,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
     Node* b = ops::BinaryOp("CompilableFn", a, a, builder.opts().WithName("B"));
     Node* c = ops::UnaryOp("Relu", b, builder.opts().WithName("C"));
     ops::UnaryOp("UncompilableFn", c, builder.opts().WithName("D"));
+    ops::BinaryOp("NoInlineFn", c, c, builder.opts().WithName("E"));
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
@@ -212,6 +223,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
   EXPECT_EQ(clusters["B"], clusters["C"]);
   EXPECT_TRUE(clusters.find("A") == clusters.cend());
   EXPECT_TRUE(clusters.find("D") == clusters.cend());
+  EXPECT_TRUE(clusters.find("E") == clusters.cend());
 }
 
 // Metadata-only operators such as Shape/Rank/Size may not be the root of a
@@ -352,6 +364,131 @@ TEST(XlaCompilationTest, Loops) {
   // Nothing should be compiled. In particular, 'd' and 'c' must not be
   // compiled.
   EXPECT_EQ(0, clusters.size());
+}
+
+TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_FLOAT)
+                                         .WithAttr("value", Tensor())
+                                         .WithAttr(kXlaScopeAttr, "ScopeA"));
+    Node* b = ops::UnaryOp(
+        "Relu", a,
+        builder.opts().WithName("B").WithAttr(kXlaScopeAttr, "ScopeB"));
+    ops::BinaryOp(
+        "MatMul", a, b,
+        builder.opts().WithName("C").WithAttr(kXlaScopeAttr, "ScopeC"));
+    TF_CHECK_OK(builder.ToGraph(graph.get()));
+  }
+
+  MarkForCompilation(&graph);
+  auto clusters = GetClusters(*graph);
+
+  // The computation is: C = A + relu(A)
+  // where A sits in ScopeA, relu(A) sits in ScopeB, and C sits in ScopeC.
+  // In this case, we cannot fuse anything, and there are no clusters.
+  EXPECT_EQ(0, clusters.size());
+}
+
+TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_FLOAT)
+                                         .WithAttr("value", Tensor())
+                                         .WithAttr(kXlaScopeAttr, "Scope1"));
+    Node* b = ops::UnaryOp(
+        "Relu", a,
+        builder.opts().WithName("B").WithAttr(kXlaScopeAttr, "Scope1"));
+    Node* c = ops::BinaryOp(
+        "MatMul", a, b,
+        builder.opts().WithName("C").WithAttr(kXlaScopeAttr, "Scope2"));
+    ops::BinaryOp(
+        "Add", b, c,
+        builder.opts().WithName("D").WithAttr(kXlaScopeAttr, "Scope2"));
+    TF_CHECK_OK(builder.ToGraph(graph.get()));
+  }
+
+  MarkForCompilation(&graph);
+  auto clusters = GetClusters(*graph);
+
+  // The computation is: D = relu(A) + (A @ relu(A))
+  // where A and relu(A) are in Scope1, and the @, + ops are in Scope2.
+  // In this case, we can fuse the A and relu(A), and we can fuse the
+  // second half of the operations; there are two clusters.
+  EXPECT_EQ(4, clusters.size());
+  EXPECT_EQ(clusters["A"], clusters["B"]);
+  EXPECT_NE(clusters["A"], clusters["C"]);
+  EXPECT_EQ(clusters["C"], clusters["D"]);
+}
+
+TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_FLOAT)
+                                         .WithAttr("value", Tensor())
+                                         .WithAttr(kXlaScopeAttr, "ScopeA"));
+    Node* b = ops::UnaryOp(
+        "Relu", a,
+        builder.opts().WithName("B").WithAttr(kXlaScopeAttr, "ScopeB"));
+    ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
+    TF_CHECK_OK(builder.ToGraph(graph.get()));
+  }
+
+  MarkForCompilation(&graph);
+  auto clusters = GetClusters(*graph);
+
+  // The computation is: C = A @ relu(A)
+  // where A sits in ScopeA, relu(A) sits in ScopeB, and C sits in ScopeC.
+  // In this case, we cannot fuse anything.
+  EXPECT_EQ(2, clusters.size());
+  EXPECT_NE(clusters["A"], clusters["B"]);
+  EXPECT_EQ(clusters["B"], clusters["C"]);
+}
+
+REGISTER_OP("ResourceInput").Input("a: resource").Output("o: float");
+REGISTER_OP("ResourceOutput").Input("a: float").Output("o: resource");
+
+namespace {
+
+class DummyOp : public XlaOpKernel {
+  using XlaOpKernel::XlaOpKernel;
+  void Compile(XlaOpKernelContext* ctx) override {}
+};
+
+REGISTER_XLA_OP(Name("ResourceInput"), DummyOp);
+REGISTER_XLA_OP(Name("ResourceOutput"), DummyOp);
+
+}  // namespace
+
+TEST(XlaCompilationTest, Resources) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a =
+        ops::SourceOp("UncompilableNullary", builder.opts().WithName("A"));
+    Node* b = ops::UnaryOp("Relu", a, builder.opts().WithName("B"));
+    // We should not form clusters with resource ops by default.
+    Node* c = ops::UnaryOp("ResourceOutput", b, builder.opts().WithName("C"));
+    Node* d = ops::UnaryOp("ResourceInput", c, builder.opts().WithName("D"));
+    ops::UnaryOp("Relu", d, builder.opts().WithName("E"));
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
+  }
+  MarkForCompilation(&graph);
+  auto clusters = GetClusters(*graph);
+  EXPECT_EQ(0, clusters.size());  // Nothing should be compiled.
 }
 
 }  // namespace

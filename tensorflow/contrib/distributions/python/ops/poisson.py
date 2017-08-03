@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,6 +26,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = [
     "Poisson",
@@ -80,19 +80,18 @@ class Poisson(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[rate]) as ns:
+    with ops.name_scope(name, values=[rate]):
       with ops.control_dependencies([check_ops.assert_positive(rate)] if
                                     validate_args else []):
         self._rate = array_ops.identity(rate, name="rate")
     super(Poisson, self).__init__(
         dtype=self._rate.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._rate],
-        name=ns)
+        name=name)
 
   @property
   def rate(self):
@@ -116,30 +115,29 @@ class Poisson(distribution.Distribution):
     return self._log_unnormalized_prob(x) - self._log_normalization()
 
   @distribution_util.AppendDocstring(_poisson_sample_note)
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
-  @distribution_util.AppendDocstring(_poisson_sample_note)
   def _log_cdf(self, x):
     return math_ops.log(self.cdf(x))
 
   @distribution_util.AppendDocstring(_poisson_sample_note)
   def _cdf(self, x):
     if self.validate_args:
-      # We set `check_integer=False` since the CDF is defined on whole real
-      # line.
-      x = distribution_util.embed_check_nonnegative_discrete(
-          x, check_integer=False)
-    return math_ops.igammac(math_ops.floor(x + 1), self.rate)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    else:
+      # Whether or not x is integer-form, the following is well-defined.
+      # However, scipy takes the floor, so we do too.
+      x = math_ops.floor(x)
+    return math_ops.igammac(1. + x, self.rate)
 
   def _log_normalization(self):
     return self.rate
 
   def _log_unnormalized_prob(self, x):
     if self.validate_args:
-      x = distribution_util.embed_check_nonnegative_discrete(
-          x, check_integer=True)
-    return x * math_ops.log(self.rate) - math_ops.lgamma(x + 1)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    else:
+      # For consistency with cdf, we take the floor.
+      x = math_ops.floor(x)
+    return x * math_ops.log(self.rate) - math_ops.lgamma(1. + x)
 
   def _mean(self):
     return array_ops.identity(self.rate)

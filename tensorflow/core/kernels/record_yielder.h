@@ -119,6 +119,7 @@ class RecordYielder {
   // True iff we are draining an epoch.
   bool epoch_end_ = false;
 
+  int64 num_records_added_in_epoch_ = 0;
   int64 num_records_yielded_in_epoch_ = 0;
 
   // Trigger when the main loop has exited.
@@ -142,7 +143,7 @@ class RecordYielder {
     // any.
     return stop_ || !status_.ok() || (epoch_end_ && !buf_.empty()) ||
            (!epoch_end_ &&
-            buf_.size() >= std::max<int64>(1, opts_.bufsize / 2));
+            buf_.size() >= std::max<uint64>(1, opts_.bufsize / 2));
   }
 
   void MainLoop();

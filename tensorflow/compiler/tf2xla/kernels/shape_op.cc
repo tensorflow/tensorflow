@@ -48,7 +48,7 @@ class ShapeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Shape", ShapeOp);
+REGISTER_XLA_OP(Name("Shape"), ShapeOp);
 
 class ShapeNOp : public XlaOpKernel {
  public:
@@ -78,7 +78,7 @@ class ShapeNOp : public XlaOpKernel {
 
   bool IsExpensive() override { return false; }
 };
-REGISTER_XLA_OP("ShapeN", ShapeNOp);
+REGISTER_XLA_OP(Name("ShapeN"), ShapeNOp);
 
 class RankOp : public XlaOpKernel {
  public:
@@ -94,7 +94,7 @@ class RankOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Rank", RankOp);
+REGISTER_XLA_OP(Name("Rank"), RankOp);
 
 class SizeOp : public XlaOpKernel {
  public:
@@ -113,7 +113,7 @@ class SizeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Size", SizeOp);
+REGISTER_XLA_OP(Name("Size"), SizeOp);
 
 class ExpandDimsOp : public XlaOpKernel {
  public:
@@ -163,7 +163,7 @@ class ExpandDimsOp : public XlaOpKernel {
     ctx->SetOutput(0, ctx->builder()->Reshape(ctx->Input(0), new_shape));
   }
 };
-REGISTER_XLA_OP("ExpandDims", ExpandDimsOp);
+REGISTER_XLA_OP(Name("ExpandDims"), ExpandDimsOp);
 
 class SqueezeOp : public XlaOpKernel {
  public:
@@ -225,7 +225,7 @@ class SqueezeOp : public XlaOpKernel {
   std::unordered_set<int32> squeeze_dims_;
 };
 
-REGISTER_XLA_OP("Squeeze", SqueezeOp);
+REGISTER_XLA_OP(Name("Squeeze"), SqueezeOp);
 
 class ZerosLikeOp : public XlaOpKernel {
  public:
@@ -239,7 +239,21 @@ class ZerosLikeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("ZerosLike", ZerosLikeOp);
+REGISTER_XLA_OP(Name("ZerosLike"), ZerosLikeOp);
+
+class OnesLikeOp : public XlaOpKernel {
+ public:
+  explicit OnesLikeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const TensorShape input_shape = ctx->InputShape(0);
+
+    auto one = XlaHelpers::One(ctx->builder(), input_type(0));
+    ctx->SetOutput(0, ctx->builder()->Broadcast(one, input_shape.dim_sizes()));
+  }
+};
+
+REGISTER_XLA_OP(Name("OnesLike"), OnesLikeOp);
 
 }  // namespace
 }  // namespace tensorflow

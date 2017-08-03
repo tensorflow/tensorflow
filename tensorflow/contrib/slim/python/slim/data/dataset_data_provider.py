@@ -33,7 +33,7 @@ To read data using multiple readers simultaneous with shuffling:
       shuffle=True)
   images, labels = pascal_voc_data_provider.get(['images', 'labels'])
 
-Equivalently, one may request different fields of the same sample seperately:
+Equivalently, one may request different fields of the same sample separately:
 
   [images] = pascal_voc_data_provider.get(['images'])
   [labels] = pascal_voc_data_provider.get(['labels'])
@@ -59,7 +59,8 @@ class DatasetDataProvider(data_provider.DataProvider):
                common_queue_capacity=256,
                common_queue_min=128,
                record_key='record_key',
-               seed=None):
+               seed=None,
+               scope=None):
     """Creates a DatasetDataProvider.
 
     Args:
@@ -76,6 +77,7 @@ class DatasetDataProvider(data_provider.DataProvider):
       record_key: The item name to use for the dataset record keys in the
         provided tensors.
       seed: The seed to use if shuffling.
+      scope: Optional name scope for the ops.
     Raises:
       ValueError: If `record_key` matches one of the items in the dataset.
     """
@@ -88,7 +90,8 @@ class DatasetDataProvider(data_provider.DataProvider):
         shuffle=shuffle,
         capacity=common_queue_capacity,
         min_after_dequeue=common_queue_min,
-        seed=seed)
+        seed=seed,
+        scope=scope)
 
     items = dataset.decoder.list_items()
     tensors = dataset.decoder.decode(data, items)

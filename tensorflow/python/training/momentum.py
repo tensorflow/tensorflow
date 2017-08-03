@@ -26,6 +26,19 @@ from tensorflow.python.training import training_ops
 
 class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
+
+  Computes (if `use_nesterov = False`):
+  
+  ```
+  accumulation = momentum * accumulation + gradient
+  variable -= learning_rate * accumulation
+  ```
+
+  Note that in the dense version of this algorithm, `accumulation` is updated
+  and applied regardless of a gradient's value, whereas the sparse version (when
+  the gradient is an `IndexedSlices`, typically because of `tf.gather` or an
+  embedding) only updates variable slices and corresponding `accumulation` terms
+  when that part of the variable was used in the forward pass.
   """
 
   def __init__(self, learning_rate, momentum,
@@ -39,7 +52,7 @@ class MomentumOptimizer(optimizer.Optimizer):
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Momentum".
       use_nesterov: If `True` use Nesterov Momentum.
-        See [Sutskever et. al., 2013](
+        See [Sutskever et al., 2013](
         http://jmlr.org/proceedings/papers/v28/sutskever13.pdf)
 
     """

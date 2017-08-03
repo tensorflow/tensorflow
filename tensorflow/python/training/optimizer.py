@@ -32,16 +32,17 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util import nest
 
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
   if v.op.type == "VarHandleOp":
-    for var in ops.get_collection(ops.GraphKeys.RESOURCES):
+    for var in variables.trainable_variables():
       if (isinstance(var, resource_variable_ops.ResourceVariable)
           and var.handle.op is v.op):
         return var
-    raise ValueError("Got %s but  could not locate source variable." % (str(v)))
+    raise ValueError("Got %s but could not locate source variable." % (str(v)))
   return v
 
 
@@ -132,11 +133,27 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
     return optimizer._resource_apply_dense(g, self._v)
 
 
+class _StreamingModelPortProcessor(_OptimizableVariable):
+  """Processor for streaming ModelPorts."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    return g
+
+
 def _get_processor(v):
-  if isinstance(v, variables.Variable):
-    return _RefVariableProcessor(v)
+  """The processor of v."""
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
+  if isinstance(v, variables.Variable):
+    return _RefVariableProcessor(v)
+  if v.op.type == "SubmodelPort":
+    return _StreamingModelPortProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
@@ -272,9 +289,9 @@ class Optimizer(object):
       loss: A `Tensor` containing the value to minimize.
       global_step: Optional `Variable` to increment by one after the
         variables have been updated.
-      var_list: Optional list of `Variable` objects to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph
-        under the key `GraphKeys.TRAINABLE_VARIABLES`.
+      var_list: Optional list or tuple of `Variable` objects to update to
+        minimize `loss`.  Defaults to the list of variables collected in
+        the graph under the key `GraphKeys.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
         `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
@@ -322,7 +339,7 @@ class Optimizer(object):
 
     Args:
       loss: A Tensor containing the value to minimize.
-      var_list: Optional list of `tf.Variable` to update to minimize
+      var_list: Optional list or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
@@ -353,6 +370,11 @@ class Optimizer(object):
       var_list = (
           variables.trainable_variables() +
           ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+    else:
+      var_list = nest.flatten(var_list)
+    # pylint: disable=protected-access
+    var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+    # pylint: enable=protected-access
     processors = [_get_processor(v) for v in var_list]
     if not var_list:
       raise ValueError("No variables to optimize.")
@@ -695,7 +717,7 @@ class Optimizer(object):
       val: A `Tensor`.  The initial value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.
@@ -705,6 +727,28 @@ class Optimizer(object):
       named_slots[_var_key(var)] = slot_creator.create_slot(var, val, op_name)
     return named_slots[_var_key(var)]
 
+  def _get_or_make_slot_with_initializer(self, var, initializer, shape, dtype,
+                                         slot_name, op_name):
+    """Find or create a slot for a variable, using an Initializer.
+
+    Args:
+      var: A `Variable` object.
+      initializer: An `Initializer`.  The initial value of the slot.
+      shape: Shape of the initial value of the slot.
+      dtype: Type of the value of the slot.
+      slot_name: Name for the slot.
+      op_name: Name to use when scoping the Variable that
+        needs to be created for the slot.
+
+    Returns:
+      A `Variable` object.
+    """
+    named_slots = self._slot_dict(slot_name)
+    if _var_key(var) not in named_slots:
+      named_slots[_var_key(var)] = slot_creator.create_slot_with_initializer(
+          var, initializer, shape, dtype, op_name)
+    return named_slots[_var_key(var)]
+
   def _zeros_slot(self, var, slot_name, op_name):
     """Find or create a slot initialized with 0.0.
 
@@ -712,7 +756,7 @@ class Optimizer(object):
       var: A `Variable` object.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.

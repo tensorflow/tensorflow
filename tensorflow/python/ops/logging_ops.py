@@ -42,6 +42,10 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
   This is an identity op with the side effect of printing `data` when
   evaluating.
 
+  Note: This op prints to the standard error. It is not currently compatible
+    with jupyter notebook (printing to the notebook *server's* output, not into
+    the notebook).
+
   Args:
     input_: A tensor passed through this op.
     data: A list of tensors to print out when op is evaluated.
@@ -82,7 +86,7 @@ def histogram_summary(tag, values, collections=None, name=None):
   This ops is deprecated. Please switch to tf.summary.histogram.
 
   For an explanation of why this op was deprecated, and information on how to
-  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
+  migrate, look ['here'](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/deprecated/__init__.py)
 
   The generated
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
@@ -120,7 +124,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
   """Outputs a `Summary` protocol buffer with images.
 
   For an explanation of why this op was deprecated, and information on how to
-  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
+  migrate, look ['here'](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/deprecated/__init__.py)
 
   The summary has up to `max_images` summary values containing images. The
   images are built from `tensor` which must be 4-D with shape `[batch_size,
@@ -186,7 +190,7 @@ def audio_summary(tag,
 
   This op is deprecated. Please switch to tf.summary.audio.
   For an explanation of why this op was deprecated, and information on how to
-  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
+  migrate, look ['here'](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/deprecated/__init__.py)
 
   The summary has up to `max_outputs` summary values containing audio. The
   audio is built from `tensor` which must be 3-D with shape `[batch_size,
@@ -322,7 +326,7 @@ def scalar_summary(tags, values, collections=None, name=None):
 
   This ops is deprecated. Please switch to tf.summary.scalar.
   For an explanation of why this op was deprecated, and information on how to
-  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
+  migrate, look ['here'](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/deprecated/__init__.py)
 
   The input `tags` and `values` must have the same shape.  The generated
   summary has a summary value for each tag-value pair in `tags` and `values`.

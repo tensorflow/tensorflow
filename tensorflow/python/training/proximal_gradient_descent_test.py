@@ -131,8 +131,8 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
         update.run()
 
       v0_val, v1_val = sess.run([var0, var1])
-      self.assertAllClose(np.array([0.037125, 0.074625]), v0_val)
-      self.assertAllClose(np.array([0.003375, 0.007125]), v1_val)
+      self.assertAllClose(np.array([-0.0495, -0.0995]), v0_val)
+      self.assertAllClose(np.array([-0.0045, -0.0095]), v1_val)
 
   def applyOptimizer(self, opt, steps=5, is_sparse=False):
     if is_sparse:

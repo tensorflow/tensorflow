@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
-"""Working with audio using FFmpeg. See the @{$python/contrib.ffmpeg} guide.
+"""Working with audio using FFmpeg.
+
+See the @{$python/contrib.ffmpeg} guide.
 
 @@decode_audio
 @@encode_audio

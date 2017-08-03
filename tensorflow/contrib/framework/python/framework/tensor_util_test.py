@@ -33,83 +33,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
 
-class FloatDTypeTest(test.TestCase):
-
-  def test_assert_same_float_dtype(self):
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(None, None))
-    self.assertIs(dtypes.float32, tensor_util.assert_same_float_dtype([], None))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype([], dtypes.float32))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(None, dtypes.float32))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype([None, None], None))
-    self.assertIs(
-        dtypes.float32,
-        tensor_util.assert_same_float_dtype([None, None], dtypes.float32))
-
-    const_float = constant_op.constant(3.0, dtype=dtypes.float32)
-    self.assertIs(
-        dtypes.float32,
-        tensor_util.assert_same_float_dtype([const_float], dtypes.float32))
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [const_float], dtypes.int32)
-
-    sparse_float = sparse_tensor.SparseTensor(
-        constant_op.constant([[111], [232]], dtypes.int64),
-        constant_op.constant([23.4, -43.2], dtypes.float32),
-        constant_op.constant([500], dtypes.int64))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype([sparse_float],
-                                                      dtypes.float32))
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float], dtypes.int32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [const_float, None, sparse_float], dtypes.float64)
-
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(
-                      [const_float, sparse_float]))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(
-                      [const_float, sparse_float], dtypes.float32))
-
-    const_int = constant_op.constant(3, dtype=dtypes.int32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float, const_int])
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float, const_int], dtypes.int32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float, const_int], dtypes.float32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [const_int])
-
-
-class AssertScalarTest(test.TestCase):
-
-  def test_assert_scalar(self):
-    tensor_util.assert_scalar(constant_op.constant(3))
-    tensor_util.assert_scalar(constant_op.constant("foo"))
-    tensor_util.assert_scalar(3)
-    tensor_util.assert_scalar("foo")
-    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
-      tensor_util.assert_scalar(constant_op.constant([3, 4]))
-
-  def test_assert_scalar_int(self):
-    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int32))
-    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int64))
-    tensor_util.assert_scalar_int(3)
-    with self.assertRaisesRegexp(ValueError, "Unexpected type"):
-      tensor_util.assert_scalar_int(
-          constant_op.constant(
-              3, dtype=dtypes.float32))
-    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
-      tensor_util.assert_scalar_int(
-          constant_op.constant(
-              [3, 4], dtype=dtypes.int32))
-
-
 class LocalVariabletest(test.TestCase):
 
   def test_local_variable(self):
@@ -134,6 +57,22 @@ class ReduceSumNTest(test.TestCase):
       b = constant_op.constant([2])
       c = constant_op.constant([[3, 4], [5, 6]])
       self.assertEqual(21, tensor_util.reduce_sum_n([a, b, c]).eval())
+
+
+class AssertScalarIntTest(test.TestCase):
+
+  def test_assert_scalar_int(self):
+    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int32))
+    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int64))
+    tensor_util.assert_scalar_int(3)
+    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+      tensor_util.assert_scalar_int(
+          constant_op.constant(
+              3, dtype=dtypes.float32))
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      tensor_util.assert_scalar_int(
+          constant_op.constant(
+              [3, 4], dtype=dtypes.int32))
 
 
 class WithShapeTest(test.TestCase):

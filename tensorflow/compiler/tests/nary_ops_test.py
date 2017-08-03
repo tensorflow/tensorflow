@@ -75,6 +75,28 @@ class NAryOpsTest(XLATestCase):
         expected=np.array(
             [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], dtype=np.float32))
 
+  def testOneHot(self):
+    with self.test_session() as session, self.test_scope():
+      indices = array_ops.constant(np.array([[2, 3], [0, 1]], dtype=np.int32))
+      op = array_ops.one_hot(indices,
+                             np.int32(4),
+                             on_value=np.float32(7), off_value=np.float32(3))
+      output = session.run(op)
+      expected = np.array([[[3, 3, 7, 3], [3, 3, 3, 7]],
+                           [[7, 3, 3, 3], [3, 7, 3, 3]]],
+                          dtype=np.float32)
+      self.assertAllEqual(output, expected)
+
+      op = array_ops.one_hot(indices,
+                             np.int32(4),
+                             on_value=np.int32(2), off_value=np.int32(1),
+                             axis=1)
+      output = session.run(op)
+      expected = np.array([[[1, 1], [1, 1], [2, 1], [1, 2]],
+                           [[2, 1], [1, 2], [1, 1], [1, 1]]],
+                          dtype=np.int32)
+      self.assertAllEqual(output, expected)
+
   def testSplitV(self):
     with self.test_session() as session:
       with self.test_scope():
@@ -94,12 +116,14 @@ class NAryOpsTest(XLATestCase):
                     np.array([1, 1], dtype=np.int32)],
                    expected=np.array([[], []], dtype=np.float32))
 
-    self._testNAry(lambda x: array_ops.strided_slice(*x),
-                   [np.array([[], [], []], dtype=np.float32),
-                    np.array([1, 0], dtype=np.int64),
-                    np.array([3, 0], dtype=np.int64),
-                    np.array([1, 1], dtype=np.int64)],
-                   expected=np.array([[], []], dtype=np.float32))
+    if np.int64 in self.int_types:
+      self._testNAry(
+          lambda x: array_ops.strided_slice(*x), [
+              np.array([[], [], []], dtype=np.float32), np.array(
+                  [1, 0], dtype=np.int64), np.array([3, 0], dtype=np.int64),
+              np.array([1, 1], dtype=np.int64)
+          ],
+          expected=np.array([[], []], dtype=np.float32))
 
     self._testNAry(lambda x: array_ops.strided_slice(*x),
                    [np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],

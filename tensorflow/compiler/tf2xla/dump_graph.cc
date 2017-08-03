@@ -33,8 +33,16 @@ struct NameCounts {
   std::unordered_map<string, int> counts;
 };
 
-string MakeUniquePath(const string& name) {
+string MakeUniquePath(string name) {
   static NameCounts& instance = *new NameCounts;
+
+  // Remove illegal characters from `name`.
+  for (int i = 0; i < name.size(); ++i) {
+    if (name[i] == '/') {
+      name[i] = '_';
+    }
+  }
+
   int count;
   {
     mutex_lock lock(instance.counts_mutex);

@@ -21,6 +21,9 @@ namespace tensorflow {
 /// SavedModel assets directory.
 constexpr char kSavedModelAssetsDirectory[] = "assets";
 
+/// SavedModel assets.extra directory.
+constexpr char kSavedModelAssetsExtraDirectory[] = "assets.extra";
+
 /// SavedModel assets key for graph collection-def.
 constexpr char kSavedModelAssetsKey[] = "saved_model_assets";
 
@@ -32,6 +35,9 @@ constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 
 /// SavedModel legacy init op key.
 constexpr char kSavedModelLegacyInitOpKey[] = "legacy_init_op";
+
+/// SavedModel main op key.
+constexpr char kSavedModelMainOpKey[] = "saved_model_main_op";
 
 /// Directory in which to save the SavedModel variables.
 constexpr char kSavedModelVariablesDirectory[] = "variables";

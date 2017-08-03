@@ -286,6 +286,14 @@ TEST_F(OpsUtilTest, SanitizeThreadSuffix) {
 }
 
 TEST_F(OpsUtilTest, Aligned1DSlice) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
+  // When EIGEN_MAX_ALIGN_BYTES is 0, a 1D tensor is always aligned.
+  Tensor t(DT_FLOAT, TensorShape({3}));
+  int64 start = 0;
+  int64 end = 1;
+  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  EXPECT_EQ(output, true);
+#else
   Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
   int64 start = 0;
   int64 end = EIGEN_MAX_ALIGN_BYTES;
@@ -295,8 +303,10 @@ TEST_F(OpsUtilTest, Aligned1DSlice) {
   Tensor sliced;
   CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({end - start})));
   EXPECT_EQ(sliced.IsAligned(), true);
+#endif
 }
 
+#if EIGEN_MAX_ALIGN_BYTES > 0
 TEST_F(OpsUtilTest, Misaligned1DSlice) {
   Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
   int64 start = 1;
@@ -308,8 +318,18 @@ TEST_F(OpsUtilTest, Misaligned1DSlice) {
   CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({end - start})));
   EXPECT_EQ(sliced.IsAligned(), false);
 }
+#endif
 
 TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
+  // When EIGEN_MAX_ALIGN_BYTES is 0 and the size of the first dimension is nonzero,
+  // a multidimensional tensor is always aligned.
+  Tensor t(DT_FLOAT, TensorShape({3, 4}));
+  int64 start = 1;
+  int64 end = 2;
+  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  EXPECT_EQ(output, true);
+#else
   // For multidimensional tensors, alignment is dictated by inner_dim_size.
   int64 inner_dim_size = EIGEN_MAX_ALIGN_BYTES;
   Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
@@ -321,8 +341,10 @@ TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
   Tensor sliced;
   CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({1, inner_dim_size})));
   EXPECT_EQ(sliced.IsAligned(), true);
+#endif
 }
 
+#if EIGEN_MAX_ALIGN_BYTES > 0
 TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
   // For multidimensional tensors, alignment is dictated by inner_dim_size.
   int64 inner_dim_size = EIGEN_MAX_ALIGN_BYTES + 1;
@@ -335,6 +357,23 @@ TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
   Tensor sliced;
   CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({1, inner_dim_size})));
   EXPECT_EQ(sliced.IsAligned(), false);
+}
+#endif
+
+TEST_F(OpsUtilTest, MisalignedEmptyShape) {
+  TensorShape shape({});
+  int64 start = 1;
+  int64 end = 2;
+  bool output = IsDim0SliceAligned<float>(shape, start, end);
+  EXPECT_EQ(output, false);
+}
+
+TEST_F(OpsUtilTest, MisalignedEmptyDim0) {
+  TensorShape shape({0, 1, 2});
+  int64 start = 0;
+  int64 end = 1;
+  bool output = IsDim0SliceAligned<float>(shape, start, end);
+  EXPECT_EQ(output, false);
 }
 
 }  // namespace

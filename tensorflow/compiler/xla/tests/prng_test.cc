@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -38,6 +38,12 @@ class PrngTest : public ClientLibraryTestBase {
   template <typename T>
   void UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims);
   void BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims);
+
+  // Computes the χ² statistic of a sample of the discrete uniform distribution
+  // of the given range size. `expected_count` is the number of times each
+  // possible value is expected to be generated. Thus, the sample size is
+  // `range_size * expected_count`.
+  double UniformChiSquared(int32 range_size, int32 expected_count);
 };
 
 template <typename T>
@@ -47,13 +53,13 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
       builder.ConstantR0<T>(a), builder.ConstantR0<T>(b),
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims));
 
+  SetSeed(42);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
-  EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
-  LiteralUtil::EachCell<T>(*actual,
-                           [=](tensorflow::gtl::ArraySlice<int64>, T value) {
-                             EXPECT_LE(a, value);
-                             EXPECT_LT(value, b);
-                           });
+  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
+  actual->EachCell<T>([=](tensorflow::gtl::ArraySlice<int64>, T value) {
+    EXPECT_LE(a, value);
+    EXPECT_LT(value, b);
+  });
 }
 
 void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
@@ -61,17 +67,16 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
   auto shape = ShapeUtil::MakeShape(U32, dims);
   builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
 
-  TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
-  ExecutionOptions execution_options;
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
+  ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(42);
-  TF_ASSIGN_OR_ASSERT_OK(
-      auto actual,
-      client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                  &execution_options));
-  EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto actual, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                               &execution_options));
+  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
   int32 sum = 0;
-  LiteralUtil::EachCell<uint32>(
-      *actual, [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
+  actual->EachCell<uint32>(
+      [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
         EXPECT_TRUE(value == 0 || value == 1);
         sum += value;
       });
@@ -97,6 +102,55 @@ XLA_TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
 XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
 XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
 
+namespace {
+template <typename T>
+T Square(T x) {
+  return x * x;
+}
+}  // namespace
+
+double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
+  int32 sample_size = range_size * expected_count;
+
+  ComputationBuilder builder(client_, TestName());
+  builder.RngUniform(builder.ConstantR0<int32>(0),
+                     builder.ConstantR0<int32>(range_size),
+                     ShapeUtil::MakeShape(S32, {sample_size}));
+
+  SetSeed(42);
+  auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
+  std::vector<int32> counts(range_size, 0);
+  actual->EachCell<int32>([&counts](tensorflow::gtl::ArraySlice<int64>,
+                                    int32 value) { ++counts[value]; });
+  int64 sum = 0;
+  for (int32 i = 0; i < range_size; ++i) {
+    sum += Square(static_cast<int64>(counts[i] - expected_count));
+  }
+  return static_cast<double>(sum) / expected_count;
+}
+
+// We only test distribution of uniform discrete PRNG as other types are based
+// on it.
+// These range sizes are arbitrary but include prime numbers, powers of 2, and
+// other composite numbers.
+// The level of significance in all these cases is 1/20.
+// TODO(b/35723038): Use parametrized tests where possible.
+XLA_TEST_F(PrngTest, Uniformity7) {
+  EXPECT_LT(UniformChiSquared(7, 256), 12.5916);
+}
+XLA_TEST_F(PrngTest, Uniformity61) {
+  EXPECT_LT(UniformChiSquared(61, 256), 79.0819);
+}
+XLA_TEST_F(PrngTest, Uniformity64) {
+  EXPECT_LT(UniformChiSquared(64, 256), 82.5287);
+}
+XLA_TEST_F(PrngTest, Uniformity108) {
+  EXPECT_LT(UniformChiSquared(108, 256), 132.144);
+}
+XLA_TEST_F(PrngTest, Uniformity256) {
+  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+}
+
 XLA_TEST_F(PrngTest, MapUsingRng) {
   // Build a x -> (x + U[0,1)) computation.
   auto build_sum_rng = [this](ComputationBuilder& builder) {
@@ -110,23 +164,22 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
 
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> param0_data,
-                         client_->TransferToServer(*param0_literal));
+      Literal::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> param0_data,
+                          client_->TransferToServer(*param0_literal));
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto fn = build_sum_rng(builder);
   builder.Map({param0}, fn);
 
-  TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(125);
-  TF_ASSIGN_OR_ASSERT_OK(
-      auto actual,
-      client_->ExecuteAndTransfer(computation,
-                                  /*arguments=*/{param0_data.get()},
-                                  &execution_options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto actual, client_->ExecuteAndTransfer(
+                       computation,
+                       /*arguments=*/{param0_data.get()}, &execution_options));
 
   EXPECT_EQ(actual->f32s_size(), param0_literal->f32s_size());
   for (int i = 0; i < param0_literal->f32s_size(); ++i) {
@@ -135,7 +188,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
   }
 }
 
-// This tests demonstrates the global seeding behaviour.
+// This tests demonstrates the global seeding behavior.
 // * If a seed is passed in via Execute (ExecuteAndTransfer) then the output is
 //   fixed (i.e., there is a single output for a given seed);
 // * If no seed is passed in then the output of every call can be different;
@@ -149,47 +202,45 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
     return builder.Build();
   };
 
-  ExecutionOptions execution_options1;
+  ExecutionOptions execution_options1 = execution_options_;
   execution_options1.set_seed(42);
 
-  ExecutionOptions execution_options2;
+  ExecutionOptions execution_options2 = execution_options_;
   execution_options2.set_seed(65);
 
   std::unique_ptr<Literal> result1;
   {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
-    TF_ASSIGN_OR_ASSERT_OK(
-        result1,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options1));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result1, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options1));
   }
   std::unique_ptr<Literal> result2;
   std::unique_ptr<Literal> result3;
   {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
-    TF_ASSIGN_OR_ASSERT_OK(
-        result2,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options1));
-    TF_ASSIGN_OR_ASSERT_OK(
-        result3,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options1));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result2, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options1));
+    TF_ASSERT_OK_AND_ASSIGN(
+        result3, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options1));
   }
 
   std::unique_ptr<Literal> result4;
   std::unique_ptr<Literal> result5;
   std::unique_ptr<Literal> result6;
   {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
-    TF_ASSIGN_OR_ASSERT_OK(
-        result4,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options2));
-    TF_ASSIGN_OR_ASSERT_OK(
-        result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{}));
-    TF_ASSIGN_OR_ASSERT_OK(
-        result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{}));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result4, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options2));
+    TF_ASSERT_OK_AND_ASSIGN(
+        result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options_));
+    TF_ASSERT_OK_AND_ASSIGN(
+        result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options_));
   }
 
   LiteralTestUtil::ExpectEqual(*result1, *result2);
@@ -208,26 +259,21 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
   builder.RngNormal(builder.ConstantR0<float>(0), builder.ConstantR0<float>(1),
                     ShapeUtil::MakeShape(F32, {10}));
 
+  SetSeed(42);
   ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   // TODO(b/25995601): Test that resultant values are reasonable
 }
 
+XLA_TEST_F(PrngTest, RngUniformCrash) {
+  ComputationBuilder builder(client_, TestName());
+
+  // This used to crash XLA during LLVM IR generation for CPUs.
+  auto rng_uniform = builder.RngUniform(builder.ConstantR0<int32>(0),
+                                        builder.ConstantR0<int32>(1000 * 1000),
+                                        ShapeUtil::MakeShape(S32, {}));
+  SetSeed(0);
+  ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

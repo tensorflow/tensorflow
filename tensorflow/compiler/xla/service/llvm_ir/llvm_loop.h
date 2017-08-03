@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -47,22 +47,22 @@ class ForLoop {
   // created exit basic block. Instructions before the insert point remain in
   // the insert BB:
   //
-  //                   /--------------\         /----------------\
+  //                   +--------------+         +----------------+
   //                   |  insert BB   |         |   insert BB    |
   //                   |     ...      |         | (preheader BB) |
   //                   | %foo = ...   |         |      ...       |
   //    insert point ->| %bar = ...   |  ===>   | %foo = ...     |
-  //                   |     ...      |         \----------------/
-  //                   \--------------/                 |
+  //                   |     ...      |         +----------------+
+  //                   +--------------+                 |
   //                                                    V
   //                                              [[ LOOP BBs ]]
   //                                                    |
   //                                                    V
-  //                                             /--------------\
+  //                                             +--------------+
   //                                             |   exit BB    |
   //                                             | %bar = ...   |
   //                                             |     ...      |
-  //                                             \--------------/
+  //                                             +--------------+
   //
   // `suffix` is a string used to disambiguate variable and basic block names
   // emitted in LLVM IR. This string is appended to the name of the induction
@@ -82,31 +82,31 @@ class ForLoop {
   //     do_stuff(i);
   //   }
   //
-  //      /--------------\
+  //      +--------------+
   //      | preheader BB |
   //      |     i = 0    |
-  //      \--------------/
+  //      +--------------+
   //              |
   //              V
-  //      /-------------\
+  //      +-------------+
   //      |  header BB  |<-+
   //      | if i < n:   |  |
   //      |   goto body |  |
   //      | else:       |  |
   //      |   goto exit |  |
-  //      \-------------/  |
+  //      +-------------+  |
   //            | |        |
   //   +--------+ |        |
   //   |          V        |
-  //   |  /-------------\  |
+  //   |  +-------------+  |
   //   |  |   body BB   |  |
   //   |  | dostuff(i)  |--+
   //   |  | ++i         |
-  //   |  \-------------/
+  //   |  +-------------+
   //   |
-  //   |  /-------------\
+  //   |  +-------------+
   //   +->|   exit BB   |
-  //      \-------------/
+  //      +-------------+
   //
   // Caller-emitted code to execute within the loop should be placed within the
   // "body" basic block.
@@ -169,10 +169,20 @@ class ForLoopNest {
   // been added then emit loop inside the body of the last added loop.
   std::unique_ptr<ForLoop> AddLoop(tensorflow::StringPiece suffix,
                                    llvm::Value* start_index,
+                                   llvm::Value* end_index, llvm::Value* stride);
+
+  // Like the above, except that it defaults to a stride of one.
+  std::unique_ptr<ForLoop> AddLoop(tensorflow::StringPiece suffix,
+                                   llvm::Value* start_index,
                                    llvm::Value* end_index);
 
   // A convenient wrapper of the other flavor of AddLoop. The given start and
   // end index are constant.
+  std::unique_ptr<ForLoop> AddLoop(int64 start_index, int64 end_index,
+                                   int64 stride,
+                                   tensorflow::StringPiece suffix);
+
+  // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(int64 start_index, int64 end_index,
                                    tensorflow::StringPiece suffix);
 

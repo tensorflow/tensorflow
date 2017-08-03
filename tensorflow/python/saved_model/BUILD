@@ -105,6 +105,7 @@ py_test(
     srcs = ["saved_model_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",
@@ -122,6 +123,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",

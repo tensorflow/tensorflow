@@ -23,10 +23,6 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -67,6 +63,8 @@ class ClientSession {
   /// Create a new session, configuring it with `session_options`.
   ClientSession(const Scope& scope, const SessionOptions& session_options);
 
+  ~ClientSession();
+
   /// Evaluate the tensors in `fetch_outputs`. The values are returned as
   /// `Tensor` objects in `outputs`. The number and order of `outputs` will
   /// match `fetch_outputs`.
@@ -92,16 +90,10 @@ class ClientSession {
   // TODO(keveman): Add support for partial run.
 
  private:
-  SessionOptions MakeDefaultSessionOptions(const string& target) const;
-  Status MaybeExtendGraph() const;
-
-  std::unique_ptr<Session> session_;
-  std::shared_ptr<Graph> graph_;
-
-  mutable mutex mu_;
-  mutable int last_num_graph_nodes_ GUARDED_BY(mu_) = 0;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ClientSession);
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+  Impl* impl() { return impl_.get(); }
+  const Impl* impl() const { return impl_.get(); }
 };
 
 /// @}

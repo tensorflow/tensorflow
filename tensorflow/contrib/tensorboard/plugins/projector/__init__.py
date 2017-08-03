@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Public API for the Embedding Projector."""
+"""Public API for the Embedding Projector.
+
+@@ProjectorPluginAsset
+@@ProjectorConfig
+@@EmbeddingInfo
+@@EmbeddingMetadata
+@@SpriteMetadata
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,18 +28,18 @@ from __future__ import print_function
 import os
 
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import EmbeddingInfo
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
+from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
+# pylint: disable=wildcard-import
+from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import *
+# pylint: enable=wildcard-import
 from tensorflow.python.lib.io import file_io
-
-PROJECTOR_FILENAME = 'projector_config.pbtxt'
 
 
 def visualize_embeddings(summary_writer, config):
   """Stores a config file used by the embedding projector.
 
   Args:
-    summary_writer: The summary writer used for writting events.
+    summary_writer: The summary writer used for writing events.
     config: `tf.contrib.tensorboard.plugins.projector.ProjectorConfig`
       proto that holds the configuration for the projector such as paths to
       checkpoint files and metadata files for the embeddings. If
@@ -50,5 +57,8 @@ def visualize_embeddings(summary_writer, config):
 
   # Saving the config file in the logdir.
   config_pbtxt = text_format.MessageToString(config)
+  # FYI - the 'projector_config.pbtxt' string is hardcoded in the projector
+  # plugin.
+  # TODO(dandelion): Restore this to a reference to the projector plugin
   file_io.write_string_to_file(
-      os.path.join(logdir, PROJECTOR_FILENAME), config_pbtxt)
+      os.path.join(logdir, 'projector_config.pbtxt'), config_pbtxt)

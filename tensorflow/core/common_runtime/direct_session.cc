@@ -30,11 +30,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -57,9 +59,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#include "tensorflow/core/platform/gpu_tracer.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -84,17 +87,48 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
   return new thread::ThreadPool(options.env, "Compute", num_threads);
 }
 
-thread::ThreadPool* NewThreadPoolFromThreadPoolOptions(
+Status NewThreadPoolFromThreadPoolOptions(
     const SessionOptions& options,
-    const ThreadPoolOptionProto& thread_pool_options, int pool_number) {
+    const ThreadPoolOptionProto& thread_pool_options, int pool_number,
+    thread::ThreadPool** pool, bool* owned) {
   int32 num_threads = thread_pool_options.num_threads();
   if (num_threads == 0) {
     num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
-  VLOG(1) << "Direct session inter op parallelism threads for pool "
-          << pool_number << ": " << num_threads;
-  return new thread::ThreadPool(
-      options.env, strings::StrCat("Compute", pool_number), num_threads);
+  const string& name = thread_pool_options.global_name();
+  if (name.empty()) {
+    // Session-local threadpool.
+    VLOG(1) << "Direct session inter op parallelism threads for pool "
+            << pool_number << ": " << num_threads;
+    *pool = new thread::ThreadPool(
+        options.env, strings::StrCat("Compute", pool_number), num_threads);
+    *owned = true;
+    return Status::OK();
+  }
+
+  // Global, named threadpool.
+  typedef std::pair<int32, thread::ThreadPool*> MapValue;
+  static std::map<string, MapValue>* global_pool_map =
+      new std::map<string, MapValue>;
+  static mutex* mu = new mutex();
+  mutex_lock l(*mu);
+  MapValue* mvalue = &(*global_pool_map)[name];
+  if (mvalue->second == nullptr) {
+    mvalue->first = thread_pool_options.num_threads();
+    mvalue->second = new thread::ThreadPool(
+        options.env, strings::StrCat("Compute", pool_number), num_threads);
+  } else {
+    if (mvalue->first != thread_pool_options.num_threads()) {
+      return errors::InvalidArgument(
+          "Pool ", name,
+          " configured previously with num_threads=", mvalue->first,
+          "; cannot re-configure with num_threads=",
+          thread_pool_options.num_threads());
+    }
+  }
+  *owned = false;
+  *pool = mvalue->second;
+  return Status::OK();
 }
 
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
@@ -231,16 +265,25 @@ DirectSession::DirectSession(const SessionOptions& options,
   if (options_.config.session_inter_op_thread_pool_size() > 0) {
     for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
          ++i) {
-      thread_pools_.push_back(NewThreadPoolFromThreadPoolOptions(
-          options_, options_.config.session_inter_op_thread_pool(i), i));
+      thread::ThreadPool* pool = nullptr;
+      bool owned = false;
+      init_error_.Update(NewThreadPoolFromThreadPoolOptions(
+          options_, options_.config.session_inter_op_thread_pool(i), i, &pool,
+          &owned));
+      thread_pools_.emplace_back(pool, owned);
     }
-    owns_thread_pools_ = true;
   } else if (options_.config.use_per_session_threads()) {
-    thread_pools_.push_back(NewThreadPoolFromSessionOptions(options_));
-    owns_thread_pools_ = true;
+    thread_pools_.emplace_back(NewThreadPoolFromSessionOptions(options_),
+                               true /* owned */);
   } else {
-    thread_pools_.push_back(GlobalThreadPool(options));
-    owns_thread_pools_ = false;
+    thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
+  }
+  // The default value of sync_on_finish will be flipped soon and this
+  // environment variable will be removed as well.
+  Status status =
+      ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
   }
   // NOTE(mrry): We do not need to use a unique string for the session
   // handle, because DirectSession owns its devices. This may change
@@ -282,8 +325,8 @@ DirectSession::~DirectSession() {
     d->op_segment()->RemoveHold(session_handle_);
   }
   delete cancellation_manager_;
-  if (owns_thread_pools_) {
-    for (auto* p : thread_pools_) delete p;
+  for (const auto& p_and_owned : thread_pools_) {
+    if (p_and_owned.second) delete p_and_owned.first;
   }
 
   execution_state_.reset(nullptr);
@@ -322,6 +365,7 @@ Status DirectSession::MaybeInitializeExecutionState(
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
+  TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
     mutex_lock l(graph_def_lock_);
     if (graph_created_) {
@@ -346,6 +390,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(
       MaybeInitializeExecutionState(graph, &already_initialized));
   if (already_initialized) {
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<SimpleGraphExecutionState> state;
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
@@ -353,7 +398,6 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   return Status::OK();
 }
 
-// TODO(yuanbyu): Simplify by treating Run() as "PRunSetup(); PRun()".
 Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
@@ -361,6 +405,31 @@ Status DirectSession::Run(const NamedTensorList& inputs,
   RunMetadata run_metadata;
   return Run(RunOptions(), inputs, output_names, target_nodes, outputs,
              &run_metadata);
+}
+
+Status DirectSession::CreateDebuggerState(
+    const DebugOptions& debug_options, int64 session_run_index,
+    int64 executor_step_index, const std::vector<string>& input_names,
+    const std::vector<string>& output_names,
+    const std::vector<string>& target_names,
+    std::unique_ptr<DebuggerStateInterface>* debugger_state) {
+  TF_RETURN_IF_ERROR(
+      DebuggerStateRegistry::CreateState(debug_options, debugger_state));
+  TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
+      debug_options.global_step(), session_run_index, executor_step_index,
+      input_names, output_names, target_names));
+  return Status::OK();
+}
+
+Status DirectSession::DecorateAndPublishGraphForDebug(
+    const DebugOptions& debug_options, Graph* graph, Device* device) {
+  std::unique_ptr<DebugGraphDecoratorInterface> decorator;
+  TF_RETURN_IF_ERROR(
+      DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
+
+  TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
+  return Status::OK();
 }
 
 Status DirectSession::Run(const RunOptions& run_options,
@@ -391,43 +460,59 @@ Status DirectSession::Run(const RunOptions& run_options,
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
                                    run_options.inter_op_thread_pool());
   }
-  thread::ThreadPool* pool = thread_pools_[run_options.inter_op_thread_pool()];
+  thread::ThreadPool* pool =
+      thread_pools_[run_options.inter_op_thread_pool()].first;
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
-  RunStateArgs run_state_args;
+  RunStateArgs run_state_args(run_options.debug_options());
 
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
-
-  // EXPERIMENTAL: Options that allow the client to insert nodes into partition
-  // graphs for debugging.
-  if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
-    run_state_args.debugger_state =
-        DebuggerStateRegistry::CreateState(run_options.debug_options());
-  }
 
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
                            &executors_and_keys, &run_state_args));
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
-  if (run_state_args.debugger_state) {
-    TF_RETURN_IF_ERROR(run_state_args.debugger_state->PublishDebugMetadata(
-        run_options.debug_options().global_step(), args.step_id,
-        executor_step_count, input_tensor_names, output_names, target_nodes));
+  std::unique_ptr<DebuggerStateInterface> debugger_state;
+  if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
+    TF_RETURN_IF_ERROR(CreateDebuggerState(
+        run_options.debug_options(), args.step_id, executor_step_count,
+        input_tensor_names, output_names, target_nodes, &debugger_state));
+  }
+
+  // Configure a call frame for the step, which we use to feed and
+  // fetch values to and from the executors.
+  FunctionCallFrame call_frame(executors_and_keys->input_types,
+                               executors_and_keys->output_types);
+  gtl::InlinedVector<Tensor, 4> feed_args(inputs.size());
+  for (const auto& it : inputs) {
+    if (it.second.dtype() == DT_RESOURCE) {
+      Tensor tensor_from_handle;
+      TF_RETURN_IF_ERROR(
+          ResourceHandleToInputTensor(it.second, &tensor_from_handle));
+      feed_args[executors_and_keys->input_name_to_index[it.first]] =
+          tensor_from_handle;
+    } else {
+      feed_args[executors_and_keys->input_name_to_index[it.first]] = it.second;
+    }
+  }
+  Status s = call_frame.SetArgs(feed_args);
+  if (errors::IsInternal(s)) {
+    return errors::InvalidArgument(s.error_message());
+  } else if (!s.ok()) {
+    return s;
   }
 
   // Create a run state and start execution.
   RunState run_state(args.step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
   CancellationManager step_cancellation_manager;
-
-  // Send inputs.
-  TF_RETURN_IF_ERROR(SendInputs(inputs, executors_and_keys, run_state.rendez));
+  args.call_frame = &call_frame;
 
   // Start parallel Executors.
-  const int num_executors = executors_and_keys->items.size();
+  const size_t num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state.rendez, [&run_state](const Status& ret) {
         {
@@ -448,7 +533,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
-  args.sync_on_finish = true;
+  args.sync_on_finish = sync_on_finish_;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -458,7 +543,7 @@ Status DirectSession::Run(const RunOptions& run_options,
         options_.config.graph_options().build_cost_model();
     const int64 build_cost_model_after =
         options_.config.graph_options().build_cost_model_after();
-    int measure_step_count = executor_step_count - build_cost_model_after;
+    int64 measure_step_count = executor_step_count - build_cost_model_after;
     if (measure_step_count >= 0) {
       update_cost_model =
           ((measure_step_count + 1) % build_cost_model_every == 0);
@@ -473,9 +558,10 @@ Status DirectSession::Run(const RunOptions& run_options,
 #if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer.reset(CreateGPUTracer());
+    tracer = CreateGPUTracer();
     // tracer will be NULL on non-GPU platforms.
-    if (tracer) tracer->Start();
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    if (tracer) tracer->Start().IgnoreError();
   }
 #endif  // GOOGLE_CUDA
 
@@ -514,8 +600,9 @@ Status DirectSession::Run(const RunOptions& run_options,
 
 #if GOOGLE_CUDA
   if (tracer) {
-    tracer->Stop();
-    tracer->Collect(args.stats_collector);
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    tracer->Stop().IgnoreError();
+    tracer->Collect(args.stats_collector).IgnoreError();
   }
 #endif  // GOOGLE_CUDA
 
@@ -525,8 +612,43 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
 
   // Receive outputs.
-  TF_RETURN_IF_ERROR(
-      RecvOutputs(output_names, executors_and_keys, &run_state, outputs));
+  if (outputs) {
+    std::vector<Tensor> sorted_outputs;
+    Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    if (errors::IsInternal(s)) {
+      return errors::InvalidArgument(s.error_message());
+    } else if (!s.ok()) {
+      return s;
+    }
+    const bool unique_outputs =
+        output_names.size() == executors_and_keys->output_name_to_index.size();
+    // first_indices[i] = j implies that j is the smallest value for which
+    // output_names[i] == output_names[j].
+    std::vector<int> first_indices;
+    if (!unique_outputs) {
+      first_indices.resize(output_names.size());
+      for (int i = 0; i < output_names.size(); ++i) {
+        for (int j = 0; j <= i; ++j) {
+          if (output_names[i] == output_names[j]) {
+            first_indices[i] = j;
+            break;
+          }
+        }
+      }
+    }
+    outputs->clear();
+    outputs->reserve(sorted_outputs.size());
+    for (int i = 0; i < output_names.size(); ++i) {
+      const string& output_name = output_names[i];
+      if (first_indices.empty() || first_indices[i] == i) {
+        outputs->emplace_back(
+            std::move(sorted_outputs[executors_and_keys
+                                         ->output_name_to_index[output_name]]));
+      } else {
+        outputs->push_back((*outputs)[first_indices[i]]);
+      }
+    }
+  }
 
   // Save the output tensors of this run we choose to keep.
   TF_RETURN_IF_ERROR(
@@ -555,11 +677,11 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // If requested via RunOptions, output the partition graphs.
   if (run_options.output_partition_graphs()) {
-    protobuf::RepeatedPtrField<GraphDef>* parition_graph_defs =
+    protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
         run_metadata->mutable_partition_graphs();
     for (const PerPartitionExecutorsAndLib& exec_and_lib :
          executors_and_keys->items) {
-      GraphDef* partition_graph_def = parition_graph_defs->Add();
+      GraphDef* partition_graph_def = partition_graph_defs->Add();
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
@@ -581,11 +703,13 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   // RunOptions is not available in PRunSetup, so use thread pool 0.
-  thread::ThreadPool* pool = thread_pools_[0];
+  thread::ThreadPool* pool = thread_pools_[0].first;
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
-  RunStateArgs run_state_args;
+  // TODO(cais): TFDBG support for partial runs.
+  DebugOptions debug_options;
+  RunStateArgs run_state_args(debug_options);
   run_state_args.is_partial_run = true;
   TF_RETURN_IF_ERROR(GetOrCreateExecutors(pool, input_names, output_names,
                                           target_nodes, &executors_and_keys,
@@ -609,7 +733,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   // Start parallel Executors.
-  const int num_executors = executors_and_keys->items.size();
+  const size_t num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state->rendez, [run_state](const Status& ret) {
         if (!ret.ok()) {
@@ -630,7 +754,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
-  args.sync_on_finish = true;
+  args.sync_on_finish = sync_on_finish_;
 
   if (options_.config.graph_options().build_cost_model()) {
     run_state->collector.reset(new StepStatsCollector(nullptr));
@@ -674,16 +798,23 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
     for (const auto& input : inputs) {
       auto it = run_state->pending_inputs.find(input.first);
       if (it == run_state->pending_inputs.end()) {
+        return errors::InvalidArgument(
+            "The feed ", input.first,
+            " was not specified in partial_run_setup.");
+      } else if (it->second) {
         return errors::InvalidArgument("The feed ", input.first,
-                                       " had already been fed.");
+                                       " has already been fed.");
       }
     }
     // Check that this is a new set of fetches that are still pending.
     for (const auto& output : output_names) {
       auto it = run_state->pending_outputs.find(output);
       if (it == run_state->pending_outputs.end()) {
+        return errors::InvalidArgument(
+            "The fetch ", output, " was not specified in partial_run_setup.");
+      } else if (it->second) {
         return errors::InvalidArgument("The fetch ", output,
-                                       " had already been fetched.");
+                                       " has already been fetched.");
       }
     }
   }
@@ -694,11 +825,11 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       CheckFetch(inputs, output_names, executors_and_keys, run_state));
 
   // Send inputs.
-  Status s = SendInputs(inputs, executors_and_keys, run_state->rendez);
+  Status s = SendPRunInputs(inputs, executors_and_keys, run_state->rendez);
 
   // Receive outputs.
   if (s.ok()) {
-    s = RecvOutputs(output_names, executors_and_keys, run_state, outputs);
+    s = RecvPRunOutputs(output_names, executors_and_keys, run_state, outputs);
   }
 
   // Save the output tensors of this run we choose to keep.
@@ -718,14 +849,15 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
                        << run_state->status;
         }
       }
-      for (const auto& it : inputs) {
-        run_state->pending_inputs.erase(it.first);
+      for (const auto& input : inputs) {
+        auto it = run_state->pending_inputs.find(input.first);
+        it->second = true;
       }
       for (const auto& name : output_names) {
-        run_state->pending_outputs.erase(name);
+        auto it = run_state->pending_outputs.find(name);
+        it->second = true;
       }
-      done = (run_state->pending_inputs.size() == 0 &&
-              run_state->pending_outputs.size() == 0);
+      done = run_state->PendingDone();
     }
     if (done) {
       WaitForNotification(run_state, cancellation_manager_,
@@ -737,16 +869,43 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
   return s;
 }
 
-Status DirectSession::SendInputs(const NamedTensorList& inputs,
-                                 const ExecutorsAndKeys* executors_and_keys,
-                                 IntraProcessRendezvous* rendez) {
+Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
+                                                  Tensor* retrieved_tensor) {
+  if (resource_tensor.dtype() != DT_RESOURCE) {
+    return errors::InvalidArgument(strings::StrCat(
+        "ResourceHandleToInputTensor() received non-DT_RESOURCE Tensor: ",
+        resource_tensor.dtype()));
+  }
+
+  const ResourceHandle& resource_handle =
+      resource_tensor.scalar<ResourceHandle>()();
+
+  if (resource_handle.container() ==
+      SessionState::kTensorHandleResourceTypeName) {
+    return session_state_.GetTensor(resource_handle.name(), retrieved_tensor);
+  } else {
+    return errors::InvalidArgument(strings::StrCat(
+        "Invalid resource type hash code: ", resource_handle.hash_code(),
+        "(name: ", resource_handle.name(),
+        " type: ", resource_handle.maybe_type_name(),
+        "). Perhaps a resource tensor was being provided as a feed? That is "
+        "not currently allowed. Please file an issue at "
+        "https://github.com/tensorflow/tensorflow/issues/new, ideally with a "
+        "short code snippet that leads to this error message."));
+  }
+}
+
+Status DirectSession::SendPRunInputs(const NamedTensorList& inputs,
+                                     const ExecutorsAndKeys* executors_and_keys,
+                                     IntraProcessRendezvous* rendez) {
   Status s;
   Rendezvous::ParsedKey parsed;
   // Insert the input tensors into the local rendezvous by their
   // rendezvous key.
   for (const auto& input : inputs) {
-    auto it = executors_and_keys->input_keys.find(input.first);
-    if (it == executors_and_keys->input_keys.end()) {
+    auto it =
+        executors_and_keys->input_name_to_rendezvous_key.find(input.first);
+    if (it == executors_and_keys->input_name_to_rendezvous_key.end()) {
       return errors::Internal("'", input.first, "' is not a pre-defined feed.");
     }
     const string& input_key = it->second;
@@ -757,7 +916,16 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
       return s;
     }
 
-    s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
+    if (input.second.dtype() == DT_RESOURCE) {
+      Tensor tensor_from_handle;
+      s = ResourceHandleToInputTensor(input.second, &tensor_from_handle);
+      if (s.ok()) {
+        s = rendez->Send(parsed, Rendezvous::Args(), tensor_from_handle, false);
+      }
+    } else {
+      s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
+    }
+
     if (!s.ok()) {
       rendez->StartAbort(s);
       return s;
@@ -766,10 +934,10 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
   return Status::OK();
 }
 
-Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
-                                  const ExecutorsAndKeys* executors_and_keys,
-                                  RunState* run_state,
-                                  std::vector<Tensor>* outputs) {
+Status DirectSession::RecvPRunOutputs(
+    const std::vector<string>& output_names,
+    const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
+    std::vector<Tensor>* outputs) {
   Status s;
   if (!output_names.empty()) {
     outputs->resize(output_names.size());
@@ -780,8 +948,9 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
   for (size_t output_offset = 0; output_offset < output_names.size();
        ++output_offset) {
     const string& output_name = output_names[output_offset];
-    auto it = executors_and_keys->output_keys.find(output_name);
-    if (it == executors_and_keys->output_keys.end()) {
+    auto it =
+        executors_and_keys->output_name_to_rendezvous_key.find(output_name);
+    if (it == executors_and_keys->output_name_to_rendezvous_key.end()) {
       return errors::Internal("'", output_name,
                               "' is not a pre-defined fetch.");
     }
@@ -822,11 +991,13 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
   {
     mutex_lock l(executor_lock_);
-    for (const string& feed : run_state->pending_inputs) {
-      TensorId id(ParseTensorName(feed));
+    for (const auto& input : run_state->pending_inputs) {
+      // Skip if the feed has already been fed.
+      if (input.second) continue;
+      TensorId id(ParseTensorName(input.first));
       auto it = name_to_node->find(id.first);
       if (it == name_to_node->end()) {
-        return errors::NotFound("Feed ", feed, ": not found");
+        return errors::NotFound("Feed ", input.first, ": not found");
       }
       pending_feeds.insert(id);
     }
@@ -874,14 +1045,15 @@ Status DirectSession::GetOrCreateExecutors(
     thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
     ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
-  string debug_tensor_watches_summary;
   int64 handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);
   }
-  if (run_state_args->debugger_state) {
-    debug_tensor_watches_summary =
-        run_state_args->debugger_state->SummarizeDebugTensorWatches();
+
+  string debug_tensor_watches_summary;
+  if (!run_state_args->debug_options.debug_tensor_watch_opts().empty()) {
+    debug_tensor_watches_summary = SummarizeDebugTensorWatches(
+        run_state_args->debug_options.debug_tensor_watch_opts());
   }
 
   // Fast lookup path, no sorting.
@@ -945,14 +1117,19 @@ Status DirectSession::GetOrCreateExecutors(
   options.feed_endpoints = inputs_sorted;
   options.fetch_endpoints = outputs_sorted;
   options.target_nodes = tn_sorted;
+  options.use_function_convention = !run_state_args->is_partial_run;
+  if (!run_state_args->debug_options.debug_tensor_watch_opts().empty()) {
+    options.debug_options = run_state_args->debug_options;
+  }
 
   std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
   // The executor_lock_ is intentionally released while executor is
   // being created.
   std::unordered_map<string, std::unique_ptr<Graph>> graphs;
-  TF_RETURN_IF_ERROR(
-      CreateGraphs(options, &graphs, &ek->flib_def, run_state_args));
+  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, &ek->flib_def,
+                                  run_state_args, &ek->input_types,
+                                  &ek->output_types));
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
@@ -985,9 +1162,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib.reset(NewFunctionLibraryRuntime(
-        device_mgr_.get(), options_.env, device, graph_def_version,
-        ek->flib_def.get(), optimizer_opts));
+    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), options_.env,
+                                           device, graph_def_version,
+                                           ek->flib_def.get(), optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -1017,12 +1194,13 @@ Status DirectSession::GetOrCreateExecutors(
     };
     params.node_outputs_cb = node_outputs_callback_;
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second);
+    optimizer.Optimize(lib, options_.env, device, &iter->second,
+                       /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
-    if (run_state_args->debugger_state) {
-      TF_RETURN_IF_ERROR(run_state_args->debugger_state->DecorateGraphForDebug(
-          partition_graph.get(), params.device));
+    // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
+    if (!options.debug_options.debug_tensor_watch_opts().empty()) {
+      TF_RETURN_IF_ERROR(DecorateAndPublishGraphForDebug(
+          options.debug_options, partition_graph.get(), params.device));
     }
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
@@ -1037,17 +1215,37 @@ Status DirectSession::GetOrCreateExecutors(
     item->executor.reset(executor);
   }
 
-  // Compute the rendezvous keys to avoid recomputing them every time.
-  //
-  // We always use the first device as the device name portion of the
-  // key, even if we're feeding another graph.
-  for (const string& input : inputs) {
-    ek->input_keys[input] = GetRendezvousKey(
-        input, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
-  }
-  for (const string& output : outputs) {
-    ek->output_keys[output] = GetRendezvousKey(
-        output, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
+  // Cache the mapping from input/output names to graph elements to
+  // avoid recomputing it every time.
+  if (!run_state_args->is_partial_run) {
+    // For regular `Run()`, we use the function calling convention, and so
+    // maintain a mapping from input/output names to
+    // argument/return-value ordinal index.
+    for (size_t i = 0; i < inputs_sorted.size(); ++i) {
+      const string& input = inputs_sorted[i];
+      ek->input_name_to_index[input] = i;
+    }
+    for (size_t i = 0; i < outputs_sorted.size(); ++i) {
+      const string& output = outputs_sorted[i];
+      ek->output_name_to_index[output] = i;
+    }
+  } else {
+    // For `PRun()`, we use the rendezvous calling convention, and so
+    // maintain a mapping from input/output names to rendezvous keys.
+    //
+    // We always use the first device as the device name portion of the
+    // key, even if we're feeding another graph.
+    for (size_t i = 0; i < inputs_sorted.size(); ++i) {
+      const string& input = inputs_sorted[i];
+      ek->input_name_to_rendezvous_key[input] = GetRendezvousKey(
+          input, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
+    }
+    for (size_t i = 0; i < outputs_sorted.size(); ++i) {
+      const string& output = outputs_sorted[i];
+      ek->output_name_to_rendezvous_key[output] =
+          GetRendezvousKey(output, device_set_.client_device()->attributes(),
+                           FrameAndIter(0, 0));
+    }
   }
 
   // Reacquire the lock, try to insert into the map.
@@ -1068,7 +1266,8 @@ Status DirectSession::CreateGraphs(
     const BuildGraphOptions& subgraph_options,
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
-    RunStateArgs* run_state_args) {
+    RunStateArgs* run_state_args, DataTypeVector* input_types,
+    DataTypeVector* output_types) {
   mutex_lock l(graph_def_lock_);
   std::unique_ptr<SimpleClientGraph> client_graph;
 
@@ -1091,6 +1290,23 @@ Status DirectSession::CreateGraphs(
     execution_state = execution_state_.get();
     TF_RETURN_IF_ERROR(
         execution_state->BuildGraph(subgraph_options, &client_graph));
+  }
+
+  if (subgraph_options.feed_endpoints.size() !=
+      client_graph->feed_types.size()) {
+    return errors::Internal(
+        "Graph pruning failed: requested number of feed endpoints = ",
+        subgraph_options.feed_endpoints.size(),
+        " versus number of pruned feed endpoints = ",
+        client_graph->feed_types.size());
+  }
+  if (subgraph_options.fetch_endpoints.size() !=
+      client_graph->fetch_types.size()) {
+    return errors::Internal(
+        "Graph pruning failed: requested number of fetch endpoints = ",
+        subgraph_options.fetch_endpoints.size(),
+        " versus number of pruned fetch endpoints = ",
+        client_graph->fetch_types.size());
   }
 
   auto current_stateful_placements = execution_state->GetStatefulPlacements();
@@ -1132,6 +1348,7 @@ Status DirectSession::CreateGraphs(
     // Just return '1'.
     return 1;
   };
+  popts.flib_def = &client_graph->graph.flib_def();
   popts.control_flow_added = false;
 
   std::unordered_map<string, GraphDef> partitions;
@@ -1145,7 +1362,7 @@ Status DirectSession::CreateGraphs(
 
   // Check for valid partitions.
   for (const auto& partition : partitions) {
-    const string& local_partition_name =
+    const string local_partition_name =
         DeviceNameUtils::LocalName(partition.first);
     if (std::count(device_names.begin(), device_names.end(),
                    local_partition_name) == 0) {
@@ -1198,7 +1415,20 @@ Status DirectSession::CreateGraphs(
     }
   }
   *flib_def = std::move(client_graph->flib_def);
+  std::swap(*input_types, client_graph->feed_types);
+  std::swap(*output_types, client_graph->fetch_types);
   return s;
+}
+
+::tensorflow::Status DirectSession::ListDevices(
+    std::vector<DeviceAttributes>* response) {
+  response->clear();
+  response->reserve(devices_.size());
+  for (Device* d : devices_) {
+    const DeviceAttributes& attrs = d->attributes();
+    response->emplace_back(attrs);
+  }
+  return ::tensorflow::Status::OK();
 }
 
 ::tensorflow::Status DirectSession::Reset(
@@ -1231,10 +1461,10 @@ DirectSession::RunState::RunState(
       }) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : pending_input_names) {
-    pending_inputs.emplace(name);
+    pending_inputs[name] = false;
   }
   for (auto& name : pending_output_names) {
-    pending_outputs.emplace(name);
+    pending_outputs[name] = false;
   }
 }
 
@@ -1250,6 +1480,16 @@ DirectSession::RunState::~RunState() {
     }
     rendez->Unref();
   }
+}
+
+bool DirectSession::RunState::PendingDone() const {
+  for (const auto& it : pending_inputs) {
+    if (!it.second) return false;
+  }
+  for (const auto& it : pending_outputs) {
+    if (!it.second) return false;
+  }
+  return true;
 }
 
 void DirectSession::WaitForNotification(RunState* run_state,

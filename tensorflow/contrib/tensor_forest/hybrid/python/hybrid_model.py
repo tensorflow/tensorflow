@@ -20,7 +20,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.tensor_forest.python import tensor_forest
+from tensorflow.contrib.framework.python.ops import variables as framework_variables
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -45,7 +45,7 @@ class HybridModel(object):
                **kwargs):
 
     self.device_assigner = (
-        device_assigner or tensor_forest.RandomForestDeviceAssigner())
+        device_assigner or framework_variables.VariableDeviceChooser())
 
     self.params = params
 

@@ -23,6 +23,8 @@ import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _recursive_apply(tensors, apply_fn):
@@ -44,6 +46,8 @@ def _recursive_apply(tensors, apply_fn):
   tensors_type = type(tensors)
   if tensors_type is ops.Tensor:
     return apply_fn(tensors)
+  elif tensors_type is variables.Variable:
+    return apply_fn(tensors.value())
   elif isinstance(tensors, (list, tuple)):
     tensors = [_recursive_apply(t, apply_fn) for t in tensors]
     if tensors_type is list:
@@ -53,7 +57,7 @@ def _recursive_apply(tensors, apply_fn):
     return tensors_type(*tensors)  # collections.namedtuple
   elif tensors_type is dict:
     return dict([(k, _recursive_apply(v, apply_fn))
-                 for k, v in tensors.iteritems()])
+                 for k, v in tensors.items()])
   else:
     raise TypeError('_recursive_apply argument %r has invalid type %r' %
                     (tensors, tensors_type))
@@ -128,10 +132,16 @@ def _subscribe_new(tensor, side_effects, control_cache):
     consumer_op._update_input(index, out)  # pylint: disable=protected-access
 
   for consumer_op in update_control_input:
-    consumer_op._control_inputs.remove(tensor.op)  # pylint: disable=protected-access
-    consumer_op._control_inputs.append(out.op)  # pylint: disable=protected-access
-    consumer_op._recompute_node_def()  # pylint: disable=protected-access
-
+    # If an op has more than one output and two or more of its output tensors
+    # are subscribed at the same time, we remove the control dependency from
+    # the original op only once and we add the dependencies to all the
+    # new identities.
+    # pylint: disable=protected-access
+    if tensor.op in consumer_op._control_inputs:
+      consumer_op._control_inputs.remove(tensor.op)
+    consumer_op._control_inputs.append(out.op)
+    consumer_op._recompute_node_def()
+    # pylint: enable=protected-access
   return out
 
 
@@ -215,6 +225,12 @@ def _subscribe(tensor, side_effects, control_cache):
     The modified replacement to the passed in tensor which triggers the side
     effects or the given tensor, if it was already been subscribed.
   """
+  # Check if the given tensor has a numpy compatible type (see dtypes.py).
+  # If not, we cannot subscribe it, so we just return the original tensor.
+  if not tensor.dtype.is_numpy_compatible:
+    logging.debug(('Tensor {} has an un-supported {} type and cannot be '
+                   'subscribed.').format(tensor.name, tensor.dtype))
+    return tensor
 
   if _is_subscribed_identity(tensor):
     return _subscribe_extend(tensor, side_effects)
@@ -266,7 +282,7 @@ def subscribe(tensors, side_effects):
     Subscribed tensors, which are identity copies of the passed in tensors
       in the same passed in structure, but the graph has been modified
       such that these are downstream of the control dependencies for
-      the side effect graphs. Use these functionally equivelant tensors
+      the side effect graphs. Use these functionally equivalent tensors
       instead of the passed in tensors for further construction or running.
   """
   if not hasattr(side_effects, '__iter__'):

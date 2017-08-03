@@ -149,7 +149,7 @@ struct FusedBatchNormGrad<CPUDevice, T> {
     typename TTypes<T>::Vec scale_backprop(scale_backprop_output->vec<T>());
     typename TTypes<T>::Vec offset_backprop(offset_backprop_output->vec<T>());
 
-    // Note: the following formulas are used to to compute the gradients for
+    // Note: the following formulas are used to compute the gradients for
     // back propagation.
     // x_backprop = scale * rsqrt(variance + epsilon) *
     //              [y_backprop - mean(y_backprop) - (x - mean(x)) *
@@ -300,8 +300,9 @@ struct FusedBatchNorm<GPUDevice, T> {
     GPUDevice d = context->eigen_device<GPUDevice>();
     using perftools::gputools::DeviceMemory;
     Tensor inv_var;
-    context->allocate_temp(DataTypeToEnum<T>::value, estimated_variance.shape(),
-                           &inv_var);
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                        estimated_variance.shape(), &inv_var));
     auto inv_var_ptr = StreamExecutorUtil::AsDeviceMemory<T>(inv_var);
     std::function<const DeviceMemory<T>&()> var_to_inv_var =
         [d, epsilon, estimated_variance,
@@ -520,7 +521,8 @@ class FusedBatchNormOp : public OpKernel {
     }
 
     Tensor* y = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, x.shape(), &y));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, x.shape(), &y));
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, scale.shape(), &batch_mean));

@@ -8,12 +8,14 @@ def if_cuda(if_true, if_false = []):
     """
     return select({
         "@local_config_cuda//cuda:using_nvcc": if_true,
+        "@local_config_cuda//cuda:using_clang": if_true,
         "//conditions:default": if_false
     })
 
+
 def cuda_default_copts():
     """Default options for all CUDA compilations."""
-    return if_cuda(["-x", "cuda", "-DGOOGLE_CUDA=1"])
+    return if_cuda(["-x", "cuda", "-DGOOGLE_CUDA=1"] + %{cuda_extra_copts})
 
 
 def cuda_is_configured():

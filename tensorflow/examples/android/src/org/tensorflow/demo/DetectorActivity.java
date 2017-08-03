@@ -66,7 +66,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   // must be manually placed in the assets/ directory by the user.
   // Graphs and models downloaded from http://pjreddie.com/darknet/yolo/ may be converted e.g. via
   // DarkFlow (https://github.com/thtrieu/darkflow). Sample command:
-  // ./flow --model cfg/tiny-yolo-voc.cfg --load bin/tiny-yolo-voc.weights --savepb --verbalise=True
+  // ./flow --model cfg/tiny-yolo-voc.cfg --load bin/tiny-yolo-voc.weights --savepb --verbalise
   private static final String YOLO_MODEL_FILE = "file:///android_asset/graph-tiny-yolo-voc.pb";
   private static final int YOLO_INPUT_SIZE = 416;
   private static final String YOLO_INPUT_NAME = "input";
@@ -82,6 +82,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.25f : 0.1f;
 
   private static final boolean MAINTAIN_ASPECT = USE_YOLO;
+
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
 
   private static final boolean SAVE_PREVIEW_BITMAP = false;
   private static final float TEXT_SIZE_DIP = 10;
@@ -122,32 +124,29 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
+    tracker = new MultiBoxTracker(this);
 
-    try {
-      if (USE_YOLO) {
-        detector =
-            TensorFlowYoloDetector.create(
-                getAssets(),
-                YOLO_MODEL_FILE,
-                YOLO_INPUT_SIZE,
-                YOLO_INPUT_NAME,
-                YOLO_OUTPUT_NAMES,
-                YOLO_BLOCK_SIZE);
-      } else {
-        detector =
-            TensorFlowMultiBoxDetector.create(
-                getAssets(),
-                MB_MODEL_FILE,
-                MB_LOCATION_FILE,
-                MB_IMAGE_MEAN,
-                MB_IMAGE_STD,
-                MB_INPUT_NAME,
-                MB_OUTPUT_LOCATIONS_NAME,
-                MB_OUTPUT_SCORES_NAME);
-      }
-    } catch (final Exception e) {
-      throw new RuntimeException("Error initializing TensorFlow!", e);
+
+    if (USE_YOLO) {
+      detector =
+          TensorFlowYoloDetector.create(
+              getAssets(),
+              YOLO_MODEL_FILE,
+              YOLO_INPUT_SIZE,
+              YOLO_INPUT_NAME,
+              YOLO_OUTPUT_NAMES,
+              YOLO_BLOCK_SIZE);
+    } else {
+      detector =
+          TensorFlowMultiBoxDetector.create(
+              getAssets(),
+              MB_MODEL_FILE,
+              MB_LOCATION_FILE,
+              MB_IMAGE_MEAN,
+              MB_IMAGE_STD,
+              MB_INPUT_NAME,
+              MB_OUTPUT_LOCATIONS_NAME,
+              MB_OUTPUT_SCORES_NAME);
     }
 
     previewWidth = size.getWidth();
@@ -272,16 +271,17 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
       ImageUtils.convertYUV420ToARGB8888(
-          yuvBytes[0],
-          yuvBytes[1],
-          yuvBytes[2],
-          rgbBytes,
-          previewWidth,
-          previewHeight,
-          yRowStride,
-          uvRowStride,
-          uvPixelStride,
-          false);
+              yuvBytes[0],
+              yuvBytes[1],
+              yuvBytes[2],
+              rgbBytes,
+              previewWidth,
+              previewHeight,
+              yRowStride,
+              uvRowStride,
+              uvPixelStride,
+              false);
+
 
       image.close();
     } catch (final Exception e) {
@@ -347,14 +347,16 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     Trace.endSection();
   }
 
+  protected  void processImageRGBbytes(int[] rgbBytes ) {}
+
   @Override
   protected int getLayoutId() {
     return R.layout.camera_connection_fragment_tracking;
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return CROP_SIZE;
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   @Override

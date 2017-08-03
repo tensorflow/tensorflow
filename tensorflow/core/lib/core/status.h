@@ -18,20 +18,26 @@ limitations under the License.
 
 #include <functional>
 #include <iosfwd>
+#include <memory>
 #include <string>
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+#if defined(__clang__)
+// Only clang supports warn_unused_result as a type annotation.
+class TF_MUST_USE_RESULT Status;
+#endif
 
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
  public:
   /// Create a success status.
-  Status() : state_(NULL) {}
-  ~Status() { delete state_; }
+  Status() {}
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
@@ -85,7 +91,7 @@ class Status {
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
-  State* state_;
+  std::unique_ptr<State> state_;
 
   void SlowCopyFrom(const State* src);
 };
@@ -97,7 +103,7 @@ inline void Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
-    SlowCopyFrom(s.state_);
+    SlowCopyFrom(s.state_.get());
   }
 }
 
@@ -112,8 +118,19 @@ std::ostream& operator<<(std::ostream& os, const Status& x);
 
 typedef std::function<void(const Status&)> StatusCallback;
 
-#define TF_CHECK_OK(val) CHECK_EQ(::tensorflow::Status::OK(), (val))
-#define TF_QCHECK_OK(val) QCHECK_EQ(::tensorflow::Status::OK(), (val))
+extern tensorflow::string* TfCheckOpHelperOutOfLine(
+    const ::tensorflow::Status& v, const char* msg);
+inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
+                                           const char* msg) {
+  if (v.ok()) return nullptr;
+  return TfCheckOpHelperOutOfLine(v, msg);
+}
+#define TF_CHECK_OK(val)                                             \
+  while (::tensorflow::string* _result = TfCheckOpHelper(val, #val)) \
+  LOG(FATAL) << *(_result)
+#define TF_QCHECK_OK(val)                                            \
+  while (::tensorflow::string* _result = TfCheckOpHelper(val, #val)) \
+  LOG(QFATAL) << *(_result)
 
 // DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
 // mode.

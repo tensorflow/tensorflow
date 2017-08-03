@@ -21,9 +21,9 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "external/llvm/include/llvm/MC/MCInst.h"
-#include "external/llvm/include/llvm/Support/TargetRegistry.h"
-#include "external/llvm/include/llvm/Support/raw_ostream.h"
+#include "llvm/MC/MCInst.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"

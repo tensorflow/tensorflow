@@ -17,32 +17,43 @@
 See the @{$python/contrib.layers} guide.
 
 @@avg_pool2d
+@@avg_pool3d
 @@batch_norm
 @@convolution2d
+@@convolution3d
 @@conv2d_in_plane
 @@convolution2d_in_plane
 @@conv2d_transpose
 @@convolution2d_transpose
+@@conv3d_transpose
+@@convolution3d_transpose
 @@dropout
+@@elu
 @@embedding_lookup_unique
 @@flatten
 @@fully_connected
+@@GDN
+@@gdn
 @@layer_norm
 @@linear
 @@max_pool2d
+@@max_pool3d
 @@one_hot_encoding
 @@relu
 @@relu6
 @@repeat
 @@safe_embedding_lookup_sparse
+@@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
 @@softmax
 @@stack
 @@unit_norm
+@@bow_encoder
 @@embed_sequence
 
 @@apply_regularization
+@@l1_l2_regularizer
 @@l1_regularizer
 @@l2_regularizer
 @@sum_regularizer
@@ -67,6 +78,7 @@ See the @{$python/contrib.layers} guide.
 @@embedding_column
 @@scattered_embedding_column
 @@input_from_feature_columns
+@@transform_features
 @@joint_weighted_sum_from_feature_columns
 @@make_place_holder_tensors_for_base_features
 @@multi_class_target
@@ -96,6 +108,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['bias_add',
                     'conv2d',
+                    'conv3d',
+                    'elu',
                     'feature_column',
                     'legacy_fully_connected',
                     'legacy_linear',

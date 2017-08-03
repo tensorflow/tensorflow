@@ -28,12 +28,12 @@ Computation::Computation(ServiceInterface* parent,
     : handle_(handle), parent_(parent) {}
 
 Computation::Computation(Computation&& computation)
-    : handle_(computation.handle_), parent_(computation.parent_) {
+    : handle_(std::move(computation.handle_)), parent_(computation.parent_) {
   computation.ResetWithoutFreeing();
 }
 
 void Computation::Reset() {
-  // TODO(leary) deallocate any owned computation.
+  // TODO(b/34469253) deallocate any owned computation.
   ResetWithoutFreeing();
 }
 

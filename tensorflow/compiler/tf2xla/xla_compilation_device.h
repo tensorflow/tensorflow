@@ -52,6 +52,8 @@ class XlaCompilationDevice : public LocalDevice {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
 
+  void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
+
   Status Sync() override;
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
@@ -60,6 +62,49 @@ class XlaCompilationDevice : public LocalDevice {
 
  private:
   std::unique_ptr<XlaCompilationAllocator> allocator_;
+};
+
+// Represents a resource, such as a Variable or TensorArray.
+struct XlaResource {
+  enum Kind {
+    kInvalid,
+    kVariable,
+    kTensorArray,
+    kStack,
+  };
+
+  Kind kind = kInvalid;
+
+  // If this resource is visible externally, what was its argument number?
+  int arg_num = -1;
+
+  // A descriptive name for the resource, used in error messages.
+  string name;
+
+  // Current type and value of the resource. Uninitialized resources are
+  // represented by a default (zero) handle and type DT_INVALID.
+  // While the type of a resource is notionally fixed during execution, when
+  // a resource is first initialized we do not yet know its type, so we keep
+  // track of its type dynamically.
+  DataType type = DT_INVALID;
+  xla::ComputationDataHandle value;
+
+  // Value of the resource at computation entry. Used to detect which
+  // variables have new values that need to be written back.
+  xla::ComputationDataHandle initial_value;
+
+  // TensorArray-specific fields
+
+  // 'tensor_array_size' stores the expected size of the TensorArray. We need
+  // to store this since sometimes TensorArrays must be initialized lazily since
+  // we do not know the element shape at construction time.
+  int64 tensor_array_size = -1;
+
+  // 'tensor_array_gradient' is a map from TensorArrayGradV3 'source' attributes
+  // to an XlaResource containing the gradient TensorArrays. We store a pointer
+  // here since there should only be one gradient TensorArray per 'source'
+  // string, irrespective of the number of calls to TensorArrayGrad.
+  std::unordered_map<string, XlaResource*> tensor_array_gradient;
 };
 
 // A XlaExpression wraps an XLA computation. Each Tensor on an
@@ -74,11 +119,14 @@ class XlaExpression {
   // handle() stores the XLA handle of the computation that the
   // expression represents.
   void set_handle(const xla::ComputationDataHandle& h);
-  const xla::ComputationDataHandle& handle() const;
+  const xla::ComputationDataHandle& handle() const { return handle_; }
 
   void set_constant_value(Tensor value);
   bool has_constant_value() const { return has_constant_value_; }
   const Tensor& constant_value() const { return constant_value_; }
+
+  void set_resource(XlaResource* resource) { resource_ = resource; }
+  XlaResource* resource() const { return resource_; }
 
  private:
   // The XLA handle of the expression's computation.
@@ -87,8 +135,10 @@ class XlaExpression {
   // If this expression is a constant with a known value, 'constant_value' is a
   // host-memory Tensor containing the value. Used to avoid invoking XLA for
   // expressions that are trivially constant.
-  bool has_constant_value_;
+  bool has_constant_value_ = false;
   Tensor constant_value_;
+
+  XlaResource* resource_ = nullptr;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };

@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.learn_io import numpy_io
@@ -56,6 +49,159 @@ class NumpyIoTest(test.TestCase):
       self.assertAllEqual(res[1], [-32, -31])
 
       session.run([features, target])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithVeryLargeBatchSizeAndMultipleEpochs(self):
+    a = np.arange(2) * 1.0
+    b = np.arange(32, 34)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -30)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=128, shuffle=False, num_epochs=2)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1, 0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33, 32, 33])
+      self.assertAllEqual(res[1], [-32, -31, -32, -31])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithZeroEpochs(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -28)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=0)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeNotDividedByDataSize(self):
+    batch_size = 2
+    a = np.arange(5) * 1.0
+    b = np.arange(32, 37)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -27)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2, 3])
+      self.assertAllEqual(res[0]['b'], [34, 35])
+      self.assertAllEqual(res[1], [-30, -29])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [4])
+      self.assertAllEqual(res[0]['b'], [36])
+      self.assertAllEqual(res[1], [-28])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeNotDividedByDataSizeAndMultipleEpochs(self):
+    batch_size = 2
+    a = np.arange(3) * 1.0
+    b = np.arange(32, 35)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -29)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=3)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2, 0])
+      self.assertAllEqual(res[0]['b'], [34, 32])
+      self.assertAllEqual(res[1], [-30, -32])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [1, 2])
+      self.assertAllEqual(res[0]['b'], [33, 34])
+      self.assertAllEqual(res[1], [-31, -30])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2])
+      self.assertAllEqual(res[0]['b'], [34])
+      self.assertAllEqual(res[1], [-30])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeLargerThanDataSize(self):
+    batch_size = 10
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -28)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1, 2, 3])
+      self.assertAllEqual(res[0]['b'], [32, 33, 34, 35])
+      self.assertAllEqual(res[1], [-32, -31, -30, -29])
+
       with self.assertRaises(errors.OutOfRangeError):
         session.run([features, target])
 
@@ -103,7 +249,7 @@ class NumpyIoTest(test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       input_fn()
       self.assertAllEqual(x['__target_key__'], array)
-      self.assertAllEqual(x['__target_key___n'], y)
+      self.assertItemsEqual(x.keys(), ['__target_key__'])
 
   def testNumpyInputFnWithMismatchLengthOfInputs(self):
     a = np.arange(4) * 1.0

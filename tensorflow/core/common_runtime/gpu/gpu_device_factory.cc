@@ -31,12 +31,17 @@ class GPUDevice : public BaseGPUDevice {
             Allocator* cpu_allocator)
       : BaseGPUDevice(options, name, memory_limit, locality, gpu_id,
                       physical_device_desc, gpu_allocator, cpu_allocator,
-                      false /* sync every op */, 1 /* max_streams */) {}
+                      false /* sync every op */, 1 /* max_streams */) {
+    if (options.config.has_gpu_options()) {
+      force_gpu_compatible_ =
+          options.config.gpu_options().force_gpu_compatible();
+    }
+  }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     if (attr.on_host()) {
-      ProcessState* ps = ProcessState::singleton();
-      if (attr.gpu_compatible()) {
+      if (attr.gpu_compatible() || force_gpu_compatible_) {
+        ProcessState* ps = ProcessState::singleton();
         return ps->GetCUDAHostAllocator(0);
       } else {
         return cpu_allocator_;
@@ -45,6 +50,9 @@ class GPUDevice : public BaseGPUDevice {
       return gpu_allocator_;
     }
   }
+
+ private:
+  bool force_gpu_compatible_ = false;
 };
 
 class GPUDeviceFactory : public BaseGPUDeviceFactory {
@@ -71,18 +79,26 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   GPUCompatibleCPUDevice(const SessionOptions& options, const string& name,
                          Bytes memory_limit, const DeviceLocality& locality,
                          Allocator* allocator)
-      : ThreadPoolDevice(options, name, memory_limit, locality, allocator) {}
+      : ThreadPoolDevice(options, name, memory_limit, locality, allocator) {
+    if (options.config.has_gpu_options()) {
+      force_gpu_compatible_ =
+          options.config.gpu_options().force_gpu_compatible();
+    }
+  }
   ~GPUCompatibleCPUDevice() override {}
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     ProcessState* ps = ProcessState::singleton();
-    if (attr.gpu_compatible()) {
+    if (attr.gpu_compatible() || force_gpu_compatible_) {
       return ps->GetCUDAHostAllocator(0);
     } else {
       // Call the parent's implementation.
       return ThreadPoolDevice::GetAllocator(attr);
     }
   }
+
+ private:
+  bool force_gpu_compatible_ = false;
 };
 
 // The associated factory.

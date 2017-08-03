@@ -35,7 +35,6 @@ failing_cpu_cc_tests="\
 "
 
 broken_cpu_cc_tests="\
-    //tensorflow/core/kernels/hexagon:graph_transferer_test + \
     //tensorflow/cc:framework_cc_ops_test + \
     //tensorflow/core/platform/cloud:time_util_test + \
     //tensorflow/core/platform/cloud:oauth_client_test + \
@@ -43,7 +42,9 @@ broken_cpu_cc_tests="\
     //tensorflow/core/platform/cloud:google_auth_provider_test + \
     //tensorflow/core/platform/cloud:gcs_file_system_test + \
     //tensorflow/core/kernels/cloud:bigquery_table_accessor_test + \
+    //tensorflow/core/kernels/hexagon:graph_transferer_test + \
     //tensorflow/core/kernels/hexagon:quantized_matmul_op_for_hexagon_test + \
+    //tensorflow/core/kernels:remote_fused_graph_execute_utils_test + \
     //tensorflow/core/kernels:requantize_op_test + \
     //tensorflow/core/kernels:requantization_range_op_test + \
     //tensorflow/core/kernels:quantized_reshape_op_test + \
@@ -95,65 +96,6 @@ exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 
-# Python tests
-# The first argument is the name of the python test direcotry
-function get_failing_cpu_py_tests() {
-    echo "
-    //$1/tensorflow/python:basic_session_run_hooks_test + \
-    //$1/tensorflow/python:bigquery_reader_ops_test + \
-    //$1/tensorflow/python:contrib_test + \
-    //$1/tensorflow/python:dequantize_op_test + \
-    //$1/tensorflow/python:directory_watcher_test + \
-    //$1/tensorflow/python:event_multiplexer_test + \
-    //$1/tensorflow/python:file_io_test + \
-    //$1/tensorflow/python:file_system_test + \
-    //$1/tensorflow/python:framework_meta_graph_test + \
-    //$1/tensorflow/python:framework_ops_test + \
-    //$1/tensorflow/python:framework_tensor_util_test + \
-    //$1/tensorflow/python:framework_test_util_test + \
-    //$1/tensorflow/python:gradients_test + \
-    //$1/tensorflow/python:image_ops_test + \
-    //$1/tensorflow/python:localhost_cluster_performance_test + \
-    //$1/tensorflow/python:monitored_session_test + \
-    //$1/tensorflow/python:nn_batchnorm_test + \
-    //$1/tensorflow/python:protobuf_compare_test + \
-    //$1/tensorflow/python:quantized_conv_ops_test + \
-    //$1/tensorflow/python:saver_large_variable_test + \
-    //$1/tensorflow/python:saver_test + \
-    //$1/tensorflow/python:session_test + \
-    //$1/tensorflow/python:supervisor_test + \
-    //$1/tensorflow/python:sync_replicas_optimizer_test + \
-    //$1/tensorflow/python/debug:curses_ui_test + \
-    //$1/tensorflow/python/kernel_tests:as_string_op_test + \
-    //$1/tensorflow/python/kernel_tests:benchmark_test + \
-    //$1/tensorflow/python/kernel_tests:cast_op_test + \
-    //$1/tensorflow/python/kernel_tests:clip_ops_test + \
-    //$1/tensorflow/python/kernel_tests:conv_ops_test + \
-    //$1/tensorflow/python/kernel_tests:decode_image_op_test + \
-    //$1/tensorflow/python/kernel_tests:depthwise_conv_op_test + \
-    //$1/tensorflow/python/kernel_tests:functional_ops_test + \
-    //$1/tensorflow/python/kernel_tests:py_func_test + \
-    //$1/tensorflow/python/kernel_tests:rnn_test + \
-    //$1/tensorflow/python/kernel_tests:sets_test + \
-    //$1/tensorflow/python/kernel_tests:sparse_matmul_op_test + \
-    //$1/tensorflow/python/kernel_tests:string_to_number_op_test + \
-    //$1/tensorflow/python/kernel_tests:summary_ops_test + \
-    //$1/tensorflow/python/kernel_tests:variable_scope_test + \
-    //$1/tensorflow/python/saved_model:saved_model_test \
-    "
-}
-
-function get_failing_gpu_py_tests() {
-    echo "
-    //$1/tensorflow/python/kernel_tests:diag_op_test + \
-    //$1/tensorflow/python/kernel_tests:one_hot_op_test + \
-    //$1/tensorflow/python/kernel_tests:rnn_test + \
-    //$1/tensorflow/python/kernel_tests:sets_test + \
-    //$1/tensorflow/python/kernel_tests:trace_op_test + \
-    $(get_failing_cpu_py_tests $1)
-    "
-}
-
 function clean_output_base() {
   # TODO(pcloudy): bazel clean --expunge doesn't work on Windows yet.
   # Clean the output base manually to ensure build correctness
@@ -177,6 +119,13 @@ function run_configure_for_cpu_build {
   if [ -z "$CC_OPT_FLAGS" ]; then
     export CC_OPT_FLAGS="-march=native"
   fi
+  if [ -z "$TF_NEED_MKL" ]; then
+    export TF_NEED_MKL=0
+  fi
+  export TF_NEED_VERBS=0
+  export TF_NEED_GCP=0
+  export TF_NEED_HDFS=0
+  export TF_NEED_OPENCL=0
   echo "" | ./configure
 }
 
@@ -196,6 +145,11 @@ function run_configure_for_gpu_build {
   if [ -z "$CC_OPT_FLAGS" ]; then
     export CC_OPT_FLAGS="-march=native"
   fi
+  export TF_NEED_VERBS=0
+  export TF_NEED_MKL=0
+  export TF_NEED_GCP=0
+  export TF_NEED_HDFS=0
+  export TF_NEED_OPENCL=0
   echo "" | ./configure
 }
 
@@ -207,5 +161,5 @@ function create_python_test_dir() {
 
 function reinstall_tensorflow_pip() {
   echo "y" | pip uninstall tensorflow -q || true
-  pip install ${1}
+  pip install ${1} --no-deps
 }

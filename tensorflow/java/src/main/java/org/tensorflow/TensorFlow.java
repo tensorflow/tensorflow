@@ -20,24 +20,20 @@ public final class TensorFlow {
   /** Returns the version of the underlying TensorFlow runtime. */
   public static native String version();
 
+  /**
+   * All the TensorFlow operations available in this address space.
+   *
+   * @return A serialized representation of an <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto">OpList</a>
+   *     protocol buffer, which lists all the available TensorFlow operations.
+   */
+  public static native byte[] registeredOpList();
+
   private TensorFlow() {}
 
   /** Load the TensorFlow runtime C library. */
   static void init() {
-    try {
-      System.loadLibrary("tensorflow_jni");
-    } catch (UnsatisfiedLinkError e) {
-      // The native code might have been statically linked (through a custom launcher) or be part of
-      // an application-level library. For example, tensorflow/examples/android and
-      // tensorflow/contrib/android include the required native code in differently named libraries.
-      // To allow for such cases, the UnsatisfiedLinkError does not bubble up here.
-      try {
-        version();
-      } catch (UnsatisfiedLinkError e2) {
-        System.err.println(
-            "TensorFlow Java API methods will throw an UnsatisfiedLinkError unless native code shared libraries are loaded");
-      }
-    }
+    NativeLibrary.load();
   }
 
   static {

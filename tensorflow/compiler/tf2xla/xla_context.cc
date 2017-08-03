@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -52,7 +54,11 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return *context;
 }
 
-void XlaContext::set_args(std::vector<HandleOrConstant> args) {
+/* static */ XlaContext& XlaContext::Get(const XlaOpKernelContext* ctx) {
+  return Get(ctx->op_kernel_context());
+}
+
+void XlaContext::set_args(std::vector<Argument> args) {
   args_ = std::move(args);
 }
 
@@ -72,8 +78,8 @@ XlaContext::GetOrCreateRuntimeContextParameter() {
 
   // Allocate the next available parameter for the context parameter.
   int num_parameters = 0;
-  for (const HandleOrConstant& arg : args_) {
-    if (!arg.is_constant) {
+  for (const Argument& arg : args_) {
+    if (!arg.value.is_constant) {
       ++num_parameters;
     }
   }
@@ -86,7 +92,7 @@ string XlaContext::DebugString() { return "TLA JIT context"; }
 
 // This is called by the Retval Op to associate a computed value
 // with a specific return value of the subgraph.
-void XlaContext::AddRetval(int retval_index,
+void XlaContext::AddRetval(int retval_index, DataType type,
                            const xla::ComputationDataHandle& handle) {
   VLOG(1) << "Added retval index " << retval_index << " to XLA computation";
   // Add the return value to the list being built up.
@@ -94,6 +100,7 @@ void XlaContext::AddRetval(int retval_index,
     retvals_.resize(retval_index + 1);
   }
   retvals_[retval_index].is_constant = false;
+  retvals_[retval_index].type = type;
   retvals_[retval_index].handle = handle;
 }
 
@@ -104,6 +111,7 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
+  retvals_[retval_index].type = dtype;
   if (resolve_compile_time_constants_) {
     retvals_[retval_index].is_constant = true;
     TF_RETURN_IF_ERROR(LiteralToHostTensor(
@@ -120,6 +128,21 @@ void XlaContext::AddSideEffects() {
 }
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
+
+Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
+                                  string name, DataType type,
+                                  const xla::ComputationDataHandle& handle,
+                                  XlaResource** resource) {
+  resources_.emplace_back(new XlaResource);
+  *resource = resources_.back().get();
+  XlaResource& r = **resource;
+  r.kind = kind;
+  r.arg_num = arg_num;
+  r.name = std::move(name);
+  r.type = type;
+  r.initial_value = r.value = handle;
+  return Status::OK();
+}
 
 const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
   return LookupOrCreate(type, &max_func_, [this, type] {
@@ -149,22 +172,6 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
   });
 }
 
-const xla::Computation* XlaContext::GetOrCreateSigmoid(const DataType type) {
-  return LookupOrCreate(type, &sigmoid_func_, [this, type] {
-    const string type_string = DataTypeString(type);
-    VLOG(1) << "Building Sigmoid() for " << type_string;
-    xla::ComputationBuilder b(builder()->client(),
-                              "sigmoid<" + type_string + ">");
-    xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto one = b.ConstantLiteral(xla::LiteralUtil::One(xla_type));
-    auto minus_one = b.Neg(one);
-    b.Div(one, b.Add(b.Exp(b.Mul(x, minus_one)), one));
-    return b.Build().ConsumeValueOrDie();
-  });
-}
-
 const xla::Computation* XlaContext::LookupOrCreate(
     DataType type, ComputationMap* out,
     const std::function<xla::Computation()>& create) {
@@ -185,4 +192,4 @@ const xla::Computation* XlaContext::LookupOrCreate(
   }
 }
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

@@ -137,7 +137,8 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(None, op.is_non_singular)
 
   def test_matrix_diag_tril_diag_uses_custom_name(self):
-    op0 = linalg.LinearOperatorMatrix([[-1., -1.], [-1., -1.]], name="matrix")
+    op0 = linalg.LinearOperatorFullMatrix(
+        [[-1., -1.], [-1., -1.]], name="matrix")
     op1 = linalg.LinearOperatorDiag([1., 1.], name="diag_a")
     op2 = linalg.LinearOperatorTriL([[2., 0.], [1.5, 2.]], name="tril")
     op3 = linalg.LinearOperatorDiag([3., 3.], name="diag_b")
@@ -145,24 +146,24 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       op_sum = add_operators([op0, op1, op2, op3], operator_name="my_operator")
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
-      self.assertTrue(isinstance(op, linalg_lib.LinearOperatorMatrix))
+      self.assertTrue(isinstance(op, linalg_lib.LinearOperatorFullMatrix))
       self.assertAllClose([[5., -1.], [0.5, 5.]], op.to_dense().eval())
       self.assertEqual("my_operator", op.name)
 
   def test_incompatible_domain_dimensions_raises(self):
-    op1 = linalg.LinearOperatorMatrix(rng.rand(2, 3))
+    op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(2, 4))
     with self.assertRaisesRegexp(ValueError, "must.*same domain dimension"):
       add_operators([op1, op2])
 
   def test_incompatible_range_dimensions_raises(self):
-    op1 = linalg.LinearOperatorMatrix(rng.rand(2, 3))
+    op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(3, 3))
     with self.assertRaisesRegexp(ValueError, "must.*same range dimension"):
       add_operators([op1, op2])
 
   def test_non_broadcastable_batch_shape_raises(self):
-    op1 = linalg.LinearOperatorMatrix(rng.rand(2, 3, 3))
+    op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(4, 3, 3))
     with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
       add_operators([op1, op2])
@@ -397,7 +398,7 @@ class AddAndReturnMatrixTest(test.TestCase):
 
     self.assertTrue(self._adder.can_add(diag1, diag2))
     operator = self._adder.add(diag1, diag2, "my_operator", hints)
-    self.assertTrue(isinstance(operator, linalg.LinearOperatorMatrix))
+    self.assertTrue(isinstance(operator, linalg.LinearOperatorFullMatrix))
 
     with self.test_session():
       self.assertAllClose([[0., 0.], [0., 5.]], operator.to_dense().eval())

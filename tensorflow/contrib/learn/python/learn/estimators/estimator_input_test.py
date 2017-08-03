@@ -19,16 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import sys
 import tempfile
-
-# pylint: disable=g-bad-todo
-# TODO(#6568): Remove this hack that makes dlopen() not crash.
-# pylint: enable=g-bad-todo
-# pylint: disable=g-import-not-at-top
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 

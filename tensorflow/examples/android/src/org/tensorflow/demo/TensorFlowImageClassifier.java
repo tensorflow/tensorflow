@@ -27,14 +27,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Vector;
+import org.tensorflow.Operation;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 /** A classifier specialized to label images using TensorFlow. */
 public class TensorFlowImageClassifier implements Classifier {
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   private static final String TAG = "TensorFlowImageClassifier";
 
   // Only return this many results with at least this confidence.
@@ -54,6 +51,8 @@ public class TensorFlowImageClassifier implements Classifier {
   private float[] floatValues;
   private float[] outputs;
   private String[] outputNames;
+
+  private boolean logStats = false;
 
   private TensorFlowInferenceInterface inferenceInterface;
 
@@ -80,8 +79,7 @@ public class TensorFlowImageClassifier implements Classifier {
       int imageMean,
       float imageStd,
       String inputName,
-      String outputName)
-      throws IOException {
+      String outputName) {
     TensorFlowImageClassifier c = new TensorFlowImageClassifier();
     c.inputName = inputName;
     c.outputName = outputName;
@@ -91,20 +89,22 @@ public class TensorFlowImageClassifier implements Classifier {
     String actualFilename = labelFilename.split("file:///android_asset/")[1];
     Log.i(TAG, "Reading labels from: " + actualFilename);
     BufferedReader br = null;
-    br = new BufferedReader(new InputStreamReader(assetManager.open(actualFilename)));
-    String line;
-    while ((line = br.readLine()) != null) {
-      c.labels.add(line);
+    try {
+      br = new BufferedReader(new InputStreamReader(assetManager.open(actualFilename)));
+      String line;
+      while ((line = br.readLine()) != null) {
+        c.labels.add(line);
+      }
+      br.close();
+    } catch (IOException e) {
+      throw new RuntimeException("Problem reading label file!" , e);
     }
-    br.close();
 
-    c.inferenceInterface = new TensorFlowInferenceInterface();
-    if (c.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
-      throw new RuntimeException("TF initialization failed");
-    }
+    c.inferenceInterface = new TensorFlowInferenceInterface(assetManager, modelFilename);
+
     // The shape of the output is [N, NUM_CLASSES], where N is the batch size.
-    int numClasses =
-        (int) c.inferenceInterface.graph().operation(outputName).output(0).shape().size(1);
+    final Operation operation = c.inferenceInterface.graphOperation(outputName);
+    final int numClasses = (int) operation.output(0).shape().size(1);
     Log.i(TAG, "Read " + c.labels.size() + " labels, output layer size is " + numClasses);
 
     // Ideally, inputSize could have been retrieved from the shape of the input operation.  Alas,
@@ -141,19 +141,18 @@ public class TensorFlowImageClassifier implements Classifier {
     Trace.endSection();
 
     // Copy the input data into TensorFlow.
-    Trace.beginSection("fillNodeFloat");
-    inferenceInterface.fillNodeFloat(
-        inputName, new int[] {1, inputSize, inputSize, 3}, floatValues);
+    Trace.beginSection("feed");
+    inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
     Trace.endSection();
 
     // Run the inference call.
-    Trace.beginSection("runInference");
-    inferenceInterface.runInference(outputNames);
+    Trace.beginSection("run");
+    inferenceInterface.run(outputNames, logStats);
     Trace.endSection();
 
     // Copy the output Tensor back into the output array.
-    Trace.beginSection("readNodeFloat");
-    inferenceInterface.readNodeFloat(outputName, outputs);
+    Trace.beginSection("fetch");
+    inferenceInterface.fetch(outputName, outputs);
     Trace.endSection();
 
     // Find the best classifications.
@@ -184,8 +183,8 @@ public class TensorFlowImageClassifier implements Classifier {
   }
 
   @Override
-  public void enableStatLogging(boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
+  public void enableStatLogging(boolean logStats) {
+    this.logStats = logStats;
   }
 
   @Override

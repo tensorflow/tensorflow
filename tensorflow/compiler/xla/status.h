@@ -21,29 +21,7 @@ limitations under the License.
 
 namespace xla {
 
-#if defined(__clang__)
-// Only clang supports warn_unused_result as a type annotation.
-class TF_MUST_USE_RESULT Status;
-#endif
-
-// Simple wrapper around tensorflow::Status that has the MUST_USE_RESULT
-// annotation above. When tensorflow::Status adopts this annotation, this can
-// simply become a "using tensorflow::Status".
-class Status : public tensorflow::Status {
- public:
-  static Status OK() { return tensorflow::Status::OK(); }
-
-  // Note: implicit constructor.
-  Status(tensorflow::Status other) : tensorflow::Status(other) {}
-
-  Status() : tensorflow::Status() {}
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg)
-      : tensorflow::Status(code, msg) {}
-
-  // Ignores any errors. This method is a nop that can be used to suppress
-  // compiler errors when a Status value is intentially ignored.
-  void IgnoreError() const {}
-};
+using tensorflow::Status;
 
 }  // namespace xla
 

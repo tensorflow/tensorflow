@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "RemoteFusedGraphExecuteInfoProto";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+// Protocol buffer representing a handle to a tensorflow resource. Handles are
+// not valid across executions, but can be serialized back and forth from within
+// a single run.
+message RemoteFusedGraphExecuteInfo {
+  enum NodeType {
+    UNUSED = 0;
+    GRAPH_INPUT = 1;
+    GRAPH_OUTPUT = 2;
+    FUSED_NODE = 3;
+    BORDER_INPUT = 4;
+    BORDER_OUTPUT = 5;
+  }
+
+  message TensorShapeTypeProto {
+    DataType dtype = 1;
+    TensorShapeProto shape = 2;
+  }
+
+  // Definition of remote graph
+  GraphDef remote_graph = 1;
+
+  // Remote fused graph input node name
+  repeated string graph_input_node_name = 2;
+
+  // Remote fused graph output node name
+  repeated string graph_output_node_name = 3;
+
+  // Executor's name
+  string executor_name = 4;
+
+  // Optional: Parameters given to the executor
+  bytes serialized_executor_parameters = 5;
+
+  // Optional: Default graph input tensor shape used to allocate memory
+  // before executing op
+  repeated TensorShapeTypeProto default_graph_input_tensor_shape = 6;
+
+  // Optional: Default graph input tensor shape used to allocate memory
+  // before executing op
+  // TODO(satok): Remote output tensor shape once shape information is stored
+  // in NodeDef
+  repeated TensorShapeTypeProto default_graph_output_tensor_shape = 7;
+};

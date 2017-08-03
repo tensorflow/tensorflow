@@ -17,13 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
+from tensorflow.contrib.rnn.ops import gen_gru_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
@@ -79,7 +80,7 @@ def _GRUBlockCellGrad(op, *grad):
   r, u, c, _ = op.outputs
   _, _, _, d_h = grad
 
-  d_x, d_h_prev, d_c_bar, d_r_bar_u_bar = _gru_ops_so.gru_block_cell_grad(
+  d_x, d_h_prev, d_c_bar, d_r_bar_u_bar = gen_gru_ops.gru_block_cell_grad(
       x, h_prev, w_ru, w_c, b_ru, b_c, r, u, c, d_h)
 
   x_h_prev = array_ops.concat([x, h_prev], 1)
@@ -93,11 +94,11 @@ def _GRUBlockCellGrad(op, *grad):
   return d_x, d_h_prev, d_w_ru, d_w_c, d_b_ru, d_b_c
 
 
-class GRUBlockCell(core_rnn_cell.RNNCell):
+class GRUBlockCell(rnn_cell_impl.RNNCell):
   r"""Block GRU cell implementation.
 
   The implementation is based on:  http://arxiv.org/abs/1406.1078
-  Computes the LSTM cell forward propagation for 1 time step.
+  Computes the GRU cell forward propagation for 1 time step.
 
   This kernel op implements the following mathematical equations:
 
@@ -171,7 +172,7 @@ class GRUBlockCell(core_rnn_cell.RNNCell):
           "b_c", [self._cell_size],
           initializer=init_ops.constant_initializer(0.0))
 
-      _gru_block_cell = _gru_ops_so.gru_block_cell  # pylint: disable=invalid-name
+      _gru_block_cell = gen_gru_ops.gru_block_cell  # pylint: disable=invalid-name
       _, _, _, new_h = _gru_block_cell(
           x=x, h_prev=h_prev, w_ru=w_ru, w_c=w_c, b_ru=b_ru, b_c=b_c)
 

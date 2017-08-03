@@ -87,7 +87,7 @@ class PackOp : public XlaOpKernel {
   int axis_;
 };
 
-REGISTER_XLA_OP("Pack", PackOp);
+REGISTER_XLA_OP(Name("Pack"), PackOp);
 
 }  // namespace
 }  // namespace tensorflow

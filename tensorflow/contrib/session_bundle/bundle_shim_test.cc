@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
@@ -32,8 +33,6 @@ namespace {
 
 constexpr char kSessionBundlePath[] =
     "session_bundle/testdata/half_plus_two/00000123";
-constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
-constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
     "cc/saved_model/testdata/half_plus_two/00000123";
 

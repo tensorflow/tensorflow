@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -39,7 +39,8 @@ class HloSchedule {
   // Constructs an HloSchedule for the given module, based on the given stream
   // assignment.
   static StatusOr<std::unique_ptr<HloSchedule>> Build(
-      const HloModule& module, const StreamAssignment& stream_assignment);
+      const HloModule& module, const StreamAssignment& stream_assignment,
+      int64 pointer_size);
 
   // Returns the total order of thunk launches, represented in terms of HLO
   // instructions.

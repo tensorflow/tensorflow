@@ -58,6 +58,7 @@ class Master {
   void ListDevices(const ListDevicesRequest* req, ListDevicesResponse* resp,
                    MyClosure done);
 
+  // See tensorflow::Reset() and the comment on ResetRequest.
   void Reset(const ResetRequest* req, ResetResponse* resp, MyClosure done);
 
  private:

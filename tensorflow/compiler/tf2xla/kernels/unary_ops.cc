@@ -28,10 +28,10 @@ namespace {
 // A subclass of a TlaUnaryOp must build the lambda computation that
 // describes the scalar->scalar function to apply to each element of
 // the input.
-#define XLAJIT_MAKE_UNARY(Name, COMPUTATION)                           \
-  class Name##Op : public XlaOpKernel {                                \
+#define XLAJIT_MAKE_UNARY(NAME, COMPUTATION)                           \
+  class NAME##Op : public XlaOpKernel {                                \
    public:                                                             \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
     void Compile(XlaOpKernelContext* ctx) {                            \
       xla::ComputationBuilder* b = ctx->builder();                     \
       xla::ComputationDataHandle x = ctx->Input(0);                    \
@@ -39,11 +39,13 @@ namespace {
       ctx->SetOutput(0, y);                                            \
     }                                                                  \
   };                                                                   \
-  REGISTER_XLA_OP(#Name, Name##Op);
+  REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
 XLAJIT_MAKE_UNARY(Ceil, b->Ceil(x));
+XLAJIT_MAKE_UNARY(Cos, b->Cos(x));
+XLAJIT_MAKE_UNARY(Sin, b->Sin(x));
 XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
 XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
 // Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
@@ -58,10 +60,38 @@ XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
 
 XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
 XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
+
+// Implements Banker's rounding: numbers that are equidistant between two
+// integers are rounded towards even.
+static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
+                                        DataType dtype,
+                                        const xla::ComputationDataHandle& x) {
+  auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
+  auto one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
+  auto two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
+
+  auto round_val = b->Floor(x);
+  auto fraction = b->Sub(x, round_val);
+  auto nearest_even_int =
+      b->Sub(round_val, b->Mul(two, b->Floor(b->Mul(half, x))));
+  auto is_odd = b->Eq(nearest_even_int, one);
+  return b->Select(b->LogicalOr(b->Gt(fraction, half),
+                                b->LogicalAnd(b->Eq(fraction, half), is_odd)),
+                   b->Add(round_val, one), round_val);
+}
+
+// Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
+static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
+                                          DataType dtype,
+                                          const xla::ComputationDataHandle& x) {
+  auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
+  return b->Add(half, b->Mul(half, b->Tanh(b->Mul(half, x))));
+}
+
+XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
 XLAJIT_MAKE_UNARY(Rsqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
-XLAJIT_MAKE_UNARY(Sigmoid,
-                  b->Map({x}, *ctx->GetOrCreateSigmoid(input_type(0))));
+XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(b, input_type(0), x));
 XLAJIT_MAKE_UNARY(Softplus,
                   b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
 XLAJIT_MAKE_UNARY(Sqrt,

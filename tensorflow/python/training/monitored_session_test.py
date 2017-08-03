@@ -147,6 +147,68 @@ class ScaffoldTest(test.TestCase):
                                    'Graph is finalized and cannot be modified'):
         constant_op.constant([0])
 
+  def test_new_scaffold_from_default_scaffold(self):
+    scaffold1 = monitored_session.Scaffold()
+    with ops.Graph().as_default():
+      variables.Variable([1])
+      saver = saver_lib.Saver()
+      scaffold2 = monitored_session.Scaffold(
+          init_op=2,
+          init_feed_dict=3,
+          init_fn=lambda scaffold, sess: 4,
+          ready_op=5,
+          ready_for_local_init_op=6,
+          local_init_op=7,
+          saver=saver,
+          copy_from_scaffold=scaffold1)
+
+      scaffold2.finalize()
+      self.assertEqual(2, scaffold2.init_op)
+      self.assertEqual(3, scaffold2.init_feed_dict)
+      self.assertTrue(callable(scaffold2.init_fn))
+      self.assertEqual(5, scaffold2.ready_op)
+      self.assertEqual(6, scaffold2.ready_for_local_init_op)
+      self.assertEqual(7, scaffold2.local_init_op)
+      self.assertEqual(saver, scaffold2.saver)
+
+  def test_new_scaffold_from_existing_scaffold(self):
+    with ops.Graph().as_default():
+      variables.Variable([1])
+      saver = saver_lib.Saver()
+      scaffold1 = monitored_session.Scaffold(
+          init_op=2,
+          init_feed_dict=3,
+          init_fn=lambda scaffold, sess: 4,
+          ready_op=5,
+          ready_for_local_init_op=6,
+          local_init_op=7,
+          saver=saver)
+
+      scaffold2 = monitored_session.Scaffold(
+          init_op=4,
+          init_feed_dict=6,
+          init_fn=lambda scaffold, sess: 8,
+          ready_op=10,
+          ready_for_local_init_op=12,
+          local_init_op=14,
+          saver=saver,
+          copy_from_scaffold=scaffold1)
+
+      scaffold2.finalize()
+      self.assertEqual(4, scaffold2.init_op)
+      self.assertEqual(6, scaffold2.init_feed_dict)
+      self.assertTrue(callable(scaffold2.init_fn))
+      self.assertEqual(10, scaffold2.ready_op)
+      self.assertEqual(12, scaffold2.ready_for_local_init_op)
+      self.assertEqual(14, scaffold2.local_init_op)
+      self.assertEqual(saver, scaffold2.saver)
+
+  def test_copy_from_scaffold_is_scaffold(self):
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          TypeError, 'copy_from_scaffold is not a Scaffold instance'):
+        monitored_session.Scaffold(copy_from_scaffold=1)
+
 
 def _test_dir(temp_dir, test_name):
   """Create an empty dir to use for tests.
@@ -224,7 +286,8 @@ class MonitoredTrainingSessionTest(test.TestCase):
       with monitored_session.MonitoredTrainingSession(
           is_chief=True,
           checkpoint_dir=logdir,
-          save_summaries_steps=100) as session:
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
         for _ in range(101):
           session.run(new_gstep)
     summaries = util_test.latest_summaries(logdir)
@@ -242,7 +305,8 @@ class MonitoredTrainingSessionTest(test.TestCase):
           is_chief=True,
           checkpoint_dir=logdir,
           save_summaries_steps=None,
-          save_summaries_secs=0.1) as session:
+          save_summaries_secs=0.1,
+          log_step_count_steps=10) as session:
         session.run(new_gstep)
         time.sleep(0.2)
         for _ in range(101):
@@ -879,13 +943,13 @@ class MonitoredSessionTest(test.TestCase):
         self.assertEqual(0, session.run(gstep))
       self.assertTrue(self.init_raised_aborted_error)
 
-  def test_retry_on_aborted_error(self):
-    # Tests that we silently retry on abort.  Note that this does not test
+  def _retry_test(self, ex):
+    # Tests that we silently retry on error.  Note that this does not test
     # recovery as we do not use a CheckpointSaver in this test.
     with ops.Graph().as_default():
       gstep = variables_lib.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
-      hook = RaiseOnceAtCountN(4, errors_impl.AbortedError(None, None, 'Abort'))
+      hook = RaiseOnceAtCountN(4, ex)
       with monitored_session.MonitoredSession(hooks=[hook]) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
@@ -900,6 +964,12 @@ class MonitoredSessionTest(test.TestCase):
         self.assertTrue(hook.raised)
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
+
+  def test_retry_on_aborted_error(self):
+    self._retry_test(errors_impl.AbortedError(None, None, 'Abort'))
+
+  def test_retry_on_unavailable_error(self):
+    self._retry_test(errors_impl.UnavailableError(None, None, 'Unavailable'))
 
   def test_recover_and_retry_on_aborted_error(self):
     # Tests that we silently retry and recover on abort.  This test uses

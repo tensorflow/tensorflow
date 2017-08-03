@@ -23,11 +23,12 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -1273,22 +1274,90 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding) {
   ComputeAndCompareR4<float>(&builder, {{{{13, 24, 130}}}}, {}, error_spec_);
 }
 
+TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding1D) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto gradients = builder.ConstantR3FromArray3D<float>(
+      Array3D<float>(1, 1, 1, /*value=*/1));
+  auto weights =
+      builder.ConstantR3FromArray3D<float>(Array3D<float>({{{1, 10, 100}}}));
+  auto mirrored_weights = builder.Rev(weights, {2});
+  builder.ConvWithGeneralPadding(gradients, mirrored_weights,
+                                 /*window_strides=*/{1},
+                                 /*padding=*/{{1, 1}});
+  ComputeAndCompareR3<float>(&builder, {{{10}}}, {}, error_spec_);
+}
+
+TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto activations =
+      builder.ConstantR3FromArray3D<float>(Array3D<float>({{{1, 2, 3, 4}}}));
+  auto gradients =
+      builder.ConstantR3FromArray3D<float>(Array3D<float>({{{100, 10, 1}}}));
+  auto forward_conv = builder.ConvGeneralDilated(
+      activations, gradients,
+      /*window_strides=*/{1},
+      /*padding=*/{{2, 1}},
+      /*lhs_dilation=*/{}, /*rhs_dilation=*/{2},
+      ComputationBuilder::CreateDefaultConvDimensionNumbers(
+          /*num_spatial_dims=*/1));
+  builder.Transpose(forward_conv, {0, 1, 2});
+
+  ComputeAndCompareR3<float>(&builder, {{{13, 24, 130}}}, {}, error_spec_);
+}
+
+TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto gradients_flat = Literal::CreateR1<float>({1});
+  auto gradients_literal =
+      gradients_flat->Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
+  auto gradients = builder.ConstantLiteral(*gradients_literal);
+
+  auto weights_flat = Literal::CreateR1<float>({1, 10, 100});
+  auto weights_literal =
+      weights_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
+  auto weights = builder.ConstantLiteral(*weights_literal);
+
+  auto expected_flat = Literal::CreateR1<float>({10});
+  auto expected_literal =
+      expected_flat->Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
+
+  auto mirrored_weights = builder.Rev(weights, {2, 3, 4});
+  builder.ConvWithGeneralPadding(gradients, mirrored_weights,
+                                 /*window_strides=*/{1, 1, 1},
+                                 /*padding=*/{{0, 0}, {0, 0}, {1, 1}});
+  ComputeAndCompareLiteral(&builder, *expected_literal, {}, error_spec_);
+}
+
+TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto activations_flat = Literal::CreateR1<float>({1, 2, 3, 4});
+  auto activations_literal =
+      activations_flat->Reshape({1, 1, 1, 1, 4}).ConsumeValueOrDie();
+  auto activations = builder.ConstantLiteral(*activations_literal);
+
+  auto gradients_flat = Literal::CreateR1<float>({100, 10, 1});
+  auto gradients_literal =
+      gradients_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
+  auto gradients = builder.ConstantLiteral(*gradients_literal);
+
+  auto expected_flat = Literal::CreateR1<float>({13, 24, 130});
+  auto expected_literal =
+      expected_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
+
+  auto forward_conv = builder.ConvGeneralDilated(
+      activations, gradients,
+      /*window_strides=*/{1, 1, 1},
+      /*padding=*/{{0, 0}, {0, 0}, {2, 1}},
+      /*lhs_dilation=*/{}, /*rhs_dilation=*/{1, 1, 2},
+      ComputationBuilder::CreateDefaultConvDimensionNumbers(
+          /*num_spatial_dims=*/3));
+  builder.Transpose(forward_conv, {0, 1, 2, 3, 4});
+  ComputeAndCompareLiteral(&builder, *expected_literal, {}, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

@@ -623,7 +623,7 @@ class NodeStepper(object):
         elif (can_feed and inp not in feeds and
               use_tensor_handles and inp.name in self._tensor_handles):
           # Tensor handle found in cache.
-          feeds[inp] = self._tensor_handles[inp.name].eval()
+          feeds[inp] = self._tensor_handles[inp.name]
           self._last_feed_types[inp.name] = self.FEED_TYPE_HANDLE
         elif (can_feed and inp not in feeds and
               use_dumped_intermediates and

@@ -21,19 +21,22 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace {
 
-#define EXPECT_ISET(A, E...) EXPECT_EQ(A, (std::set<HloInstruction*>{E}))
-#define EXPECT_IVEC(A, E...) EXPECT_EQ(A, (std::vector<HloInstruction*>{E}))
+using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 
-class HloInstructionTest : public ::testing::Test {
+class HloInstructionTest : public HloTestBase {
  protected:
   HloInstructionTest() {}
 
@@ -145,22 +148,27 @@ TEST_F(HloInstructionTest, UserWithTwoOperands) {
   // [Param foo]----->  |-----|
   //                    | Add |
   // [Param bar]----->  |-----|
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
-  auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo.get(),
-                                          bar.get());
-  EXPECT_MATCH(add->operands(), testing::UnorderedMatcher<HloInstruction*>(
-                                    foo.get(), bar.get()));
-  EXPECT_ISET(foo->users(), add.get());
-  EXPECT_ISET(bar->users(), add.get());
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, bar));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(add->operands(), UnorderedElementsAre(foo, bar));
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(add));
+  EXPECT_THAT(bar->users(), UnorderedElementsAre(add));
 
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(add->Accept(&visitor));
 
-  EXPECT_EQ(2, visitor.NumOperands(add.get()));
-  EXPECT_EQ(0, visitor.NumUsers(add.get()));
-  EXPECT_EQ(1, visitor.NumUsers(foo.get()));
-  EXPECT_EQ(1, visitor.NumUsers(bar.get()));
+  EXPECT_EQ(2, visitor.NumOperands(add));
+  EXPECT_EQ(0, visitor.NumUsers(add));
+  EXPECT_EQ(1, visitor.NumUsers(foo));
+  EXPECT_EQ(1, visitor.NumUsers(bar));
 }
 
 TEST_F(HloInstructionTest, MultipleUsers) {
@@ -173,12 +181,19 @@ TEST_F(HloInstructionTest, MultipleUsers) {
   //  -------  -------   -----------
   //  | exp |  | exp |   |   add   |
   //  -------  -------   -----------
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
-  auto exp1 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo.get());
-  auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo.get());
-  auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo.get(),
-                                          bar.get());
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, bar));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, foo->user_count());
   EXPECT_EQ(1, bar->user_count());
@@ -189,8 +204,8 @@ TEST_F(HloInstructionTest, MultipleUsers) {
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(add->Accept(&visitor));
 
-  EXPECT_EQ(2, visitor.NumOperands(add.get()));
-  EXPECT_EQ(3, visitor.NumUsers(foo.get()));
+  EXPECT_EQ(2, visitor.NumOperands(add));
+  EXPECT_EQ(3, visitor.NumUsers(foo));
 }
 
 TEST_F(HloInstructionTest, RepeatedUser) {
@@ -205,9 +220,14 @@ TEST_F(HloInstructionTest, RepeatedUser) {
   //          -------
   //          | add |
   //          -------
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo.get(),
-                                          foo.get());
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, foo));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
+
   EXPECT_EQ(1, foo->user_count());
 
   // But 'add' still has two operands, even if both are the same HLO.
@@ -227,23 +247,29 @@ TEST_F(HloInstructionTest, MultipleUsersAndOperands) {
   //           \     -------     /
   //            ---->| add |<----
   //                 -------
-  auto param0 = HloInstruction::CreateParameter(0, r0f32_, "param0");
-  auto param1 = HloInstruction::CreateParameter(1, r0f32_, "param1");
-  auto c0 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto addleft = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                              param0.get(), c0.get());
-  auto addright = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                               c0.get(), param1.get());
-  auto addtotal = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                               addleft.get(), addright.get());
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "param1"));
+  auto c0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto addleft = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, param0, c0));
+  auto addright = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c0, param1));
+  auto addtotal = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, addleft, addright));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(addtotal->Accept(&visitor));
 
-  EXPECT_EQ(2, visitor.NumUsers(c0.get()));
-  EXPECT_EQ(2, visitor.NumOperands(addleft.get()));
-  EXPECT_EQ(2, visitor.NumOperands(addright.get()));
-  EXPECT_EQ(2, visitor.NumOperands(addtotal.get()));
+  EXPECT_EQ(2, visitor.NumUsers(c0));
+  EXPECT_EQ(2, visitor.NumOperands(addleft));
+  EXPECT_EQ(2, visitor.NumOperands(addright));
+  EXPECT_EQ(2, visitor.NumOperands(addtotal));
 }
 
 TEST_F(HloInstructionTest, MultipleUsersAndOperandsWithUnaryOps) {
@@ -266,29 +292,36 @@ TEST_F(HloInstructionTest, MultipleUsersAndOperandsWithUnaryOps) {
   //                 -------
   //                 | neg |
   //                 -------
-  auto param0 = HloInstruction::CreateParameter(0, r0f32_, "param0");
-  auto param1 = HloInstruction::CreateParameter(1, r0f32_, "param1");
-  auto c0 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto neg1 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, c0.get());
-  auto addleft = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                              param0.get(), neg1.get());
-  auto addright = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                               neg1.get(), param1.get());
-  auto addtotal = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                               addleft.get(), addright.get());
-  auto neg2 =
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, addtotal.get());
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "param1"));
+  auto c0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto neg1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, c0));
+  auto addleft = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, param0, neg1));
+  auto addright = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, neg1, param1));
+  auto addtotal = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, addleft, addright));
+  auto neg2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, addtotal));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(neg2->Accept(&visitor));
 
-  EXPECT_EQ(1, visitor.NumUsers(c0.get()));
-  EXPECT_EQ(2, visitor.NumUsers(neg1.get()));
-  EXPECT_EQ(2, visitor.NumOperands(addleft.get()));
-  EXPECT_EQ(2, visitor.NumOperands(addright.get()));
-  EXPECT_EQ(2, visitor.NumOperands(addtotal.get()));
-  EXPECT_EQ(1, visitor.NumOperands(neg2.get()));
-  EXPECT_EQ(0, visitor.NumUsers(neg2.get()));
+  EXPECT_EQ(1, visitor.NumUsers(c0));
+  EXPECT_EQ(2, visitor.NumUsers(neg1));
+  EXPECT_EQ(2, visitor.NumOperands(addleft));
+  EXPECT_EQ(2, visitor.NumOperands(addright));
+  EXPECT_EQ(2, visitor.NumOperands(addtotal));
+  EXPECT_EQ(1, visitor.NumOperands(neg2));
+  EXPECT_EQ(0, visitor.NumUsers(neg2));
 }
 
 TEST_F(HloInstructionTest, TrivialMap) {
@@ -298,29 +331,33 @@ TEST_F(HloInstructionTest, TrivialMap) {
   //
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   Shape f32a100x10 = ShapeUtil::MakeShape(F32, {100, 10});
+  HloModule module(TestName());
 
   // Builds an x+1.0 computation to use in a Map.
-  auto builder = HloComputation::Builder("f32+1");
-  auto param =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32, "x"));
-  auto value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  builder.AddInstruction(
+  auto embedded_builder = HloComputation::Builder("f32+1");
+  auto param = embedded_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "x"));
+  auto value = embedded_builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  embedded_builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param, value));
-  auto add_f32 = builder.Build();
+  auto add_f32 = module.AddEmbeddedComputation(embedded_builder.Build());
 
   // Builds a parameter and feeds it to the map.
-  auto param0 = HloInstruction::CreateParameter(1, f32a100x10, "");
-  auto map =
-      HloInstruction::CreateMap(f32a100x10, {param0.get()}, add_f32.get());
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32a100x10, ""));
+  auto map = builder.AddInstruction(
+      HloInstruction::CreateMap(f32a100x10, {param0}, add_f32));
+  module.AddEntryComputation(builder.Build());
 
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(map->Accept(&visitor));
 
   // Check counts.  We aren't walking the mapper computation yet.
-  EXPECT_EQ(1, visitor.NumUsers(param0.get()));
-  EXPECT_EQ(0, visitor.NumUsers(map.get()));
-  EXPECT_EQ(1, visitor.NumOperands(map.get()));
+  EXPECT_EQ(1, visitor.NumUsers(param0));
+  EXPECT_EQ(0, visitor.NumUsers(map));
+  EXPECT_EQ(1, visitor.NumOperands(map));
 
   // TODO(dehnert):  Add walking and counters for the wrapped computation.
 }
@@ -335,163 +372,197 @@ TEST_F(HloInstructionTest, TrivialReduce) {
   Shape f32a100x10 = ShapeUtil::MakeShape(F32, {100, 10});
 
   // Builds an x+y computation to use in a Reduce.
-  auto builder = HloComputation::Builder("f32+f32");
-  auto paramx =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32, "x"));
-  auto paramy =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32, "y"));
-  builder.AddInstruction(
+  auto embedded_builder = HloComputation::Builder("f32+f32");
+  auto paramx = embedded_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "x"));
+  auto paramy = embedded_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "y"));
+  embedded_builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, paramx, paramy));
-  auto add_f32 = builder.Build();
+  HloModule module(TestName());
+  auto add_f32 = module.AddEmbeddedComputation(embedded_builder.Build());
 
   // Builds a parameter and an initial value and feeds them to the reduce.
-  auto param0 = HloInstruction::CreateParameter(0, f32a100x10, "");
-  auto const0 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f));
-  auto c0 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto reduce =
-      HloInstruction::CreateReduce(f32v100, param0.get(), const0.get(),
-                                   /*dimensions_to_reduce=*/{1}, add_f32.get());
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32a100x10, ""));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto reduce = builder.AddInstruction(
+      HloInstruction::CreateReduce(f32v100, param0, const0,
+                                   /*dimensions_to_reduce=*/{1}, add_f32));
+  module.AddEntryComputation(builder.Build());
 
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(reduce->Accept(&visitor));
 
   // Check counts.  We aren't walking the reducer computation.
-  EXPECT_EQ(1, visitor.NumUsers(param0.get()));
-  EXPECT_EQ(1, visitor.NumUsers(const0.get()));
-  EXPECT_EQ(0, visitor.NumUsers(reduce.get()));
-  EXPECT_EQ(2, visitor.NumOperands(reduce.get()));
+  EXPECT_EQ(1, visitor.NumUsers(param0));
+  EXPECT_EQ(1, visitor.NumUsers(const0));
+  EXPECT_EQ(0, visitor.NumUsers(reduce));
+  EXPECT_EQ(2, visitor.NumOperands(reduce));
 }
 
 TEST_F(HloInstructionTest, ReplaceUseInBinaryOps) {
   // Construct a graph of a few binary ops using two different
   // parameters. Replace one of the parameters with the other parameter in one
   // of the instructions.
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
-  auto add_foobar = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                                 foo.get(), bar.get());
-  auto add_foofoo = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                                 foo.get(), foo.get());
-  auto sum = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                          add_foobar.get(), add_foofoo.get());
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
+  auto add_foobar = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, bar));
+  auto add_foofoo = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, foo));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
+                                                      add_foobar, add_foofoo));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(2, foo->user_count());
   EXPECT_EQ(1, bar->user_count());
 
   // Replace the use of foo in add_foofoo with bar.
-  ASSERT_IS_OK(foo->ReplaceUseWith(add_foofoo.get(), bar.get()));
+  ASSERT_IS_OK(foo->ReplaceUseWith(add_foofoo, bar));
 
   EXPECT_EQ(1, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
 
-  EXPECT_ISET(foo->users(), add_foobar.get());
-  EXPECT_IVEC(add_foobar->operands(), foo.get(), bar.get());
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(add_foobar));
+  EXPECT_THAT(add_foobar->operands(), ElementsAre(foo, bar));
 
-  EXPECT_ISET(bar->users(), add_foobar.get(), add_foofoo.get());
-  EXPECT_IVEC(add_foobar->operands(), foo.get(), bar.get());
-  EXPECT_IVEC(add_foofoo->operands(), bar.get(), bar.get());
+  EXPECT_THAT(bar->users(), UnorderedElementsAre(add_foobar, add_foofoo));
+  EXPECT_THAT(add_foobar->operands(), ElementsAre(foo, bar));
+  EXPECT_THAT(add_foofoo->operands(), ElementsAre(bar, bar));
 }
 
 TEST_F(HloInstructionTest, ReplaceUseInVariadicOp) {
   // Construct a tuple containing several parameters. Replace one parameter with
   // another in the tuple.
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
-  auto baz = HloInstruction::CreateParameter(2, r0f32_, "baz");
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
+  auto baz =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0f32_, "baz"));
 
   auto tuple =
-      HloInstruction::CreateTuple({foo.get(), bar.get(), baz.get(), foo.get()});
-  auto add_foobar = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                                 foo.get(), bar.get());
+      builder.AddInstruction(HloInstruction::CreateTuple({foo, bar, baz, foo}));
+  auto add_foobar = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, bar));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(2, foo->user_count());
-  EXPECT_ISET(foo->users(), tuple.get(), add_foobar.get());
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(tuple, add_foobar));
 
   // Replace the use of foo in tuple with bar.
-  ASSERT_IS_OK(foo->ReplaceUseWith(tuple.get(), bar.get()));
+  ASSERT_IS_OK(foo->ReplaceUseWith(tuple, bar));
 
-  EXPECT_ISET(foo->users(), add_foobar.get());
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(add_foobar));
 
   // Both uses of foo in tuple should have been replaced with bar.
-  EXPECT_IVEC(tuple->operands(), bar.get(), bar.get(), baz.get(), bar.get());
+  EXPECT_THAT(tuple->operands(), ElementsAre(bar, bar, baz, bar));
 }
 
 TEST_F(HloInstructionTest, ReplaceUseInUnaryOp) {
   // Construct a couple unary instructions which use a parameter. Replace the
   // use of a parameter in one of the unary ops with the other parameter.
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
 
-  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo.get());
-  auto log = HloInstruction::CreateUnary(r0f32_, HloOpcode::kLog, foo.get());
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto log = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kLog, foo));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(2, foo->user_count());
-  EXPECT_ISET(foo->users(), exp.get(), log.get());
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(exp, log));
   EXPECT_EQ(0, bar->user_count());
 
   // Replace the use of foo in exp with bar.
-  ASSERT_IS_OK(foo->ReplaceUseWith(exp.get(), bar.get()));
+  ASSERT_IS_OK(foo->ReplaceUseWith(exp, bar));
 
   // The use of foo in log should not have been affected.
   EXPECT_EQ(1, foo->user_count());
-  EXPECT_ISET(foo->users(), log.get());
-  EXPECT_IVEC(log->operands(), foo.get());
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(log));
+  EXPECT_THAT(log->operands(), ElementsAre(foo));
 
   // Bar should now be used in exp.
   EXPECT_EQ(1, bar->user_count());
-  EXPECT_EQ(*bar->users().begin(), exp.get());
+  EXPECT_EQ(*bar->users().begin(), exp);
   EXPECT_EQ(1, exp->operands().size());
-  EXPECT_EQ(*exp->operands().begin(), bar.get());
+  EXPECT_EQ(*exp->operands().begin(), bar);
 }
 
 TEST_F(HloInstructionTest, ReplaceAllUsesWithInBinaryOps) {
   // Construct a simple graph of a few binary ops using two different
   // parameters. Replace all uses of one of the parameters with the other
   // parameter.
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
-  auto add_foobar = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                                 foo.get(), bar.get());
-  auto add_foofoo = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                                 foo.get(), foo.get());
-  auto sum = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                          add_foobar.get(), add_foofoo.get());
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
+  auto add_foobar = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, bar));
+  auto add_foofoo = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, foo));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
+                                                      add_foobar, add_foofoo));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(2, foo->user_count());
   EXPECT_EQ(1, bar->user_count());
 
   // Replace all uses of foo with bar.
-  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bar.get()));
+  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bar));
 
   EXPECT_EQ(0, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
 
-  EXPECT_ISET(bar->users(), add_foobar.get(), add_foofoo.get());
+  EXPECT_THAT(bar->users(), UnorderedElementsAre(add_foobar, add_foofoo));
 }
 
 TEST_F(HloInstructionTest, ReplaceAllUsesInMultipleOps) {
   // Construct a graph containing several ops (a unary, binary, and variadic)
   // which use two parameters. Replace all uses of one of the parameters with
   // the other parameter.
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto bar =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "bar"));
 
-  auto add_foobar = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                                 foo.get(), bar.get());
-  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo.get());
-  auto tuple = HloInstruction::CreateTuple({foo.get(), bar.get()});
+  auto add_foobar = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo, bar));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({foo, bar}));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
 
   // Replace all uses of foo with bar.
-  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bar.get()));
+  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bar));
 
   EXPECT_EQ(0, foo->user_count());
   EXPECT_EQ(3, bar->user_count());
 
-  EXPECT_ISET(bar->users(), add_foobar.get(), exp.get(), tuple.get());
+  EXPECT_THAT(bar->users(), UnorderedElementsAre(add_foobar, exp, tuple));
 }
 
 // Simple visitor that collects and post-processes each node in the graph.
@@ -535,11 +606,17 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodes) {
   //    /--> exp --\
   // foo            add
   //    \--> log --/
-  auto foo = HloInstruction::CreateParameter(0, r0f32_, "foo");
-  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo.get());
-  auto log = HloInstruction::CreateUnary(r0f32_, HloOpcode::kLog, foo.get());
-  auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, exp.get(),
-                                          log.get());
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto log = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kLog, foo));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, exp, log));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   NodeCollectorAndPostProcessor visitor;
   ASSERT_IS_OK(add->Accept(&visitor));
@@ -550,55 +627,151 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodes) {
 }
 
 TEST_F(HloInstructionTest, SingletonFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single unary operation.
-  auto constant =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto exp =
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp}, HloInstruction::FusionKind::kLoop);
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, exp.get());
-
-  EXPECT_IVEC(fusion->operands(), constant.get());
-  EXPECT_ISET(constant->users(), fusion.get(), exp.get());
+  EXPECT_THAT(fusion->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(fusion));
 }
 
 TEST_F(HloInstructionTest, BinaryFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single binary operation.
-  auto constant1 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto constant2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f));
-  auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                          constant1.get(), constant2.get());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {add}, HloInstruction::FusionKind::kLoop);
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, add.get());
-
-  EXPECT_IVEC(fusion->operands(), constant1.get(), constant2.get());
-  EXPECT_ISET(constant1->users(), fusion.get(), add.get());
-  EXPECT_ISET(constant2->users(), fusion.get(), add.get());
+  EXPECT_THAT(fusion->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(fusion));
+  EXPECT_THAT(constant2->users(), ElementsAre(fusion));
 }
 
 TEST_F(HloInstructionTest, ChainFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Create a chain of fused unary ops.
-  auto constant =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto exp1 =
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
-  auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1.get());
-  auto exp3 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2.get());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, exp3.get());
-  fusion->FuseInstruction(exp2.get());
-  fusion->FuseInstruction(exp1.get());
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp3, exp2, exp1}, HloInstruction::FusionKind::kLoop);
 
-  EXPECT_IVEC(fusion->operands(), constant.get());
-  EXPECT_ISET(constant->users(), fusion.get(), exp1.get());
+  EXPECT_THAT(fusion->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(fusion));
+}
+
+TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of fused unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  OpMetadata metadata;
+  metadata.set_op_name("tf_op");
+  exp1->set_metadata(metadata);
+  exp2->set_metadata(metadata);
+
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp2, exp1}, HloInstruction::FusionKind::kLoop);
+
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      metadata, fusion->fused_expression_root()->metadata()));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      metadata, fusion->fused_expression_root()->operand(0)->metadata()));
+}
+
+TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto outfeed10 = builder.AddInstruction(
+      HloInstruction::CreateOutfeed(shape10, constant, ""));
+  auto outfeed01 = builder.AddInstruction(
+      HloInstruction::CreateOutfeed(shape01, constant, ""));
+
+  auto clone01 = builder.AddInstruction(outfeed01->Clone());
+  auto clone10 = builder.AddInstruction(outfeed10->Clone());
+
+  EXPECT_TRUE(ShapeUtil::Equal(clone01->outfeed_shape(), shape01));
+  EXPECT_TRUE(ShapeUtil::Equal(clone10->outfeed_shape(), shape10));
+}
+
+TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
+  // Create a fusion instruction containing a single unary operation.
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  HloModule module(TestName());
+
+  auto make_map_computation = [&]() {
+    auto builder = HloComputation::Builder("FusionMap");
+    builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "param"));
+    return module.AddEmbeddedComputation(builder.Build());
+  };
+
+  HloComputation* computation_x = make_map_computation();
+  HloComputation* computation_y = make_map_computation();
+
+  HloComputation::Builder builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto map_1_x = builder.AddInstruction(HloInstruction::CreateMap(
+      scalar_shape, {constant}, computation_x, /*static_operands=*/{}));
+  auto map_2_x = builder.AddInstruction(HloInstruction::CreateMap(
+      scalar_shape, {map_1_x}, computation_x, /*static_operands=*/{}));
+  auto map_3_y = builder.AddInstruction(HloInstruction::CreateMap(
+      scalar_shape, {map_2_x}, computation_y, /*static_operands=*/{}));
+  auto* computation = module.AddEntryComputation(builder.Build());
+
+  auto* fusion = computation->CreateFusionInstruction(
+      {map_3_y}, HloInstruction::FusionKind::kLoop);
+  auto* fused_computation = fusion->fused_instructions_computation();
+  EXPECT_THAT(fusion->called_computations(),
+              ElementsAre(fused_computation, computation_y));
+
+  fusion->FuseInstruction(map_2_x);
+  EXPECT_THAT(fusion->called_computations(),
+              ElementsAre(fused_computation, computation_y, computation_x));
+
+  fusion->FuseInstruction(map_1_x);
+  EXPECT_THAT(fusion->called_computations(),
+              ElementsAre(fused_computation, computation_y, computation_x));
 }
 
 TEST_F(HloInstructionTest, ComplexFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Fuse all instructions in complicated expression:
   //
   //   add = Add(C1, C2)
@@ -610,34 +783,35 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   //
   // Notable complexities are repeated operands in a same instruction, different
   // shapes, use of value in different expressions.
-  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.1f));
-  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(9.0f));
+  auto c1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto c2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.1f)));
+  auto c3 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(9.0f)));
 
-  auto add =
-      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1.get(), c2.get());
-  auto clamp = HloInstruction::CreateTernary(r0f32_, HloOpcode::kClamp,
-                                             c2.get(), add.get(), add.get());
-  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, add.get());
-  auto mul = HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply,
-                                          exp.get(), c3.get());
-  auto sub = HloInstruction::CreateBinary(r0f32_, HloOpcode::kSubtract,
-                                          mul.get(), clamp.get());
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1, c2));
+  auto clamp = builder.AddInstruction(
+      HloInstruction::CreateTernary(r0f32_, HloOpcode::kClamp, c2, add, add));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, add));
+  auto mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply, exp, c3));
+  auto sub = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kSubtract, mul, clamp));
   auto tuple =
-      HloInstruction::CreateTuple({sub.get(), sub.get(), mul.get(), c1.get()});
+      builder.AddInstruction(HloInstruction::CreateTuple({sub, sub, mul, c1}));
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, tuple.get());
-  fusion->FuseInstruction(sub.get());
-  fusion->FuseInstruction(mul.get());
-  fusion->FuseInstruction(exp.get());
-  fusion->FuseInstruction(clamp.get());
-  fusion->FuseInstruction(add.get());
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {tuple, sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
 
   // Operands in the fusion instruction's operands() vector should be in the
   // order in which their users were added fused.
-  EXPECT_IVEC(fusion->operands(), c1.get(), c3.get(), c2.get());
-  EXPECT_ISET(c1->users(), add.get(), tuple.get(), fusion.get());
+  EXPECT_THAT(fusion->operands(), ElementsAre(c1, c3, c2));
+  EXPECT_THAT(c1->users(), ElementsAre(fusion));
 }
 
 // Convenience function for comparing two HloInstructions inside of
@@ -660,11 +834,11 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
   // Create a set of random constant operands to use below. Make them matrices
   // so dimensions are interesting.
   auto operand1 = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
   auto operand2 = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}}));
-  auto vector_operand = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({42.0, 123.0}));
+      Literal::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}}));
+  auto vector_operand =
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({42.0, 123.0}));
   Shape shape = operand1->shape();
 
   // Convenient short names for the operands.
@@ -721,12 +895,17 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
   //        \    /
   //         add
   const Shape f32 = ShapeUtil::MakeShape(F32, {});
-  auto param = HloInstruction::CreateParameter(0, f32, "0");
-  auto negate =
-      HloInstruction::CreateUnary(f32, HloOpcode::kNegate, param.get());
-  auto exp = HloInstruction::CreateUnary(f32, HloOpcode::kExp, param.get());
-  auto add = HloInstruction::CreateBinary(f32, HloOpcode::kAdd, negate.get(),
-                                          exp.get());
+  HloComputation::Builder builder(TestName());
+  auto param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, f32, "0"));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32, HloOpcode::kNegate, param));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32, HloOpcode::kExp, param));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32, HloOpcode::kAdd, negate, exp));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
 
   int visit_num = 0;
   std::unordered_map<HloInstruction*, int> visit_order;
@@ -737,21 +916,26 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
     return Status::OK();
   }));
 
-  EXPECT_EQ(0, visit_order.at(param.get()));
+  EXPECT_EQ(0, visit_order.at(param));
   // negate and exp can be visited in an arbitrary order.
-  EXPECT_TRUE(visit_order.at(exp.get()) == 1 || visit_order.at(exp.get()) == 2);
-  EXPECT_TRUE(visit_order.at(negate.get()) == 1 ||
-              visit_order.at(negate.get()) == 2);
-  EXPECT_NE(visit_order.at(exp.get()), visit_order.at(negate.get()));
-  EXPECT_EQ(3, visit_order.at(add.get()));
+  EXPECT_TRUE(visit_order.at(exp) == 1 || visit_order.at(exp) == 2);
+  EXPECT_TRUE(visit_order.at(negate) == 1 || visit_order.at(negate) == 2);
+  EXPECT_NE(visit_order.at(exp), visit_order.at(negate));
+  EXPECT_EQ(3, visit_order.at(add));
 }
 
 TEST_F(HloInstructionTest, FullyElementwise) {
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
-  auto x = HloInstruction::CreateParameter(0, r1f32, "x");
-  auto y = HloInstruction::CreateParameter(1, r1f32, "y");
-  auto add =
-      HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, x.get(), y.get());
+  HloComputation::Builder builder(TestName());
+  auto x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r1f32, "x"));
+  auto y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r1f32, "y"));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, x, y));
+  HloModule module(TestName());
+  module.AddEntryComputation(builder.Build());
+
   EXPECT_TRUE(add->IsElementwise());
   for (int i = 0; i < add->operand_count(); ++i) {
     EXPECT_TRUE(add->IsElementwiseOnOperand(i));
@@ -793,7 +977,8 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
   HloInstruction* max = builder.AddInstruction(
       HloInstruction::CreateBinary(r2f32, HloOpcode::kMaximum, div, broadcast));
 
-  auto computation = builder.Build();
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {max, broadcast, div, mul}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
@@ -835,7 +1020,8 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, min, broadcast));
 
-  auto computation = builder.Build();
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {sub, broadcast, min}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
@@ -874,7 +1060,8 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateBinary(sout, HloOpcode::kDot, x, reshape));
 
-  auto computation = builder.Build();
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
@@ -890,5 +1077,48 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
                                root2->operand(1)->operand(0)->shape()));
 }
 
+TEST_F(HloInstructionTest, CloneSuffixNames) {
+  // Test that the suffix string added to cloned instructions is not
+  // duplicated. Rather a numeric incrementing value should be appended. That
+  // is, we want "foo.clone2", not "foo.clone.clone".
+
+  // Test cloning the same instruction multiple times.
+  auto foo =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "foo");
+  EXPECT_EQ(foo->Clone()->name(), "%foo.clone");
+  EXPECT_EQ(foo->Clone()->Clone()->name(), "%foo.clone2");
+  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "%foo.clone3");
+
+  // Test custom suffixes.
+  EXPECT_EQ(foo->Clone("bar")->name(), "%foo.bar");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "%foo.bar2");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(),
+            "%foo.bar2.clone");
+
+  // Test instruction name with a dot.
+  auto foo_baz = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.baz");
+  EXPECT_EQ(foo_baz->Clone()->name(), "%foo.baz.clone");
+
+  // Test incrementing a large number after the suffix.
+  auto foo_clone234 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clone234");
+  EXPECT_EQ(foo_clone234->Clone()->name(), "%foo.clone235");
+
+  // Test a non-numeric string after the cloning suffix.
+  auto foo_clonexyz = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clonexyz");
+  EXPECT_EQ(foo_clonexyz->Clone()->name(), "%foo.clonexyz.clone");
+
+  // Test a name with multiple appearances of the suffix.
+  auto foo_clone_clone3 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clone.clone3");
+  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "%foo.clone.clone4");
+}
+
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

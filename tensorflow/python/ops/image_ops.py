@@ -14,8 +14,11 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Image processing and decoding ops. See the @{$python/image} guide.
+"""Image processing and decoding ops.
 
+See the @{$python/image} guide.
+
+@@decode_bmp
 @@decode_gif
 @@decode_jpeg
 @@encode_jpeg

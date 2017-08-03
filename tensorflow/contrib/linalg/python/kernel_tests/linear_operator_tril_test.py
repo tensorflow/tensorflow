@@ -60,14 +60,6 @@ class LinearOperatorTriLTest(
 
     return operator, mat, feed_dict
 
-  def test_assert_positive_definite(self):
-    # Singlular matrix with one positive eigenvalue and one negative eigenvalue.
-    with self.test_session():
-      tril = [[1., 0.], [1., -1.]]
-      operator = linalg.LinearOperatorTriL(tril)
-      with self.assertRaisesOpError("was not positive definite"):
-        operator.assert_positive_definite().run()
-
   def test_assert_non_singular(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():

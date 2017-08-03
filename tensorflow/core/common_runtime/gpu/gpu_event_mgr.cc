@@ -77,14 +77,14 @@ EventMgr::~EventMgr() {
 }
 
 void EventMgr::StartPollingLoop() {
-  CHECK(polling_stopped_.get() == nullptr);
+  CHECK(polling_stopped_ == nullptr);
   stop_polling_.reset(new Notification);
   polling_stopped_.reset(new Notification);
   threadpool_.Schedule([this]() { PollLoop(); });
 }
 
 void EventMgr::StopPollingLoop() {
-  if (stop_polling_.get()) {
+  if (stop_polling_) {
     stop_polling_->Notify();
     polling_stopped_->WaitForNotification();
     stop_polling_.reset(nullptr);

@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
@@ -60,10 +60,11 @@ class AdagradOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     for v in var_list:
       with ops.colocate_with(v):
-        val = constant_op.constant(self._initial_accumulator_value,
-                                   shape=v.get_shape(),
-                                   dtype=v.dtype.base_dtype)
-      self._get_or_make_slot(v, val, "accumulator", self._name)
+        dtype = v.dtype.base_dtype
+        init = init_ops.constant_initializer(self._initial_accumulator_value,
+                                             dtype=dtype)
+      self._get_or_make_slot_with_initializer(v, init, v.get_shape(), dtype,
+                                              "accumulator", self._name)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,

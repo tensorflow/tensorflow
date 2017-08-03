@@ -29,7 +29,9 @@ py_library(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
+        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/session_bundle:exporter",
@@ -50,22 +52,38 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:logging_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:resources",
         "//tensorflow/python:rnn",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:inputs",
+        "//tensorflow/python/estimator:inputs_queues",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:pandas_io",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -74,6 +92,16 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+# Exposes constants without having to build the entire :learn target.
+py_library(
+    name = "estimator_constants_py",
+    srcs = [
+        "python/learn/estimators/constants.py",
+        "python/learn/estimators/prediction_key.py",
+    ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -94,14 +122,11 @@ py_test(
 py_test(
     name = "feeding_functions_test",
     size = "small",
-    srcs = [
-        "python/learn/tests/dataframe/feeding_functions_test.py",
-    ],
+    srcs = ["python/learn/tests/dataframe/feeding_functions_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -109,16 +134,13 @@ py_test(
 py_test(
     name = "feeding_queue_runner_test",
     size = "small",
-    srcs = [
-        "python/learn/tests/dataframe/feeding_queue_runner_test.py",
-    ],
+    srcs = ["python/learn/tests/dataframe/feeding_queue_runner_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -133,7 +155,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -147,7 +168,6 @@ py_test(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:parsing_ops",
     ],
 )
@@ -161,7 +181,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -173,7 +192,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -188,7 +206,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
@@ -204,7 +221,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -217,7 +233,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],
 )
@@ -232,7 +248,6 @@ py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -246,7 +261,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -260,7 +274,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -274,9 +287,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
         "//third_party/py/numpy",
@@ -291,7 +304,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -305,7 +317,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -320,7 +331,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -334,9 +344,8 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
 )
@@ -348,11 +357,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -367,7 +375,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -381,11 +388,11 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator",
     ],
 )
 
@@ -401,9 +408,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resources",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
@@ -420,8 +425,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
     ],
 )
@@ -445,35 +450,35 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator",
     ],
 )
 
 py_test(
     name = "run_config_test",
     size = "small",
-    srcs = [
-        "python/learn/estimators/run_config_test.py",
-    ],
+    srcs = ["python/learn/estimators/run_config_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
+        "//tensorflow/python/estimator:run_config",
     ],
 )
 
 py_test(
     name = "tensor_signature_test",
+    size = "small",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -492,14 +497,18 @@ py_test(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:protos_all_py",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
@@ -545,7 +554,6 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
@@ -560,18 +568,17 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
     ],
@@ -581,16 +588,19 @@ py_test(
     name = "head_test",
     size = "medium",
     srcs = ["python/learn/estimators/head_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":learn",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -609,12 +619,12 @@ py_test(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],
 )
@@ -640,9 +650,8 @@ py_test(
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
 )
@@ -652,17 +661,18 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # b/33965977
     deps = [
         ":learn",
-        "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
 )
@@ -686,9 +696,8 @@ py_test(
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -706,13 +715,14 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:functional_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -726,17 +736,15 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -757,10 +765,32 @@ py_test(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "debug_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/debug_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -777,9 +807,8 @@ py_test(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
     ],
 )
@@ -793,9 +822,8 @@ py_test(
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -807,7 +835,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -825,6 +852,24 @@ py_test(
 )
 
 py_test(
+    name = "model_fn_test",
+    size = "small",
+    srcs = ["python/learn/estimators/model_fn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/saved_model:signature_constants",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
     name = "multioutput_test",
     size = "small",
     srcs = ["python/learn/estimators/multioutput_test.py"],
@@ -832,7 +877,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -847,8 +891,7 @@ py_test(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:random_seed",
     ],
 )
 
@@ -860,7 +903,20 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "rnn_common_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/rnn_common_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
 )
@@ -875,9 +931,8 @@ py_test(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -890,11 +945,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
-        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:rnn_cell",
         "//third_party/py/numpy",
     ],
 )
@@ -907,7 +961,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -920,7 +973,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -932,7 +984,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -950,6 +1001,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:io_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
@@ -966,7 +1018,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -981,7 +1032,6 @@ py_test(
         ":learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -990,21 +1040,22 @@ py_test(
 py_test(
     name = "export_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["python/learn/utils/export_test.py"],
     srcs_version = "PY2AND3",
     tags = [
         "manual",  # http://b/31032996
+        "notap",  # TODO(b/37950026): Test is flaky
     ],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/session_bundle:exporter",
+        "//tensorflow/contrib/session_bundle:manifest_proto_py_pb2",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
@@ -1024,6 +1075,7 @@ py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -1034,12 +1086,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
     ],
@@ -1057,9 +1110,7 @@ py_test(
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
     ],

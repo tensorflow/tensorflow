@@ -105,6 +105,12 @@ class FileSystem {
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   virtual Status FileExists(const string& fname) = 0;
 
+  /// Returns true if all the listed files exist, false otherwise.
+  /// if status is not null, populate the vector with a detailed status
+  /// for each file.
+  virtual bool FilesExist(const std::vector<string>& files,
+                          std::vector<Status>* status);
+
   /// \brief Returns the immediate children in the given directory.
   ///
   /// The returned paths are relative to 'dir'.

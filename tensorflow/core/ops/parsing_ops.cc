@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -86,11 +85,10 @@ REGISTER_OP("ParseExample")
       }
 
       // Output dense_shapes.
-      TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_dense; ++i) {
-        attrs.dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle dense;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &dense));
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(attrs.dense_shapes[i], &dense));
         TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
         c->set_output(output_idx++, dense);
       }
@@ -197,11 +195,10 @@ REGISTER_OP("ParseSingleSequenceExample")
       }
 
       // Output context_dense_shapes.
-      TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_context_dense; ++i) {
-        attrs.context_dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.context_dense_shapes[i], &s));
         c->set_output(output_idx++, s);
       }
 
@@ -219,9 +216,9 @@ REGISTER_OP("ParseSingleSequenceExample")
 
       // Output feature_list_dense_shapes.
       for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
-        attrs.feature_list_dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.feature_list_dense_shapes[i], &s));
         TF_RETURN_IF_ERROR(
             c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
         c->set_output(output_idx++, s);
@@ -321,6 +318,7 @@ REGISTER_OP("DecodeCSV")
     .Output("output: OUT_TYPE")
     .Attr("OUT_TYPE: list({float,int32,int64,string})")
     .Attr("field_delim: string = ','")
+    .Attr("use_quote_delim: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
@@ -347,14 +345,17 @@ records: Each string is a record/row in the csv and all records should have
   the same format.
 record_defaults: One tensor per column of the input record, with either a
   scalar default value for that column or empty if the column is required.
-field_delim: delimiter to separate fields in a record.
+field_delim: char delimiter to separate fields in a record.
+use_quote_delim: If false, treats double quotation marks as regular
+  characters inside of the string fields (ignoring RFC 4180, Section 2,
+  Bullet 5).
 output: Each tensor will have the same shape as records.
 )doc");
 
 REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
-    .Attr("out_type: {float, int32} = DT_FLOAT")
+    .Attr("out_type: {float, double, int32, int64} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to the specified numeric type.
