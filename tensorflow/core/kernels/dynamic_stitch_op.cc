@@ -88,7 +88,9 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
 
 // because the collision requirements, we have to deal with
 // collion first before send data to gpu kernel.
-// TODO(ekelsen): This code can be done for more speed.
+// TODO(ekelsen): Instead of doing a serial scan on the CPU to pick the last of duplicated indices,
+// it could instead be done of the GPU implicitly using atomics to make sure
+// the last index is the final write.
 template <typename T>
 void DynamicStitchGPU(OpKernelContext* c,
                         const int32 first_dim_size, const int32 data_elements_size,
