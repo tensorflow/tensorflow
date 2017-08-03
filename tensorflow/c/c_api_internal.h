@@ -140,6 +140,7 @@ class TensorCApi {
   }
 };
 
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_C_C_API_INTERNAL_H_
