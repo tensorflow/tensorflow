@@ -290,7 +290,10 @@ py_test(
     data = [":framework/test_file_system.so"],
     main = "framework/file_system_test.py",
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_pip",  # Odd path issues
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":data_flow_ops",
