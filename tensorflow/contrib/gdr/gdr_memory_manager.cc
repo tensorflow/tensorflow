@@ -246,7 +246,7 @@ Status GdrMemoryManager::Init() {
   }
 
 #if GOOGLE_CUDA
-  if (IsGDRAvailable() && device->tensorflow_gpu_device_info()) {
+  if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
     int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
     VisitableAllocator::Visitor alloc_visitor =
