@@ -592,8 +592,8 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
   rotate_transpose(x, -2).shape == [3, 4, 1, 2]
   rotate_transpose(x,  1).shape == [4, 1, 2, 3]
   rotate_transpose(x,  2).shape == [3, 4, 1, 2]
-  rotate_transpose(x,  7).shape == rotate_transpose(x, 3)  # [2, 3, 4, 1]
-  rotate_transpose(x, -7).shape == rotate_transpose(x, -3)  # [4, 1, 2, 3]
+  rotate_transpose(x,  7).shape == rotate_transpose(x, 3).shape  # [2, 3, 4, 1]
+  rotate_transpose(x, -7).shape == rotate_transpose(x, -3).shape  # [4, 1, 2, 3]
   ```
 
   Args:
