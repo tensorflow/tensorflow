@@ -26,7 +26,6 @@ cc_library(
         ":outfeed_ops_op_lib",
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
-        ":tpu_sendrecv_ops_op_lib",
     ],
 )
 
@@ -64,7 +63,6 @@ tf_gen_op_libs(
         "outfeed_ops",
         "replication_ops",
         "tpu_configuration_ops",
-        "tpu_sendrecv_ops",
     ],
     deps = [
         "//tensorflow/core:lib",
@@ -79,7 +77,6 @@ tf_custom_op_library(
         "ops/outfeed_ops.cc",
         "ops/replication_ops.cc",
         "ops/tpu_configuration_ops.cc",
-        "ops/tpu_sendrecv_ops.cc",
     ],
 )
 
@@ -91,7 +88,6 @@ tf_gen_op_wrapper_py(
         ":outfeed_ops_op_lib",
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
-        ":tpu_sendrecv_ops_op_lib",
     ],
 )
 
