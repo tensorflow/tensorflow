@@ -3237,7 +3237,7 @@ cuda_py_test(
 
 cuda_py_tests(
     name = "training_tests",
-    size = "small",
+    size = "medium",
     srcs = [
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
@@ -3599,6 +3599,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/estimator:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
