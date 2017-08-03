@@ -2546,6 +2546,7 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":util",

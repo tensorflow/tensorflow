@@ -23,6 +23,7 @@ import collections
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -64,6 +65,27 @@ class NestTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       nest.pack_sequence_as([5, 6, [7, 8]], ["a", "b", "c"])
+
+  def testFlattenDictOrder(self):
+    """`flatten` orders dicts by key, including OrderedDicts."""
+    ordered = collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
+    plain = {"d": 3, "b": 1, "a": 0, "c": 2}
+    ordered_flat = nest.flatten(ordered)
+    plain_flat = nest.flatten(plain)
+    self.assertEqual([0, 1, 2, 3], ordered_flat)
+    self.assertEqual([0, 1, 2, 3], plain_flat)
+
+  def testPackDictOrder(self):
+    """Packing orders dicts by key, including OrderedDicts."""
+    ordered = collections.OrderedDict([("d", 0), ("b", 0), ("a", 0), ("c", 0)])
+    plain = {"d": 0, "b": 0, "a": 0, "c": 0}
+    seq = [0, 1, 2, 3]
+    ordered_reconstruction = nest.pack_sequence_as(ordered, seq)
+    plain_reconstruction = nest.pack_sequence_as(plain, seq)
+    self.assertEqual(
+        collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)]),
+        ordered_reconstruction)
+    self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
   def testFlattenAndPack_withDicts(self):
     # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
@@ -120,6 +142,8 @@ class NestTest(test.TestCase):
     structure = "lots of letters"
     flattened = nest.flatten(structure)
     self.assertEqual(len(flattened), 1)
+    unflattened = nest.pack_sequence_as("goodbye", flattened)
+    self.assertEqual(structure, unflattened)
 
   def testPackSequenceAs_notIterableError(self):
     with self.assertRaisesRegexp(TypeError,
@@ -252,8 +276,25 @@ class NestTest(test.TestCase):
 
     self.assertEqual(7, nest.map_structure(lambda x, y: x + y, 3, 4))
 
+    # Empty structures
+    self.assertEqual((), nest.map_structure(lambda x: x + 1, ()))
+    self.assertEqual([], nest.map_structure(lambda x: x + 1, []))
+    self.assertEqual({}, nest.map_structure(lambda x: x + 1, {}))
+    empty_nt = collections.namedtuple("empty_nt", "")
+    self.assertEqual(empty_nt(), nest.map_structure(lambda x: x + 1,
+                                                    empty_nt()))
+
+    # This is checking actual equality of types, empty list != empty tuple
+    self.assertNotEqual((), nest.map_structure(lambda x: x + 1, []))
+
     with self.assertRaisesRegexp(TypeError, "callable"):
       nest.map_structure("bad", structure1_plus1)
+
+    with self.assertRaisesRegexp(ValueError, "at least one structure"):
+      nest.map_structure(lambda x: x)
+
+    with self.assertRaisesRegexp(ValueError, "same number of elements"):
+      nest.map_structure(lambda x, y: None, (3, 4), (3, 4, 5))
 
     with self.assertRaisesRegexp(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, 3, (3,))
@@ -280,6 +321,50 @@ class NestTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
+
+  def testMapStructureWithStrings(self):
+    ab_tuple = collections.namedtuple("ab_tuple", "a, b")
+    inp_a = ab_tuple(a="foo", b=("bar", "baz"))
+    inp_b = ab_tuple(a=2, b=(1, 3))
+    out = nest.map_structure(lambda string, repeats: string * repeats,
+                             inp_a,
+                             inp_b)
+    self.assertEqual("foofoo", out.a)
+    self.assertEqual("bar", out.b[0])
+    self.assertEqual("bazbazbaz", out.b[1])
+
+    nt = ab_tuple(a=("something", "something_else"),
+                  b="yet another thing")
+    rev_nt = nest.map_structure(lambda x: x[::-1], nt)
+    # Check the output is the correct structure, and all strings are reversed.
+    nest.assert_same_structure(nt, rev_nt)
+    self.assertEqual(nt.a[0][::-1], rev_nt.a[0])
+    self.assertEqual(nt.a[1][::-1], rev_nt.a[1])
+    self.assertEqual(nt.b[::-1], rev_nt.b)
+
+  def testMapStructureOverPlaceholders(self):
+    inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
+             array_ops.placeholder(dtypes.float32, shape=[3, 7]))
+    inp_b = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
+             array_ops.placeholder(dtypes.float32, shape=[3, 7]))
+
+    output = nest.map_structure(lambda x1, x2: x1 + x2, inp_a, inp_b)
+
+    nest.assert_same_structure(output, inp_a)
+    self.assertShapeEqual(np.zeros((3, 4)), output[0])
+    self.assertShapeEqual(np.zeros((3, 7)), output[1])
+
+    feed_dict = {
+        inp_a: (np.random.randn(3, 4), np.random.randn(3, 7)),
+        inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
+    }
+
+    with self.test_session() as sess:
+      output_np = sess.run(output, feed_dict=feed_dict)
+    self.assertAllClose(output_np[0],
+                        feed_dict[inp_a][0] + feed_dict[inp_b][0])
+    self.assertAllClose(output_np[1],
+                        feed_dict[inp_a][1] + feed_dict[inp_b][1])
 
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
