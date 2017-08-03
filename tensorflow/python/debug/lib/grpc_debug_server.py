@@ -64,9 +64,7 @@ class EventListenerBaseStreamHandler(object):
   """Per-stream handler of EventListener gRPC streams."""
 
   def __init__(self):
-    """Constructor of EventListenerStreamHandler."""
-    raise NotImplementedError(
-        "__init__() is not implemented in the base stream handler class")
+    """Constructor of EventListenerBaseStreamHandler."""
 
   def on_core_metadata_event(self, event):
     """Callback for core metadata.

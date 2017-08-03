@@ -60,7 +60,7 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
-                  bool rewrite_grad_op);
+                  bool rewrite_grad_op, bool use_fusion);
 
   // Returns whether any batch norm ops were rewritten.
   const bool changed() const { return changed_; }
@@ -70,10 +70,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
  private:
   explicit BatchNormRewriterVisitor(HloComputation* computation,
                                     bool rewrite_training_op,
-                                    bool rewrite_grad_op)
+                                    bool rewrite_grad_op, bool use_fusion)
       : computation_(computation),
         rewrite_training_op_(rewrite_training_op),
-        rewrite_grad_op_(rewrite_grad_op) {}
+        rewrite_grad_op_(rewrite_grad_op),
+        use_fusion_(use_fusion) {}
 
   HloComputation* GetScalarBinaryComputation(PrimitiveType primitive_type,
                                              HloOpcode opcode) {
@@ -94,6 +95,7 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   bool rewrite_training_op_;
   bool rewrite_grad_op_;
+  bool use_fusion_;
 
   // Whether rewrite has occurred.
   bool changed_ = false;
@@ -124,10 +126,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
 bool BatchNormRewriterVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
-                                   bool rewrite_grad_op) {
+                                   bool rewrite_grad_op, bool use_fusion) {
   BatchNormRewriterVisitor visitor(computation,
                                    /*rewrite_training_op=*/rewrite_training_op,
-                                   /*rewrite_grad_op=*/rewrite_grad_op);
+                                   /*rewrite_grad_op=*/rewrite_grad_op,
+                                   /*use_fusion=*/use_fusion);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -189,18 +192,20 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
       add_reduce_computation));
 
   // Fuse two parallel reduces together to improve performance.
-  auto tuple = computation_->AddInstruction(
-      HloInstruction::CreateTuple({sum, squared_sum}));
+  if (use_fusion_) {
+    auto tuple = computation_->AddInstruction(
+        HloInstruction::CreateTuple({sum, squared_sum}));
 
-  auto fused = computation_->CreateFusionInstruction(
-      {tuple, sum, squared_sum, operand_squared},
-      HloInstruction::FusionKind::kInput);
+    auto fused = computation_->CreateFusionInstruction(
+        {tuple, sum, squared_sum, operand_squared},
+        HloInstruction::FusionKind::kInput);
 
-  sum = computation_->AddInstruction(
-      HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
+    sum = computation_->AddInstruction(
+        HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
 
-  squared_sum = computation_->AddInstruction(
-      HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+    squared_sum = computation_->AddInstruction(
+        HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+  }
 
   // E[X].
   auto mean = computation_->AddInstruction(HloInstruction::CreateBinary(
@@ -352,17 +357,19 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
       feature_shape, grad_output, zero, dimensions_without_feature,
       add_reduce_computation));
 
-  auto tuple = computation_->AddInstruction(
-      HloInstruction::CreateTuple({grad_scale, grad_beta}));
+  if (use_fusion_) {
+    auto tuple = computation_->AddInstruction(
+        HloInstruction::CreateTuple({grad_scale, grad_beta}));
 
-  auto fused = computation_->CreateFusionInstruction(
-      {tuple, grad_scale, grad_beta}, HloInstruction::FusionKind::kInput);
+    auto fused = computation_->CreateFusionInstruction(
+        {tuple, grad_scale, grad_beta}, HloInstruction::FusionKind::kInput);
 
-  grad_scale = computation_->AddInstruction(
-      HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
+    grad_scale = computation_->AddInstruction(
+        HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
 
-  grad_beta = computation_->AddInstruction(
-      HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+    grad_beta = computation_->AddInstruction(
+        HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+  }
 
   TF_CHECK_OK(ReplaceWithNewInstruction(
       batch_norm,
@@ -385,7 +392,7 @@ StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
   }
   for (auto& comp : computations) {
     if (BatchNormRewriterVisitor::Run(comp, rewrite_training_op_,
-                                      rewrite_grad_op_)) {
+                                      rewrite_grad_op_, use_fusion_)) {
       changed = true;
     }
   }

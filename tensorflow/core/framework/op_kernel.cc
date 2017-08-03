@@ -282,7 +282,7 @@ Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
       }
     }
     TrackingAllocator* wrapped_allocator =
-        new TrackingAllocator(allocator, attr.track_sizes());
+        new TrackingAllocator(allocator, params_->track_allocations);
     wrapped_allocators_.push_back(std::make_pair(allocator, wrapped_allocator));
     return wrapped_allocator;
   } else {

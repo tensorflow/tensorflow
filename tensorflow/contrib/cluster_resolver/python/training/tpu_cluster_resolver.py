@@ -99,7 +99,7 @@ class TPUClusterResolver(ClusterResolver):
       request = self._service.projects().locations().nodes().get(name=full_name)
       response = request.execute()
 
-      instance_url = '%s:%s' % (response.ipAddress, response.port)
+      instance_url = '%s:%s' % (response['ipAddress'], response['port'])
       worker_list.append(instance_url)
 
     return ClusterSpec({self._job_name: worker_list})
