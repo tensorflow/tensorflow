@@ -361,20 +361,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "identity_n_op_py_test",
-    size = "small",
-    srcs = ["identity_n_op_py_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:variables",
-    ],
-)
-
-tf_py_test(
     name = "in_topk_op_test",
     size = "small",
     srcs = ["in_topk_op_test.py"],

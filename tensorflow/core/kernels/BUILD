@@ -566,7 +566,6 @@ cc_library(
         ":extract_image_patches_op",
         ":gather_nd_op",
         ":gather_op",
-        ":identity_n_op",
         ":identity_op",
         ":inplace_ops",
         ":listdiff_op",
@@ -645,12 +644,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_op",
     prefix = "identity_op",
-    deps = ARRAY_DEPS,
-)
-
-tf_kernel_library(
-    name = "identity_n_op",
-    prefix = "identity_n_op",
     deps = ARRAY_DEPS,
 )
 
@@ -1137,24 +1130,6 @@ tf_cc_test(
     srcs = ["identity_op_test.cc"],
     deps = [
         ":identity_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "identity_n_op_test",
-    size = "small",
-    srcs = ["identity_n_op_test.cc"],
-    deps = [
-        ":identity_n_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -4176,8 +4151,6 @@ filegroup(
         "function_ops.cc",
         "gather_functor.h",
         "gather_op.cc",
-        "identity_n_op.cc",
-        "identity_n_op.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",
