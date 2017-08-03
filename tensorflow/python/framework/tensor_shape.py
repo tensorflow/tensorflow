@@ -283,10 +283,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    tf.Dimension(m)    < tf.Dimension(n)    == m < n
-    tf.Dimension(m)    < tf.Dimension(None) == None
-    tf.Dimension(None) < tf.Dimension(n)    == None
-    tf.Dimension(None) < tf.Dimension(None) == None
+    (tf.Dimension(m)    < tf.Dimension(n))    == (m < n)
+    (tf.Dimension(m)    < tf.Dimension(None)) == None
+    (tf.Dimension(None) < tf.Dimension(n))    == None
+    (tf.Dimension(None) < tf.Dimension(None)) == None
     ```
 
     Args:
@@ -308,10 +308,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    tf.Dimension(m)    <= tf.Dimension(n)    == m <= n
-    tf.Dimension(m)    <= tf.Dimension(None) == None
-    tf.Dimension(None) <= tf.Dimension(n)    == None
-    tf.Dimension(None) <= tf.Dimension(None) == None
+    (tf.Dimension(m)    <= tf.Dimension(n))    == (m <= n)
+    (tf.Dimension(m)    <= tf.Dimension(None)) == None
+    (tf.Dimension(None) <= tf.Dimension(n))    == None
+    (tf.Dimension(None) <= tf.Dimension(None)) == None
     ```
 
     Args:
@@ -333,10 +333,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    tf.Dimension(m)    > tf.Dimension(n)    == m > n
-    tf.Dimension(m)    > tf.Dimension(None) == None
-    tf.Dimension(None) > tf.Dimension(n)    == None
-    tf.Dimension(None) > tf.Dimension(None) == None
+    (tf.Dimension(m)    > tf.Dimension(n))    == (m > n)
+    (tf.Dimension(m)    > tf.Dimension(None)) == None
+    (tf.Dimension(None) > tf.Dimension(n))    == None
+    (tf.Dimension(None) > tf.Dimension(None)) == None
     ```
 
     Args:
@@ -358,10 +358,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    tf.Dimension(m)    >= tf.Dimension(n)    == m >= n
-    tf.Dimension(m)    >= tf.Dimension(None) == None
-    tf.Dimension(None) >= tf.Dimension(n)    == None
-    tf.Dimension(None) >= tf.Dimension(None) == None
+    (tf.Dimension(m)    >= tf.Dimension(n))    == (m >= n)
+    (tf.Dimension(m)    >= tf.Dimension(None)) == None
+    (tf.Dimension(None) >= tf.Dimension(n))    == None
+    (tf.Dimension(None) >= tf.Dimension(None)) == None
     ```
 
     Args:
