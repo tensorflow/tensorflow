@@ -202,6 +202,12 @@ Status GdrMemoryManager::Init() {
   }
   LOG(INFO) << "RDMA server is listening on " << host_ << ":" << port_;
 
+  if (listening_->verbs == nullptr) {
+    return errors::Unimplemented(
+        "Unsupported address ", host_, ":", port_,
+        " as it does not bind to a particular RDMA device");
+  }
+
   int flags = fcntl(listening_->channel->fd, F_GETFL, 0);
   if (fcntl(listening_->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
     return errors::Unavailable(strerror(errno), ": ",
