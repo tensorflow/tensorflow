@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_base.h"
 
@@ -242,8 +243,64 @@ Status BaseVisitor::HandleTranspose(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleFusion(HloInstruction* inst) {
-  return Unimplemented(inst);
-}
+  switch (static_cast<int>(inst->fusion_kind())) {
+    case FUSED_RELU:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateReluOp(*graph_,
+                                       resources_,
+                                       inst,
+                                       GetOutputShape(inst),
+                                       tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_SIGMOID:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSigmoidOp(*graph_,
+                                          resources_,
+                                          inst,
+                                          GetOutputShape(inst),
+                                          tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
+    case FUSED_TRUNCATED_NORMAL:
+    case FUSED_RANDOM_NORMAL_WITH_SCALE:
+    case FUSED_RANDOM_UNIFORM_WITH_SCALE:
+    case FUSED_RANDOM_NORMAL:
+    case FUSED_RANDOM_UNIFORM:
+    case FUSED_BERNOULLI:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateRandomOp(*graph_,
+                                         resources_,
+                                         inst,
+                                         GetOutputShape(inst),
+                                         tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_WIDE_CONSTANT:
+    {
+      const HloInstruction* root = inst->fused_expression_root();
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, AddConstantTensor(*graph_, inst->shape(),
+                                                 root->operand(0)->literal(),
+                                                 resources_));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+      return Status::OK();
+    }
+    default:
+      return Unimplemented(inst);
+  }
+};
+
 
 Status BaseVisitor::HandleCall(HloInstruction* inst) {
   return Unimplemented(inst);

@@ -3,6 +3,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
@@ -33,6 +34,23 @@ public:
       return Status::OK();
     } else if (inst->opcode() == HloOpcode::kParameter) {
       return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kFusion) {
+      switch (static_cast<int>(inst->fusion_kind())) {
+        case FUSED_RELU:
+        case FUSED_SIGMOID:
+        case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
+        case FUSED_TRUNCATED_NORMAL:
+        case FUSED_RANDOM_NORMAL_WITH_SCALE:
+        case FUSED_RANDOM_UNIFORM_WITH_SCALE:
+        case FUSED_RANDOM_NORMAL:
+        case FUSED_RANDOM_UNIFORM:
+        case FUSED_BERNOULLI:
+        case FUSED_WIDE_CONSTANT:
+          return Status::OK();
+        default:
+          _is_ok = false;
+          return Status::OK();
+      }
     } else {
       _is_ok = false;
       return Status::OK();
