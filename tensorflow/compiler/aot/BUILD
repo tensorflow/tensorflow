@@ -161,7 +161,7 @@ py_binary(
 
 tf_saved_model_library(
     name = "test_saved_model",
-    saved_model_dir = "test_saved_model",
+    saved_model_dir = "test_saved_model_resources",
     cpp_class = 'StylizeImage',
     gen_test = True,
     gen_benchmark = True,

@@ -22,13 +22,13 @@ load("//tensorflow:tensorflow.bzl", "if_android", "tf_copts")
 def tf_saved_model_library(name, saved_model_dir, tag=None,
                            signature_def_key=None, **passthrough):
   to_config_name = "{}_gen_tfcompile_config".format(name)
-  outdir = "{}_outfiles".format(to_config_name)
-  graph_def_loc = "{}/graph_def.pb2".format(outdir)
-  tfcompile_config_loc = "{}/tfcompile_config.pb2".format(outdir)
+  graph_def_loc = "graph_def.pb2"
+  tfcompile_config_loc = "tfcompile_config.pb2"
   cmd = [
       "$(location //tensorflow/compiler/aot:config_from_savedmodel)",
-      "--saved_model_dir {}".format(saved_model_dir),
-      "--out_dir {}".format(outdir)
+      "--saved_model_dir $(location {})".format(saved_model_dir),
+      "--graph_def_path $(location {})".format(graph_def_loc),
+      "--tfcompile_config_path $(location {})".format(tfcompile_config_loc)
   ]
   if signature_def_key:
     cmd.append("--signature_def_key {}".format(signature_def_key))
