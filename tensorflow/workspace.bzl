@@ -169,11 +169,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/f3a22f35b044.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/f3a22f35b044.tar.gz",
+          "http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/5a0156e40feb.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/5a0156e40feb.tar.gz",
       ],
-      sha256 = "ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4",
-      strip_prefix = "eigen-eigen-f3a22f35b044",
+      sha256 = "4286e8f1fabbd74f7ec6ef8ef31c9dbc6102b9248a8f8327b04f5b68da5b05e1",
+      strip_prefix = "eigen-eigen-5a0156e40feb",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -228,11 +228,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "gemmlowp",
       urls = [
-          "http://mirror.bazel.build/github.com/google/gemmlowp/archive/a6f29d8ac48d63293f845f2253eccbf86bc28321.tar.gz",
-          "https://github.com/google/gemmlowp/archive/a6f29d8ac48d63293f845f2253eccbf86bc28321.tar.gz",
+          "http://mirror.bazel.build/github.com/google/gemmlowp/archive/7f782be8a053c03ffbeeacef6f76e30002819432.tar.gz",
+          "https://github.com/google/gemmlowp/archive/7f782be8a053c03ffbeeacef6f76e30002819432.tar.gz",
       ],
-      sha256 = "75d40ea8e68b0d1644f052fffe8f14a410b2a73d40ccb859a95c0578d194ec26",
-      strip_prefix = "gemmlowp-a6f29d8ac48d63293f845f2253eccbf86bc28321",
+      sha256 = "88b8ce51917da751219e897edcc145e9a69a2295a1accaa23c2f20f49ce80823",
+      strip_prefix = "gemmlowp-7f782be8a053c03ffbeeacef6f76e30002819432",
   )
 
   native.new_http_archive(
