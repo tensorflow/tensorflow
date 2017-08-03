@@ -17,26 +17,26 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("_TPUSend")
+REGISTER_OP("_XLASend")
     .Input("tensor: T")
     .Attr("T: type")
     .Attr("tensor_name: string")
     .SetIsStateful()
     .Doc(R"doc(
-Sends the named tensor over the TPU fabric.
+Sends the named tensor to another XLA computation.
 
 tensor: The tensor to send.
 tensor_name: The name of the tensor to send.
 )doc");
 
-REGISTER_OP("_TPURecv")
+REGISTER_OP("_XLARecv")
     .Output("tensor: T")
     .Attr("T: type")
     .Attr("tensor_name: string")
     .Attr("shape: shape")
     .SetIsStateful()
     .Doc(R"doc(
-Receives the named tensor over the TPU fabric.
+Receives the named tensor from another XLA computation.
 
 tensor: The tensor to receive.
 tensor_name: The name of the tensor to receive.
