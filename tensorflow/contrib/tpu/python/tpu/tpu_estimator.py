@@ -26,6 +26,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
 
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -473,7 +474,10 @@ class _ModelFnWrapper(object):
     self._train_batch_size = train_batch_size
 
   def call_without_tpu(self, features, labels):
-    return self._call_model_fn(features, labels, False)
+    # Let CrossShardOptimizer be called without TPU in model_fn, since it's
+    # common to set the train_op even when running evaluate() or predict().
+    with tpu_function.tpu_shard_context(1):
+      return self._call_model_fn(features, labels, False)
 
   def convert_to_single_tpu_train_step(self, dequeue_fn):
     """Converts the `model_fn` as a single train step on TPU."""
