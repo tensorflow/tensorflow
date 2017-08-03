@@ -1147,17 +1147,17 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
   For example:
 
   ```python
-  # 'start' is 3
-  # 'limit' is 18
-  # 'delta' is 3
+  start = 3
+  limit = 18
+  delta = 3
   tf.range(start, limit, delta)  # [3, 6, 9, 12, 15]
 
-  # 'start' is 3
-  # 'limit' is 1
-  # 'delta' is -0.5
+  start = 3
+  limit = 1
+  delta = -0.5
   tf.range(start, limit, delta)  # [3, 2.5, 2, 1.5]
 
-  # 'limit' is 5
+  limit = 5
   tf.range(limit)  # [0, 1, 2, 3, 4]
   ```
 
