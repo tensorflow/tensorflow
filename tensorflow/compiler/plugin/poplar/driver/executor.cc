@@ -322,7 +322,7 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
 }
 
 port::StatusOr<se::DeviceMemoryBase>
-PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
+PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
                               const xla::Shape& shape,
                               const Args& args,
                               const OutputMap& output_map,

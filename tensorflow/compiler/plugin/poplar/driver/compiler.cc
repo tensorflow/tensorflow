@@ -317,7 +317,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
                                      e.what()));
   }
 
-  std::unique_ptr<poplar::Engine> engine;
+  std::shared_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
   progs.push_back(visitor.sequence);
 

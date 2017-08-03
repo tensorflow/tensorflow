@@ -44,7 +44,7 @@ namespace poplarplugin {
 class PoplarExecutable : public Executable {
  public:
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
-                   std::unique_ptr<poplar::Engine> engine,
+                   std::shared_ptr<poplar::Engine> engine,
                    const sep::OutputMap& output_map,
                    const sep::ConversionList& input_convertors,
                    const sep::ConversionList& output_convertors);
@@ -74,7 +74,7 @@ class PoplarExecutable : public Executable {
  private:
   friend class GraphCompileIoMapTest;
 
-  std::unique_ptr<poplar::Engine> poplar_engine_;
+  std::shared_ptr<poplar::Engine> poplar_engine_;
   sep::OutputMap output_map_;
   sep::ConversionList input_convertors_;
   sep::ConversionList output_convertors_;

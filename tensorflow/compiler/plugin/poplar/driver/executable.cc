@@ -26,7 +26,7 @@ namespace poplarplugin {
 
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
-        std::unique_ptr<poplar::Engine> engine,
+        std::shared_ptr<poplar::Engine> engine,
         const sep::OutputMap& output_map,
         const sep::ConversionList& input_convertors,
         const sep::ConversionList& output_convertors)
@@ -60,7 +60,7 @@ PoplarExecutable::ExecuteOnStream(
 
   perftools::gputools::DeviceMemoryBase retbuf;
   TF_ASSIGN_OR_RETURN(retbuf,
-                      poplarExecutor->ExecuteEngine(poplar_engine_.get(),
+                      poplarExecutor->ExecuteEngine(poplar_engine_,
                                                     result_shape(),
                                                     arguments,
                                                     output_map_,

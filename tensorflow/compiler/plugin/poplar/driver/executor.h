@@ -195,12 +195,13 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   // Poplar Interface
 
-  port::StatusOr<DeviceMemoryBase> ExecuteEngine(poplar::Engine*,
-                                                 const xla::Shape&,
-                                                 const Args&,
-                                                 const OutputMap&,
-                                                 const ConversionList&,
-                                                 const ConversionList&);
+  port::StatusOr<DeviceMemoryBase>
+  ExecuteEngine(const std::shared_ptr<poplar::Engine>&,
+                const xla::Shape&,
+                const Args&,
+                const OutputMap&,
+                const ConversionList&,
+                const ConversionList&);
 
  private:
   struct TensorControl {
@@ -233,7 +234,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   std::recursive_mutex mutex_;
 
-  poplar::Engine* current_engine_;
+  std::shared_ptr<poplar::Engine> current_engine_;
 
   std::list<TensorControl*> allocations_;
 
