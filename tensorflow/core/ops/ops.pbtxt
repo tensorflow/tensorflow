@@ -9884,24 +9884,6 @@ op {
   summary: "Return a tensor with the same shape and contents as the input tensor or value."
 }
 op {
-  name: "IdentityN"
-  input_arg {
-    name: "inputs"
-    type_list_attr: "T"
-  }
-  output_arg {
-    name: "outputs"
-    type_list_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  summary: "Returns a list of tensors with the same shapes and contents as the input tensors."
-}
-op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"
