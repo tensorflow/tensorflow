@@ -1101,6 +1101,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction) {
   TF_RET_CHECK(hlo_query::AllOperandsAreConstants(*instruction));
   TF_RET_CHECK(instruction->opcode() != HloOpcode::kParameter);
+  TF_RET_CHECK(instruction->opcode() != HloOpcode::kTuple);
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();
@@ -1320,6 +1321,39 @@ Status HloEvaluator::HandleSlice(HloInstruction* slice,
                                    AsInt64Slice(shape.dimensions())));
 
   evaluated_[slice] = std::move(literal);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleTuple(
+    HloInstruction* tuple,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  std::vector<const Literal*> operand_literals;
+  for (auto operand : operands) {
+    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  }
+
+  evaluated_[tuple] = Literal::MakeTuple(operand_literals);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element,
+                                           HloInstruction* operand) {
+  const auto result_shape = get_tuple_element->shape();
+  const int64 index = get_tuple_element->tuple_index();
+
+  TF_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferGetTupleElementShape(operand->shape(), index));
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
+
+  evaluated_[get_tuple_element] =
+      MakeUnique<Literal>(operand_tuple_literal.tuple_literals(index));
+
   return Status::OK();
 }
 
