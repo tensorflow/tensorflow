@@ -3,6 +3,7 @@
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 
 #include <atomic>
+#include <cerrno>
 #include <fstream>
 #include <list>
 #include <map>
@@ -174,7 +175,8 @@ Status GdrMemoryManager::Init() {
   hints.ai_flags = RAI_PASSIVE;
   if (rdma_getaddrinfo(const_cast<char*>(host_.c_str()),
                        const_cast<char*>(port_.c_str()), &hints, &addrinfo)) {
-    return errors::Unavailable("Cannot resolve rdma://", host_, ":", port_);
+    return errors::Unavailable(strerror(errno), ": ", "cannot resolve rdma://",
+                               host_, ":", port_);
   }
 
   ibv_qp_init_attr init_attr = {};
@@ -187,20 +189,23 @@ Status GdrMemoryManager::Init() {
   // Create listening endpoint
   rdma_cm_id* id;
   if (rdma_create_ep(&id, addrinfo, nullptr, &init_attr)) {
-    return errors::Unavailable("Cannot bind to rdma://", host_, ":", port_);
+    return errors::Unavailable(strerror(errno), ": ", "cannot bind to rdma://",
+                               host_, ":", port_);
   }
   listening_.reset(id);
   rdma_freeaddrinfo(addrinfo);
 
   // Listen without backlog
   if (rdma_listen(listening_.get(), 0)) {
-    return errors::Unavailable("Cannot listen on rdma://", host_, ":", port_);
+    return errors::Unavailable(strerror(errno), ": ",
+                               "cannot listen on rdma://", host_, ":", port_);
   }
   LOG(INFO) << "RDMA server is listening on " << host_ << ":" << port_;
 
   int flags = fcntl(listening_->channel->fd, F_GETFL, 0);
   if (fcntl(listening_->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
-    return errors::Unavailable("Cannot set server to non-blocking mode");
+    return errors::Unavailable(strerror(errno), ": ",
+                               "cannot set server to non-blocking mode");
   }
 
   std::set<Allocator*> instrumented_;
@@ -418,8 +423,7 @@ Status GdrMemoryManager::TensorFromTransportOptions(
 
   if (rdma_post_read(id, nullptr, buffer->data(), buffer->size(), mr, 0,
                      remote_mr.addr(), remote_mr.rkey())) {
-    perror("rdma_post_read");
-    return errors::Unavailable("rdma_post_read failed");
+    return errors::Unavailable(strerror(errno), ": ", "rdma_post_read failed");
   }
 
   ibv_send_wr wr = {};
@@ -428,7 +432,7 @@ Status GdrMemoryManager::TensorFromTransportOptions(
   wr.send_flags = IBV_SEND_FENCE | IBV_SEND_SIGNALED;
   ibv_send_wr* bad_wr;
   if (ibv_post_send(id->qp, &wr, &bad_wr)) {
-    return errors::Unavailable("ibv_post_send failed");
+    return errors::Unavailable(strerror(errno), ": ", "ibv_post_send failed");
   }
 
   ibv_wc wc = {};
@@ -469,8 +473,8 @@ Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
   hints.ai_port_space = RDMA_PS_TCP;
   if (rdma_getaddrinfo(const_cast<char*>(host.c_str()),
                        const_cast<char*>(port.c_str()), &hints, &addrinfo)) {
-    return errors::InvalidArgument("Cannot connect to rdma://", host, ":",
-                                   port);
+    return errors::InvalidArgument(
+        strerror(errno), ": ", "cannot connect to rdma://", host, ":", port);
   }
 
   ibv_qp_init_attr init_attr = {};
@@ -483,15 +487,16 @@ Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
   rdma_cm_id* id;
   if (rdma_create_ep(&id, addrinfo, nullptr, &init_attr)) {
     rdma_freeaddrinfo(addrinfo);
-    return errors::Unavailable("Cannot create endpoint to rdma://", host, ":",
+    return errors::Unavailable(strerror(errno), ": ",
+                               "cannot create endpoint to rdma://", host, ":",
                                port);
   }
   rdma_freeaddrinfo(addrinfo);
 
   if (rdma_connect(id, nullptr)) {
     rdma_destroy_ep(id);
-    return errors::Unavailable("Cannot connect to endpoint rdma://", host, ":",
-                               port);
+    return errors::Unavailable(strerror(errno), ": ",
+                               "cannot connect to rdma://", host, ":", port);
   }
 
   LOG(INFO) << "RDMA endpoint connected to rdma://" << host << ":" << port;
