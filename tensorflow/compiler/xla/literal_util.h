@@ -390,6 +390,11 @@ class Literal {
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index) const;
 
+  // As Get(), but determines the correct type and converts the value into
+  // int64.
+  StatusOr<int64> GetIntegralAsS64(
+      tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
   static std::unique_ptr<Literal> MakeIdentityR2(int64 size);

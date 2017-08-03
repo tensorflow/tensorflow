@@ -53,16 +53,23 @@ string HumanReadableProfileBuilder::ToString() const {
 
     double nsecs = op.cycles / clock_rate_ghz_;
     Appendf(&s,
-            "\t%15lld cycles (%6.2f%%) :: %12.1f usec @ f_nom :: %18s "
-            ":: %12s/s :: %12s/cycle :: %s\n",
+            "%15lld cycles (%6.2f%%) :: %12.1f usec (%12.1f optimal) "
+            ":: %18s :: %12s/s :: %12s/cycle :: %s\n",
             op.cycles, cycles_percent, CyclesToMicroseconds(op.cycles),
+            op.optimal_seconds * 1e6,
             op.flop_count <= 0
                 ? "<none>"
                 : HumanReadableNumFlops(op.flop_count, nsecs).c_str(),
             bytes_per_sec.c_str(), bytes_per_cycle.c_str(), op.name.c_str());
   };
 
-  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, -1, -1});
+  float optimal_seconds_sum = 0.0;
+  for (const auto& op : op_infos_) {
+    optimal_seconds_sum += op.optimal_seconds;
+  }
+
+  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, -1, -1,
+             optimal_seconds_sum});
 
   // Sort ops in decreasing order of cycles.
   std::vector<OpInfo> sorted_ops(op_infos_);
@@ -76,19 +83,43 @@ string HumanReadableProfileBuilder::ToString() const {
   if (total_cycles_ <= 0) {
     StrAppend(&s, "****** 0 total cycles ******\n");
   } else {
-    MetricTableReport table;
-    table.SetMetricName("microseconds");
-    table.SetEntryName("ops");
-    table.SetShowCategoryTable();
-    for (const auto& op : sorted_ops) {
-      MetricTableReport::Entry entry;
-      entry.text = op.name;
-      entry.short_text = op.short_name;
-      entry.category_text = op.category;
-      entry.metric = CyclesToMicroseconds(op.cycles);
-      table.AddEntry(std::move(entry));
+    // Only show an optimal discrepancy table if at least one value was
+    // specified. Estimates are non-negative, so if the sum is greater than
+    // zero, then at least one summand was greater than zero.
+    if (optimal_seconds_sum > 0) {
+      MetricTableReport table;
+      table.SetMetricName("microseconds above estimated optimum");
+      table.SetEntryName("ops");
+      table.SetShowCategoryTable();
+      float total_discrepancy_in_microseconds = 0.0f;
+      for (const auto& op : sorted_ops) {
+        MetricTableReport::Entry entry;
+        entry.text = op.name;
+        entry.short_text = op.short_name;
+        entry.category_text = op.category;
+        entry.metric =
+            CyclesToMicroseconds(op.cycles) - op.optimal_seconds * 1e6;
+        total_discrepancy_in_microseconds += entry.metric;
+        table.AddEntry(std::move(entry));
+      }
+      StrAppend(&s, table.MakeReport(total_discrepancy_in_microseconds));
     }
-    StrAppend(&s, table.MakeReport(CyclesToMicroseconds(total_cycles_)));
+
+    {
+      MetricTableReport table;
+      table.SetMetricName("microseconds");
+      table.SetEntryName("ops");
+      table.SetShowCategoryTable();
+      for (const auto& op : sorted_ops) {
+        MetricTableReport::Entry entry;
+        entry.text = op.name;
+        entry.short_text = op.short_name;
+        entry.category_text = op.category;
+        entry.metric = CyclesToMicroseconds(op.cycles);
+        table.AddEntry(std::move(entry));
+      }
+      StrAppend(&s, table.MakeReport(CyclesToMicroseconds(total_cycles_)));
+    }
   }
   return s;
 }

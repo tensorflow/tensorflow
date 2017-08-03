@@ -48,9 +48,6 @@ xla::cpu::runtime::V4F32 __xla_cpu_runtime_ExpV4F32(xla::cpu::runtime::V4F32 x)
 
 xla::cpu::runtime::V4F32 __xla_cpu_runtime_LogV4F32(xla::cpu::runtime::V4F32 x)
     TF_ATTRIBUTE_WEAK;
-
-xla::cpu::runtime::V4F32 __xla_cpu_runtime_TanhV4F32(xla::cpu::runtime::V4F32 x)
-    TF_ATTRIBUTE_WEAK;
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_

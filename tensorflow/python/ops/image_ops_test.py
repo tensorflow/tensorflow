@@ -2859,5 +2859,23 @@ class FormatTest(test_util.TensorFlowTestCase):
           decode(io_ops.read_file(path)).eval()
 
 
+class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
+
+  def testSelectFromThreeClusters(self):
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    max_output_size_np = 3
+    iou_threshold_np = 0.5
+    with self.test_session():
+      boxes = constant_op.constant(boxes_np)
+      scores = constant_op.constant(scores_np)
+      max_output_size = constant_op.constant(max_output_size_np)
+      iou_threshold = constant_op.constant(iou_threshold_np)
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, max_output_size, iou_threshold).eval()
+      self.assertAllClose(selected_indices, [3, 0, 5])
+
+
 if __name__ == "__main__":
   googletest.main()

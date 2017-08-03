@@ -245,6 +245,14 @@ class Service : public ServiceInterface {
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
 
+ private:
+  // A private overload for Service itself, used by other methods within this
+  // class.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      tensorflow::gtl::ArraySlice<const Allocation*> arguments,
+      const ExecutionOptions& execution_options);
+
  protected:
   friend class LocalExecutable;
 
@@ -263,10 +271,14 @@ class Service : public ServiceInterface {
       const Backend* backend, int device_ordinal);
 
   // Create a Hlo module config for the given program shape and arguments.
+  // execution_options is optional; if not given a default is used.
+  // has_hybrid_result is used to initialize the same-named field in
+  // HloModuleConfig -- see that class for documentation.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const ExecutionOptions& execution_options);
+      tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+      const ExecutionOptions* execution_options,
+      bool has_hybrid_result = false);
 
   // Builds an Executable for the given parameters. If
   // executable_for_compute_constant is true, then the executable is intended to

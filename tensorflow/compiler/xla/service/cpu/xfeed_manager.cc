@@ -36,7 +36,7 @@ void XfeedQueueManager::Reset() {
   enqueued_buffers_.clear();
 }
 
-void XfeedQueueManager::EnqueueBuffers(
+void XfeedQueueManager::EnqueueBuffersAtomically(
     tensorflow::gtl::ArraySlice<XfeedBuffer*> buffers) {
   tensorflow::mutex_lock l(mu_);
   bool was_empty = enqueued_buffers_.empty();

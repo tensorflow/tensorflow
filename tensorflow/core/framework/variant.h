@@ -24,12 +24,11 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
-
-struct VariantTensorData;
 
 template <typename T>
 string TypeNameVariant(const T& value);

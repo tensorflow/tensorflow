@@ -512,10 +512,12 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module("ReferenceUtil");
+  auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;
   std::unique_ptr<Literal> result_literal =
-      evaluator.Evaluate(*b.Build(), {}).ConsumeValueOrDie();
+      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
 
   CHECK_EQ(ShapeUtil::Rank(result_literal->shape()), 4);
   auto result =

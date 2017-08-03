@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -46,66 +48,338 @@ string GetTraceString(const CodeDef::Trace& trace) {
   }
   return ntrace;
 }
+
+// StringTable maps each string to an id.
+class StringTable {
+ public:
+  StringTable() {
+    // Pprof requires first entry in string_table to be ''.
+    string_id_[""] = 0;
+    all_strings_.push_back("");
+  }
+
+  // Returns the index of a string. If not found, inserts the string and
+  // return the inserted index.
+  uint64 GetIndex(const string& str) {
+    auto idx = string_id_.find(str);
+    if (idx != string_id_.end()) {
+      return idx->second;
+    }
+    all_strings_.push_back(str);
+    return string_id_.insert(std::pair<string, int64>(str, string_id_.size()))
+        .first->second;
+  }
+
+  const std::vector<string>& strings() const { return all_strings_; }
+
+ private:
+  std::map<string, uint64> string_id_;
+  std::vector<string> all_strings_;
+};
+
+// FunctionTable maps each function to an id.
+class FunctionTable {
+ public:
+  explicit FunctionTable(StringTable* string_table)
+      : string_table_(string_table) {}
+
+  // Returns the index of a function. If not found, adds a function proto
+  // and returns the function index.
+  uint64 GetIndex(const string& file_path, const string& func_name,
+                  uint64 func_start_line) {
+    auto key = std::tuple<string, string, uint64>(file_path, func_name,
+                                                  func_start_line);
+    auto idx = function_table_.find(key);
+    if (idx != function_table_.end()) {
+      return idx->second.id();
+    }
+    pprof::Function* func_pb = &function_table_[key];
+    // function index should start from 1.
+    func_pb->set_id(function_table_.size());
+    func_pb->set_name(string_table_->GetIndex(func_name));
+    func_pb->set_filename(string_table_->GetIndex(file_path));
+    func_pb->set_start_line(func_start_line);
+    return func_pb->id();
+  }
+
+  const std::map<std::tuple<string, string, uint64>, pprof::Function>&
+  functions() const {
+    return function_table_;
+  }
+
+ private:
+  StringTable* string_table_;
+  std::map<std::tuple<string, string, uint64>, pprof::Function> function_table_;
+};
+
+// LocationTable maps each function call to an id.
+class LocationTable {
+ public:
+  explicit LocationTable(FunctionTable* function_table)
+      : function_table_(function_table) {}
+
+  // Returns the index of a function call localtion. If not found, adds a
+  // location proto and returns the location index.
+  uint64 GetIndex(const string& file_path, uint64 line_number,
+                  const string& called_function_name,
+                  const string& called_file_path,
+                  uint64 called_func_start_line) {
+    auto key = std::tuple<string, string, uint64>(
+        file_path, called_function_name, line_number);
+    auto idx = location_table_.find(key);
+    if (idx != location_table_.end()) {
+      return idx->second.id();
+    }
+    pprof::Location* location_pb = &location_table_[key];
+    location_pb->set_id(location_table_.size());
+    pprof::Line* line_pb = location_pb->add_line();
+    line_pb->set_function_id(function_table_->GetIndex(
+        called_file_path, called_function_name, called_func_start_line));
+    line_pb->set_line(line_number);
+    return location_pb->id();
+  }
+
+  const std::map<std::tuple<string, string, uint64>, pprof::Location>&
+  locations() const {
+    return location_table_;
+  }
+
+ private:
+  FunctionTable* function_table_;
+  std::map<std::tuple<string, string, uint64>, pprof::Location> location_table_;
+};
+
+// Samples stores samples of all calls. A sample is a single call trace,
+// that is, the call path from top caller to the leaf callee.
+class Samples {
+ public:
+  explicit Samples(StringTable* string_table, const Options* opts)
+      : string_table_(string_table), opts_(opts) {}
+
+  // 'node' is the leaf of the displayed trace. It includes all graph nodes
+  // created by it. 'location_ids' contains
+  // the call stack, from callee to caller.
+  // This method adds the statistics of graph nodes created by the python
+  // call.
+  void Add(const CodeNode* node, const std::vector<uint64>& location_ids) {
+    // displayed leaf might not be true leaf. Retrive the true leaves for
+    // stats.
+    std::vector<const CodeNode*> all_leaf = FetchAllLeaf(node);
+    CHECK(!all_leaf.empty()) << node->name();
+
+    for (const CodeNode* cn : all_leaf) {
+      for (auto gn_it : cn->node->graph_nodes()) {
+        const TFGraphNode* gn = gn_it.second;
+        pprof::Sample* sample_pb = &sample_table_[gn->name()];
+        for (uint64 id : location_ids) {
+          sample_pb->mutable_location_id()->Add(id);
+        }
+        pprof::Label* label_pb = sample_pb->mutable_label()->Add();
+        label_pb->set_key(string_table_->GetIndex("node_name"));
+        label_pb->set_str(string_table_->GetIndex(gn->name()));
+
+        sample_pb->mutable_value()->Add(1);
+        string type = *opts_->select.begin();
+        if (type == kShown[1]) {
+          sample_pb->mutable_value()->Add(gn->exec_micros(node->node->step()));
+        } else if (type == kShown[9]) {
+          sample_pb->mutable_value()->Add(
+              gn->accelerator_exec_micros(node->node->step()));
+        } else if (type == kShown[10]) {
+          sample_pb->mutable_value()->Add(
+              gn->cpu_exec_micros(node->node->step()));
+        } else if (type == kShown[0]) {
+          sample_pb->mutable_value()->Add(
+              gn->requested_bytes(node->node->step()));
+        } else if (type == kShown[2]) {
+          sample_pb->mutable_value()->Add(gn->parameters());
+        } else if (type == kShown[3]) {
+          sample_pb->mutable_value()->Add(gn->float_ops(node->node->step()));
+        } else {
+          fprintf(stderr, "pprof doesn't support -select=%s\n", type.c_str());
+        }
+      }
+    }
+  }
+
+  const std::map<string, pprof::Sample>& samples() const {
+    return sample_table_;
+  }
+
+ private:
+  std::vector<const CodeNode*> FetchAllLeaf(const CodeNode* root) {
+    if (root->children.empty()) {
+      return {root};
+    }
+    std::vector<const CodeNode*> ret;
+    for (auto& n : root->children) {
+      std::vector<const CodeNode*> nodes = FetchAllLeaf(n);
+      ret.insert(ret.end(), nodes.begin(), nodes.end());
+    }
+    return ret;
+  }
+
+  StringTable* string_table_;
+  const Options* opts_;
+  std::map<string, pprof::Sample> sample_table_;
+};
+
+class PprofProfileImpl : public PprofProfile {
+ public:
+  explicit PprofProfileImpl(const Options* opts)
+      : opts_(opts),
+        func_table_(new FunctionTable(&string_table_)),
+        loc_table_(new LocationTable(func_table_.get())),
+        samples_(new Samples(&string_table_, opts)) {}
+
+  uint64 AddLocation(const CodeNode* callee, const CodeNode* caller) override {
+    const string& file_path = caller->trace->file();
+    uint64 lineno = caller->trace->lineno();
+    const string& callee_file_path = callee->trace->file();
+    const string& callee_function = callee->trace->function();
+    uint64 callee_func_start_line = callee->trace->func_start_line();
+
+    return loc_table_->GetIndex(file_path, lineno, callee_function,
+                                callee_file_path, callee_func_start_line);
+  }
+
+  void AddSample(const CodeNode* leaf, std::vector<uint64>* call_ids) override {
+    std::vector<uint64> reversed_call_ids;
+    std::reverse_copy(call_ids->begin(), call_ids->end(),
+                      std::back_inserter(reversed_call_ids));
+    samples_->Add(leaf, reversed_call_ids);
+  }
+
+  Status WritePprofProfile(const string& filename) override {
+    pprof::Profile profile_pb;
+    Build(&profile_pb);
+
+    std::unique_ptr<WritableFile> file;
+    Status s = Env::Default()->NewWritableFile(filename, &file);
+    if (!s.ok()) return s;
+
+    int32 buf_size = 1024 * 1024;
+    io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
+        file.get(), buf_size, buf_size, io::ZlibCompressionOptions::GZIP());
+    s = zlib_output_buffer->Init();
+    if (!s.ok()) return s;
+    s = zlib_output_buffer->Append(profile_pb.SerializeAsString());
+    if (!s.ok()) return s;
+    s = zlib_output_buffer->Close();
+    if (!s.ok()) return s;
+    fprintf(stdout, "\nRun pprof -png --nodecount=20 --sample_index=1 <%s>\n",
+            filename.c_str());
+    return s;
+  }
+
+ private:
+  void Build(pprof::Profile* profile_pb) {
+    string sample_type_description = "count";
+    auto sample_type = profile_pb->mutable_sample_type()->Add();
+    sample_type->set_type(string_table_.GetIndex(sample_type_description));
+    sample_type->set_unit(string_table_.GetIndex("count"));
+
+    string type = *opts_->select.begin();
+    sample_type_description = type;
+    sample_type = profile_pb->mutable_sample_type()->Add();
+    sample_type->set_type(string_table_.GetIndex(sample_type_description));
+    if (type == kShown[1] || type == kShown[9] || type == kShown[10]) {
+      sample_type->set_unit(string_table_.GetIndex("microseconds"));
+      if (type == kShown[1]) {
+        profile_pb->mutable_comment()->Add(string_table_.GetIndex(
+            "Sum of accelerator execution time and cpu execution time."));
+      } else if (type == kShown[9]) {
+        profile_pb->mutable_comment()->Add(
+            string_table_.GetIndex("Accelerator execution time."));
+      } else if (type == kShown[10]) {
+        profile_pb->mutable_comment()->Add(
+            string_table_.GetIndex("CPU execution time."));
+      }
+    } else if (type == kShown[0]) {
+      sample_type->set_unit(string_table_.GetIndex("bytes"));
+      profile_pb->mutable_comment()->Add(
+          string_table_.GetIndex("Sum of operation output memory."));
+    } else if (type == kShown[2]) {
+      sample_type->set_unit(string_table_.GetIndex("count"));
+      profile_pb->mutable_comment()->Add(
+          string_table_.GetIndex("Model parameters."));
+    } else if (type == kShown[3]) {
+      sample_type->set_unit(string_table_.GetIndex("count"));
+      profile_pb->mutable_comment()->Add(string_table_.GetIndex(
+          "Model float operations (Only available if defined)."));
+    } else {
+      fprintf(stderr, "pprof doesn't support selecting: %s\n", type.c_str());
+    }
+
+    for (const string& str : string_table_.strings()) {
+      *profile_pb->mutable_string_table()->Add() = str;
+    }
+    for (const auto& sample_it : samples_->samples()) {
+      // TODO(xpan): Consider swap.
+      profile_pb->mutable_sample()->Add()->MergeFrom(sample_it.second);
+    }
+    for (const auto& function_it : func_table_->functions()) {
+      profile_pb->mutable_function()->Add()->MergeFrom(function_it.second);
+    }
+    for (const auto& location_it : loc_table_->locations()) {
+      profile_pb->mutable_location()->Add()->MergeFrom(location_it.second);
+    }
+  }
+
+  const Options* opts_;
+  StringTable string_table_;
+  std::unique_ptr<FunctionTable> func_table_;
+  std::unique_ptr<LocationTable> loc_table_;
+  std::unique_ptr<Samples> samples_;
+};
 }  // namespace
 
 void TFCode::AddNode(TFGraphNode* node) {
   if (node->code().traces_size() == 0) {
     return;
   }
-  TFMultiGraphNode* pre_trace_node = nullptr;
+  if (!root_) {
+    graph_root_.reset(new TFMultiGraphNode(kTFProfRoot));
+    root_.reset(new CodeNode(graph_root_.get(), nullptr));
+  }
+
+  CodeNode* pre_code_node = root_.get();
   // TODO(xpan): Consider to release CodeDef after TFCode is built. It
   // takes a lot of memory.
   for (int i = 0; i < node->code().traces_size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
     const string& trace = GetTraceString(node->code().traces(i));
-    if (i == 0) {
-      if (!trace_root_) {
-        trace_root_.reset(new TFMultiGraphNode(trace));
-      }
-      CHECK(trace_root_->name() == trace) << "Different trace root";
-      pre_trace_node = trace_root_.get();
-      continue;
-    }
-    pre_trace_node->AddChildren(trace);
-    TFMultiGraphNode* trace_node = pre_trace_node->children().at(trace).get();
-
+    pre_code_node = pre_code_node->AddChildren(trace, &node->code().traces(i));
     if (i == node->code().traces_size() - 1) {
-      trace_node->AddGraphNode(node);
+      pre_code_node->node->AddGraphNode(node);
     }
-    pre_trace_node = trace_node;
   }
 }
 
 void TFCode::Build() {
-  if (root_) {
-    return;
-  }
-  tfprof_trace_root_.reset(new TFMultiGraphNode(kTFProfRoot));
-  root_.reset(new CodeNode(tfprof_trace_root_.get()));
-
-  if (trace_root_) {
-    code_root_ = BuildCodeNodes(trace_root_.get());
-    root_->children.push_back(code_root_);
-  }
-}
-
-CodeNode* TFCode::BuildCodeNodes(TFMultiGraphNode* root) {
-  auto code_root = std::unique_ptr<CodeNode>(new CodeNode(root));
-  CodeNode* code_root_ptr = code_root.get();
-  code_nodes_.insert(std::move(code_root));
-
-  for (auto it = root->children().cbegin(); it != root->children().cend();
-       ++it) {
-    code_root_ptr->children.push_back(BuildCodeNodes(it->second.get()));
-  }
-  return code_root_ptr;
 }
 
 const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
                                           Timeline* timeline) {
-  std::vector<CodeNode*> roots = Account(root_->children, opts);
   root_->ResetTotalStats();
+  if (opts.output_type == kOutput[3]) {
+    if (opts.select.size() != 1) {
+      fprintf(stderr, "Can only select 1 attribute for pprof output.\n");
+      return root_.get();
+    }
+    string select = *opts.select.begin();
+    if (select != kShown[0] && select != kShown[1] && select != kShown[2] &&
+        select != kShown[3] && select != kShown[9] && select != kShown[10]) {
+      fprintf(stderr, "pprof doesn't support -select=%s\n", select.c_str());
+      return root_.get();
+    }
+  }
+  if (opts.account_displayed_op_only) {
+    fprintf(stderr, "Note: code view ignores account_displayed_op_only\n");
+  }
+
+  std::vector<CodeNode*> roots = Account(root_->children, opts);
   root_->show_children.clear();
   for (CodeNode* n : roots) {
     root_->AggregateTotalStats(n);
@@ -121,21 +395,46 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
   CodeNode* root = PrintScope({root_.get()}, opts, 1, 0)[0];
 
   root->formatted_str = FormatLegend(opts) + root->formatted_str;
-  Format(root->show_children, &root->formatted_str, root->mutable_proto());
 
-  if (timeline) {
-    timeline->GenerateCodeTimeline(root);
+  if (opts.output_type == kOutput[3]) {
+    std::vector<uint64> call_ids;
+    pprof_profile_.reset(new PprofProfileImpl(&opts));
+    Format(root, root->show_children, opts, &root->formatted_str,
+           root->mutable_proto(), &call_ids);
+    Status s = pprof_profile_->WritePprofProfile(
+        opts.output_options.at(kPprofOpts[0]));
+    if (!s.ok()) {
+      fprintf(stderr, "%s\n", s.ToString().c_str());
+    }
+  } else {
+    Format(root, root->show_children, opts, &root->formatted_str,
+           root->mutable_proto(), nullptr);
+    if (timeline) {
+      timeline->GenerateCodeTimeline(root);
+    }
   }
   return root;
 }
 
-void TFCode::Format(const std::vector<CodeNode*> roots, string* display_str,
-                    MultiGraphNodeProto* proto) {
-  for (CodeNode* node : roots) {
+void TFCode::Format(const CodeNode* root, const std::vector<CodeNode*>& nodes,
+                    const Options& opts, string* display_str,
+                    MultiGraphNodeProto* proto, std::vector<uint64>* call_ids) {
+  if (nodes.empty() && root->trace && opts.output_type == kOutput[3]) {
+    pprof_profile_->AddSample(root, call_ids);
+  }
+
+  for (CodeNode* node : nodes) {
+    if (root->trace && opts.output_type == kOutput[3]) {
+      uint64 loc_id = pprof_profile_->AddLocation(node, root);
+      call_ids->push_back(loc_id);
+    }
     display_str->append(node->formatted_str);
     MultiGraphNodeProto* child = proto->add_children();
     child->MergeFrom(node->proto());
-    Format(node->show_children, display_str, child);
+    Format(node, node->show_children, opts, display_str, child, call_ids);
+    if (root->trace && opts.output_type == kOutput[3]) {
+      call_ids->pop_back();
+    }
   }
 }
 
@@ -170,27 +469,21 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
   std::vector<CodeNode*> show_nodes;
 
   for (CodeNode* node : roots) {
+    if (ShouldTrim(node, opts.trim_name_regexes) || depth > opts.max_depth) {
+      continue;
+    }
     int ident = last_ident;
     bool show = ShouldShow(node, opts, depth);
     if (show) ident += 2;
 
-    std::vector<CodeNode*> show_cnodes;
-    if (!ShouldTrim(node, opts.trim_name_regexes) && depth <= opts.max_depth) {
-      show_cnodes = PrintScope(node->show_children, opts, depth + 1, ident);
-    }
+    std::vector<CodeNode*> show_cnodes =
+        PrintScope(node->show_children, opts, depth + 1, ident);
     if (show) {
       node->show_children.clear();
-      if (opts.account_displayed_op_only) {
-        node->ResetTotalStats();
-        node->AddSelfToTotalStats();
-      }
 
       show_cnodes = SortNodes(show_cnodes, opts);
       for (CodeNode* sc : show_cnodes) {
         node->show_children.push_back(sc);
-        if (opts.account_displayed_op_only) {
-          node->AggregateTotalStats(sc);
-        }
       }
 
       node->formatted_str = FormatNode(node, opts, last_ident);

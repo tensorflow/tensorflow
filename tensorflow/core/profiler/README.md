@@ -181,6 +181,7 @@ seq2seq_attention_model.py:363:build_graph:self._add_train_o..., cpu: 1.28sec, a
 
 ### Visualize time and memory.
 ```
+# The following example generates a timeline.
 tfprof> graph -step 0 -max_depth 100000 -output timeline:outfile=<filename>
 
 generating trace file.
@@ -191,9 +192,29 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
 <left>
-[CodeTimeline](g3doc/graph_timeline.png)
+[Timeline](g3doc/graph_timeline.png)
 </left>
 
+```
+# The following example generates a pprof graph (only supported by code view).
+# Since TensorFlow runs the graph instead of Python code, the pprof graph
+# doesn't profile the statistics of Python, but the TensorFlow graph
+# nodes created by the Python call stack.
+# Nevertheless, it pops critical Python code path for us.
+#
+# `-trim_name_regexes` trims the python call stack, which are always the same
+# for the leaves.
+# `-select accelerator_micros` pick accelerator time for pprof graph. User
+# can also generate memory profile using `-select bytes`
+tfprof> code -max_depth 100 -trim_name_regexes '^ops.py.*' -select accelerator_micros -output pprof:outfile=<filename>
+
+# Use pprof to visualize the generated file.
+pprof -png --nodecount=20 --sample_index=1 <filename>
+```
+
+<left>
+[PprofGraph](g3doc/pprof.jpg)
+</left>
 
 ### Feature Request and Bug Report
 

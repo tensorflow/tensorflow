@@ -3007,7 +3007,7 @@ tf_kernel_library(
         "maxpooling_op.h",
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
-    ],
+    ] + if_sycl(["pooling_ops_3d_sycl.h"]),
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",

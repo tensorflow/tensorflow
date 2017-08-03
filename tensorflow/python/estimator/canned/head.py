@@ -301,7 +301,7 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       provided and labels are string.
 
   Returns:
-    An instance of `_Head` for  multi class classification.
+    An instance of `_Head` for multi class classification.
 
   Raises:
     ValueError: if `n_classes`, `metric_class_ids` or `label_keys` is invalid.

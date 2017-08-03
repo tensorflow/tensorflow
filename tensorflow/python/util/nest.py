@@ -336,9 +336,9 @@ def map_structure(func, *structure, **check_types_dict):
   Args:
     func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
-      tuples/lists, or scalars.  Note: numpy arrays are considered  as scalars.
+      tuples/lists, or scalars.  Note: numpy arrays are considered as scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
-      `True` (default) the types of iterables within the  structures have to be
+      `True` (default) the types of iterables within the structures have to be
       same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
       exception). To allow this set this argument to `False`.
 
@@ -382,7 +382,8 @@ def map_structure(func, *structure, **check_types_dict):
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
   if is_sequence(shallow_tree):
-    for shallow_branch, input_branch in zip(shallow_tree, input_tree):
+    for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
+                                            _yield_value(input_tree)):
       for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
         yield input_leaf
   else:

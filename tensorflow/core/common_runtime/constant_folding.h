@@ -29,6 +29,11 @@ struct ConstantFoldingOptions {
   // If "consider" is not a nullptr, then only constant fold a node "n" if
   // consider(n) returns true.
   std::function<bool(const Node*)> consider = nullptr;
+  // If shape_map is not a nullptr, it is a map from node n to a
+  // vector of the (potentially partially-known) shapes of its
+  // outputs.
+  const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+      shape_map;  // not owned
 };
 
 // Perform constant folding optimization on "graph".

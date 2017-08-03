@@ -530,7 +530,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "vector_diffeomixture_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/vector_diffeomixture_test.py"],
     additional_deps = [
         ":distributions_py",

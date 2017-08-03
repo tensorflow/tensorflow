@@ -721,7 +721,7 @@ class DebugDumpDir(object):
     """Load `DebugTensorDatum` instances from the dump root of a given device.
 
     Populates a map {device_name: a list of `DebugTensorDatum`}, where the list
-    is sorted by  ascending timestamp.
+    is sorted by ascending timestamp.
 
     This sorting order reflects the order in which the TensorFlow executor
     processed the nodes of the graph. It is (one of many possible) topological

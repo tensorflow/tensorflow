@@ -25,7 +25,7 @@ bool CountAsAcceleratorTime(const string& device) {
 }
 
 bool CountAsCPUTime(const string& device) {
-  return RE2::FullMatch(device, ".*/(device:gpu|cpu):\\d+");
+  return RE2::FullMatch(device, ".*/(device:gpu|cpu|device:sycl):\\d+");
 }
 
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
@@ -143,7 +143,11 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
     } else {
       canonical_device_ = dev;
       // TODO(xpan): Support things other than gpu?
-      host_device_ = StringReplace(dev, "device:gpu:\\d+", "cpu:0");
+      if (dev.find("sycl") != dev.npos) {
+        host_device_ = StringReplace(dev, "device:sycl:\\d+", "cpu:0");
+      } else {
+        host_device_ = StringReplace(dev, "device:gpu:\\d+", "cpu:0");
+      }
       AddOpType(canonical_device_);
     }
   }
@@ -217,7 +221,8 @@ TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
 }
 
 bool IsPlacedOnAccelerator(const string& device) {
-  return device.find("gpu") != device.npos;
+  return device.find("gpu") != device.npos ||
+         device.find("sycl") != device.npos;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

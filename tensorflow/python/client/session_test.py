@@ -341,7 +341,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(a_val)
       b = control_flow_ops.no_op()  # An op, not a tensor.
       c = constant_op.constant(c_val)
-      # List of lists, tuples, namedtuple, and  dict
+      # List of lists, tuples, namedtuple, and dict
       res = sess.run([[a, b, c], (a, b, c), ABC(a=a, b=b, c=c),
                       {'a': a.name, 'c': c, 'b': b}])
       self.assertTrue(isinstance(res, list))
@@ -365,7 +365,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
-      # Tuple of lists, tuples, namedtuple, and  dict
+      # Tuple of lists, tuples, namedtuple, and dict
       res = sess.run(([a, b, c], (a.name, b, c), ABC(a=a, b=b, c=c),
                       {'a': a, 'c': c, 'b': b}))
       self.assertTrue(isinstance(res, tuple))
