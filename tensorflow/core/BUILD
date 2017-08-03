@@ -1835,15 +1835,21 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
 
 tf_cuda_library(
-    name = "core_cpu_internal",
+    name = "core_cpu_init",
+    srcs = [
+        "common_runtime/device_factory.cc",
+    ],
+    deps = ["core_cpu_lib"],
+)
+
+tf_cuda_library(
+    name = "core_cpu_lib",
     srcs = [
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
@@ -1853,7 +1859,6 @@ tf_cuda_library(
         "common_runtime/costmodel_manager.cc",
         "common_runtime/debugger_state_interface.cc",
         "common_runtime/device.cc",
-        "common_runtime/device_factory.cc",
         "common_runtime/device_mgr.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
@@ -1872,7 +1877,6 @@ tf_cuda_library(
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
         "common_runtime/session_state.cc",
-        "common_runtime/simple_graph_execution_state.cc",
         "common_runtime/simple_placer.cc",
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
@@ -1912,7 +1916,6 @@ tf_cuda_library(
         "common_runtime/renamed_device.h",
         "common_runtime/rendezvous_mgr.h",
         "common_runtime/session_factory.h",
-        "common_runtime/simple_graph_execution_state.h",
         "common_runtime/simple_placer.h",
         "common_runtime/stats_publisher_interface.h",
         "common_runtime/step_stats_collector.h",
@@ -1921,8 +1924,25 @@ tf_cuda_library(
         "graph/gradients.h",
         "graph/quantize_training.h",
     ],
+    deps = [
+        ":core_cpu_base",
+        ":proto_text",
+        ":protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+tf_cuda_library(
+    name = "core_cpu_internal",
+    srcs = [
+        "common_runtime/simple_graph_execution_state.cc",
+    ],
+    hdrs = [
+        "common_runtime/simple_graph_execution_state.h",
+    ],
     copts = tf_copts(),
     deps = [
+               ":core_cpu_lib",
                ":core_cpu_base",
                ":framework",
                ":framework_internal",
@@ -2018,7 +2038,7 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "gpu_runtime",
+    name = "gpu_runtime_impl",
     srcs = [
         "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
@@ -2031,6 +2051,17 @@ tf_cuda_library(
         "common_runtime/gpu/process_state.cc",
         "common_runtime/gpu_device_context.h",
     ],
+    deps = [
+        ":gpu_init",
+        ":gpu_lib",
+        ":gpu_runtime",
+        ":stream_executor",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "gpu_runtime",
     hdrs = [
         "common_runtime/gpu/gpu_bfc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
@@ -2044,16 +2075,12 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
+        ":core_cpu_lib",
         ":framework",
         ":framework_internal",
-        ":gpu_init",
-        ":gpu_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        ":stream_executor",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

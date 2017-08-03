@@ -32,9 +32,7 @@ tf_cuda_library(
     name = "stream_executor",
     deps = [
         "//tensorflow/stream_executor",
-    ] + if_cuda(
-        ["//tensorflow/stream_executor:cuda_platform"],
-    ) + select({
+    ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
@@ -44,7 +42,6 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         "//tensorflow/stream_executor",
-        "//tensorflow/stream_executor:cuda_platform",
     ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
