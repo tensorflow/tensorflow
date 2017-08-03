@@ -151,9 +151,11 @@ tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
   }
 
   *opts = Options(
-      opts_pb.max_depth(), opts_pb.min_bytes(), opts_pb.min_micros(),
-      opts_pb.min_params(), opts_pb.min_float_ops(), opts_pb.min_occurrence(),
-      opts_pb.step(), opts_pb.order_by(),
+      opts_pb.max_depth(), opts_pb.min_bytes(), opts_pb.min_peak_bytes(),
+      opts_pb.min_residual_bytes(), opts_pb.min_output_bytes(),
+      opts_pb.min_micros(), opts_pb.min_accelerator_micros(),
+      opts_pb.min_cpu_micros(), opts_pb.min_params(), opts_pb.min_float_ops(),
+      opts_pb.min_occurrence(), opts_pb.step(), opts_pb.order_by(),
       std::vector<string>(opts_pb.account_type_regexes().begin(),
                           opts_pb.account_type_regexes().end()),
       std::vector<string>(opts_pb.start_name_regexes().begin(),
@@ -179,6 +181,11 @@ string Options::ToString() const {
       "%-28s%lld\n"
       "%-28s%lld\n"
       "%-28s%lld\n"
+      "%-28s%lld\n"
+      "%-28s%lld\n"
+      "%-28s%lld\n"
+      "%-28s%lld\n"
+      "%-28s%lld\n"
       "%-28s%s\n"
       "%-28s%s\n"
       "%-28s%s\n"
@@ -188,17 +195,20 @@ string Options::ToString() const {
       "%-28s%s\n"
       "%-28s%s\n"
       "%-28s%s:%s\n",
-      kOptions[0], max_depth, kOptions[1], min_bytes, kOptions[2], min_micros,
-      kOptions[3], min_params, kOptions[4], min_float_ops, kOptions[5],
-      min_occurrence, kOptions[6], step, kOptions[7], order_by.c_str(),
-      kOptions[8], str_util::Join(account_type_regexes, ",").c_str(),
-      kOptions[9], str_util::Join(start_name_regexes, ",").c_str(),
-      kOptions[10], str_util::Join(trim_name_regexes, ",").c_str(),
-      kOptions[11], str_util::Join(show_name_regexes, ",").c_str(),
-      kOptions[12], str_util::Join(hide_name_regexes, ",").c_str(),
-      kOptions[13], (account_displayed_op_only ? "true" : "false"),
-      kOptions[14], str_util::Join(select, ",").c_str(), kOptions[15],
-      output_type.c_str(), KeyValueToStr(output_options).c_str());
+      kOptions[0], max_depth, kOptions[1], min_bytes, kOptions[2],
+      min_peak_bytes, kOptions[3], min_residual_bytes, kOptions[4],
+      min_output_bytes, kOptions[5], min_micros, kOptions[6],
+      min_accelerator_micros, kOptions[7], min_cpu_micros, kOptions[8],
+      min_params, kOptions[9], min_float_ops, kOptions[10], min_occurrence,
+      kOptions[11], step, kOptions[12], order_by.c_str(), kOptions[13],
+      str_util::Join(account_type_regexes, ",").c_str(), kOptions[14],
+      str_util::Join(start_name_regexes, ",").c_str(), kOptions[15],
+      str_util::Join(trim_name_regexes, ",").c_str(), kOptions[16],
+      str_util::Join(show_name_regexes, ",").c_str(), kOptions[17],
+      str_util::Join(hide_name_regexes, ",").c_str(), kOptions[18],
+      (account_displayed_op_only ? "true" : "false"), kOptions[19],
+      str_util::Join(select, ",").c_str(), kOptions[20], output_type.c_str(),
+      KeyValueToStr(output_options).c_str());
   return s;
 }
 

@@ -140,35 +140,66 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[2]) {
       if (pieces.size() <= i + 1 ||
-          !strings::safe_strto64(pieces[i + 1], &opts->min_micros)) {
+          !strings::safe_strto64(pieces[i + 1], &opts->min_peak_bytes)) {
         return ReturnError(pieces, i);
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[3]) {
       if (pieces.size() <= i + 1 ||
-          !strings::safe_strto64(pieces[i + 1], &opts->min_params)) {
+          !strings::safe_strto64(pieces[i + 1], &opts->min_residual_bytes)) {
         return ReturnError(pieces, i);
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[4]) {
       if (pieces.size() <= i + 1 ||
-          !strings::safe_strto64(pieces[i + 1], &opts->min_float_ops)) {
+          !strings::safe_strto64(pieces[i + 1], &opts->min_output_bytes)) {
         return ReturnError(pieces, i);
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[5]) {
       if (pieces.size() <= i + 1 ||
-          !strings::safe_strto64(pieces[i + 1], &opts->min_occurrence)) {
+          !strings::safe_strto64(pieces[i + 1], &opts->min_micros)) {
         return ReturnError(pieces, i);
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[6]) {
       if (pieces.size() <= i + 1 ||
-          !strings::safe_strto64(pieces[i + 1], &opts->step)) {
+          !strings::safe_strto64(pieces[i + 1],
+                                 &opts->min_accelerator_micros)) {
         return ReturnError(pieces, i);
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[7]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->min_cpu_micros)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[8]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->min_params)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[9]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->min_float_ops)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[10]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->min_occurrence)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[11]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->step)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[12]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -180,42 +211,42 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       opts->order_by = *order_by;
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[8]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[13]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->account_type_regexes = str_util::Split(StripQuote(pieces[i + 1]),
                                                    ',', str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[9]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->start_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                  str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[10]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[15]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->trim_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[11]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[16]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->show_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[12]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[17]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->hide_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[13]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[18]) {
       if ((pieces.size() > i + 1 && pieces[i + 1].find("-") == 0) ||
           pieces.size() == i + 1) {
         opts->account_displayed_op_only = true;
@@ -225,7 +256,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       } else {
         ++i;
       }
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[19]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -242,7 +273,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       opts->select = requested_set;
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[15]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[20]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
