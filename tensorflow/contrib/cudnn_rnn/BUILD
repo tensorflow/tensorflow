@@ -31,6 +31,7 @@ tf_custom_op_library(
 tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["kernels/cudnn_rnn_ops.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
