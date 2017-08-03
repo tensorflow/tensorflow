@@ -1149,6 +1149,84 @@ TEST_F(HloEvaluatorTest, DynamicSliceUpdate) {
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
+TEST_F(HloEvaluatorTest, SetAndGetTuples) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  operand_array->FillUnique(1.0);
+  auto operand_literal2 = Literal::CreateR2FromArray2D<double>(*operand_array);
+
+  HloInstruction* operand2 = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal2)));
+  HloInstruction* operand1 = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 1})));
+
+  auto tuple =
+      b.AddInstruction(HloInstruction::CreateTuple({operand1, operand2}));
+
+  Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
+  b.AddInstruction(HloInstruction::CreateGetTupleElement(shape, tuple, 1));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<double>({
+      {1, 2, 3},
+      {5, 6, 7},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, SetAndGetNestedTuples) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  operand_array->FillUnique(1.0);
+
+  HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2FromArray2D<double>(*operand_array)));
+  HloInstruction* operand1 = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 1})));
+
+  auto tuple1 =
+      b.AddInstruction(HloInstruction::CreateTuple({operand1, operand2}));
+  auto tuple2 =
+      b.AddInstruction(HloInstruction::CreateTuple({operand2, operand2}));
+
+  auto outer_tuple =
+      b.AddInstruction(HloInstruction::CreateTuple({tuple1, tuple2}));
+
+  b.AddInstruction(
+      HloInstruction::CreateGetTupleElement(tuple2->shape(), outer_tuple, 1));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto result_inner_literal =
+      Literal::CreateR2FromArray2D<double>(*operand_array);
+  auto expected = Literal::MakeTuple({
+      result_inner_literal.get(),
+      result_inner_literal.get(),
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
 TEST_F(HloEvaluatorTest, Reverse) {
   HloComputation::Builder b(TestName());
 
