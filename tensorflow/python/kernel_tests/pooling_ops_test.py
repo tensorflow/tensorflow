@@ -104,13 +104,13 @@ class PoolingTest(test.TestCase):
         t = test_util.NHWCToNCHW(t)
         ksize = test_util.NHWCToNCHW(ksize)
         strides = test_util.NHWCToNCHW(strides)
-      k = array_ops.placeholder(dtypes.int32, shape=[4])
-      s = array_ops.placeholder(dtypes.int32, shape=[4])
+      ksize_placeholder = array_ops.placeholder(dtypes.int32, shape=[4])
+      strides_placeholder = array_ops.placeholder(dtypes.int32, shape=[4])
       if v2:
         t = pool_func(
             t,
-            ksize=k,
-            strides=s,
+            ksize=ksize_placeholder,
+            strides=strides_placeholder,
             padding=padding,
             data_format=data_format)
       else:
@@ -123,7 +123,8 @@ class PoolingTest(test.TestCase):
       if data_format == "NCHW":
         t = test_util.NCHWToNHWC(t)
       if v2:
-        actual = t.eval(feed_dict={k: ksize, s: strides})
+        actual = t.eval(feed_dict={ksize_placeholder: ksize,
+                                   strides_placeholder: strides})
       else:
         actual = t.eval()
         self.assertShapeEqual(actual, t)
