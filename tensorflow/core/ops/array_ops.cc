@@ -1676,6 +1676,20 @@ REGISTER_OP("_MklIdentity")
 )Doc");
 #endif
 
+REGISTER_OP("IdentityN")
+    .Input("inputs: T")
+    .Output("outputs: T")
+    .Attr("T: list(type)")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<ShapeHandle> inputs;
+      TF_RETURN_IF_ERROR(c->input("inputs", &inputs));
+      TF_RETURN_IF_ERROR(c->set_output("outputs", inputs));
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Returns a list of tensors with the same shapes and contents as the input tensors.
+)Doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("RefIdentity")
     .Input("input: Ref(T)")
