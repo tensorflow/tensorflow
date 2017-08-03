@@ -10647,23 +10647,6 @@ op {
   }
 }
 op {
-  name: "IdentityN"
-  input_arg {
-    name: "inputs"
-    type_list_attr: "T"
-  }
-  output_arg {
-    name: "outputs"
-    type_list_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"
