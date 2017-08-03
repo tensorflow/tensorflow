@@ -20,6 +20,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,8 +36,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // I need to transpose V afterwards
-#include <vector>
-#include "transpose_functor.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 
 // Logging
 #include <stdio.h>
@@ -134,17 +134,22 @@ class SvdOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // Copy and reshape input tensor
-    // SVD modifies the input, so I need to copy it.
-    Tensor inputCopy;
+    // Reuse the input buffer or make a copy for the SVD depending on whether this op owns the 
+    // input buffer exclusively.
+    Tensor input_copy;
     OP_REQUIRES_OK_ASYNC(
         context,
-        context->allocate_temp(input.dtype(), input.shape(), &inputCopy), done);
+        context->forward_input_or_allocate_temp(
+            {0}, DataTypeToEnum<Scalar>::value, input.shape(), &input_copy),
+        done);
 
-    cudaMemcpy(inputCopy.flat<Scalar>().data(), input.flat<Scalar>().data(),
-               input.NumElements() * sizeof(Scalar), cudaMemcpyDeviceToDevice);
+    if (!input.SharesBufferWith(input_copy)) {
+      const GPUDevice& d = context->eigen_device<GPUDevice>();
+      d.memcpy(input_copy.flat<Scalar>().data(), input.flat<Scalar>().data(),
+               input.NumElements() * sizeof(Scalar));
+    }
 
-    auto input_reshaped = inputCopy.template flat_inner_dims<Scalar, 3>();
+    auto input_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
 
     // Reshape output tensors
     auto outputS_reshaped = outputS->template flat_inner_dims<Scalar, 2>();
@@ -159,7 +164,8 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // Launch a SVD kernel for each matrix in the batch.
     const int64 batch_size = input_reshaped.dimension(0);
-    DeviceLapackInfo dev_info(context, batch_size, "gesvd");
+    std::vector<DeviceLapackInfo> dev_info;
+    dev_info.emplace_back(context, batch_size, "gesvd");
 
     // TODO(rmlarsen): Parallelize over batches if it turns out to be
     // an important use case.
@@ -189,7 +195,7 @@ class SvdOpGpu : public AsyncOpKernel {
         }
       }
 
-      int* dev_info_ptr = dev_info.mutable_data() + i;
+      int* dev_info_ptr = dev_info.back().mutable_data() + i;
       OP_REQUIRES_OK_ASYNC(
           context,
           solver.Gesvd(jobu, jobvt, m, n, input_ptr, lda, outputS_ptr,
@@ -197,29 +203,8 @@ class SvdOpGpu : public AsyncOpKernel {
           done);
     }
 
-    // Test if it was successfull.
-    // I'm not using solver.CopyLapackInfoToHostAsync
-    // because it resulted in a memory corruption on the host
-    // (because I have some operations afterwards, so I can't use done())
-    HostLapackInfo host_info(context, batch_size, "gesvd");
-    cudaMemcpy(host_info.mutable_data(), dev_info.data(),
-               sizeof(int) * batch_size, cudaMemcpyDeviceToHost);
-    Status status;
-    for (int i = 0; i < batch_size && status.ok(); ++i) {
-      const int info_value = host_info.data()[i];
-      if (info_value != 0) {
-        status = errors::InvalidArgument(
-            "Got info = ", info_value, " for batch index ", i,
-            ", expected info = 0. Debug_info =", host_info.debug_info());
-      }
-    }
-    if (!status.ok()) {
-      status.Update(errors::InvalidArgument(kErrMsg));
-    }
-    OP_REQUIRES_OK_ASYNC(context, status, done);
-    // TODO: Maybe switch to solver.CopyLapackInfoToHostAsync again
-    // but call this after the transposing below.
-
+    // We are optimistic that the SVD has succeeded
+    //  and check for that later
     if (compute_uv_) {
       // Transpose VT and copy to output tensor V
       std::vector<int32> perm;
@@ -231,7 +216,22 @@ class SvdOpGpu : public AsyncOpKernel {
       DoTranspose(device, outputVT, permAS, outputV);
     }
 
-    done();
+    // Now we check if the SVD operation succeeded or not
+    auto info_checker = [context, dev_info, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& /* unused */) {
+      Status full_status = status;
+      if (!full_status.ok()) {
+        full_status.Update(errors::InvalidArgument(kErrMsg));
+      }
+      OP_REQUIRES_OK_ASYNC(context, full_status, done);
+      done();
+    };
+
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
+        done);
   }
 
  private:
