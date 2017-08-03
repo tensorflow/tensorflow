@@ -101,7 +101,9 @@ LayoutConstraints::LayoutConstraints(
     const HloComputation* computation)
     : points_to_analysis_(points_to_analysis), computation_(computation) {
   // Gather all array-shaped logical buffers into unconstrained_buffer_ids.
-  for (auto& buffer : points_to_analysis_.logical_buffers()) {
+  for (LogicalBuffer::Id id = 0; id < points_to_analysis_.num_logical_buffers();
+       id++) {
+    auto& buffer = points_to_analysis_.logical_buffer(id);
     // The points to analysis is computed per module, restrict constraints to
     // array buffers in this computation.
     if (buffer->IsArray() && buffer->instruction()->parent() == computation) {
