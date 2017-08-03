@@ -1841,16 +1841,7 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "core_cpu_init",
-    srcs = [
-        "common_runtime/device_factory.cc",
-        "common_runtime/threadpool_device_factory.cc",
-    ],
-    deps = ["core_cpu_lib"],
-)
-
-tf_cuda_library(
-    name = "core_cpu_lib",
+    name = "core_cpu_impl",
     srcs = [
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
@@ -1860,6 +1851,7 @@ tf_cuda_library(
         "common_runtime/costmodel_manager.cc",
         "common_runtime/debugger_state_interface.cc",
         "common_runtime/device.cc",
+        "common_runtime/device_factory.cc",
         "common_runtime/device_mgr.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
@@ -1882,6 +1874,7 @@ tf_cuda_library(
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
         "common_runtime/threadpool_device.cc",
+        "common_runtime/threadpool_device_factory.cc",
         "graph/gradients.cc",
         "graph/mkl_layout_pass.cc",
         "graph/mkl_tfconversion_pass.cc",
@@ -1890,6 +1883,11 @@ tf_cuda_library(
         "public/session_options.h",
         "public/version.h",
     ],
+    deps = ["core_cpu_lib"],
+)
+
+tf_cuda_library(
+    name = "core_cpu_lib",
     hdrs = CORE_CPU_BASE_HDRS + [
         "common_runtime/allocator_retry.h",
         "common_runtime/bfc_allocator.h",

@@ -448,7 +448,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib_internal_impl",
-        "//tensorflow/core:core_cpu_init",
+        "//tensorflow/core:core_cpu_impl",
         "//tensorflow/stream_executor:stream_executor_impl",
     ] + if_cuda(
         [
