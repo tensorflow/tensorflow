@@ -15,6 +15,7 @@
 #include "tensorflow/contrib/gdr/gdr.pb.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
@@ -368,7 +369,7 @@ Status GdrMemoryManager::TransportOptionsFromTensor(
   TensorKey tensor_key = next_key_++;
   {
     mutex_lock l(server_mu_);
-    tensor_buffers_.insert({tensor_key, buffer});
+    tensor_buffers_.insert(std::make_pair(tensor_key, buffer));
   }
 
   RemoteMemoryRegion remote_mr;
