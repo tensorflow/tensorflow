@@ -51,6 +51,9 @@ class ExecStep {
         latest_end_micros_(0),
         mem_initiated_(false),
         requested_bytes_(0),
+        peak_bytes_(0),
+        residual_bytes_(0),
+        output_bytes_(0),
         host_temp_bytes_(0),
         host_persistent_bytes_(0),
         accelerator_temp_bytes_(0),
@@ -78,14 +81,17 @@ class ExecStep {
   int64 latest_end_micros() const { return latest_end_micros_; }
 
   int64 requested_bytes() const { return requested_bytes_; }
+  int64 peak_bytes() const { return peak_bytes_; }
+  int64 residual_bytes() const { return residual_bytes_; }
+  int64 output_bytes() const { return output_bytes_; }
   int64 accelerator_temp_bytes() const { return accelerator_temp_bytes_; }
   int64 host_temp_bytes() const { return host_temp_bytes_; }
   int64 accelerator_persistent_bytes() const {
     return accelerator_persistent_bytes_;
   }
   int64 host_persistent_bytes() const { return host_persistent_bytes_; }
-  const std::map<int64, std::pair<int64, uint64>>& output_bytes() const {
-    return output_bytes_;
+  const std::map<int64, std::pair<int64, uint64>>& output_memory() const {
+    return output_memory_;
   }
   int64 allocator_bytes_in_use() const { return allocator_bytes_in_use_; }
 
@@ -111,8 +117,14 @@ class ExecStep {
   std::set<string> devices_;
 
   bool mem_initiated_;
-  // Total output bytes requested by the op.
+  // Total bytes requested by the op.
   int64 requested_bytes_;
+  // Total bytes requested by the op and released before op end.
+  int64 peak_bytes_;
+  // Total bytes requested by the op and not released after op end.
+  int64 residual_bytes_;
+  // Total bytes output by the op (not necessarily requested by the op).
+  int64 output_bytes_;
   // Total temporary bytes allocated and released by the op.
   int64 host_temp_bytes_;
   // Total persistent bytes (e.g. variable) allocated by the op.
@@ -122,8 +134,26 @@ class ExecStep {
   // The total number of bytes currently allocated by the allocator if >0.
   int64 allocator_bytes_in_use_;
   // output_idx -> {output_bytes, memory_ptr}
-  std::map<int64, std::pair<int64, uint64>> output_bytes_;
+  std::map<int64, std::pair<int64, uint64>> output_memory_;
 };
+
+#define GRAPH_NODE_BYTES(type)                                \
+  do {                                                        \
+    if (execs_.empty()) {                                     \
+      return 0;                                               \
+    }                                                         \
+    if (step >= 0) {                                          \
+      auto exec = execs_.find(step);                          \
+      CHECK(exec != execs_.end()) << "unknown step " << step; \
+      return exec->second.type##_bytes();                     \
+    }                                                         \
+                                                              \
+    int64 bytes = 0;                                          \
+    for (const auto& exec : execs_) {                         \
+      bytes += exec.second.type##_bytes();                    \
+    }                                                         \
+    return bytes / execs_.size();                             \
+  } while (0)
 
 class TFGraphNode {
  public:
@@ -270,22 +300,10 @@ class TFGraphNode {
     return total_micros / execs_.size();
   }
 
-  int64 requested_bytes(int64 step) const {
-    if (execs_.empty()) {
-      return 0;
-    }
-    if (step >= 0) {
-      auto exec = execs_.find(step);
-      CHECK(exec != execs_.end()) << "unknown step " << step;
-      return exec->second.requested_bytes();
-    }
-
-    int64 requested_bytes = 0;
-    for (const auto& exec : execs_) {
-      requested_bytes += exec.second.requested_bytes();
-    }
-    return requested_bytes / execs_.size();
-  }
+  int64 requested_bytes(int64 step) const { GRAPH_NODE_BYTES(requested); }
+  int64 peak_bytes(int64 step) const { GRAPH_NODE_BYTES(peak); }
+  int64 residual_bytes(int64 step) const { GRAPH_NODE_BYTES(residual); }
+  int64 output_bytes(int64 step) const { GRAPH_NODE_BYTES(output); }
 
   int64 all_start_micros(int64 step) const {
     auto exec = execs_.find(step);
@@ -328,11 +346,11 @@ class TFGraphNode {
     CHECK(exec != execs_.end()) << "unknown step " << step;
     return exec->second.host_persistent_bytes();
   }
-  const std::map<int64, std::pair<int64, uint64>>& output_bytes(
+  const std::map<int64, std::pair<int64, uint64>>& output_memory(
       int64 step) const {
     auto exec = execs_.find(step);
     CHECK(exec != execs_.end()) << "unknown step " << step;
-    return exec->second.output_bytes();
+    return exec->second.output_memory();
   }
   int64 allocator_bytes_in_use(int64 step) const {
     auto exec = execs_.find(step);
@@ -427,6 +445,9 @@ class TFMultiGraphNode {
         accelerator_exec_micros_(0),
         cpu_exec_micros_(0),
         requested_bytes_(0),
+        peak_bytes_(0),
+        residual_bytes_(0),
+        output_bytes_(0),
         float_ops_(0),
         parameters_(0) {}
 
@@ -437,6 +458,10 @@ class TFMultiGraphNode {
     cpu_exec_micros_ = 0;
 
     requested_bytes_ = 0;
+    peak_bytes_ = 0;
+    residual_bytes_ = 0;
+    output_bytes_ = 0;
+
     float_ops_ = 0;
     parameters_ = 0;
     op_types_.clear();
@@ -460,6 +485,10 @@ class TFMultiGraphNode {
       cpu_exec_micros_ += node->cpu_exec_micros(step);
 
       requested_bytes_ += node->requested_bytes(step);
+      peak_bytes_ += node->peak_bytes(step);
+      residual_bytes_ += node->residual_bytes(step);
+      output_bytes_ += node->output_bytes(step);
+
       float_ops_ += node->float_ops(step);
       parameters_ += node->parameters();
       if (node->shape().size() > 0) {
@@ -492,6 +521,9 @@ class TFMultiGraphNode {
   int64 cpu_exec_micros() const { return cpu_exec_micros_; }
 
   int64 requested_bytes() const { return requested_bytes_; }
+  int64 peak_bytes() const { return peak_bytes_; }
+  int64 residual_bytes() const { return residual_bytes_; }
+  int64 output_bytes() const { return output_bytes_; }
 
   int64 float_ops() const { return float_ops_; }
 
@@ -540,6 +572,9 @@ class TFMultiGraphNode {
   int64 cpu_exec_micros_;
 
   int64 requested_bytes_;
+  int64 peak_bytes_;
+  int64 residual_bytes_;
+  int64 output_bytes_;
   int64 float_ops_;
   int64 parameters_;
   std::set<string> devices_;
