@@ -37,6 +37,7 @@ See the @{$python/io_ops} guide.
 @@parse_example
 @@parse_single_example
 @@parse_tensor
+@@serialize_tensor
 @@decode_json_example
 @@QueueBase
 @@FIFOQueue
