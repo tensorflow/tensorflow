@@ -522,7 +522,7 @@ HloDotDumper::SubcomputationsToDump() {
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
                                         const HloInstruction* parent_instr) {
   const char* computation_fmt = R"(subgraph %s {
-%s;
+%s
 label = <%s>;
 labelloc = t;
 tooltip = " ";
@@ -550,8 +550,9 @@ tooltip = " ";
     bool highlight = filter_.Highlight(parent_instr);
     const char* fillcolor = highlight ? "#ffcdd2" : "#f5f5f5";
     const char* strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
-    style = Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s")",
-                   fillcolor, strokecolor);
+    style =
+        Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
+               fillcolor, strokecolor);
   } else {
     subcomp_label = Printf("Subcomputation for <b>%s</b><br/>%s",
                            HtmlLikeStringSanitize(parent_instr->name()),
