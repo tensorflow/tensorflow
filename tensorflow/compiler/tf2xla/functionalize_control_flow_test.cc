@@ -65,6 +65,9 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto enter =
         ops::internal::Enter(scope.WithOpName("while/Enter"), source, "aloop");
+    // Add an unused Enter node. These should be ignored.
+    auto enter2 =
+        ops::internal::Enter(scope.WithOpName("while/Enter2"), source, "aloop");
     auto merge = ops::Merge(scope.WithOpName("while/Merge"),
                             std::initializer_list<Input>{enter, dummy});
     auto ten = ops::Const<int32>(
@@ -91,6 +94,14 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
 
     TF_EXPECT_OK(scope.ToGraph(&graph));
+  }
+
+  // Regression test: control edges from an Enter node to the graph sink should
+  // be ignored.
+  for (Node* n : graph.nodes()) {
+    if (n->name() == "while/Enter") {
+      graph.AddControlEdge(n, graph.sink_node());
+    }
   }
 
   FunctionLibraryDefinition library(OpRegistry::Global(), {});

@@ -122,6 +122,7 @@ include(fft2d)
 include(highwayhash)
 include(protobuf)
 include(re2)
+include(cub)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -151,6 +152,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
+    cub
     fft2d
     re2
 )
@@ -170,6 +172,7 @@ include_directories(
     ${jsoncpp_INCLUDE_DIR}
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
+    ${cub_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
 )
@@ -275,6 +278,7 @@ endif()
 include(tf_cc_ops.cmake)
 include(tf_c.cmake)
 include(tf_grappler.cmake)
+include(tf_core_profiler.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)

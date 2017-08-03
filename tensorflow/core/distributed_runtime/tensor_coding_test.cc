@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"

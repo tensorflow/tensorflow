@@ -519,7 +519,6 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             subtract_log_q=False,
             remove_accidental_hits=False,
             partition_strategy="div",
-            colocate_logits=False,
             name="sampled_logits_basic_num_true_%d" % num_true)
         got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
         self.assertEqual(exp_logits.shape, got_logits.shape, self._eps)
@@ -556,7 +555,6 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             subtract_log_q=False,
             remove_accidental_hits=False,
             partition_strategy="div",
-            colocate_logits=False,
             name="sampled_logits_basic_num_true_%d" % num_true)
         got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
         self.assertAllClose(exp_logits, got_logits, self._eps)
@@ -594,7 +592,6 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             subtract_log_q=False,
             remove_accidental_hits=True,
             partition_strategy="div",
-            colocate_logits=False,
             name="sampled_logits_accidental_hit_removal_num_true_%d" % num_true)
         # Test that the exponentiated logits of accidental hits are near 0.
         # First we need to find the hits in this random test run:
@@ -639,7 +636,6 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             subtract_log_q=True,
             remove_accidental_hits=False,
             partition_strategy="div",
-            colocate_logits=False,
             name="sampled_logits_subtract_log_q_num_true_%d" % num_true)
         got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
         self.assertAllClose(exp_logits, got_logits, self._eps)
@@ -678,84 +674,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             subtract_log_q=False,
             remove_accidental_hits=False,
             partition_strategy="div",
-            colocate_logits=False,
             name="sampled_logits_sharded_num_true_%d" % num_true)
-        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
-        self.assertAllClose(exp_logits, got_logits, self._eps)
-        self.assertAllClose(exp_labels, got_labels, self._eps)
-
-  def testColocatedLogits(self):
-    """With colocated logit computation."""
-    np.random.seed(0)
-    num_classes = 5
-    batch_size = 3
-    with self.test_session() as sess:
-      for num_true in range(1, 5):
-        labels = np.random.randint(
-            low=0, high=num_classes, size=batch_size * num_true)
-        (weights, biases, hidden_acts, sampled_vals, exp_logits,
-         exp_labels) = self._GenerateTestData(
-             num_classes=num_classes,
-             dim=10,
-             batch_size=batch_size,
-             num_true=num_true,
-             labels=labels,
-             sampled=[1, 0, 2, 3],
-             subtract_log_q=False)
-        logits_tensor, labels_tensor = _compute_sampled_logits(
-            weights=constant_op.constant(weights),
-            biases=constant_op.constant(biases),
-            labels=constant_op.constant(
-                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
-            inputs=constant_op.constant(hidden_acts),
-            num_sampled=4,
-            num_classes=num_classes,
-            num_true=num_true,
-            sampled_values=sampled_vals,
-            subtract_log_q=False,
-            remove_accidental_hits=False,
-            partition_strategy="div",
-            colocate_logits=True,
-            name="sampled_logits_colocated_num_true_%d" % num_true)
-        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
-        self.assertAllClose(exp_logits, got_logits, self._eps)
-        self.assertAllClose(exp_labels, got_labels, self._eps)
-
-  def testShardedColocatedLogits(self):
-    """Sharded weights and biases and with colocated logit computation."""
-    np.random.seed(0)
-    num_classes = 5
-    batch_size = 3
-    with self.test_session() as sess:
-      for num_true in range(1, 5):
-        labels = np.random.randint(
-            low=0, high=num_classes, size=batch_size * num_true)
-        (weights, biases, hidden_acts, sampled_vals, exp_logits,
-         exp_labels) = self._GenerateTestData(
-             num_classes=num_classes,
-             dim=10,
-             batch_size=batch_size,
-             num_true=num_true,
-             labels=labels,
-             sampled=[1, 0, 2, 3],
-             subtract_log_q=False)
-        weight_shards, bias_shards = self._ShardTestEmbeddings(
-            weights, biases, num_shards=3)
-        logits_tensor, labels_tensor = _compute_sampled_logits(
-            weights=[constant_op.constant(shard) for shard in weight_shards],
-            biases=[constant_op.constant(shard) for shard in bias_shards],
-            labels=constant_op.constant(
-                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
-            inputs=constant_op.constant(hidden_acts),
-            num_sampled=4,
-            num_classes=num_classes,
-            num_true=num_true,
-            sampled_values=sampled_vals,
-            subtract_log_q=False,
-            remove_accidental_hits=False,
-            partition_strategy="div",
-            colocate_logits=True,
-            name="sampled_logits_sharded_colocated_num_true_%d" % num_true)
         got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
         self.assertAllClose(exp_logits, got_logits, self._eps)
         self.assertAllClose(exp_labels, got_labels, self._eps)
@@ -911,7 +830,8 @@ class ReluTest(test_lib.TestCase):
 
 class MomentsTest(test_lib.TestCase):
 
-  def doOutputTest(self, input_shape, moments_axes, tol=1e-4):
+  def doOutputTest(self, input_shape, moments_axes, tol=1e-4,
+                   check_gradients=False):
     for mu in [0.0, 1.0, 1e3]:
       for sigma in [1.0, 0.1]:
         for keep_dims in [True, False]:
@@ -927,12 +847,27 @@ class MomentsTest(test_lib.TestCase):
               mean, variance = nn_impl.moments(
                   inputs, moments_axes, keep_dims=keep_dims)
 
+              if check_gradients:
+                err = gradient_checker.compute_gradient_error(
+                    inputs, input_shape, mean, mean.shape.as_list())
+                self.assertLess(err, 1e-3)
+                err = gradient_checker.compute_gradient_error(
+                    inputs, input_shape, variance, variance.shape.as_list())
+                self.assertLess(err, 1e-3)
+
+              # Evaluate.
               [mean, variance] = sess.run([mean, variance])
               # Make sure that there are no NaNs
               self.assertFalse(np.isnan(mean).any())
               self.assertFalse(np.isnan(variance).any())
               self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
               self.assertAllClose(variance, expected_var, rtol=tol, atol=tol)
+
+  def testOutputAndGradient2DInput0(self):
+    self.doOutputTest((10, 10), (0,), check_gradients=True)
+
+  def testOutputAndGradient2DInput01(self):
+    self.doOutputTest((10, 10), (0, 1), check_gradients=True)
 
   def testOutput2DInput0(self):
     self.doOutputTest((10, 300), (0,))
@@ -957,28 +892,6 @@ class MomentsTest(test_lib.TestCase):
 
   def testOutput4DInput123(self):
     self.doOutputTest((10, 10, 10, 30), (1, 2, 3))
-
-  def testUnstableOutputShiftNone(self):
-    input_shape = (10, 300)
-    moments_axes = (0, 1)
-    mu, sigma = 1e3, 0.1
-    tol = 1e-3
-    input_values = np.random.rand(*input_shape) * sigma + mu
-    expected_mean = np.mean(input_values, axis=moments_axes)
-    expected_var = np.var(input_values, axis=moments_axes)
-
-    with self.test_session() as sess:
-      inputs = constant_op.constant(
-          input_values, shape=input_shape, dtype=dtypes.float32)
-      mean, variance = nn_impl.moments(inputs, moments_axes, shift=0.0)
-
-      [mean, variance] = sess.run([mean, variance])
-      # Make sure that there are no NaNs
-      self.assertFalse(np.isnan(mean).any())
-      self.assertFalse(np.isnan(variance).any())
-      self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
-      # The variance is unstable
-      self.assertGreater(np.abs(variance - expected_var), 0.1)
 
 
 if __name__ == "__main__":

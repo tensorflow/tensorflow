@@ -19,6 +19,7 @@ limitations under the License.
 #include <regex>
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -70,6 +71,7 @@ class ConstantFolding : public GraphOptimizer {
   Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
 
   std::unique_ptr<DeviceBase> device_;
+  std::unique_ptr<ResourceMgr> resource_mgr_;
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::set<string> nodes_to_preserve_;

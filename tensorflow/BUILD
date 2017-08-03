@@ -64,6 +64,24 @@ config_setting(
 )
 
 config_setting(
+    name = "android_mips",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_mips64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -178,7 +196,10 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/protonn/llgtm/...",
+        "//tensorflow/...",
+    ],
 )
 
 filegroup(
@@ -241,6 +262,7 @@ filegroup(
         "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/boosted_trees:all_files",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:all_files",
         "//tensorflow/contrib/boosted_trees/lib:all_files",
         "//tensorflow/contrib/boosted_trees/proto:all_files",
         "//tensorflow/contrib/boosted_trees/resources:all_files",
@@ -263,6 +285,7 @@ filegroup(
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
+        "//tensorflow/contrib/fused_conv:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/hooks:all_files",
@@ -283,6 +306,7 @@ filegroup(
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
+        "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nn:all_files",
@@ -313,7 +337,11 @@ filegroup(
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
-        "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
+        "//tensorflow/contrib/tfprof:all_files",
+        "//tensorflow/contrib/timeseries:all_files",
+        "//tensorflow/contrib/timeseries/examples:all_files",
+        "//tensorflow/contrib/timeseries/python/timeseries:all_files",
+        "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:all_files",
         "//tensorflow/contrib/tpu:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
@@ -330,12 +358,16 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
         "//tensorflow/core/platform/hadoop:all_files",
+        "//tensorflow/core/profiler:all_files",
+        "//tensorflow/core/profiler/internal:all_files",
+        "//tensorflow/core/profiler/internal/advisor:all_files",
         "//tensorflow/core/util/ctc:all_files",
         "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
@@ -360,6 +392,8 @@ filegroup(
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/ops/distributions:all_files",
+        "//tensorflow/python/profiler:all_files",
+        "//tensorflow/python/profiler/internal:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tools/api/golden:all_files",
@@ -372,12 +406,10 @@ filegroup(
         "//tensorflow/tools/docker/notebooks:all_files",
         "//tensorflow/tools/docs:all_files",
         "//tensorflow/tools/git:all_files",
+        "//tensorflow/tools/mlpbtxt:all_files",
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/quantization:all_files",
         "//tensorflow/tools/test:all_files",
-        "//tensorflow/tools/tfprof:all_files",
-        "//tensorflow/tools/tfprof/internal:all_files",
-        "//tensorflow/tools/tfprof/internal/advisor:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
         "//third_party/sycl:all_files",

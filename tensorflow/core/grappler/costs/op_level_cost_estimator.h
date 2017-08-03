@@ -129,6 +129,7 @@ class OpLevelCostEstimator {
   Costs PredictMatMul(const OpInfo& op_features) const;
   Costs PredictNoOp(const OpInfo& op_features) const;
   Costs PredictBatchMatMul(const OpInfo& op_features) const;
+  Costs PredictMetadata(const OpInfo& op_features) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -149,6 +150,9 @@ class OpLevelCostEstimator {
   std::map<string, int> elementwise_ops_;
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
+  // If true, assume compute and memory overlap; hence, the op cost is max of
+  // compute_time and memory_time, insteaf of sum of those two.
+  bool compute_memory_overlap_;
 
  private:
   friend class OpLevelCostEstimatorTest;

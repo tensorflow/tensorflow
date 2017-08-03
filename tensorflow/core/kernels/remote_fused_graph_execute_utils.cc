@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/public/session.h"
@@ -159,6 +161,8 @@ string DumpCluster(const RemoteFusedGraphExecuteUtils::ClusterInfo& cluster) {
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_BORDER_OUTPUTS;
 /* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSED_OP_TYPES;
+/* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSE_BY_EXECUTOR;
 /* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_INPUT_TYPES;
 /* static */ constexpr const char* const
@@ -580,8 +584,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
   } else {
     ImportGraphDefOptions opts;
     Graph graph(OpRegistry::Global());
-    ShapeRefiner shape_refiner(graph.versions().producer(),
-                               graph.op_registry());
+    ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
     TF_RETURN_IF_ERROR(
         ImportGraphDef(opts, *graph_def, &graph, &shape_refiner));
     TF_RETURN_IF_ERROR(PropagateShapeInference(*graph_def, input_tensors,
@@ -724,7 +727,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
     const std::unordered_set<string>& node_names, const GraphDef& graph_def,
     std::vector<ClusterInfo>* cluster_infos) {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, &shape_refiner));
   std::unordered_set<string> remaining_nodes = node_names;
 
@@ -829,7 +832,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       BuildNodeSetFromNodeNamesAndPorts(std::get<1>(cluster));
 
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, &shape_refiner));
 
   for (Node* node : graph.nodes()) {
@@ -883,7 +886,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
     const std::vector<string>& border_outputs, const GraphDef& graph_def,
     ClusterInfo* cluster) {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, &shape_refiner));
 
   std::unordered_set<const Node*> visited;
@@ -955,7 +958,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       BuildClusterSubgraphDef(cluster, input_graph_def, &subgraph_def));
 
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(
       ImportGraphDef({}, input_graph_def, &graph, &shape_refiner));
 
@@ -1081,6 +1084,26 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       input_graph_def, inputs, outputs, remote_fused_graph_node_name_prefix,
       fused_nodes_filtered_by_op_types, remote_fused_graph_executor_name,
       require_shape_type, output_graph_def);
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::FuseRemoteGraphByExecutor(
+    const GraphDef& input_graph_def, const std::vector<string>& inputs,
+    const std::vector<string>& outputs, const string& executor_name,
+    GraphDef* output_graph_def) {
+  const ExecutorBuildFunc* build_func = GetExecutorBuildFunc(executor_name);
+  if (build_func == nullptr) {
+    return errors::InvalidArgument("Unknown executor name: " + executor_name);
+  }
+  std::unique_ptr<IRemoteFusedGraphExecutor> executor;
+  TF_RETURN_IF_ERROR((*build_func)(&executor));
+  CHECK_NOTNULL(executor.get());
+  if (!executor->IsEnabled()) {
+    // As this executor is not enabled, just return original graph as is.
+    *output_graph_def = input_graph_def;
+    return Status::OK();
+  }
+  return executor->FuseRemoteGraph(input_graph_def, inputs, outputs,
+                                   output_graph_def);
 }
 
 /* static */ Status RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
@@ -1380,6 +1403,28 @@ RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpTypes(
   std::unordered_set<string> retval;
   for (const NodeDef& node_def : graph_def.node()) {
     if (op_types.count(node_def.op()) > 0) {
+      retval.emplace(node_def.name());
+    }
+  }
+  return retval;
+}
+
+/* static */ std::unordered_set<string>
+RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpsDefinitions(
+    const GraphDef& graph_def,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions) {
+  std::unordered_set<string> retval;
+  for (const NodeDef& node_def : graph_def.node()) {
+    std::vector<DataType> dt_vec;
+    std::vector<TensorShape> shape_vec;
+    const Status status =
+        GetOutputTensorShapeType(node_def, &dt_vec, &shape_vec);
+    if (!status.ok()) {
+      shape_vec.clear();
+    }
+    if (ops_definitions.GetOpIdFor(
+            node_def.op(), DataTypeVector(dt_vec.begin(), dt_vec.end())) !=
+        IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID) {
       retval.emplace(node_def.name());
     }
   }

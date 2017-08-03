@@ -103,5 +103,15 @@ TEST_F(NNGradTest, EluGrad) {
   RunTest(x, x_init_value, y, shape);
 }
 
+TEST_F(NNGradTest, SeluGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Selu(scope_, x);
+  Tensor x_init_value = test::AsTensor<float>(
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -63,11 +63,14 @@ class DynamicStitchOp : public XlaOpKernel {
     std::vector<xla::Literal> indices(indices_input.size());
 
     const TensorShape& data0_shape = data_shapes[0];
-    const TensorShape indices0_shape =
-        XLAShapeToTensorShape(indices_input[0].shape());
+    TensorShape indices0_shape;
+    OP_REQUIRES_OK(
+        ctx, XLAShapeToTensorShape(indices_input[0].shape(), &indices0_shape));
     for (int input_num = 0; input_num < indices_input.size(); input_num++) {
-      const TensorShape indices_shape =
-          XLAShapeToTensorShape(indices_input[input_num].shape());
+      TensorShape indices_shape;
+      OP_REQUIRES_OK(ctx,
+                     XLAShapeToTensorShape(indices_input[input_num].shape(),
+                                           &indices_shape));
       const TensorShape& data_shape = data_shapes[input_num];
       OP_REQUIRES(ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
                   errors::InvalidArgument(

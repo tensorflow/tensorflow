@@ -30,6 +30,7 @@ from tensorflow.contrib.keras.python.keras.callbacks import ProgbarLogger
 from tensorflow.contrib.keras.python.keras.callbacks import ReduceLROnPlateau
 from tensorflow.contrib.keras.python.keras.callbacks import RemoteMonitor
 from tensorflow.contrib.keras.python.keras.callbacks import TensorBoard
+from tensorflow.contrib.keras.python.keras.callbacks import TerminateOnNaN
 
 del absolute_import
 del division

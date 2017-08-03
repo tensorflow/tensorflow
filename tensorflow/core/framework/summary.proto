@@ -51,6 +51,12 @@ message SummaryMetadata {
   // A list of plugin data. A single summary value instance may be used by more
   // than 1 plugin.
   repeated PluginData plugin_data = 1;
+
+  // Display name for viewing in TensorBoard.
+  string display_name = 2;
+
+  // Longform readable description of the summary sequence. Markdown supported.
+  string summary_description = 3;
 };
 
 // A Summary is a set of named values to be displayed by the

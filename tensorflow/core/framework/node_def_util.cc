@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

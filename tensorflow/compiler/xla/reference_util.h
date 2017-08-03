@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
@@ -73,6 +74,20 @@ class ReferenceUtil {
       std::pair<int64, int64> lhs_dilation,
       std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
 
+  // Returns the result of a convolution `lhs <conv> rhs`, with the default
+  // convolution dimension numbers returned from
+  // ComputationBuilder::CreateDefaultConvDimensionNumbers().
+  static std::unique_ptr<Array3D<float>> ConvArray3D(const Array3D<float>& lhs,
+                                                     const Array3D<float>& rhs,
+                                                     int64 kernel_stride,
+                                                     Padding padding);
+
+  // Returns the result of a convolution `lhs <conv> rhs`.
+  static std::unique_ptr<Array3D<float>> ConvArray3DGeneralDimensionsDilated(
+      const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
+      Padding padding, int64 lhs_dilation, int64 rhs_dilation,
+      const ConvolutionDimensionNumbers& dnums);
+
   // Returns the result of a separable  convolution with the given parameters.
   // kernel_stride and padding applies to the depthwise convolution during
   // the separable convolution. pointwise_weights.depth() must be equal to
@@ -87,21 +102,21 @@ class ReferenceUtil {
   // to apply for each reduction step.
   static std::unique_ptr<std::vector<float>> ReduceToColArray2D(
       const Array2D<float>& matrix, float init,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Returns the result of reducing a matrix to a row vector. init is the
   // initial value for the reduce operation, and reduce_function is the function
   // to apply for each reduction step.
   static std::unique_ptr<std::vector<float>> ReduceToRowArray2D(
       const Array2D<float>& matrix, float init,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Performs a R2=>R1 reduction by reducing away the dimension specified in
   // 'dimension_to_reduce'.
   template <typename T>
   static std::vector<T> ReduceR2ToR1(const Array2D<T>& input,
                                      int dimension_to_reduce, T init,
-                                     std::function<T(T, T)> freduce) {
+                                     const std::function<T(T, T)>& freduce) {
     std::vector<T> result(dimension_to_reduce == 0 ? input.n2() : input.n1(),
                           init);
     for (int i0 = 0; i0 < input.n1(); ++i0) {
@@ -118,7 +133,7 @@ class ReferenceUtil {
   static std::vector<float> Reduce4DTo1D(
       const Array4D<float>& array, float init,
       tensorflow::gtl::ArraySlice<int64> dims,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
   static std::unique_ptr<Array4D<float>> Broadcast1DTo4D(
@@ -130,7 +145,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
       const Array3D<float>& array, float init,
       tensorflow::gtl::ArraySlice<int64> dims,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Applies map_function to each element in the input (2D array) and returns
   // the result.
@@ -149,19 +164,26 @@ class ReferenceUtil {
   static int64 WindowCount(int64 unpadded_width, int64 window_len, int64 stride,
                            Padding padding);
 
-  // Performs a 2D window reduction with Add as the function to apply.
+  // Windowed reductions with Add as the function to apply.
+  static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
+      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
       const Array2D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
-
-  // Performs a 4D window reduction with Add as the function to apply.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
 
-  // Performs a 4D window reduction with a generic reduce function.
+  // Windowed reductions with a generic reduce function.
+  static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
+      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const std::function<float(float, float)>& reduce_func,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
@@ -294,49 +316,26 @@ class ReferenceUtil {
     return result;
   }
 
-  // Slices the input array given starting indices in each dimension and limit
-  // indices in each dimension.
+  // Slices the input array given starting indices, limit indices, and strides
+  // in each dimension.
   template <typename T>
   static std::unique_ptr<Array2D<T>> Slice2D(const Array2D<T>& input,
                                              std::array<int64, 2> starts,
-                                             std::array<int64, 2> limits) {
+                                             std::array<int64, 2> limits,
+                                             std::array<int64, 2> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(limits[0], input.n1());
     CHECK_LE(limits[1], input.n2());
+    CHECK_GE(strides[0], 1);
+    CHECK_GE(strides[1], 1);
     auto result =
-        MakeUnique<Array2D<T>>(limits[0] - starts[0], limits[1] - starts[1]);
+        MakeUnique<Array2D<T>>(CeilOfRatio(limits[0] - starts[0], strides[0]),
+                               CeilOfRatio(limits[1] - starts[1], strides[1]));
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
-        (*result)(i0, i1) = input(starts[0] + i0, starts[1] + i1);
-      }
-    }
-    return result;
-  }
-
-  template <typename T>
-  static std::unique_ptr<Array4D<T>> Slice4D(const Array4D<T>& input,
-                                             std::array<int64, 4> starts,
-                                             std::array<int64, 4> limits) {
-    CHECK_LE(starts[0], input.n1());
-    CHECK_LE(starts[1], input.n2());
-    CHECK_LE(starts[2], input.n3());
-    CHECK_LE(starts[3], input.n4());
-    CHECK_LE(limits[0], input.n1());
-    CHECK_LE(limits[1], input.n2());
-    CHECK_LE(limits[2], input.n3());
-    CHECK_LE(limits[3], input.n4());
-    auto result =
-        MakeUnique<Array4D<T>>(limits[0] - starts[0], limits[1] - starts[1],
-                               limits[2] - starts[2], limits[3] - starts[3]);
-    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
-      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
-        for (int64 i2 = 0; i2 < result->n3(); ++i2) {
-          for (int64 i3 = 0; i3 < result->n4(); ++i3) {
-            (*result)(i0, i1, i2, i3) = input(starts[0] + i0, starts[1] + i1,
-                                              starts[2] + i2, starts[3] + i3);
-          }
-        }
+        (*result)(i0, i1) =
+            input(starts[0] + i0 * strides[0], starts[1] + i1 * strides[1]);
       }
     }
     return result;
@@ -345,20 +344,64 @@ class ReferenceUtil {
   template <typename T>
   static std::unique_ptr<Array3D<T>> Slice3D(const Array3D<T>& input,
                                              std::array<int64, 3> starts,
-                                             std::array<int64, 3> limits) {
+                                             std::array<int64, 3> limits,
+                                             std::array<int64, 3> strides) {
     CHECK_LE(starts[0], input.n1());
     CHECK_LE(starts[1], input.n2());
     CHECK_LE(starts[2], input.n3());
     CHECK_LE(limits[0], input.n1());
     CHECK_LE(limits[1], input.n2());
     CHECK_LE(limits[2], input.n3());
-    auto result = MakeUnique<Array3D<T>>(
-        limits[0] - starts[0], limits[1] - starts[1], limits[2] - starts[2]);
+    CHECK_GE(strides[0], 1);
+    CHECK_GE(strides[1], 1);
+    CHECK_GE(strides[2], 1);
+    auto result =
+        MakeUnique<Array3D<T>>(CeilOfRatio(limits[0] - starts[0], strides[0]),
+                               CeilOfRatio(limits[1] - starts[1], strides[1]),
+                               CeilOfRatio(limits[2] - starts[2], strides[2]));
+
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
         for (int64 i2 = 0; i2 < result->n3(); ++i2) {
           (*result)(i0, i1, i2) =
-              input(starts[0] + i0, starts[1] + i1, starts[2] + i2);
+              input(starts[0] + i0 * strides[0], starts[1] + i1 * strides[1],
+                    starts[2] + i2 * strides[2]);
+        }
+      }
+    }
+    return result;
+  }
+
+  template <typename T>
+  static std::unique_ptr<Array4D<T>> Slice4D(const Array4D<T>& input,
+                                             std::array<int64, 4> starts,
+                                             std::array<int64, 4> limits,
+                                             std::array<int64, 4> strides) {
+    CHECK_LE(starts[0], input.n1());
+    CHECK_LE(starts[1], input.n2());
+    CHECK_LE(starts[2], input.n3());
+    CHECK_LE(starts[3], input.n4());
+    CHECK_LE(limits[0], input.n1());
+    CHECK_LE(limits[1], input.n2());
+    CHECK_LE(limits[2], input.n3());
+    CHECK_LE(limits[3], input.n4());
+    CHECK_GE(strides[0], 1);
+    CHECK_GE(strides[1], 1);
+    CHECK_GE(strides[2], 1);
+    CHECK_GE(strides[3], 1);
+    auto result =
+        MakeUnique<Array4D<T>>(CeilOfRatio(limits[0] - starts[0], strides[0]),
+                               CeilOfRatio(limits[1] - starts[1], strides[1]),
+                               CeilOfRatio(limits[2] - starts[2], strides[2]),
+                               CeilOfRatio(limits[3] - starts[3], strides[3]));
+    for (int64 i0 = 0; i0 < result->n1(); ++i0) {
+      for (int64 i1 = 0; i1 < result->n2(); ++i1) {
+        for (int64 i2 = 0; i2 < result->n3(); ++i2) {
+          for (int64 i3 = 0; i3 < result->n4(); ++i3) {
+            (*result)(i0, i1, i2, i3) =
+                input(starts[0] + i0 * strides[0], starts[1] + i1 * strides[1],
+                      starts[2] + i2 * strides[2], starts[3] + i3 * strides[3]);
+          }
         }
       }
     }
@@ -446,6 +489,11 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<float>> PadArray2D(
       const Array2D<float>& operand, const PaddingConfig& padding,
       const float pad);
+
+  // Returns the result of a 3D pad on an input matrix.
+  static Array3D<float> PadArray3D(const Array3D<float>& operand,
+                                   const PaddingConfig& padding,
+                                   const float pad);
 
   // Returns the result of a 4D pad on an input array.
   static Array4D<float> PadArray4D(const Array4D<float>& operand,

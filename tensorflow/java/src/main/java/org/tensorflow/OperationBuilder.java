@@ -63,6 +63,16 @@ public final class OperationBuilder {
     }
   }
 
+
+  /**
+   * Returns the builder to create an operation.
+   *
+   * <p>Inputs to TensorFlow operations are outputs of another TensorFlow operation. This method is
+   * used to add a input to a {@link OperationBuilder}.
+   *
+   * @param input {@link Output} supposed to be the input of the OperationBuilder.
+   * @return the OperationBuilder instance for chaining.
+   */
   public OperationBuilder addInput(Output input) {
     Graph.Reference r = graph.ref();
     try {
@@ -288,7 +298,6 @@ public final class OperationBuilder {
 
   // The names of all the setAttr* family functions below correspond to the C library types, not the
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
-  //
   // TODO(ashankar):
   // - setAttrShapeList: Which would take in a long[][]
 

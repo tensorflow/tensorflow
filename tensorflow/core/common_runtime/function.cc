@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -259,7 +260,10 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
+    opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -457,7 +461,7 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->env(), lib->device(), g);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g, /*shape_map=*/nullptr);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
@@ -466,7 +470,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   std::unique_ptr<Graph> g(new Graph(lib_def_));
   CopyGraph(*fbody->graph, g.get());
 
-  optimizer_.Optimize(this, env(), device(), &g);
+  optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
 
@@ -543,21 +547,18 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
-  exec_args.step_container = opts.step_container;
+  exec_args.rendezvous = opts.rendezvous;
+  exec_args.stats_collector = opts.stats_collector;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
+  exec_args.step_container = opts.step_container;
   exec_args.runner = *opts.runner;
-  // TODO(zhifengc): we can avoid creating rendez here if we know
-  // there is no send/recv nodes in the graph.
-  auto* rendez = new IntraProcessRendezvous(device_mgr_);
-  exec_args.rendezvous = rendez;
   item->exec->RunAsync(
       // Executor args
       exec_args,
       // Done callback.
-      [item, frame, rets, rendez, done](const Status& status) {
+      [item, frame, rets, done](const Status& status) {
         item->Unref();
-        rendez->Unref();
         Status s = status;
         if (s.ok()) {
           s = frame->GetRetvals(rets);
@@ -605,27 +606,27 @@ CustomCreatorSingleton* GetCustomCreatorSingleton() {
   return ccs;
 }
 
-}  // end namespace
+}  // namespace
 
 void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
   GetCustomCreatorSingleton()->Set(std::move(cb));
 }
 
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator) {
-  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
-                                        lib_def, optimizer_options,
-                                        std::move(custom_kernel_creator));
+  return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
+      device_mgr, env, device, graph_def_version, lib_def, optimizer_options,
+      std::move(custom_kernel_creator)));
 }
 
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return NewFunctionLibraryRuntime(dmgr, env, device, graph_def_version,
+  return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
                                    lib_def, optimizer_options,
                                    GetCustomCreatorSingleton()->Get());
 }
@@ -1029,7 +1030,9 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     NodeDef* ndef = gdef->add_node();
     ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
-    *(ndef->mutable_attr()) = n->def().attr();
+    for (const auto& attr : n->attrs()) {
+      (*ndef->mutable_attr())[attr.first] = attr.second;
+    }
     inputs.clear();
     inputs.resize(n->num_inputs());
     for (const Edge* e : n->in_edges()) {

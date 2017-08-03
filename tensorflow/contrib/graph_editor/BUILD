@@ -155,6 +155,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",

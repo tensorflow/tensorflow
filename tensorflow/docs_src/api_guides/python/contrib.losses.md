@@ -1,8 +1,12 @@
 # Losses (contrib)
 
+## Deprecated
+
+This module is deprecated. Instructions for updating: Use @{tf.losses} instead.
+
 ## Loss operations for use in neural networks.
 
-Note: By default all the losses are collected into the `GraphKeys.LOSSES`
+Note: By default, all the losses are collected into the `GraphKeys.LOSSES`
 collection.
 
 All of the loss functions take a pair of predictions and ground truth labels,

@@ -16,7 +16,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+import re
 from tensorflow.contrib.boosted_trees.python.ops import batch_ops_utils
 from tensorflow.contrib.boosted_trees.python.ops import gen_stats_accumulator_ops
 from tensorflow.contrib.util import loader
@@ -26,6 +26,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import resources
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
+
+# Pattern to remove all non alpha numeric from a string.
+_PATTERN = re.compile(r"[\W_]+")
 
 
 class StatsAccumulator(saver.BaseSaverBuilder.SaveableObject):
@@ -55,6 +58,8 @@ class StatsAccumulator(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       A `Tensor` of type mutable `string`. The handle to the stats accumulator.
     """
+    if name is not None:
+      name = _PATTERN.sub("", name)
     with ops.name_scope(name, "StatsAccumulator") as name:
       # Both values are scalars.
       if (gradient_shape == tensor_shape.scalar() and
@@ -78,7 +83,7 @@ class StatsAccumulator(saver.BaseSaverBuilder.SaveableObject):
             self._resource_handle, stamp_token, gradient_shape.as_list(),
             hessian_shape.as_list())
         is_initialized_op = (
-            gen_stats_accumulator_ops.stats_accumulator_scalar_is_initialized(
+            gen_stats_accumulator_ops.stats_accumulator_tensor_is_initialized(
                 self._resource_handle))
 
     self._create_op = create_op

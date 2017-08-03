@@ -36,6 +36,10 @@ class GraphProperties;
 class ShapeRefiner {
  public:
   ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
+
+  // Same as ShapeRefiner(versions.producer(), ops)
+  ShapeRefiner(const VersionDef& versions, const OpRegistryInterface* ops);
+
   ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,

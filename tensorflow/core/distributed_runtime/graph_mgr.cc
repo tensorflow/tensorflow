@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -154,6 +155,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       return PartitionOptions::kIllegalIncarnation;
     }
   };
+  popts.flib_def = &graph.flib_def();
   popts.control_flow_added = true;
   popts.scheduling_for_recvs = graph_options.enable_recv_scheduling();
   TF_RETURN_IF_ERROR(Partition(popts, &graph, &partitions));
@@ -212,9 +214,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
     // Function library runtime.
     unit->lib = NewFunctionLibraryRuntime(
-        device_mgr_, worker_env_->env, unit->device,
-        subgraph->versions().producer(), item->lib_def,
-        graph_options.optimizer_options());
+                    device_mgr_, worker_env_->env, unit->device,
+                    subgraph->versions().producer(), item->lib_def,
+                    graph_options.optimizer_options())
+                    .release();
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
@@ -241,7 +244,8 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       }
     };
 
-    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
+    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
+                       /*shape_map=*/nullptr);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph.
     if (!debug_options.debug_tensor_watch_opts().empty()) {
@@ -441,10 +445,9 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
-                            WorkerSession* session,
-                            const ExecutorOpts& /*opts*/,
+                            WorkerSession* session, const ExecutorOpts& opts,
                             StepStatsCollector* collector,
-                            CostGraphDef* cost_graph,
+                            MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
@@ -461,6 +464,18 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
     return;
+  }
+
+  CostGraphDef* cost_graph = nullptr;
+  if (response != nullptr) {
+    cost_graph = response->mutable_cost_graph();
+    if (opts.record_partition_graphs()) {
+      for (const ExecutionUnit& unit : item->units) {
+        GraphDef graph_def;
+        unit.graph->ToGraphDef(&graph_def);
+        response->AddPartitionGraph(graph_def);
+      }
+    }
   }
 
   RemoteRendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);

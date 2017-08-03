@@ -205,6 +205,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -212,7 +213,7 @@ op {
       }
     }
   }
-  summary: "Computes acosh of x element-wise."
+  summary: "Computes inverse hyperbolic cosine of x element-wise."
 }
 op {
   name: "Add"
@@ -498,7 +499,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -600,7 +601,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1194,6 +1195,94 @@ op {
   description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
 }
 op {
+  name: "ApplyFtrlV2"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 shrinkage regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_shrinkage"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the Ftrl-proximal scheme."
+  description: "grad_with_shrinkage = grad + 2 * l2_shrinkage * var\naccum_new = accum + grad_with_shrinkage * grad_with_shrinkage\nlinear += grad_with_shrinkage +\n    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+}
+op {
   name: "ApplyGradientDescent"
   input_arg {
     name: "var"
@@ -1602,7 +1691,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1668,7 +1757,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1836,6 +1925,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -1843,7 +1933,7 @@ op {
       }
     }
   }
-  summary: "Computes asinh of x element-wise."
+  summary: "Computes inverse hyperbolic sine of x element-wise."
 }
 op {
   name: "Assert"
@@ -2091,6 +2181,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -2098,7 +2189,7 @@ op {
       }
     }
   }
-  summary: "Computes atanh of x element-wise."
+  summary: "Computes inverse hyperbolic tangent of x element-wise."
 }
 op {
   name: "AudioSpectrogram"
@@ -2933,6 +3024,8 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -3759,12 +3852,14 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
-        type: DT_INT16
         type: DT_INT8
+        type: DT_INT16
         type: DT_COMPLEX64
         type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_QINT32
         type: DT_HALF
       }
@@ -3781,12 +3876,14 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
-        type: DT_INT16
         type: DT_INT8
+        type: DT_INT16
         type: DT_COMPLEX64
         type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_QINT32
         type: DT_HALF
       }
@@ -4310,6 +4407,43 @@ op {
   description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
+  name: "CompareAndBitpack"
+  input_arg {
+    name: "input"
+    description: "Values to compare against `threshold` and bitpack."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "threshold"
+    description: "Threshold to compare against."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The bitpacked comparisons."
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of the input and threshold."
+    allowed_values {
+      list {
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Compare values of `input` to `threshold` and pack resulting bits into a `uint8`."
+  description: "Each comparison returns a boolean `true` (if `input_value > threshold`)\nor and `false` otherwise.\n\nThis operation is useful for Locality-Sensitive-Hashing (LSH) and other\nalgorithms that use hashing approximations of cosine and `L2` distances;\ncodes can be generated from an input via:\n\n```python\ncodebook_size = 50\ncodebook_bits = codebook_size * 32\ncodebook = tf.get_variable(\'codebook\', [x.shape[-1].value, codebook_bits],\n                           dtype=x.dtype,\n                           initializer=tf.orthogonal_initializer())\ncodes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)\ncodes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32\n# now codes has shape x.shape[:-1] + [codebook_size]\n```\n\n**NOTE**: Currently, the innermost dimension of the tensor must be divisible\nby 8.\n\nGiven an `input` shaped `[s0, s1, ..., s_n]`, the output is\na `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`."
+}
+op {
   name: "Complex"
   input_arg {
     name: "real"
@@ -4542,6 +4676,35 @@ op {
     }
   }
   summary: "Concatenates tensors along one dimension."
+}
+op {
+  name: "ConcatenateDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "another_dataset"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that concatenates `input_dataset` with `another_dataset`."
+  is_stateful: true
 }
 op {
   name: "ConditionalAccumulator"
@@ -5530,10 +5693,12 @@ op {
   name: "Cumprod"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5546,6 +5711,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumprod."
   }
   attr {
     name: "reverse"
@@ -5553,6 +5719,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5596,10 +5763,12 @@ op {
   name: "Cumsum"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5612,6 +5781,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumsum."
   }
   attr {
     name: "reverse"
@@ -5619,6 +5789,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5657,6 +5828,24 @@ op {
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
+}
+op {
+  name: "DebugGradientIdentity"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Identity op for gradient debugging."
+  description: "This op is hidden from public in Python. It is used by TensorFlow Debugger to\nregister gradient tensors for gradient debugging."
+  allows_uninitialized_input: true
 }
 op {
   name: "DebugIdentity"
@@ -7471,7 +7660,7 @@ op {
   }
   input_arg {
     name: "dim"
-    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
+    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`. Must be in the range\n`[-rank(input) - 1, rank(input)]`."
     type_attr: "Tdim"
   }
   output_arg {
@@ -7583,7 +7772,7 @@ op {
   }
   output_arg {
     name: "patches"
-    description: "4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *\nksize_cols * depth]` containing image patches with size\n`ksize_rows x ksize_cols x depth` vectorized in the \"depth\" dimension."
+    description: "4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *\nksize_cols * depth]` containing image patches with size\n`ksize_rows x ksize_cols x depth` vectorized in the \"depth\" dimension. Note\n`out_rows` and `out_cols` are the dimensions of the output patches."
     type_attr: "T"
   }
   attr {
@@ -7603,7 +7792,7 @@ op {
   attr {
     name: "rates"
     type: "list(int)"
-    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by\nsubsampling them spatially by a factor of `rates`."
+    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by\nsubsampling them spatially by a factor of `rates`. This is equivalent to\n`rate` in dilated (a.k.a. Atrous) convolutions."
     has_minimum: true
     minimum: 4
   }
@@ -8271,6 +8460,14 @@ op {
       s: ""
     }
     description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  attr {
+    name: "encoding"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The type of encoding for the file. Currently ZLIB and GZIP\nare supported. Defaults to none."
   }
   summary: "A Reader that outputs fixed-length records from a file."
   is_stateful: true
@@ -9173,8 +9370,57 @@ op {
       }
     }
   }
-  summary: "Gather values or slices from `params` according to `indices`."
-  description: "`indices` is an integer tensor containing indices into `params`.  The last\ndimension of `indices` can be at most the rank of `params`:\n\n    indices.shape[-1] <= params.rank\n\nThe last dimension of `indices` corresponds to elements\n(if `indices.shape[-1] = params.rank`) or slices\n(if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`\nof `params`.  The output tensor has shape\n\n    indices.shape[:-1] + params.shape[indices.shape[-1]:]\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n```python\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n```\n\nSlice indexing into a matrix:\n\n```python\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n```\n\nIndexing into a 3-tensor:\n\n```python\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n```\n\nBatched indexing into a matrix:\n\n```python\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n```\n\nBatched slice indexing into a matrix:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n```\n\nBatched indexing into a 3-tensor:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]\n```"
+  summary: "Gather slices from `params` into a Tensor with shape specified by `indices`."
+  description: "`indices` is an K-dimensional integer tensor, best thought of as a\n(K-1)-dimensional tensor of indices into `params`, where each element defines a\nslice of `params`:\n\n    output[i_0, ..., i_{K-2}] = params[indices[i0, ..., i_{K-2}]]\n\nWhereas in @{tf.gather} `indices` defines slices into the first\ndimension of `params`, in `tf.gather_nd`, `indices` defines slices into the\nfirst `N` dimensions of `params`, where `N = indices.shape[-1]`.\n\nThe last dimension of `indices` can be at most the rank of\n`params`:\n\n    indices.shape[-1] <= params.rank\n\nThe last dimension of `indices` corresponds to elements\n(if `indices.shape[-1] == params.rank`) or slices\n(if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`\nof `params`.  The output tensor has shape\n\n    indices.shape[:-1] + params.shape[indices.shape[-1]:]\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n```python\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n```\n\nSlice indexing into a matrix:\n\n```python\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n```\n\nIndexing into a 3-tensor:\n\n```python\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n```\n\nBatched indexing into a matrix:\n\n```python\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n```\n\nBatched slice indexing into a matrix:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n```\n\nBatched indexing into a 3-tensor:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]\n```"
+}
+op {
+  name: "GatherV2"
+  input_arg {
+    name: "params"
+    description: "The tensor from which to gather values. Must be at least rank\n`axis + 1`."
+    type_attr: "Tparams"
+  }
+  input_arg {
+    name: "indices"
+    description: "Index tensor. Must be in range `[0, params.shape[axis])`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "axis"
+    description: "The axis in `params` to gather `indices` from. Defaults to the first\ndimension. Supports negative indexes."
+    type_attr: "Taxis"
+  }
+  output_arg {
+    name: "output"
+    description: "Values from `params` gathered from indices given by `indices`, with\nshape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`."
+    type_attr: "Tparams"
+  }
+  attr {
+    name: "Tparams"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Taxis"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Gather slices from `params` axis `axis` according to `indices`."
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `params.shape[:axis] + indices.shape +\nparams.shape[axis + 1:]` where:\n\n```python\n    # Scalar indices (output is rank(params) - 1).\n    output[a_0, ..., a_n, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices, b_0, ..., b_n]\n\n    # Vector indices (output is rank(params)).\n    output[a_0, ..., a_n, i, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]\n\n    # Higher rank indices (output is rank(params) + rank(indices) - 1).\n    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =\n      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/Gather.png\" alt>\n</div>"
 }
 op {
   name: "GetSessionHandle"
@@ -9747,6 +9993,31 @@ op {
   description: "The upper regularized incomplete Gamma function is defined as:\n\n\\\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\\\)\n\nwhere\n\n\\\\(Gamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\\\\)\n\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
 }
 op {
+  name: "IgnoreErrorsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains the elements of `input_dataset` ignoring errors."
+  is_stateful: true
+}
+op {
   name: "Imag"
   input_arg {
     name: "input"
@@ -9893,6 +10164,44 @@ op {
     name: "k"
     type: "int"
     description: "Number of top elements to look at for computing precision."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Says whether the targets are in the top `K` predictions."
+  description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
+}
+op {
+  name: "InTopKV2"
+  input_arg {
+    name: "predictions"
+    description: "A `batch_size` x `classes` tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "targets"
+    description: "A `batch_size` vector of class ids."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "Number of top elements to look at for computing precision."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "precision"
+    description: "Computed precision at `k` as a `bool Tensor`."
+    type: DT_BOOL
   }
   attr {
     name: "T"
@@ -10060,6 +10369,54 @@ op {
     type: "type"
   }
   summary: "Table initializer that takes two tensors for keys and values respectively."
+  is_stateful: true
+}
+op {
+  name: "InterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: "Unlike MapDataset, the `f` in InterleaveDataset is expected to return\na Dataset resource, and InterleaveDataset will flatten successive\nresults into a single Dataset. Unlike FlatMapDataset,\nInterleaveDataset will interleave sequences of up to `block_length`\nconsecutive elements from `cycle_length` input elements."
   is_stateful: true
 }
 op {
@@ -10316,6 +10673,41 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    description: "A string representation of the given handle."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "If specified, defines the type of each tuple component in an\nelement produced by the resulting iterator."
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "If specified, defines the shape of each tuple component in an\nelement produced by the resulting iterator."
+    has_minimum: true
+  }
+  summary: "Converts the given string representing a handle to an iterator to a resource."
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -10338,6 +10730,21 @@ op {
     minimum: 1
   }
   summary: "Gets the next output from the given iterator."
+  is_stateful: true
+}
+op {
+  name: "IteratorToStringHandle"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "string_handle"
+    description: "A string representation of the given handle."
+    type: DT_STRING
+  }
+  summary: "Converts the given `resource_handle` representing an iterator to a string."
   is_stateful: true
 }
 op {
@@ -11758,10 +12165,12 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
-  summary: "Computes the determinant of one ore more square matrices."
+  summary: "Computes the determinant of one or more square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
@@ -11999,7 +12408,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -12776,7 +13185,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -12967,7 +13376,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -14356,6 +14765,44 @@ op {
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
 }
 op {
+  name: "PadV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type_attr: "Tpaddings"
+  }
+  input_arg {
+    name: "constant_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Pads a tensor."
+  description: "This operation pads `input` according to the `paddings` and `constant_values`\nyou specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is\nthe rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many padding values to add before the contents of `input` in that dimension,\nand `paddings[D, 1]` indicates how many padding values to add after the contents\nof `input` in that dimension. `constant_values` is a scalar tensor of the same\ntype as `input` that indicates the value to use for padding `input`.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# \'constant_values\' is 0\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
+}
+op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
@@ -15073,6 +15520,33 @@ op {
   description: "The polygamma function is defined as:\n\n\n\\\\(\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\\\\)\n\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
 }
 op {
+  name: "PopulationCount"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Computes element-wise population count (a.k.a. popcount, bitsum, bitcount)."
+  description: "For each entry in `x`, calculates the number of `1` (on) bits in the binary\nrepresentation of that entry.\n\n**NOTE**: It is more efficient to first `tf.bitcast` your tensors into\n`int32` or `int64` and perform the bitcount on the result, than to feed in\n8- or 16-bit inputs and then aggregate the resulting counts."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
@@ -15298,7 +15772,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -17298,6 +17772,36 @@ op {
   }
   summary: "Enqueues a tuple of one or more tensors in the given queue."
   description: "The components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelement has been enqueued (or \'timeout_ms\' elapses, if specified)."
+  is_stateful: true
+}
+op {
+  name: "QueueIsClosed"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "is_closed"
+    type: DT_BOOL
+  }
+  summary: "Returns true if queue is closed."
+  description: "This operation returns true if the queue is closed and false if the queue\nis open."
+}
+op {
+  name: "QueueIsClosedV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_closed"
+    type: DT_BOOL
+  }
+  summary: "Returns true if queue is closed."
+  description: "This operation returns true if the queue is closed and false if the queue\nis open."
   is_stateful: true
 }
 op {
@@ -19778,6 +20282,86 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceApplyFtrlV2"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 shrinkage regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_shrinkage"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the Ftrl-proximal scheme."
+  description: "grad_with_shrinkage = grad + 2 * l2_shrinkage * var\naccum_new = accum + grad_with_shrinkage * grad_with_shrinkage\nlinear += grad_with_shrinkage +\n    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+  is_stateful: true
+}
+op {
   name: "ResourceApplyGradientDescent"
   input_arg {
     name: "var"
@@ -20530,6 +21114,101 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceSparseApplyFtrlV2"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 shrinkage regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_shrinkage"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
+  description: "That is for rows we have grad for, we update var, accum and linear as follows:\ngrad_with_shrinkage = grad + 2 * l2_shrinkage * var\naccum_new = accum + grad_with_shrinkage * grad_with_shrinkage\nlinear += grad_with_shrinkage +\n    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+  is_stateful: true
+}
+op {
   name: "ResourceSparseApplyMomentum"
   input_arg {
     name: "var"
@@ -21139,7 +21818,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "1-D. The indices of the dimensions to reverse."
+    description: "1-D. The indices of the dimensions to reverse. Must be in the range\n`[-rank(tensor), rank(tensor))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -21352,6 +22031,109 @@ op {
       f: 0.1
     }
     description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
+  }
+  attr {
+    name: "aspect_ratio_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.75
+        f: 1.33
+      }
+    }
+    description: "The cropped area of the image must have an aspect ratio =\nwidth / height within this range."
+  }
+  attr {
+    name: "area_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.05
+        f: 1
+      }
+    }
+    description: "The cropped area of the image must contain a fraction of the\nsupplied image within in this range."
+  }
+  attr {
+    name: "max_attempts"
+    type: "int"
+    default_value {
+      i: 100
+    }
+    description: "Number of attempts at generating a cropped region of the image\nof the specified constraints. After `max_attempts` failures, return the entire\nimage."
+  }
+  attr {
+    name: "use_image_if_no_bounding_boxes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
+  }
+  summary: "Generate a single randomly distorted bounding box for an image."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
+  is_stateful: true
+}
+op {
+  name: "SampleDistortedBoundingBoxV2"
+  input_arg {
+    name: "image_size"
+    description: "1-D, containing `[height, width, channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "bounding_boxes"
+    description: "3-D with shape `[batch, N, 4]` describing the N bounding boxes\nassociated with the image."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_object_covered"
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "begin"
+    description: "1-D, containing `[offset_height, offset_width, 0]`. Provide as input to\n`tf.slice`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "size"
+    description: "1-D, containing `[target_height, target_width, -1]`. Provide as input to\n`tf.slice`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bboxes"
+    description: "3-D with shape `[1, 1, 4]` containing the distorted bounding box.\nProvide as input to `tf.image.draw_bounding_boxes`."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to non-zero, the random number\ngenerator is seeded by the given `seed`.  Otherwise, it is seeded by a random\nseed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
   }
   attr {
     name: "aspect_ratio_range"
@@ -21761,7 +22543,7 @@ op {
     }
   }
   summary: "Scatter `updates` into a new (initially zero) tensor according to `indices`."
-  description: "Creates a new tensor by applying sparse `updates` to individual\nvalues or slices within a zero tensor of the given `shape` according to\nindices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)\noperator which extracts values or slices from a given tensor.\n\n**WARNING**: The order in which updates are applied is nondeterministic, so the\noutput will be nondeterministic if `indices` contains duplicates.\n\n`indices` is an integer tensor containing indices into a new tensor of shape\n`shape`.  The last dimension of `indices` can be at most the rank of `shape`:\n\n    indices.shape[-1] <= shape.rank\n\nThe last dimension of `indices` corresponds to indices into elements\n(if `indices.shape[-1] = shape.rank`) or slices\n(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of\n`shape`.  `updates` is a tensor with shape\n\n    indices.shape[:-1] + shape[indices.shape[-1]:]\n\nThe simplest form of scatter is to insert individual elements in a tensor by\nindex. For example, say we want to insert 4 scattered elements in a rank-1\ntensor with 8 elements.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterNd1.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n```python\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    shape = tf.constant([8])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print(sess.run(scatter))\n```\n\nThe resulting tensor would look like this:\n\n    [0, 11, 0, 10, 9, 0, 0, 12]\n\nWe can also, insert entire slices of a higher rank tensor all at once. For\nexample, if we wanted to insert two slices in the first dimension of a\nrank-3 tensor with two matrices of new values.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterNd2.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n```python\n    indices = tf.constant([[0], [2]])\n    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]],\n                           [[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]]])\n    shape = tf.constant([4, 4, 4])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print(sess.run(scatter))\n```\n\nThe resulting tensor would look like this:\n\n    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],\n     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]"
+  description: "Creates a new tensor by applying sparse `updates` to individual\nvalues or slices within a zero tensor of the given `shape` according to\nindices.  This operator is the inverse of the @{tf.gather_nd} operator which\nextracts values or slices from a given tensor.\n\n**WARNING**: The order in which updates are applied is nondeterministic, so the\noutput will be nondeterministic if `indices` contains duplicates.\n\n`indices` is an integer tensor containing indices into a new tensor of shape\n`shape`.  The last dimension of `indices` can be at most the rank of `shape`:\n\n    indices.shape[-1] <= shape.rank\n\nThe last dimension of `indices` corresponds to indices into elements\n(if `indices.shape[-1] = shape.rank`) or slices\n(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of\n`shape`.  `updates` is a tensor with shape\n\n    indices.shape[:-1] + shape[indices.shape[-1]:]\n\nThe simplest form of scatter is to insert individual elements in a tensor by\nindex. For example, say we want to insert 4 scattered elements in a rank-1\ntensor with 8 elements.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterNd1.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n```python\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    shape = tf.constant([8])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print(sess.run(scatter))\n```\n\nThe resulting tensor would look like this:\n\n    [0, 11, 0, 10, 9, 0, 0, 12]\n\nWe can also, insert entire slices of a higher rank tensor all at once. For\nexample, if we wanted to insert two slices in the first dimension of a\nrank-3 tensor with two matrices of new values.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterNd2.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n```python\n    indices = tf.constant([[0], [2]])\n    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]],\n                           [[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]]])\n    shape = tf.constant([4, 4, 4])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print(sess.run(scatter))\n```\n\nThe resulting tensor would look like this:\n\n    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],\n     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]"
 }
 op {
   name: "ScatterNdAdd"
@@ -21828,7 +22610,7 @@ op {
     description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
   summary: "Applies sparse addition between `updates` and individual values or slices"
-  description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    add = tf.scatter_nd_add(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(add)\n\nThe resulting update to ref would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
+  description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    add = tf.scatter_nd_add(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(add)\n\nThe resulting update to ref would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee @{tf.scatter_nd} for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterNdNonAliasingAdd"
@@ -21885,7 +22667,7 @@ op {
     }
   }
   summary: "Applies sparse addition to `input` using individual values or slices"
-  description: "from `updates` according to indices `indices`.  The updates are non-aliasing:\n`input` is only modified in-place if no other operations will use it.\nOtherwise, a copy of `input` is made.  This operation has a gradient with\nrespect to both `input` and `updates`.\n\n`input` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `input`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or `(P-K)`-dimensional slices\n(if `K < P`) along the `K`th dimension of `input`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    input = tf.constant([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    output = tf.scatter_nd_non_aliasing_add(input, indices, updates)\n    with tf.Session() as sess:\n      print(sess.run(output))\n\nThe resulting value `output` would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
+  description: "from `updates` according to indices `indices`.  The updates are non-aliasing:\n`input` is only modified in-place if no other operations will use it.\nOtherwise, a copy of `input` is made.  This operation has a gradient with\nrespect to both `input` and `updates`.\n\n`input` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `input`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or `(P-K)`-dimensional slices\n(if `K < P`) along the `K`th dimension of `input`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    input = tf.constant([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    output = tf.scatter_nd_non_aliasing_add(input, indices, updates)\n    with tf.Session() as sess:\n      print(sess.run(output))\n\nThe resulting value `output` would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee @{tf.scatter_nd} for more details about how to make updates to slices."
 }
 op {
   name: "ScatterNdSub"
@@ -21952,7 +22734,7 @@ op {
     description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
   summary: "Applies sparse subtraction between `updates` and individual values or slices"
-  description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to subtract 4 scattered elements from a rank-1 tensor\nwith 8 elements. In Python, that subtraction would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    sub = tf.scatter_nd_sub(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(sub)\n\nThe resulting update to ref would look like this:\n\n    [1, -9, 3, -6, -4, 6, 7, -4]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
+  description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to subtract 4 scattered elements from a rank-1 tensor\nwith 8 elements. In Python, that subtraction would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    sub = tf.scatter_nd_sub(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(sub)\n\nThe resulting update to ref would look like this:\n\n    [1, -9, 3, -6, -4, 6, 7, -4]\n\nSee @{tf.scatter_nd} for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterNdUpdate"
@@ -22001,7 +22783,7 @@ op {
     description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
   summary: "Applies sparse `updates` to individual values or slices within a given"
-  description: "variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to\n8 elements. In Python, that update would look like this:\n\n```python\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n```\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
+  description: "variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to\n8 elements. In Python, that update would look like this:\n\n```python\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n```\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee @{tf.scatter_nd} for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterSub"
@@ -22638,6 +23420,60 @@ op {
   }
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
   description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```python\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+}
+op {
+  name: "Selu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`"
+  description: "if < 0, `scale * features` otherwise.\n\nSee [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
+}
+op {
+  name: "SeluGrad"
+  input_arg {
+    name: "gradients"
+    description: "The backpropagated gradients to the corresponding Selu operation."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "outputs"
+    description: "The outputs of the corresponding Selu operation."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    description: "The gradients: `gradients * (outputs + scale * alpha)`\nif outputs < 0, `scale * gradients` otherwise."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes gradients for the scaled exponential linear (Selu) operation."
 }
 op {
   name: "SerializeManySparse"
@@ -24240,6 +25076,109 @@ op {
   description: "That is for rows we have grad for, we update var, accum and linear as follows:\naccum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
 }
 op {
+  name: "SparseApplyFtrlV2"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 shrinkage regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_shrinkage"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
+  description: "That is for rows we have grad for, we update var, accum and linear as follows:\ngrad_with_shrinkage = grad + 2 * l2_shrinkage * var\naccum_new = accum + grad_with_shrinkage * grad_with_shrinkage\nlinear += grad_with_shrinkage +\n    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+}
+op {
   name: "SparseApplyMomentum"
   input_arg {
     name: "var"
@@ -25677,6 +26616,54 @@ op {
   description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```python\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n# => [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n# => [[ 1  2  3  4]\n#     [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n# => [[0 0 0 0]\n#     [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
 }
 op {
+  name: "SparseSlice"
+  input_arg {
+    name: "indices"
+    description: "2-D tensor represents the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    description: "1-D tensor represents the values of the sparse tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    description: "1-D. tensor represents the shape of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "start"
+    description: "1-D. tensor represents the start of the slice."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "size"
+    description: "1-D. tensor represents the size of the slice.\noutput indices: A list of 1-D tensors represents the indices of the output\nsparse tensors."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "A list of 1-D tensors represents the values of the output sparse\ntensors."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_shape"
+    description: "A list of 1-D tensors represents the shape of the output sparse\ntensors."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Slice a `SparseTensor` based on the `start` and `size`."
+  description: "For example, if the input is\n\n    input_tensor = shape = [2, 7]\n    [    a   d e  ]\n    [b c          ]\n\nGraphically the output tensors are:\n\n    sparse_slice([0, 0], [2, 4]) = shape = [2, 4]\n    [    a  ]\n    [b c    ]\n\n    sparse_slice([0, 4], [2, 3]) = shape = [2, 3]\n    [ d e  ]\n    [      ]"
+}
+op {
   name: "SparseSoftmax"
   input_arg {
     name: "sp_indices"
@@ -26437,7 +27424,7 @@ op {
       list {
       }
     }
-    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1."
+    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1. Must\nbe in the range `[-rank(input), rank(input))`."
     has_minimum: true
   }
   summary: "Removes dimensions of size 1 from the shape of a tensor."
@@ -26447,14 +27434,12 @@ op {
   name: "Stack"
   output_arg {
     name: "handle"
-    description: "The handle to the stack."
     type: DT_STRING
     is_ref: true
   }
   attr {
     name: "elem_type"
     type: "type"
-    description: "The type of the elements on the stack."
   }
   attr {
     name: "stack_name"
@@ -26462,28 +27447,52 @@ op {
     default_value {
       s: ""
     }
-    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
   }
-  summary: "A stack that produces elements in first-in last-out order."
+  summary: "Deprecated, use StackV2."
   is_stateful: true
 }
 op {
   name: "StackClose"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
   }
+  summary: "Deprecated, use StackCloseV2."
+}
+op {
+  name: "StackCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
+  }
   summary: "Delete the stack from its resource container."
+  is_stateful: true
 }
 op {
   name: "StackPop"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "elem"
+    type_attr: "elem_type"
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+  }
+  summary: "Deprecated, use StackPopV2."
+}
+op {
+  name: "StackPopV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "elem"
@@ -26496,14 +27505,42 @@ op {
     description: "The type of the elem that is popped."
   }
   summary: "Pop the element at the top of the stack."
+  is_stateful: true
 }
 op {
   name: "StackPush"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "elem"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "swap_memory"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Deprecated, use StackPushV2."
+}
+op {
+  name: "StackPushV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "elem"
@@ -26528,6 +27565,35 @@ op {
     description: "Swap `elem` to CPU. Default to false."
   }
   summary: "Push an element onto the stack."
+  is_stateful: true
+}
+op {
+  name: "StackV2"
+  input_arg {
+    name: "max_size"
+    description: "The maximum size of the stack if non-negative. If negative, the stack\nsize is unlimited."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the stack."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+    description: "The type of the elements on the stack."
+  }
+  attr {
+    name: "stack_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
+  }
+  summary: "A stack that produces elements in first-in last-out order."
+  is_stateful: true
 }
 op {
   name: "Stage"
@@ -27348,7 +28414,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -27601,33 +28667,6 @@ op {
     }
   }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
-  is_stateful: true
-}
-op {
-  name: "LMDBReader"
-  output_arg {
-    name: "reader_handle"
-    description: "The handle to reference the Reader."
-    type: DT_STRING
-    is_ref: true
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
-  }
-  summary: "A Reader that outputs the records from a LMDB database."
   is_stateful: true
 }
 op {
@@ -28914,6 +29953,11 @@ op {
     description: "A scalar or a vector containing the name(s) of the file(s) to be\nread."
     type: DT_STRING
   }
+  input_arg {
+    name: "compression_type"
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+    type: DT_STRING
+  }
   output_arg {
     name: "handle"
     type: DT_RESOURCE
@@ -29605,7 +30649,7 @@ op {
     }
   }
   summary: "Computes the Max along segments of a tensor."
-  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nThis operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).\nInstead of computing the sum over segments, it computes the maximum\nsuch that:\n\n\\\\(output_i = \\max_j data_j\\\\) where max is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,\n `output[i] = numeric_limits<T>::min()`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentSum.png\" alt>\n</div>"
+  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nThis operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).\nInstead of computing the sum over segments, it computes the maximum\nsuch that:\n\n\\\\(output_i = \\max_j data_j\\\\) where max is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,\n `output[i] = numeric_limits<T>::min()`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentMax.png\" alt>\n</div>"
 }
 op {
   name: "UnsortedSegmentSum"
@@ -29858,7 +30902,8 @@ op {
     description: "scalar. The content to be written to the output file."
     type: DT_STRING
   }
-  summary: "Writes contents to the file at input filename. Creates file if not existing."
+  summary: "Writes contents to the file at input filename. Creates file and recursively"
+  description: "creates directory if not existing."
 }
 op {
   name: "ZerosLike"

@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:inliner",
+        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
@@ -227,6 +228,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -283,6 +285,7 @@ cc_library(
         ":cpu_runtime_avx",
         ":cpu_runtime_sse4_1",
         ":disassembler",
+        ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -326,16 +329,35 @@ cc_library(
     name = "cpu_runtime",
     srcs = [
         "cpu_runtime.cc",
-        "infeed_manager.cc",
+        "xfeed_manager.cc",
     ],
     hdrs = [
         "cpu_runtime.h",
-        "infeed_manager.h",
+        "xfeed_manager.h",
     ],
     copts = runtime_copts(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "llvm_ir_runtime",
+    srcs = [
+        "llvm_ir_runtime.cc",
+    ],
+    hdrs = [
+        "llvm_ir_runtime.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+        "@llvm//:transform_utils",
     ],
 )
 
@@ -416,9 +438,9 @@ cc_test(
 )
 
 cc_test(
-    name = "infeed_manager_test",
+    name = "xfeed_manager_test",
     size = "small",
-    srcs = ["infeed_manager_test.cc"],
+    srcs = ["xfeed_manager_test.cc"],
     deps = [
         ":cpu_runtime",
         "//tensorflow/core:lib",
@@ -447,6 +469,7 @@ cc_library(
         ":ir_emission_utils",
         ":shape_partition",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -531,7 +554,7 @@ cc_library(
     srcs = ["shape_partition.cc"],
     hdrs = ["shape_partition.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla:shape_util",
     ],
 )
 

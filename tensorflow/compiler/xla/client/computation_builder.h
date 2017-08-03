@@ -211,11 +211,21 @@ class ComputationBuilder {
   //
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
-  // The stride parameter determines the stride over the slice
+  // The strides parameter determines the stride over the slice
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
                               tensorflow::gtl::ArraySlice<int64> limit_indices,
-                              tensorflow::gtl::ArraySlice<int64> stride);
+                              tensorflow::gtl::ArraySlice<int64> strides);
+
+  // Enqueues a slice operation in a given dimension, taking all other
+  // dimensions as they are; e.g. if dimno is 1 from start_index 2 to
+  // limit_index 4 by 1, and the shape is f32[7,8,9], this call is short-hand
+  // for:
+  //
+  //  array[:, 2:4:1, :]
+  ComputationDataHandle SliceInDim(const ComputationDataHandle& operand,
+                                   int64 start_index, int64 limit_index,
+                                   int64 stride, int64 dimno);
 
   // Enqueues a slice operation onto the computation that slices the 'operand'
   // from dynamic start indices which are passed in 'start_indices'.
@@ -512,6 +522,9 @@ class ComputationBuilder {
 
   // Enqueues a cosine instruction onto the computation.
   ComputationDataHandle Cos(const ComputationDataHandle& operand);
+
+  // Enqueues a sine instruction onto the computation.
+  ComputationDataHandle Sin(const ComputationDataHandle& operand);
 
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);

@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -31,21 +30,24 @@ limitations under the License.
 namespace xla {
 
 // Abstraction which identifies a specific point in the XLA graph. An
-// HloLocation specifies a ShapeIndex within the output of a specific
+// HloPosition specifies a ShapeIndex within the output of a specific
 // instruction.
-struct HloLocation {
+struct HloPosition {
   HloInstruction* instruction;
   ShapeIndex index;
 
+  // Returns the shape at this position.
+  const Shape& shape() const;
+
   string ToString() const;
 
-  bool operator==(const HloLocation& other) const {
+  bool operator==(const HloPosition& other) const {
     return instruction == other.instruction && index == other.index;
   }
-  bool operator!=(const HloLocation& other) const { return !(*this == other); }
+  bool operator!=(const HloPosition& other) const { return !(*this == other); }
 };
 
-std::ostream& operator<<(std::ostream& out, const HloLocation& location);
+std::ostream& operator<<(std::ostream& out, const HloPosition& position);
 
 // Defines a single use of an HLO value.
 struct HloUse {
@@ -95,12 +97,22 @@ class HloValue {
  public:
   using Id = int64;
 
+  // Predicate comparing HloValues by increasing id, useful for std::sort.
+  static bool IdLessThan(const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  }
+
+  // Predicate comparing HloValues by equal id, useful for std::unique.
+  static bool IdEqual(const HloValue* a, const HloValue* b) {
+    return a->id() == b->id();
+  }
+
   // Construct an HloValue defined by 'instruction' at shape index 'index'. If
   // is_phi is true, then this value is a phi value, for example, at the
   // parameter of a while body computation. Phi values are only used in the SSA
   // dataflow analysis (HloDataflowAnalysis::ssa_form_ is true).
-  HloValue(HloValue::Id id, HloInstruction* instruction,
-           const ShapeIndex& index, bool is_phi = false);
+  HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
+           bool is_phi = false);
 
   // Return a unique identifier for this HloValue. This value is used for stable
   // sorting and iteration
@@ -109,25 +121,28 @@ class HloValue {
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
 
-  // Return the location where this value is defined.
-  const HloLocation& defining_location() const { return locations_[0]; }
+  // Return the position where this value is defined.
+  const HloPosition& defining_position() const { return positions_[0]; }
 
   // Return the instruction which defines this HloValue.
   HloInstruction* defining_instruction() const {
-    return defining_location().instruction;
+    return defining_position().instruction;
   }
 
   // Return the shape index at which this HloValue is defined in the output of
   // its defining instruction.
-  const ShapeIndex& defining_index() const { return defining_location().index; }
+  const ShapeIndex& defining_index() const { return defining_position().index; }
 
-  // Add or remove a location at which the HloValue appears. The definition
-  // location can not be removed. The uses of the HloValue are updated.
-  void AddLocation(HloInstruction* instruction, const ShapeIndex& index);
-  void RemoveLocation(HloInstruction* instruction, const ShapeIndex& index);
+  // Return the shape of this HloValue.
+  const Shape& shape() const { return defining_position().shape(); }
 
-  // Return all locations of the HloValue in the module.
-  const std::vector<HloLocation>& locations() const { return locations_; }
+  // Add or remove a position at which the HloValue appears. The definition
+  // position can not be removed. The uses of the HloValue are updated.
+  void AddPosition(HloInstruction* instruction, const ShapeIndex& index);
+  void RemovePosition(HloInstruction* instruction, const ShapeIndex& index);
+
+  // Return all positions of the HloValue in the module.
+  const std::vector<HloPosition>& positions() const { return positions_; }
 
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
@@ -153,9 +168,9 @@ class HloValue {
   // Whether this instruction is a phi value.
   const bool is_phi_;
 
-  // The set of locations of this HloValue. The first element is always the
-  // location of the definition.
-  std::vector<HloLocation> locations_;
+  // The set of positions of this HloValue. The first element is always the
+  // position of the definition.
+  std::vector<HloPosition> positions_;
 
   // The set of uses of this HloValue.
   std::vector<HloUse> uses_;
@@ -181,8 +196,8 @@ class HloValueSet {
  public:
   HloValueSet() = default;
 
-  explicit HloValueSet(tensorflow::gtl::ArraySlice<HloValue::Id> value_ids)
-      : value_ids_(value_ids.begin(), value_ids.end()) {
+  explicit HloValueSet(tensorflow::gtl::ArraySlice<const HloValue*> values)
+      : values_(values.begin(), values.end()) {
     SortAndUniquifyValues();
   }
 
@@ -190,19 +205,29 @@ class HloValueSet {
   static HloValueSet Union(
       tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
 
-  // Return the vector of the IDs of all HloValues in the set. Values in the
-  // vector are unique and sorted.
-  const std::vector<HloValue::Id>& value_ids() const { return value_ids_; }
+  // Return the vector of HloValues in the set. Values in the vector are unique
+  // and sorted.
+  const std::vector<const HloValue*>& values() const { return values_; }
+
+  // Adds the value to the set.  Returns true iff the value was added and didn't
+  // already exist in the set.
+  bool AddValue(const HloValue* value);
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
-  HloValue::Id GetUniqueValueId() const {
-    CHECK_EQ(value_ids().size(), 1);
-    return value_ids()[0];
+  const HloValue& GetUniqueValue() const {
+    CHECK_EQ(values_.size(), 1);
+    return *values_[0];
   }
 
   bool operator==(const HloValueSet& other) const {
-    return value_ids() == other.value_ids();
+    if (values_.size() != other.values_.size()) return false;
+    for (size_t i = 0; i < values_.size(); ++i) {
+      if (values_[i]->id() != other.values_[i]->id()) {
+        return false;
+      }
+    }
+    return true;
   }
   bool operator!=(const HloValueSet& other) const { return !(*this == other); }
 
@@ -214,7 +239,7 @@ class HloValueSet {
   void SortAndUniquifyValues();
 
   // HloValues sorted by HloValue::Id.
-  std::vector<HloValue::Id> value_ids_;
+  std::vector<const HloValue*> values_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValueSet& hlo_value);

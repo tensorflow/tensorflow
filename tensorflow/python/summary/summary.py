@@ -20,7 +20,6 @@ See the @{$python/summary} guide.
 @@FileWriter
 @@FileWriterCache
 @@tensor_summary
-@@_tensor_summary_v2
 @@scalar
 @@histogram
 @@audio
@@ -56,7 +55,6 @@ from tensorflow.python.ops import summary_op_util as _summary_op_util
 
 # exports tensor-related summaries
 # pylint: disable=unused-import
-from tensorflow.python.ops.summary_ops import _tensor_summary_v2
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 

@@ -99,7 +99,7 @@ def _set_operation(a, b, set_operation, validate_indices=True):
     b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
         `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
         sorted in row-major order.
-    set_operation: String indicating set operaiton. See
+    set_operation: String indicating set operation. See
         SetOperationOp::SetOperationFromContext for valid values.
     validate_indices: Whether to validate the order and range of sparse indices
        in `a` and `b`.

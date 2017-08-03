@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -187,6 +187,26 @@ class InferenceContext {
       const std::vector<TensorShapeProto>& input_tensors_as_shapes,
       const std::vector<
           std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
+          input_handle_shapes_and_types);
+
+  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
+  //
+  // Elements of <input_tensors_as_shapes> are used for when a shape
+  // function makes a call to MakeShapeFromShapeTensor; in particular, when
+  // the input_tensors[i] is nullptr but the shape represented by it is
+  // partially known from analysis of the graph. <input_tensors_as_shapes>
+  // can have fewer elements than <input_shapes>. Values of
+  // <input_tensors_as_shapes> do not need to outlive the context.
+  //
+  // REQUIRES: <node_def> is not NULL, and must outlive the
+  // InferenceContext.
+  InferenceContext(
+      int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
+      const std::vector<PartialTensorShape>& input_shapes,
+      const std::vector<const Tensor*>& input_tensors,
+      const std::vector<PartialTensorShape>& input_tensors_as_shapes,
+      const std::vector<std::unique_ptr<
+          std::vector<std::pair<PartialTensorShape, DataType>>>>&
           input_handle_shapes_and_types);
 
   ~InferenceContext();

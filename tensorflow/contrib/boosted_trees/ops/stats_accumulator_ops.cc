@@ -339,8 +339,8 @@ REGISTER_OP("StatsAccumulatorTensorFlush")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_input));
       // num_updates
       c->set_output(0, c->Scalar());
-      c->set_output(1, c->Matrix(c->UnknownDim(), 1));
-      c->set_output(2, c->Matrix(c->UnknownDim(), 1));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(c->UnknownDim()));
       c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
       return Status::OK();
@@ -425,8 +425,8 @@ REGISTER_OP("StatsAccumulatorTensorSerialize")
       c->set_output(0, c->Scalar());
       // num_updates
       c->set_output(1, c->Scalar());
-      c->set_output(2, c->Matrix(c->UnknownDim(), 1));
-      c->set_output(3, c->Matrix(c->UnknownDim(), 1));
+      c->set_output(2, c->Vector(c->UnknownDim()));
+      c->set_output(3, c->Vector(c->UnknownDim()));
       c->set_output(4, c->UnknownShape());
       c->set_output(5, c->UnknownShape());
       return Status::OK();

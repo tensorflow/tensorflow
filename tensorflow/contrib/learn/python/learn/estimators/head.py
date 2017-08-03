@@ -25,8 +25,7 @@ import six
 from tensorflow.contrib import framework as framework_lib
 from tensorflow.contrib import layers as layers_lib
 from tensorflow.contrib import lookup as lookup_lib
-# TODO(ptucker): Use tf.losses and tf.metrics.
-from tensorflow.contrib import losses as losses_lib
+# TODO(ptucker): Use tf.metrics.
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
@@ -44,6 +43,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
@@ -665,6 +665,7 @@ class _RegressionHead(_SingleHead):
                label_dimension,
                loss_fn,
                link_fn,
+               logits_dimension=None,
                label_name=None,
                weight_column_name=None,
                enable_centered_bias=False,
@@ -677,6 +678,10 @@ class _RegressionHead(_SingleHead):
         shape `[batch_size, label_dimension]`).
       loss_fn: Loss function, takes logits and labels and returns loss.
       link_fn: Link function, takes a logits tensor and returns the output.
+      logits_dimension: Number of logits per example. This is the
+        size of the last dimension of the logits `Tensor` (typically, this has
+        shape `[batch_size, label_dimension]`).
+        Default value: `label_dimension`.
       label_name: String, name of the key in label dict. Can be null if label
           is a tensor (single headed models).
       weight_column_name: A string defining feature column name representing
@@ -691,7 +696,8 @@ class _RegressionHead(_SingleHead):
     """
     super(_RegressionHead, self).__init__(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        logits_dimension=label_dimension,
+        logits_dimension=(logits_dimension if logits_dimension is not None
+                          else label_dimension),
         label_name=label_name,
         weight_column_name=weight_column_name,
         head_name=head_name)
@@ -1212,7 +1218,8 @@ class _BinarySvmHead(_SingleHead):
       with ops.name_scope(None, "hinge_loss", (logits, labels)) as name:
         with ops.control_dependencies((_assert_labels_rank(labels),)):
           labels = array_ops.reshape(labels, shape=(-1, 1))
-        loss = losses_lib.hinge_loss(logits=logits, labels=labels, scope=name)
+        loss = losses_lib.hinge_loss(labels=labels, logits=logits, scope=name,
+                                     reduction=losses_lib.Reduction.NONE)
         return _compute_weighted_loss(loss, weights)
 
     super(_BinarySvmHead, self).__init__(

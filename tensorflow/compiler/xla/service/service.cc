@@ -21,8 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/backend_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -172,12 +171,7 @@ Service::Service(const ServiceOptions& options,
     : options_(options),
       execute_backend_(std::move(execute_backend)),
       compute_constant_backend_(std::move(compute_constant_backend)) {
-  // TODO(b/32648682): this flag / options update dance will go away once we
-  // pass the replica count explicitly to the service.
-  if (options_.number_of_replicas() < 0) {
-    legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
-    options_.set_number_of_replicas(flags->xla_replicas);
-  }
+  CHECK(options_.number_of_replicas() > 0);
 
   if (execute_backend_) {
     if (execute_backend_->device_count() > 0) {
@@ -292,52 +286,71 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
-    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const ExecutionOptions& execution_options, Backend* backend) {
-  auto module_config = MakeUnique<HloModuleConfig>(program_shape);
-  auto* computation_layout = module_config->mutable_entry_computation_layout();
+    tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+    const ExecutionOptions* execution_options, bool has_hybrid_result) {
+  auto config = MakeUnique<HloModuleConfig>(program_shape);
+  auto* computation_layout = config->mutable_entry_computation_layout();
 
-  if (program_shape.parameters_size() != arguments.size()) {
+  if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
-                           program_shape.parameters_size(), arguments.size());
+                           program_shape.parameters_size(),
+                           argument_shapes.size());
   }
-
-  for (size_t i = 0; i < arguments.size(); ++i) {
+  for (int i = 0; i < argument_shapes.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
-    if (!ShapeUtil::Compatible(arguments[i]->shape(),
+    if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
       return InvalidArgument(
-          "computation expects parameter %lu to have shape %s, given shape %s",
+          "computation expects parameter %d to have shape %s, given shape %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-          ShapeUtil::HumanString(arguments[i]->shape()).c_str());
+          ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            arguments[i]->shape()));
+            *argument_shapes[i]));
   }
-  if (!execution_options.has_shape_with_output_layout()) {
-    computation_layout->mutable_result_layout()->Clear();
-  } else {
+  if (execution_options != nullptr &&
+      execution_options->has_shape_with_output_layout()) {
     const auto& shape_with_output_layout =
-        execution_options.shape_with_output_layout();
+        execution_options->shape_with_output_layout();
     TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
                                                      program_shape.result()));
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
+  } else {
+    computation_layout->mutable_result_layout()->Clear();
   }
 
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
-    module_config->enable_hlo_profiling(true);
+  config->set_replica_count(options_.number_of_replicas());
+  config->set_has_hybrid_result(has_hybrid_result);
+  if (execution_options != nullptr) {
+    config->set_seed(execution_options->seed());
+    config->set_debug_options(execution_options->debug_options());
+    config->enable_hlo_profiling(
+        execution_options->debug_options().xla_hlo_profile());
+  } else {
+    config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }
 
-  module_config->set_replica_count(options_.number_of_replicas());
-  module_config->set_seed(execution_options.seed());
-  module_config->set_debug_options(execution_options.debug_options());
+  if (execute_backend_ != nullptr &&
+      execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
+  return std::move(config);
+}
 
-  return std::move(module_config);
+StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+    const ProgramShape& program_shape,
+    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
+    const ExecutionOptions& execution_options) {
+  std::vector<const Shape*> argument_shapes;
+  for (const auto* arg : arguments) {
+    argument_shapes.push_back(&arg->shape());
+  }
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
@@ -349,23 +362,25 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 
   // Dump computation proto state if flag is set.
   std::vector<std::unique_ptr<SessionModule>> session_modules;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_computations_to;
-  const string& other_directory_path = flags->xla_dump_executions_to;
-  if ((!directory_path.empty() || !other_directory_path.empty())) {
-    for (int64 i = 0; i < versioned_handles.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<SessionModule> session_module,
-                          computation_tracker_.SnapshotComputation(
-                              versioned_handles[i].handle));
-      if (!directory_path.empty()) {
-        string filename = Printf("computation_%lld__%s__version_%lld",
-                                 versioned_handles[i].handle.handle(),
-                                 session_module->entry().name().c_str(),
-                                 versioned_handles[i].version);
-        TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
-                                                       *session_module));
-        session_modules.push_back(std::move(session_module));
-      }
+  for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    const string& directory_path =
+        module_configs[i]->debug_options().xla_dump_computations_to();
+    const string& other_directory_path =
+        module_configs[i]->debug_options().xla_dump_executions_to();
+    if (directory_path.empty() && other_directory_path.empty()) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<SessionModule> session_module,
+        computation_tracker_.SnapshotComputation(versioned_handles[i].handle));
+    if (!directory_path.empty()) {
+      string filename = Printf("computation_%lld__%s__version_%lld",
+                               versioned_handles[i].handle.handle(),
+                               session_module->entry().name().c_str(),
+                               versioned_handles[i].version);
+      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
+                                                     *session_module));
+      session_modules.push_back(std::move(session_module));
     }
   }
 
@@ -390,8 +405,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
       std::vector<std::unique_ptr<Executable>> executables,
       backend->compiler()->Compile(std::move(modules), std::move(executors)));
 
-  if (!other_directory_path.empty()) {
-    for (size_t i = 0; i < versioned_handles.size(); ++i) {
+  for (size_t i = 0; i < versioned_handles.size(); ++i) {
+    if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
       executables[i]->set_session_module(std::move(session_modules[i]));
     }
   }
@@ -411,9 +426,10 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   // Dump computation proto state if flag is set.
   std::unique_ptr<SessionModule> session_module;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_computations_to;
-  const string& other_directory_path = flags->xla_dump_executions_to;
+  const string& directory_path =
+      module_config->debug_options().xla_dump_computations_to();
+  const string& other_directory_path =
+      module_config->debug_options().xla_dump_executions_to();
   if (!executable_for_compute_constant &&
       (!directory_path.empty() || !other_directory_path.empty())) {
     TF_ASSIGN_OR_RETURN(
@@ -678,8 +694,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
     // the program and the argument allocations.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                         CreateModuleConfig(*program_shape, arg_allocations,
-                                           request.execution_options(),
-                                           execute_backend_.get()));
+                                           request.execution_options()));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -768,10 +783,9 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         arg->execution_options(), execute_backend_.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, arg_allocations,
+                                         arg->execution_options()));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -837,10 +851,9 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         arg->execution_options(), execute_backend_.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, arg_allocations,
+                                         arg->execution_options()));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -1112,8 +1125,7 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(program_shape, {}, execution_options,
-                                         compute_constant_backend_.get()));
+                      CreateModuleConfig(program_shape, {}, execution_options));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
@@ -1173,9 +1185,11 @@ tensorflow::Status Service::GetComputationStats(
   VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
 
+  HloModuleConfig config;
+  config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig()));
+      computation_tracker_.BuildHloModule(versioned_handle, config));
 
   hlo_graph_dumper::MaybeDumpHloModule(*module,
                                        "computation statistics subject");
@@ -1215,6 +1229,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kBatchNormTrainingRequest:
       handle_status = computation->AddBatchNormTrainingInstruction(
           arg->batch_norm_training_request());
+      break;
+    case OpRequest::kBatchNormGradRequest:
+      handle_status = computation->AddBatchNormGradInstruction(
+          arg->batch_norm_grad_request());
       break;
     case OpRequest::kBinaryOpRequest:
       handle_status =

@@ -93,7 +93,7 @@ class PredecessorHloOrdering : public HloOrdering {
   //
   // Subclasses should fill this in to define the desired ordering.
   tensorflow::gtl::FlatMap<const HloComputation*,
-                           std::unique_ptr<HloComputation::ReachabilityMap>>
+                           std::unique_ptr<HloReachabilityMap>>
       predecessors_;
 };
 

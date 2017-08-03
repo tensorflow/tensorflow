@@ -41,10 +41,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -59,7 +59,9 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
+class GraphDef;
 class Node;
+class VersionDef;
 
 class NeighborIter;  // Declared below
 class NodeIter;      // Declared below
@@ -98,6 +100,10 @@ class Node {
   // The device requested by the user.  For the actual assigned device,
   // use assigned_device_name() below.
   const string& requested_device() const;
+
+  // This changes the user requested device but not necessarily the device that
+  // on which the operation will run.
+  void set_requested_device(const string& device);
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
@@ -370,8 +376,8 @@ class Graph {
   static const int kControlSlot;
 
   // The GraphDef version range of this graph (see graph.proto).
-  const VersionDef& versions() const { return versions_; }
-  void set_versions(const VersionDef& versions) { versions_ = versions; }
+  const VersionDef& versions() const;
+  void set_versions(const VersionDef& versions);
 
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
@@ -514,7 +520,7 @@ class Graph {
   FunctionLibraryDefinition ops_;
 
   // GraphDef versions
-  VersionDef versions_;
+  const std::unique_ptr<VersionDef> versions_;
 
   // Allocator which will give us good locality.
   core::Arena arena_;

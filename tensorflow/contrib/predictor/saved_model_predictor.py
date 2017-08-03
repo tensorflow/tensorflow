@@ -22,17 +22,41 @@ from __future__ import print_function
 import logging
 
 from tensorflow.contrib.predictor import predictor
+from tensorflow.contrib.saved_model.python.saved_model import reader
 from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.tools import saved_model_cli
 
 
 DEFAULT_TAGS = 'serve'
 
 _DEFAULT_INPUT_ALTERNATIVE_FORMAT = 'default_input_alternative:{}'
+
+
+def get_meta_graph_def(saved_model_dir, tags):
+  """Gets `MetaGraphDef` from a directory containing a `SavedModel`.
+
+  Returns the `MetaGraphDef` for the given tag-set and SavedModel directory.
+
+  Args:
+    saved_model_dir: Directory containing the SavedModel.
+    tags: Comma separated list of tags used to identify the correct
+      `MetaGraphDef`.
+
+  Raises:
+    ValueError: An error when the given tags cannot be found.
+
+  Returns:
+    A `MetaGraphDef` corresponding to the given tags.
+  """
+  saved_model = reader.read_saved_model(saved_model_dir)
+  set_of_tags = set([tag.strip() for tag in tags.split(',')])
+  for meta_graph_def in saved_model.meta_graphs:
+    if set(meta_graph_def.meta_info_def.tags) == set_of_tags:
+      return meta_graph_def
+  raise ValueError('Could not find MetaGraphDef with tags {}'.format(tags))
 
 
 def _get_signature_def(signature_def_key, export_dir, tags):
@@ -41,7 +65,7 @@ def _get_signature_def(signature_def_key, export_dir, tags):
       signature_def_key or
       signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
 
-  metagraph_def = saved_model_cli.get_meta_graph_def(export_dir, tags)
+  metagraph_def = get_meta_graph_def(export_dir, tags)
 
   try:
     signature_def = signature_def_utils.get_signature_def_by_key(
@@ -114,8 +138,8 @@ class SavedModelPredictor(predictor.Predictor):
       output_names: A dictionary mapping strings to `Tensor`s in the
         `SavedModel` that represent the output. The keys can be any string of
         the user's choosing.
-      tags: Optional. Tags that will be used to retrieve the correct
-        `SignatureDef`. Defaults to `DEFAULT_TAGS`.
+      tags: Optional. Comma separated list of tags that will be used to retrieve
+        the correct `SignatureDef`. Defaults to `DEFAULT_TAGS`.
       graph: Optional. The Tensorflow `graph` in which prediction should be
         done.
     Raises:

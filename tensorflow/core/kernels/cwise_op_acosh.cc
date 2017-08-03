@@ -24,7 +24,7 @@ REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double,
 #if 0
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Acosh", functor::acosh, float, double);
-#endif // TENSORFLOW_USE_SYC
+#endif // TENSORFLOW_USE_SYCL
 #endif
 
 #if GOOGLE_CUDA

@@ -106,7 +106,7 @@ void CategoricalFeatureColumnHandler::GenerateFeatureSplitCandidates(
     NodeStats left_node_stats(learner_config, left_gradient_stats);
     NodeStats right_node_stats(learner_config, right_gradient_stats);
 
-    // Generate split candiate and update best split candidate for the
+    // Generate split candidate and update best split candidate for the
     // current root if needed.
     FeatureSplitCandidate split_candidate(
         slot_id_,

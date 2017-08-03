@@ -33,9 +33,9 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat(
-      "BufferAlias(", instruction_->FullyQualifiedName(), "[",
-      tensorflow::str_util::Join(index_, ","), "])");
+  return tensorflow::strings::StrCat("BufferAlias(", instruction_->name(), "[",
+                                     tensorflow::str_util::Join(index_, ","),
+                                     "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -135,6 +135,9 @@ TuplePointsToAnalysis::Run(const HloModule* module) {
 Status TuplePointsToAnalysis::Analyze() {
   points_to_.clear();
   for (auto& computation : module_->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
@@ -451,6 +454,9 @@ string TuplePointsToAnalysis::ToString() const {
   string output = tensorflow::strings::Printf(
       "TuplePointsToSet for module %s:\n", module_->name().c_str());
   for (const auto& computation : module_->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     const char* entry =
         computation.get() == module_->entry_computation() ? "entry " : "";
     tensorflow::strings::StrAppend(&output, entry, "computation ",

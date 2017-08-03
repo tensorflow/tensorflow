@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {
@@ -29,12 +31,18 @@ constexpr char kConv2dBackPropInput[] = "Conv2DBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kIdentity[] = "Identity";
+constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
+constexpr char kRank[] = "Rank";
+constexpr char kShape[] = "Shape";
+constexpr char kSize[] = "Size";
+constexpr char kStopGradient[] = "StopGradient";
+constexpr char kPreventGradient[] = "PreventGradient";
 
 namespace {
 
@@ -150,12 +158,18 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)}};
+      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};
 
   elementwise_ops_ = {
       // Unary ops alphabetically sorted
@@ -254,6 +268,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                           Eigen::internal::scalar_quotient_op<float>>::Cost},
       {"TruncateMod", Eigen::internal::functor_traits<
                           Eigen::internal::scalar_mod_op<float>>::Cost}};
+
+  // By default, use sum of memory_time and compute_time for execution_time.
+  compute_memory_overlap_ = false;
 }
 
 Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
@@ -381,7 +398,11 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
-  costs.execution_time = compute_cost + memory_cost;
+  if (compute_memory_overlap_) {
+    costs.execution_time = std::max(compute_cost, memory_cost);
+  } else {
+    costs.execution_time = compute_cost + memory_cost;
+  }
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
@@ -841,6 +862,18 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
       CountBatchMatMulOperations(op_features, &found_unknown_shapes),
       op_features);
   costs.inaccurate = found_unknown_shapes;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictMetadata(const OpInfo& op_features) const {
+  Costs costs;
+  costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
+  // Metadata operations are so cheap we assume they take the minimum amount of
+  // time we can represent (1 ns).
+  costs.execution_time = 1;
+  costs.compute_time = 1;
+  costs.memory_time = 0;
+
   return costs;
 }
 

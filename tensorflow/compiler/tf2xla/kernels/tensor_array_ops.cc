@@ -74,7 +74,9 @@ Status MaybeInitializeTensorArray(xla::ComputationBuilder* builder,
     if (!shape_or_status.ok()) {
       return shape_or_status.status();
     }
-    TensorShape shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(
+        XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), &shape));
     if (ta_shape != shape) {
       return errors::InvalidArgument(
           "Mismatched TensorArray sizes: ", ta_shape.DebugString(), " vs ",
@@ -115,21 +117,12 @@ Status GetTensorArrayShape(const XlaResource* resource,
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  *shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
   if (shape->dims() < 1) {
     return errors::InvalidArgument("TensorArray rank must be >= 1");
   }
   return Status::OK();
-}
-
-// Pads 'x' with 'count' zero indices. 'x' must have 1 element.
-xla::ComputationDataHandle PadIndexWithZeros(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-    int count) {
-  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
-  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
-  xs[0] = builder->Reshape(x, {1});
-  return builder->ConcatInDim(xs, 0);
 }
 
 // Like ComputationBuilder::DynamicUpdateSlice, but adds 'update' to the
@@ -189,7 +182,10 @@ class TensorArrayOp : public XlaOpKernel {
                                dtype_, value, &var));
     var->tensor_array_size = size;
     ctx->SetResourceOutput(0, var);
-    ctx->SetConstantOutput(1, Tensor(DT_FLOAT));
+
+    Tensor flow(DT_FLOAT, TensorShape({}));
+    flow.scalar<float>()() = 0.0f;
+    ctx->SetConstantOutput(1, flow);
   }
 
  private:
@@ -223,9 +219,10 @@ class TensorArrayWriteOp : public XlaOpKernel {
     xla::ComputationDataHandle ta = resource->value;
     xla::ComputationDataHandle index = ctx->Input(1);
     xla::ComputationDataHandle value = ctx->Input(2);
+    xla::ComputationDataHandle flow = ctx->Input(3);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices = PadIndexWithZeros(b, index, elem_shape.dims());
+    auto start_indices = XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -235,7 +232,7 @@ class TensorArrayWriteOp : public XlaOpKernel {
         DynamicAddSlice(b, ta, update, slice_shape.dim_sizes(), start_indices);
 
     resource->value = written;
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -267,7 +264,8 @@ class TensorArrayReadOp : public XlaOpKernel {
     xla::ComputationDataHandle index = ctx->Input(1);
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    auto start_indices = PadIndexWithZeros(b, index, ta_shape.dims() - 1);
+    auto start_indices =
+        XlaHelpers::PadWithZeros(b, index, ta_shape.dims() - 1);
 
     auto slice_shape = ta_shape.dim_sizes();
     slice_shape[0] = 1LL;
@@ -306,7 +304,7 @@ class TensorArrayGatherOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, GetTensorArrayShape(resource, b, &ta_shape));
 
     const TensorShape indices_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, indices_shape.dims() >= 1,
+    OP_REQUIRES(ctx, indices_shape.dims() == 1,
                 errors::InvalidArgument("indices must be rank 1"));
     const int num_indices = indices_shape.dim_size(0);
     auto indices = ctx->Input(1);
@@ -321,7 +319,8 @@ class TensorArrayGatherOp : public XlaOpKernel {
       auto index = b->Slice(indices, {i}, {i + 1}, {1});
 
       // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-      auto start_indices = PadIndexWithZeros(b, index, ta_shape.dims() - 1);
+      auto start_indices =
+          XlaHelpers::PadWithZeros(b, index, ta_shape.dims() - 1);
 
       auto slice_shape = ta_shape.dim_sizes();
       slice_shape[0] = 1LL;
@@ -374,6 +373,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
 
     xla::ComputationDataHandle ta = resource->value;
     const xla::ComputationDataHandle value = ctx->Input(2);
+    const xla::ComputationDataHandle flow = ctx->Input(3);
 
     auto slice_dims = value_shape.dim_sizes();
     slice_dims[0] = 1LL;
@@ -393,12 +393,13 @@ class TensorArrayScatterOp : public XlaOpKernel {
 
       // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
       auto index = b->Slice(indices, {i}, {i + 1}, {1});
-      auto start_indices = PadIndexWithZeros(b, index, elem_shape.dims());
+      auto start_indices =
+          XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
       ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
     }
 
     resource->value = ta;
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -493,6 +494,7 @@ class TensorArraySplitOp : public XlaOpKernel {
                     lengths.size(), " vs. ", resource->tensor_array_size, ")"));
 
     const xla::ComputationDataHandle value = ctx->Input(1);
+    const xla::ComputationDataHandle flow = ctx->Input(3);
 
     OP_REQUIRES(ctx, value_shape.num_elements() == ta_shape.num_elements(),
                 errors::InvalidArgument("mismatched element count ",
@@ -501,7 +503,7 @@ class TensorArraySplitOp : public XlaOpKernel {
 
     resource->value = b->Add(ta, b->Reshape(value, ta_shape.dim_sizes()));
 
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:

@@ -25,10 +25,15 @@ import types
 
 import six  # pylint: disable=unused-import
 
-from backports import weakref  # pylint: disable=g-bad-import-order
+# pylint: disable=g-bad-import-order,g-import-not-at-top
+try:
+  from weakref import finalize
+except ImportError:
+  from backports.weakref import finalize
 
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_decorator
+# pylint: enable=g-bad-import-order,g-import-not-at-top
 
 
 class _RefInfoField(
@@ -107,7 +112,7 @@ def _add_should_use_warning(x, fatal_error=False):
       # garbage collected.  Can't add self as the args because the
       # loop will break garbage collection.  We keep track of
       # ourselves via python ids.
-      weakref.finalize(self, _deleted, self._tf_ref_id, fatal_error)
+      finalize(self, _deleted, self._tf_ref_id, fatal_error)
 
     # Not sure why this pylint warning is being used; this is not an
     # old class form.

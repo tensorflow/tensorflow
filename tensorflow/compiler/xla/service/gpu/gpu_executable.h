@@ -80,6 +80,13 @@ class GpuExecutable : public Executable {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
+  const Status EqualOrFail(const Executable& executable) {
+    // TODO(b/62952745) Implement equality test on GPU executable.
+    return Unimplemented("Equality test on GPU executable is not implemented.");
+  }
+
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
+
  private:
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
@@ -113,6 +120,9 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<BufferAssignment> assignment_;
+
+  // Function to compute the size of a given Shape, in bytes.
+  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

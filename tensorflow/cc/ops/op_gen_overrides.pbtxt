@@ -100,6 +100,10 @@ op { name: "Stack" skip: true }
 op { name: "StackClose" skip: true }
 op { name: "StackPop" skip: true }
 op { name: "StackPush" skip: true }
+op { name: "StackV2" skip: true }
+op { name: "StackCloseV2" skip: true }
+op { name: "StackPopV2" skip: true }
+op { name: "StackPushV2" skip: true }
 
 op { name: "TensorArrayCloseV2" skip: true }
 op { name: "TensorArrayCloseV3" rename_to: "TensorArrayClose" }
@@ -173,6 +177,7 @@ op { name: "MaxPoolGradWithArgmax" hide: true }
 op { name: "ReluGrad" hide: true }
 op { name: "Relu6Grad" hide: true }
 op { name: "EluGrad" hide: true }
+op { name: "SeluGrad" hide: true }
 op { name: "SoftplusGrad" hide: true }
 op { name: "SoftsignGrad" hide: true }
 op { name: "FractionalAvgPoolGrad" hide: true }
