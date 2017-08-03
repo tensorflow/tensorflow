@@ -50,7 +50,7 @@ class CrossShardOptimizer(optimizer.Optimizer):
     self._opt = opt
     self._reduction = reduction
 
-  def compute_gradients(self, loss, **kwargs):
+  def compute_gradients(self, loss, var_list=None, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
 
     This simply wraps the compute_gradients() from the real optimizer. The
@@ -61,6 +61,9 @@ class CrossShardOptimizer(optimizer.Optimizer):
 
     Args:
       loss: A Tensor containing the value to minimize.
+      var_list: Optional list or tuple of `tf.Variable` to update to minimize
+        `loss`.  Defaults to the list of variables collected in the graph
+        under the key `GraphKey.TRAINABLE_VARIABLES`.
       **kwargs: Keyword arguments for compute_gradients().
 
     Returns:
@@ -76,7 +79,7 @@ class CrossShardOptimizer(optimizer.Optimizer):
     if num_shards > 1 and self._reduction == losses.Reduction.MEAN:
       scale = 1.0 / num_shards
       loss *= scale
-    return self._opt.compute_gradients(loss, **kwargs)
+    return self._opt.compute_gradients(loss, var_list=var_list, **kwargs)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
