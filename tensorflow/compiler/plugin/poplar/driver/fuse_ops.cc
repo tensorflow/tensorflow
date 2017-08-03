@@ -38,11 +38,13 @@ static bool IsRandomUniform(HloInstruction* inst) {
 }
 
 static bool IsConstantZero(HloInstruction* inst) {
-  return inst->literal().IsAll(0);
+  return !ShapeUtil::HasZeroElements(inst->shape()) &&
+          inst->literal().IsAll(0);
 }
 
 static bool IsConstantHalf(HloInstruction* inst) {
-  return inst->literal().IsAllFloat(0.5);
+  return !ShapeUtil::HasZeroElements(inst->shape()) &&
+          inst->literal().IsAllFloat(0.5);
 }
 
 static bool IsPoplarConvolution(HloInstruction* inst) {

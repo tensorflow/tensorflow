@@ -268,21 +268,7 @@ TileTensor(const T &multiples, const poplar::Tensor &in) {
   poplar::Tensor out = in;
   for (unsigned d = 0; d < multiples.size(); d++) {
     int m = multiples[d];
-    if (m == 0) {
-      out = out.slice(0, 0, d);
-    } else if (m > 1) {
-      poplar::Tensor n = out;
-
-      out = out.slice(0, 0, d);
-
-      while (m != 0) {
-        if (m & 1) {
-          out = poplar::concat(out, n, d);
-        }
-        n = poplar::concat(n, n, d);
-        m = m >> 1;
-      }
-    }
+    out = out.broadcast(m, d);
   }
   return out;
 }
@@ -310,7 +296,7 @@ PadTensor(const PaddingConfig& cfg,
   for (unsigned d = 0; d < in.rank(); d++) {
     std::vector<std::size_t> shape(out.shape());
 
-    if (cfg.dimensions(d).interior_padding() > 0) {
+    if (cfg.dimensions(d).interior_padding() > 0 && shape[d] > 0) {
       shape[d] = cfg.dimensions(d).interior_padding();
       poplar::Tensor padded = TileTensor(shape, p);
       poplar::Tensor interleaved = out.slice(0,1,d);
