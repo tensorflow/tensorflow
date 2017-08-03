@@ -18,15 +18,9 @@ plugins = {
   "poplar": {
     "deps": [
       "//tensorflow/compiler/plugin/poplar:poplar_lib",
-      "//tensorflow/compiler/xla/tests:test_macros_poplar",
+      "//tensorflow/compiler/xla/tests:test_macros_cpu",
     ],
-    "copts": [
-      "-DXLA_TEST_DISABLE_F64",
-      "-DXLA_TEST_DISABLE_S64",
-      "-DXLA_TEST_DISABLE_U64",
-      "-DXLA_TEST_DISABLE_U32",
-      "-DXLA_TEST_DISABLE_U8",
-    ],
+    "copts": [],
     "tags": [],
     "args": []
   },
