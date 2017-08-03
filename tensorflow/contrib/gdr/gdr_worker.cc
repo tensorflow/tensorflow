@@ -83,9 +83,11 @@ void GdrWorker::RecvTensorAsync(CallOptions* opts,
               grpc::EncodeRecvTensorResponseToByteBuffer(proto, response);
               done(Status::OK());
               return;
+            } else {
+              done(s);
+              return;
             }
-          }
-          {
+          } else {
             // Non-DMA cases.
             if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA
