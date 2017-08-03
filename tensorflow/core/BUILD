@@ -1844,6 +1844,7 @@ tf_cuda_library(
     name = "core_cpu_init",
     srcs = [
         "common_runtime/device_factory.cc",
+        "common_runtime/threadpool_device_factory.cc",
     ],
     deps = ["core_cpu_lib"],
 )
@@ -1881,7 +1882,6 @@ tf_cuda_library(
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
         "common_runtime/threadpool_device.cc",
-        "common_runtime/threadpool_device_factory.cc",
         "graph/gradients.cc",
         "graph/mkl_layout_pass.cc",
         "graph/mkl_tfconversion_pass.cc",

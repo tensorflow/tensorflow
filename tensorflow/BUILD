@@ -449,9 +449,9 @@ tf_cc_shared_object(
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:core_cpu_init",
+        "//tensorflow/stream_executor:stream_executor_impl",
     ] + if_cuda(
         [
-            "//tensorflow/stream_executor:stream_executor_impl",
             "//tensorflow/stream_executor:cuda_platform",
             "//tensorflow/core/platform/default/build_config:cuda",
             "//tensorflow/core:gpu_runtime_impl",
