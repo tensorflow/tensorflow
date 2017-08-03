@@ -182,25 +182,7 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
 
 }  // namespace
 
-TF_BufferAndDevice::TF_BufferAndDevice(TensorBuffer* buffer)
-    : buffer_(buffer), device_owner_(nullptr), device_index_(-1) {}
-
-TF_BufferAndDevice::TF_BufferAndDevice(TensorBuffer* buffer,
-                                       TF_Session* session, int device_index)
-    : buffer_(buffer), device_owner_(session), device_index_(device_index) {
-  mutex_lock l(device_owner_->mu);
-  device_owner_->num_outstanding_buffers++;
-}
-
-TF_BufferAndDevice::~TF_BufferAndDevice() {
-  buffer_->Unref();
-  if (device_owner_ != nullptr) {
-    mutex_lock l(device_owner_->mu);
-    device_owner_->num_outstanding_buffers--;
-  }
-}
-
-TF_Tensor::~TF_Tensor() { delete buffer; }
+TF_Tensor::~TF_Tensor() { buffer->Unref(); }
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
@@ -241,14 +223,14 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf->deallocator_ = deallocator;
     buf->deallocator_arg_ = deallocator_arg;
   }
-  return new TF_Tensor{dtype, TensorShape(dimvec), new TF_BufferAndDevice(buf)};
+  return new TF_Tensor{dtype, TensorShape(dimvec), buf};
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
   // It is safe to move the Tensor if and only if we own the unique reference to
   // it. In that case, we might as well not delete and reallocate, but a future
   // implementation might need to do so.
-  TensorBuffer* buf = tensor->buffer->buffer();
+  TensorBuffer* buf = tensor->buffer;
   if (buf->RefCountIsOne() && buf->root_buffer()->RefCountIsOne() &&
       buf->OwnsMemory()) {
     return tensor;
@@ -263,13 +245,8 @@ int TF_NumDims(const TF_Tensor* t) { return t->shape.dims(); }
 int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
   return static_cast<int64_t>(t->shape.dim_size(dim_index));
 }
-size_t TF_TensorByteSize(const TF_Tensor* t) {
-  return t->buffer->buffer()->size();
-}
-void* TF_TensorData(const TF_Tensor* t) {
-  if (t->buffer->on_cpu()) return t->buffer->buffer()->data();
-  return nullptr;
-}
+size_t TF_TensorByteSize(const TF_Tensor* t) { return t->buffer->size(); }
+void* TF_TensorData(const TF_Tensor* t) { return t->buffer->data(); }
 
 // --------------------------------------------------------------------------
 size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
@@ -428,10 +405,6 @@ namespace tensorflow {
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
   if (src->dtype == TF_RESOURCE) {
-    if (src->buffer->device() != nullptr) {
-      return InvalidArgument(
-          "TF_RESOURCE tensor must be placed in host memory");
-    }
     if (src->shape.dims() != 0) {
       return InvalidArgument(
           "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
@@ -448,11 +421,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
     return Status::OK();
   }
   if (src->dtype != TF_STRING) {
-    if (src->buffer->device() != nullptr) {
-      return InvalidArgument("TF_STRING tensor must be placed in host memory");
-    }
-    *dst =
-        TensorCApi::MakeTensor(src->dtype, src->shape, src->buffer->buffer());
+    *dst = TensorCApi::MakeTensor(src->dtype, src->shape, src->buffer);
     return Status::OK();
   }
   // TF_STRING tensors require copying since Tensor class expects a sequence of
@@ -514,7 +483,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
     TensorBuffer* buf = TensorCApi::Buffer(src);
     buf->Ref();
     return new TF_Tensor{static_cast<TF_DataType>(src.dtype()), src.shape(),
-                         new TF_BufferAndDevice(buf)};
+                         buf};
   }
   // DT_STRING tensors require a copying since TF_Tensor.buffer expects a flatly
   // encoded sequence of strings.
@@ -2206,11 +2175,7 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 // TF_Session functions ----------------------------------------------
 
 TF_Session::TF_Session(tensorflow::Session* s, TF_Graph* g)
-    : session(s),
-      graph(g),
-      last_num_graph_nodes(0),
-      device_mgr(nullptr),
-      num_outstanding_buffers(0) {
+    : session(s), graph(g), last_num_graph_nodes(0), device_mgr(nullptr) {
   if (s->LocalDeviceManager(&device_mgr).ok()) {
     devices = device_mgr->ListDevices();
   }
@@ -2299,30 +2264,16 @@ void TF_CloseSession(TF_Session* s, TF_Status* status) {
 }
 
 void TF_DeleteSession(TF_Session* s, TF_Status* status) {
-  {
-    mutex_lock l(s->mu);
-    if (s->num_outstanding_buffers > 0) {
-      // This can probably be relaxed: An alternative might be to mark
-      // this session for deletion and do the actual delete only when
-      // the last TF_BufferAndDevice has been deleted.
-      status->status = FailedPrecondition(
-          s->num_outstanding_buffers,
-          " TF_Tensor objects with memory backed by a device "
-          "owned by this TF_Session are still alive. Release "
-          "them using TF_DeleteTensor and retry");
-      return;
-    }
-    status->status = Status::OK();
-    TF_Graph* const graph = s->graph;
-    if (graph != nullptr) {
-      graph->mu.lock();
-      graph->num_sessions -= 1;
-      const bool del = graph->delete_requested && graph->num_sessions == 0;
-      graph->mu.unlock();
-      if (del) delete graph;
-    }
-    delete s->session;
+  status->status = Status::OK();
+  TF_Graph* const graph = s->graph;
+  if (graph != nullptr) {
+    graph->mu.lock();
+    graph->num_sessions -= 1;
+    const bool del = graph->delete_requested && graph->num_sessions == 0;
+    graph->mu.unlock();
+    if (del) delete graph;
   }
+  delete s->session;
   delete s;
 }
 
