@@ -138,9 +138,18 @@ Status PoplarTransferManager::TransferLiteralToDevice(
             tuple_elements_on_device.data(), destination);
   }
 
-  return TransferBufferToDevice(
-          executor, GetByteSizeRequirement(shape), literal.InternalData(),
-          destination);
+  if (LayoutUtil::IsMonotonicWithDim0Major(literal.shape().layout())) {
+    return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
+                                  literal.InternalData(), destination);
+
+  } else {
+    Shape new_shape = literal.shape();
+    LayoutUtil::SetToDefaultLayout(&new_shape);
+    auto new_literal = literal.Relayout(new_shape.layout());
+    return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
+                                  new_literal->InternalData(), destination);
+
+  }
 }
 
 Status
