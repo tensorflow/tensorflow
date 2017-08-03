@@ -44,17 +44,6 @@ limitations under the License.
 #define DISABLED_ON_CPU_PARALLEL(X) X
 #define DISABLED_ON_GPU(X) X
 
-#define REQUIRES_F64(X) X
-#define REQUIRES_F32(X) X
-#define REQUIRES_F16(X) X
-#define REQUIRES_S64(X) X
-#define REQUIRES_U64(X) X
-#define REQUIRES_S32(X) X
-#define REQUIRES_U32(X) X
-#define REQUIRES_S8(X) X
-#define REQUIRES_U8(X) X
-#define REQUIRES_PRED(X) X
-
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
 // Otherwise the pasting is applied before macro expansion completes.
@@ -66,8 +55,6 @@ limitations under the License.
 #ifdef XLA_TEST_BACKEND_CPU
 # undef DISABLED_ON_CPU
 # define DISABLED_ON_CPU(X) XLA_TEST_PASTE(DISABLED_, X)
-# undef REQUIRES_F16
-# define REQUIRES_F16(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_CPU
 
 #ifdef XLA_TEST_BACKEND_CPU_PARALLEL
@@ -75,68 +62,12 @@ limitations under the License.
 # define DISABLED_ON_CPU(X) XLA_TEST_PASTE(DISABLED_, X)
 # undef DISABLED_ON_CPU_PARALLEL
 # define DISABLED_ON_CPU_PARALLEL(X) XLA_TEST_PASTE(DISABLED_, X)
-# undef REQUIRES_F16
-# define REQUIRES_F16(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_CPU_PARALLEL
 
 #ifdef XLA_TEST_BACKEND_GPU
 # undef DISABLED_ON_GPU
 # define DISABLED_ON_GPU(X) XLA_TEST_PASTE(DISABLED_, X)
-# undef REQUIRES_F16
-# define REQUIRES_F16(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GPU
-
-
-#ifdef XLA_TEST_DISABLE_F64
-# undef REQUIRES_F64
-# define REQUIRES_F64(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_F64
-
-#ifdef XLA_TEST_DISABLE_F32
-# undef REQUIRES_F32
-# define REQUIRES_F32(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_F32
-
-#ifdef XLA_TEST_DISABLE_F16
-# undef REQUIRES_F16
-# define REQUIRES_F16(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_F16
-
-#ifdef XLA_TEST_DISABLE_S64
-# undef REQUIRES_S64
-# define REQUIRES_S64(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_S64
-
-#ifdef XLA_TEST_DISABLE_U64
-# undef REQUIRES_U64
-# define REQUIRES_U64(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_U64
-
-#ifdef XLA_TEST_DISABLE_S32
-# undef REQUIRES_S32
-# define REQUIRES_S32(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_S32
-
-#ifdef XLA_TEST_DISABLE_U32
-# undef REQUIRES_U32
-# define REQUIRES_U32(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_U32
-
-#ifdef XLA_TEST_DISABLE_S8
-# undef REQUIRES_S8
-# define REQUIRES_S8(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_S8
-
-#ifdef XLA_TEST_DISABLE_U8
-# undef REQUIRES_U8
-# define REQUIRES_U8(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_U8
-
-#ifdef XLA_TEST_DISABLE_PRED
-# undef REQUIRES_PRED
-# define REQUIRES_PRED(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_DISABLE_PRED
-
 
 // clang-format on
 
