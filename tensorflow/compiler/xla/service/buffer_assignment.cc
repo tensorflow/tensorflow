@@ -200,15 +200,20 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
   return const_cast<BufferAllocation*>(&GetAllocation(index));
 }
 
-bool BufferAssignment::HasTopLevelAllocation(
-    const HloInstruction* instruction) const {
+bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
+                                       const ShapeIndex& index) const {
   for (const LogicalBuffer* buffer :
-       GetPointsToSet(instruction).element(/*index=*/{})) {
+       GetPointsToSet(instruction).element(index)) {
     if (allocation_index_for_buffer_.count(buffer) > 0) {
       return true;
     }
   }
   return false;
+}
+
+bool BufferAssignment::HasTopLevelAllocation(
+    const HloInstruction* instruction) const {
+  return HasAllocationAt(instruction, /*index=*/{});
 }
 
 StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(

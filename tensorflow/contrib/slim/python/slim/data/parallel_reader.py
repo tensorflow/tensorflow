@@ -175,7 +175,7 @@ def parallel_read(data_sources,
                   scope=None):
   """Reads multiple records in parallel from data_sources using n readers.
 
-  It uses a ParallelReader to read from multiple files in  parallel using
+  It uses a ParallelReader to read from multiple files in parallel using
   multiple readers created using `reader_class` with `reader_kwargs'.
 
   If shuffle is True the common_queue would be a RandomShuffleQueue otherwise

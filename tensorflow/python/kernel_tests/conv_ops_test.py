@@ -1079,10 +1079,6 @@ class Conv2DTest(test.TestCase):
                 padding="VALID"))
 
 
-# This is only a very simple test. More comprehensive tests live in
-# //learning/dist_belief/experimental/brain_compatibility/conv_nn_test.py
-# where we compare the numeric results of the depthwise conv op with the
-# depthwise weighted sum transformer in dist_belief.
 class DepthwiseConv2DTest(test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,

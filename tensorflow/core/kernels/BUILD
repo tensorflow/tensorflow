@@ -3007,7 +3007,7 @@ tf_kernel_library(
         "maxpooling_op.h",
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
-    ],
+    ] + if_sycl(["pooling_ops_3d_sycl.h"]),
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",
@@ -5168,7 +5168,6 @@ cc_library(
         "remote_fused_graph_execute_utils.h",
     ],
     deps = [
-        "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

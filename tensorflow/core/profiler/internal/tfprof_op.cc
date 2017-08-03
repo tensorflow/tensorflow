@@ -103,8 +103,13 @@ void TFOp::Build() {
 }
 
 const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
-                                         Timeline* timeline) {
+                                        Timeline* timeline) {
   root_->ResetTotalStats();
+  if (opts.output_type == kOutput[3]) {
+    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    return root_.get();
+  }
+
   if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
     root_->formatted_str = FormatNode(root_.get(), root_.get(), opts);
   }

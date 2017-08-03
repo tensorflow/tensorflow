@@ -184,6 +184,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     # Loading resources in contrib doesn't seem to work on Windows
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/tensor_forest_test.py"
+    # Test is flaky on Windows GPU builds (b/38283730).
+    "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
