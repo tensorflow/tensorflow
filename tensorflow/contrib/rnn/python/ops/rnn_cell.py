@@ -2026,7 +2026,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         Here output_dim is:
            num_proj if num_proj was set,
            num_units otherwise.
-      - LSTMStateTuple representing the new state of G-LSTM  cell
+      - LSTMStateTuple representing the new state of G-LSTM cell
         after reading `inputs` when the previous state was `state`.
 
     Raises:
