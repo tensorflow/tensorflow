@@ -123,7 +123,6 @@ def tfsplits(_):
     y = math_ops.add(x, z)
   array_ops.identity(y, name='result')
 
-
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()

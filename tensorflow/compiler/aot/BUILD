@@ -154,17 +154,8 @@ py_binary(
     deps=[
         ":tfcompile_py",
         "//tensorflow:tensorflow_py",
-    ]
-)
-
-# e2e test
-
-tf_saved_model_library(
-    name = "test_saved_model",
-    saved_model_dir = "test_saved_model_resources",
-    cpp_class = 'StylizeImage',
-    gen_test = True,
-    gen_benchmark = True,
+    ],
+    visibility = ["//visibility:public"],
 )
 
 
