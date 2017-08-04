@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
-
 #include "tensorflow/contrib/s3/s3_crypto.h"
+#include "tensorflow/contrib/s3/s3_file_system.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/FileSystemUtils.h>
@@ -224,361 +223,361 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   uint64 length_;
 };
 
-class S3FileSystem : public FileSystem {
- public:
-  S3FileSystem() {
-    Aws::SDKOptions options;
-    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
-    options.cryptoOptions.sha256Factory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
-    };
-    options.cryptoOptions.sha256HMACFactory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
-    };
-    Aws::InitAPI(options);
-  }
-  ~S3FileSystem() {
-    Aws::SDKOptions options;
-    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
-    Aws::ShutdownAPI(options);
-  }
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-    result->reset(new S3RandomAccessFile(bucket, object));
-    return Status::OK();
-  }
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-    result->reset(new S3WritableFile(bucket, object));
-    return Status::OK();
-  }
+S3FileSystem::S3FileSystem() {
+  Aws::SDKOptions options;
+  options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+  options.cryptoOptions.sha256Factory_create_fn = []() {
+    return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
+  };
+  options.cryptoOptions.sha256HMACFactory_create_fn = []() {
+    return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
+  };
+  Aws::InitAPI(options);
+}
 
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override {
-    std::unique_ptr<RandomAccessFile> reader;
-    TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
-    std::unique_ptr<char[]> buffer(new char[S3ReadAppendableFileBufferSize]);
-    Status status;
-    uint64 offset = 0;
-    StringPiece read_chunk;
+S3FileSystem::~S3FileSystem() {
+  Aws::SDKOptions options;
+  options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+  Aws::ShutdownAPI(options);
+}
 
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-    result->reset(new S3WritableFile(bucket, object));
+Status S3FileSystem::NewRandomAccessFile(
+    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+  result->reset(new S3RandomAccessFile(bucket, object));
+  return Status::OK();
+}
 
-    while (true) {
-      status = reader->Read(offset, S3ReadAppendableFileBufferSize, &read_chunk,
-                            buffer.get());
-      if (status.ok()) {
-        (*result)->Append(read_chunk);
-        offset += S3ReadAppendableFileBufferSize;
-      } else if (status.code() == error::OUT_OF_RANGE) {
-        (*result)->Append(read_chunk);
-        break;
-      } else {
-        (*result).reset();
-        return status;
-      }
+Status S3FileSystem::NewWritableFile(const string& fname,
+                       std::unique_ptr<WritableFile>* result) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+  result->reset(new S3WritableFile(bucket, object));
+  return Status::OK();
+}
+
+Status S3FileSystem::NewAppendableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result) {
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
+  std::unique_ptr<char[]> buffer(new char[S3ReadAppendableFileBufferSize]);
+  Status status;
+  uint64 offset = 0;
+  StringPiece read_chunk;
+
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+  result->reset(new S3WritableFile(bucket, object));
+
+  while (true) {
+    status = reader->Read(offset, S3ReadAppendableFileBufferSize, &read_chunk,
+                          buffer.get());
+    if (status.ok()) {
+      (*result)->Append(read_chunk);
+      offset += S3ReadAppendableFileBufferSize;
+    } else if (status.code() == error::OUT_OF_RANGE) {
+      (*result)->Append(read_chunk);
+      break;
+    } else {
+      (*result).reset();
+      return status;
     }
-
-    return Status::OK();
   }
 
-  Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    uint64 size;
-    TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
-    std::unique_ptr<char[]> data(new char[size]);
+  return Status::OK();
+}
 
-    std::unique_ptr<RandomAccessFile> file;
-    TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
+Status S3FileSystem::NewReadOnlyMemoryRegionFromFile(
+    const string& fname,
+    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+  uint64 size;
+  TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
+  std::unique_ptr<char[]> data(new char[size]);
 
-    StringPiece piece;
-    TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
 
-    result->reset(new S3ReadOnlyMemoryRegion(std::move(data), size));
-    return Status::OK();
+  StringPiece piece;
+  TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
+
+  result->reset(new S3ReadOnlyMemoryRegion(std::move(data), size));
+  return Status::OK();
+}
+
+Status S3FileSystem::FileExists(const string& fname) {
+  FileStatistics stats;
+  TF_RETURN_IF_ERROR(this->Stat(fname, &stats));
+  return Status::OK();
+}
+
+Status S3FileSystem::GetChildren(const string& dir, std::vector<string>* result) {
+  string bucket, prefix;
+  TF_RETURN_IF_ERROR(ParseS3Path(dir, false, &bucket, &prefix));
+
+  if (prefix.back() != '/') {
+    prefix.push_back('/');
   }
 
-  Status FileExists(const string& fname) override {
-    FileStatistics stats;
-    TF_RETURN_IF_ERROR(this->Stat(fname, &stats));
-    return Status::OK();
-  }
+  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+  Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+  listObjectsRequest.WithBucket(bucket.c_str())
+      .WithPrefix(prefix.c_str())
+      .WithMaxKeys(S3GetChildrenMaxKeys)
+      .WithDelimiter("/");
+  listObjectsRequest.SetResponseStreamFactory([]() {
+    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
+  });
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
-    string bucket, prefix;
-    TF_RETURN_IF_ERROR(ParseS3Path(dir, false, &bucket, &prefix));
-
-    if (prefix.back() != '/') {
-      prefix.push_back('/');
-    }
-
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-    listObjectsRequest.WithBucket(bucket.c_str())
-        .WithPrefix(prefix.c_str())
-        .WithMaxKeys(S3GetChildrenMaxKeys)
-        .WithDelimiter("/");
-    listObjectsRequest.SetResponseStreamFactory([]() {
-      return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-    });
-
-    Aws::S3::Model::ListObjectsResult listObjectsResult;
-    do {
-      auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
-      if (!listObjectsOutcome.IsSuccess()) {
-        std::stringstream ss;
-        ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
-           << listObjectsOutcome.GetError().GetMessage();
-        return errors::Internal(ss.str());
-      }
-
-      listObjectsResult = listObjectsOutcome.GetResult();
-      for (const auto& object : listObjectsResult.GetCommonPrefixes()) {
-        Aws::String s = object.GetPrefix();
-        s.erase(s.length() - 1);
-        Aws::String entry = s.substr(strlen(prefix.c_str()));
-        if (entry.length() > 0) {
-          result->push_back(entry.c_str());
-        }
-      }
-      for (const auto& object : listObjectsResult.GetContents()) {
-        Aws::String s = object.GetKey();
-        Aws::String entry = s.substr(strlen(prefix.c_str()));
-        if (entry.length() > 0) {
-          result->push_back(entry.c_str());
-        }
-      }
-      listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
-    } while (listObjectsResult.GetIsTruncated());
-
-    return Status::OK();
-  }
-
-  Status Stat(const string& fname, FileStatistics* stats) override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
-
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-    if (object.empty()) {
-      Aws::S3::Model::HeadBucketRequest headBucketRequest;
-      headBucketRequest.WithBucket(bucket.c_str());
-      auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
-      if (!headBucketOutcome.IsSuccess()) {
-        std::stringstream ss;
-        ss << headBucketOutcome.GetError().GetExceptionName() << ": "
-           << headBucketOutcome.GetError().GetMessage();
-        return errors::Internal(ss.str());
-      }
-      stats->length = 0;
-      stats->is_directory = 1;
-      return Status::OK();
-    }
-
-    bool found = false;
-
-    Aws::S3::Model::HeadObjectRequest headObjectRequest;
-    headObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
-    headObjectRequest.SetResponseStreamFactory([]() {
-      return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-    });
-    auto headObjectOutcome = s3Client.HeadObject(headObjectRequest);
-    if (headObjectOutcome.IsSuccess()) {
-      stats->length = headObjectOutcome.GetResult().GetContentLength();
-      stats->is_directory = 0;
-      stats->mtime_nsec =
-          headObjectOutcome.GetResult().GetLastModified().Millis() * 1e6;
-      found = true;
-    }
-    string prefix = object;
-    if (prefix.back() != '/') {
-      prefix.push_back('/');
-    }
-    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-    listObjectsRequest.WithBucket(bucket.c_str())
-        .WithPrefix(prefix.c_str())
-        .WithMaxKeys(1);
-    listObjectsRequest.SetResponseStreamFactory([]() {
-      return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-    });
+  Aws::S3::Model::ListObjectsResult listObjectsResult;
+  do {
     auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
-    if (listObjectsOutcome.IsSuccess()) {
-      if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
-        stats->length = 0;
-        stats->is_directory = 1;
-        found = true;
-      }
-    }
-    if (!found) {
-      return errors::NotFound("Object ", fname, " does not exist");
-    }
-    return Status::OK();
-  }
-
-  Status DeleteFile(const string& fname) override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-    Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
-    deleteObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
-
-    auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
-    if (!deleteObjectOutcome.IsSuccess()) {
+    if (!listObjectsOutcome.IsSuccess()) {
       std::stringstream ss;
-      ss << deleteObjectOutcome.GetError().GetExceptionName() << ": "
-         << deleteObjectOutcome.GetError().GetMessage();
+      ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
+         << listObjectsOutcome.GetError().GetMessage();
       return errors::Internal(ss.str());
     }
-    return Status::OK();
-  }
 
-  Status CreateDir(const string& dirname) override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
-
-    if (object.empty()) {
-      Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-      Aws::S3::Model::HeadBucketRequest headBucketRequest;
-      headBucketRequest.WithBucket(bucket.c_str());
-      auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
-      if (!headBucketOutcome.IsSuccess()) {
-        return errors::NotFound("The bucket ", bucket, " was not found.");
+    listObjectsResult = listObjectsOutcome.GetResult();
+    for (const auto& object : listObjectsResult.GetCommonPrefixes()) {
+      Aws::String s = object.GetPrefix();
+      s.erase(s.length() - 1);
+      Aws::String entry = s.substr(strlen(prefix.c_str()));
+      if (entry.length() > 0) {
+        result->push_back(entry.c_str());
       }
-      return Status::OK();
     }
-    string filename = dirname;
-    if (filename.back() != '/') {
-      filename.push_back('/');
+    for (const auto& object : listObjectsResult.GetContents()) {
+      Aws::String s = object.GetKey();
+      Aws::String entry = s.substr(strlen(prefix.c_str()));
+      if (entry.length() > 0) {
+        result->push_back(entry.c_str());
+      }
     }
-    std::unique_ptr<WritableFile> file;
-    TF_RETURN_IF_ERROR(NewWritableFile(filename, &file));
-    TF_RETURN_IF_ERROR(file->Close());
+    listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
+  } while (listObjectsResult.GetIsTruncated());
+
+  return Status::OK();
+}
+
+Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
+
+  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+  if (object.empty()) {
+    Aws::S3::Model::HeadBucketRequest headBucketRequest;
+    headBucketRequest.WithBucket(bucket.c_str());
+    auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
+    if (!headBucketOutcome.IsSuccess()) {
+      std::stringstream ss;
+      ss << headBucketOutcome.GetError().GetExceptionName() << ": "
+         << headBucketOutcome.GetError().GetMessage();
+      return errors::Internal(ss.str());
+    }
+    stats->length = 0;
+    stats->is_directory = 1;
     return Status::OK();
   }
 
-  Status DeleteDir(const string& dirname) override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
+  bool found = false;
 
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-    string prefix = object;
-    if (prefix.back() != '/') {
-      prefix.push_back('/');
+  Aws::S3::Model::HeadObjectRequest headObjectRequest;
+  headObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
+  headObjectRequest.SetResponseStreamFactory([]() {
+    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
+  });
+  auto headObjectOutcome = s3Client.HeadObject(headObjectRequest);
+  if (headObjectOutcome.IsSuccess()) {
+    stats->length = headObjectOutcome.GetResult().GetContentLength();
+    stats->is_directory = 0;
+    stats->mtime_nsec =
+        headObjectOutcome.GetResult().GetLastModified().Millis() * 1e6;
+    found = true;
+  }
+  string prefix = object;
+  if (prefix.back() != '/') {
+    prefix.push_back('/');
+  }
+  Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+  listObjectsRequest.WithBucket(bucket.c_str())
+      .WithPrefix(prefix.c_str())
+      .WithMaxKeys(1);
+  listObjectsRequest.SetResponseStreamFactory([]() {
+    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
+  });
+  auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+  if (listObjectsOutcome.IsSuccess()) {
+    if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
+      stats->length = 0;
+      stats->is_directory = 1;
+      found = true;
     }
-    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-    listObjectsRequest.WithBucket(bucket.c_str())
-        .WithPrefix(prefix.c_str())
-        .WithMaxKeys(2);
-    listObjectsRequest.SetResponseStreamFactory([]() {
-      return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-    });
+  }
+  if (!found) {
+    return errors::NotFound("Object ", fname, " does not exist");
+  }
+  return Status::OK();
+}
+
+Status S3FileSystem::DeleteFile(const string& fname) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+
+  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+  Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
+  deleteObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
+
+  auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
+  if (!deleteObjectOutcome.IsSuccess()) {
+    std::stringstream ss;
+    ss << deleteObjectOutcome.GetError().GetExceptionName() << ": "
+       << deleteObjectOutcome.GetError().GetMessage();
+    return errors::Internal(ss.str());
+  }
+  return Status::OK();
+}
+
+Status S3FileSystem::CreateDir(const string& dirname) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
+
+  if (object.empty()) {
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+    Aws::S3::Model::HeadBucketRequest headBucketRequest;
+    headBucketRequest.WithBucket(bucket.c_str());
+    auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
+    if (!headBucketOutcome.IsSuccess()) {
+      return errors::NotFound("The bucket ", bucket, " was not found.");
+    }
+    return Status::OK();
+  }
+  string filename = dirname;
+  if (filename.back() != '/') {
+    filename.push_back('/');
+  }
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(NewWritableFile(filename, &file));
+  TF_RETURN_IF_ERROR(file->Close());
+  return Status::OK();
+}
+
+Status S3FileSystem::DeleteDir(const string& dirname) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
+
+  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+  string prefix = object;
+  if (prefix.back() != '/') {
+    prefix.push_back('/');
+  }
+  Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+  listObjectsRequest.WithBucket(bucket.c_str())
+      .WithPrefix(prefix.c_str())
+      .WithMaxKeys(2);
+  listObjectsRequest.SetResponseStreamFactory([]() {
+    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
+  });
+  auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+  if (listObjectsOutcome.IsSuccess()) {
+    auto contents = listObjectsOutcome.GetResult().GetContents();
+    if (contents.size() > 1 ||
+        (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
+      return errors::FailedPrecondition(
+          "Cannot delete a non-empty directory.");
+    }
+    if (contents.size() == 1 && contents[0].GetKey() == prefix.c_str()) {
+      string filename = dirname;
+      if (filename.back() != '/') {
+        filename.push_back('/');
+      }
+      return DeleteFile(filename);
+    }
+  }
+  return Status::OK();
+}
+
+Status S3FileSystem::GetFileSize(const string& fname, uint64* file_size) {
+  FileStatistics stats;
+  TF_RETURN_IF_ERROR(this->Stat(fname, &stats));
+  *file_size = stats.length;
+  return Status::OK();
+}
+
+Status S3FileSystem::RenameFile(const string& src, const string& target) {
+  string src_bucket, src_object, target_bucket, target_object;
+  TF_RETURN_IF_ERROR(ParseS3Path(src, false, &src_bucket, &src_object));
+  TF_RETURN_IF_ERROR(
+      ParseS3Path(target, false, &target_bucket, &target_object));
+  if (src_object.back() == '/') {
+    if (target_object.back() != '/') {
+      target_object.push_back('/');
+    }
+  } else {
+    if (target_object.back() == '/') {
+      target_object.pop_back();
+    }
+  }
+
+  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+
+  Aws::S3::Model::CopyObjectRequest copyObjectRequest;
+  Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
+
+  Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+  listObjectsRequest.WithBucket(src_bucket.c_str())
+      .WithPrefix(src_object.c_str())
+      .WithMaxKeys(S3GetChildrenMaxKeys);
+  listObjectsRequest.SetResponseStreamFactory([]() {
+    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
+  });
+
+  Aws::S3::Model::ListObjectsResult listObjectsResult;
+  do {
     auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
-    if (listObjectsOutcome.IsSuccess()) {
-      auto contents = listObjectsOutcome.GetResult().GetContents();
-      if (contents.size() > 1 ||
-          (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
-        return errors::FailedPrecondition(
-            "Cannot delete a non-empty directory.");
-      }
-      if (contents.size() == 1 && contents[0].GetKey() == prefix.c_str()) {
-        string filename = dirname;
-        if (filename.back() != '/') {
-          filename.push_back('/');
-        }
-        return DeleteFile(filename);
-      }
-    }
-    return Status::OK();
-  }
-
-  Status GetFileSize(const string& fname, uint64* file_size) override {
-    FileStatistics stats;
-    TF_RETURN_IF_ERROR(this->Stat(fname, &stats));
-    *file_size = stats.length;
-    return Status::OK();
-  }
-
-  Status RenameFile(const string& src, const string& target) override {
-    string src_bucket, src_object, target_bucket, target_object;
-    TF_RETURN_IF_ERROR(ParseS3Path(src, false, &src_bucket, &src_object));
-    TF_RETURN_IF_ERROR(
-        ParseS3Path(target, false, &target_bucket, &target_object));
-    if (src_object.back() == '/') {
-      if (target_object.back() != '/') {
-        target_object.push_back('/');
-      }
-    } else {
-      if (target_object.back() == '/') {
-        target_object.pop_back();
-      }
+    if (!listObjectsOutcome.IsSuccess()) {
+      std::stringstream ss;
+      ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
+         << listObjectsOutcome.GetError().GetMessage();
+      return errors::Internal(ss.str());
     }
 
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
+    listObjectsResult = listObjectsOutcome.GetResult();
+    for (const auto& object : listObjectsResult.GetContents()) {
+      Aws::String src_key = object.GetKey();
+      Aws::String target_key = src_key;
+      target_key.replace(0, src_object.length(), target_object.c_str());
+      Aws::String source = Aws::String(src_bucket.c_str()) + "/" + src_key;
 
-    Aws::S3::Model::CopyObjectRequest copyObjectRequest;
-    Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
+      copyObjectRequest.SetBucket(target_bucket.c_str());
+      copyObjectRequest.SetKey(target_key);
+      copyObjectRequest.SetCopySource(source);
 
-    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
-    listObjectsRequest.WithBucket(src_bucket.c_str())
-        .WithPrefix(src_object.c_str())
-        .WithMaxKeys(S3GetChildrenMaxKeys);
-    listObjectsRequest.SetResponseStreamFactory([]() {
-      return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-    });
-
-    Aws::S3::Model::ListObjectsResult listObjectsResult;
-    do {
-      auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
-      if (!listObjectsOutcome.IsSuccess()) {
+      auto copyObjectOutcome = s3Client.CopyObject(copyObjectRequest);
+      if (!copyObjectOutcome.IsSuccess()) {
         std::stringstream ss;
-        ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
-           << listObjectsOutcome.GetError().GetMessage();
+        ss << copyObjectOutcome.GetError().GetExceptionName() << ": "
+           << copyObjectOutcome.GetError().GetMessage();
         return errors::Internal(ss.str());
       }
 
-      listObjectsResult = listObjectsOutcome.GetResult();
-      for (const auto& object : listObjectsResult.GetContents()) {
-        Aws::String src_key = object.GetKey();
-        Aws::String target_key = src_key;
-        target_key.replace(0, src_object.length(), target_object.c_str());
-        Aws::String source = Aws::String(src_bucket.c_str()) + "/" + src_key;
+      deleteObjectRequest.SetBucket(src_bucket.c_str());
+      deleteObjectRequest.SetKey(src_key.c_str());
 
-        copyObjectRequest.SetBucket(target_bucket.c_str());
-        copyObjectRequest.SetKey(target_key);
-        copyObjectRequest.SetCopySource(source);
-
-        auto copyObjectOutcome = s3Client.CopyObject(copyObjectRequest);
-        if (!copyObjectOutcome.IsSuccess()) {
-          std::stringstream ss;
-          ss << copyObjectOutcome.GetError().GetExceptionName() << ": "
-             << copyObjectOutcome.GetError().GetMessage();
-          return errors::Internal(ss.str());
-        }
-
-        deleteObjectRequest.SetBucket(src_bucket.c_str());
-        deleteObjectRequest.SetKey(src_key.c_str());
-
-        auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
-        if (!deleteObjectOutcome.IsSuccess()) {
-          std::stringstream ss;
-          ss << deleteObjectOutcome.GetError().GetExceptionName() << ": "
-             << deleteObjectOutcome.GetError().GetMessage();
-          return errors::Internal(ss.str());
-        }
+      auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
+      if (!deleteObjectOutcome.IsSuccess()) {
+        std::stringstream ss;
+        ss << deleteObjectOutcome.GetError().GetExceptionName() << ": "
+           << deleteObjectOutcome.GetError().GetMessage();
+        return errors::Internal(ss.str());
       }
-      listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
-    } while (listObjectsResult.GetIsTruncated());
+    }
+    listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
+  } while (listObjectsResult.GetIsTruncated());
 
-    return Status::OK();
-  }
-};
+  return Status::OK();
+}
 
 REGISTER_FILE_SYSTEM("s3", S3FileSystem);
 

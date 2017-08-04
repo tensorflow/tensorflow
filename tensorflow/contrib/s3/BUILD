@@ -11,6 +11,7 @@ cc_binary(
     name = "s3_file_system.so",
     srcs = [
         "s3_file_system.cc",
+        "s3_file_system.h",
         "s3_crypto.cc",
         "s3_crypto.h",
     ],
