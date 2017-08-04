@@ -48,7 +48,18 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-min_bytes`: Show nodes that request at least this number of bytes.
 
-`-min_micros`: Show nodes that spend at least this number of microseconds to run.
+`-min_peak_bytes`: Show nodes that using at least this number of bytes during peak memory usage.
+
+`-min_residual_bytes`: Show nodes that have at least this number of bytes not being de-allocated after Compute.
+
+`-min_output_bytes`: Show nodes that have at least this number of bytes output (no necessarily allocated by the nodes).
+
+`-min_micros`: Show nodes that spend at least this number of microseconds to run. It sums
+accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel.
+
+`-min_accelerator_micros`: Show nodes that spend at least this number of microseconds to run on accelerator (e.g. GPU).
+
+`-min_cpu_micros`: Show nodes that spend at least this number of microseconds to run on CPU.
 
 `-min_params`: Show nodes that contains at least this number of parameters.
 
@@ -58,7 +69,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-step`: Show the stats of the this step when multiple steps of RunMetadata were added. By default, show the average of all steps."
 
-`-order_by`: Order the results by [name|depth|bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
+`-order_by`: Order the results by [name|depth|bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
 
 `-account_type_regexes`: Account and display the nodes whose types match one of the type regexes specified. tfprof allow user to define extra operation types for graph nodes through tensorflow.tfprof.OpLogProto proto. regexes are comma-sperated.
 
@@ -76,7 +87,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 Notes: See <b>overview</b> sesion on how does above options play with each other to decide the output and counting.
 
 `-select`: Comma-separated list of attributes to show. Supported attributes:
-[bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
+[bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
 
 `-output`: Output results as stdout, file or timeline.
 The format is ```output_type:key=value,key=value```.

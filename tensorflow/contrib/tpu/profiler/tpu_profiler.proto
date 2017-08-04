@@ -16,6 +16,10 @@ message ProfileRequest {
   // stops. For now, it collects `duration_ms` milliseconds worth of data.
   uint64 duration_ms = 1;
 
+  // The maximum number of events to return. By default (value 0), return all
+  // events.
+  uint64 max_events = 2;
+
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.

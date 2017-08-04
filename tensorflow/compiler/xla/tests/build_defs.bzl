@@ -231,8 +231,12 @@ def generate_backend_test_macros(backends=[]):
     native.cc_library(
         name="test_macros_%s" % backend,
         testonly = True,
+        srcs = ["test_macros.cc"],
         hdrs = ["test_macros.h"],
-        copts = ["-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper()],
+        copts = [
+            "-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper(),
+            "-DXLA_DISABLED_MANIFEST=\\\"\\\""
+        ],
         deps = [
             "//tensorflow/compiler/xla:types",
             "//tensorflow/core:lib",

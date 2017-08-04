@@ -23,6 +23,7 @@ filegroup(
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
+    "tf_additional_all_protos",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -33,9 +34,7 @@ tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
-    protodeps = [
-        "//tensorflow/core:protos_all",
-    ],
+    protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )
 

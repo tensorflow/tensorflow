@@ -50,6 +50,7 @@ using ::tensorflow::WriteStringToFile;
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kTraceFileName[] = "trace";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
+constexpr uint64 kMaxEvents = 1000000;
 
 tensorflow::string GetCurrentTimeStampAsString() {
   char s[128];
@@ -73,6 +74,7 @@ ProfileResponse Profile(const tensorflow::string& service_addr,
                         int duration_ms) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
+  request.set_max_events(kMaxEvents);
   ProfileResponse response;
   ClientContext context;
   ::grpc::ChannelArguments channel_args;

@@ -26,6 +26,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
@@ -2548,6 +2549,7 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":util",
@@ -2645,8 +2647,7 @@ tf_proto_library(
     name = "cpp_shape_inference_proto",
     srcs = ["framework/cpp_shape_inference.proto"],
     cc_api_version = 2,
-    protodeps = ["//tensorflow/core:protos_all"],
-    visibility = ["//visibility:public"],
+    protodeps = tf_additional_all_protos(),
 )
 
 py_test(
