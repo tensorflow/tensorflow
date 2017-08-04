@@ -814,6 +814,17 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
+    if (instruction->opcode() == HloOpcode::kRecv) {
+      // Make sure that recv operations get a new unique allocation so that
+      // don't share their buffer with any other operations.
+      BufferAllocation* allocation = assignment->NewAllocation(
+          *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
+      allocation_indices.push_back(allocation->index());
+      VLOG(3) << "New allocation #" << allocation->index()
+              << " for recv: " << *buffer;
+      continue;
+    }
+
     if (ShapeUtil::IsTuple(buffer->shape())) {
       // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
       // assumes longer buffer liveness than indicated by the analysis.
