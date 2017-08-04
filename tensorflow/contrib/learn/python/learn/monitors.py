@@ -45,16 +45,15 @@ import six
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
-from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training import summary_io
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.summary import summary as core_summary
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -521,7 +520,7 @@ class SummarySaver(EveryN):
     self._summary_op = summary_op
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
-      self._summary_writer = summary_io.SummaryWriter(output_dir)
+      self._summary_writer = core_summary.FileWriter(output_dir)
     self._scaffold = scaffold
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
@@ -529,7 +528,7 @@ class SummarySaver(EveryN):
     super(SummarySaver, self).set_estimator(estimator)
     # TODO(mdan): This line looks redundant.
     if self._summary_writer is None:
-      self._summary_writer = summary_io.SummaryWriter(estimator.model_dir)
+      self._summary_writer = core_summary.FileWriter(estimator.model_dir)
 
   def every_n_step_begin(self, step):
     super(SummarySaver, self).every_n_step_begin(step)
@@ -1029,7 +1028,7 @@ class CheckpointSaver(BaseMonitor):
     logging.info("Create CheckpointSaver.")
     super(CheckpointSaver, self).__init__()
     self._saver = saver
-    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
+    self._summary_writer = core_summary.FileWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
     self._save_secs = save_secs
@@ -1098,12 +1097,12 @@ class StepCounter(EveryN):
     self._last_reported_time = None
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+      self._summary_writer = core_summary.FileWriterCache.get(output_dir)
 
   def set_estimator(self, estimator):
     super(StepCounter, self).set_estimator(estimator)
     if self._summary_writer is None:
-      self._summary_writer = SummaryWriterCache.get(estimator.model_dir)
+      self._summary_writer = core_summary.FileWriterCache.get(estimator.model_dir)
 
   def every_n_step_end(self, current_step, outputs):
     current_time = time.time()
