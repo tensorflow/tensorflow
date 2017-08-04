@@ -43,7 +43,6 @@ import numpy as np
 import six
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
@@ -51,6 +50,7 @@ from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.summary import summary as core_summary
@@ -1168,7 +1168,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
 
   def begin(self):
     self._last_step = None
-    self._global_step_tensor = contrib_variables.get_global_step()
+    self._global_step_tensor = training_util.get_global_step()
     for m in self._monitors:
       m.begin(max_steps=None)
 
