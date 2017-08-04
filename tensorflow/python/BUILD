@@ -80,7 +80,7 @@ py_library(
         ":training",
         ":ops",
         ":saver_test_utils",
-        #":test_ops",  # TODO: Break testing code out into separate rule.
+        ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
@@ -267,9 +267,7 @@ cc_library(
 
 tf_cc_shared_object(
     name = "framework/test_file_system.so",
-    srcs = [
-        "framework/test_file_system.cc",
-    ],
+    srcs = ["framework/test_file_system.cc"],
     copts = if_not_windows(["-Wno-sign-compare"]),
     linkopts = select({
         "//conditions:default": [
@@ -364,6 +362,7 @@ cc_library(
         ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )

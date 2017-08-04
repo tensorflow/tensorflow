@@ -4714,6 +4714,7 @@ tf_cc_binary(
             "//tensorflow/core:test",
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:client_session",
+            "//tensorflow/core:framework",
             "//tensorflow/core:tensor_testutil",
             "//tensorflow/core:test_main",
         ],

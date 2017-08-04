@@ -50,6 +50,7 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 def clean_dep(dep):
   return str(Label(dep))
 
+
 def if_android_x86(a):
   return select({
       clean_dep("//tensorflow:android_x86"): a,
@@ -226,7 +227,7 @@ def _rpath_linkopts(name):
   # tensorflow/ tree.
   levels_to_root = PACKAGE_NAME.count("/") + name.count("/")
   return select({
-      "//tensorflow:darwin": [
+      clean_dep("//tensorflow:darwin"): [
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
       "//conditions:default": [
@@ -247,7 +248,7 @@ def tf_cc_shared_object(name,
     deps=deps + ["//tensorflow/core:safe_framework_dep"],
     linkshared = 1,
     linkopts=linkopts + _rpath_linkopts(name) + select({
-      "//tensorflow:darwin": [
+      clean_dep("//tensorflow:darwin"): [
         "-Wl,-install_name,@rpath/" + name.split("/")[-1],
       ],
       "//conditions:default": [
@@ -489,7 +490,7 @@ def tf_cc_test(name,
       # function.
       linkstatic=linkstatic or select({
         # cc_tests with ".so"s in srcs incorrectly link on Darwin
-        # unless linkstatic=1.
+        # unless linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
         clean_dep("//tensorflow:darwin"): 1,
         "//conditions:default": 0,
         }),
@@ -544,7 +545,7 @@ def tf_cuda_cc_test(name,
       suffix="_gpu",
       deps=deps + if_cuda([clean_dep("//tensorflow/core:gpu_runtime")]),
       linkstatic=select({
-        "//tensorflow:darwin": 1,
+        clean_dep("//tensorflow:darwin"): 1,
         "@local_config_cuda//cuda:using_nvcc": 1,
         "@local_config_cuda//cuda:using_clang": 1,
         "//conditions:default": 0,
@@ -947,7 +948,6 @@ def tf_custom_op_library_additional_deps():
       "@protobuf_archive//:protobuf_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
-
   ]
 
 
@@ -1034,7 +1034,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       data=[name + "_check_deps"],
       copts=tf_copts(),
       linkopts=select({
-          "//tensorflow:darwin": [],
+          clean_dep("//tensorflow:darwin"): [],
           "//conditions:default": [
               "-lm",
           ],
@@ -1090,13 +1090,13 @@ def tf_py_wrap_cc(name,
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          clean_dep("//tensorflow:tf_exported_symbols.lds"),
+          clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          clean_dep("//tensorflow:tf_version_script.lds"),
+          clean_dep("//tensorflow:tf_version_script.lds")
       ]
   })
   extra_deps += select({
