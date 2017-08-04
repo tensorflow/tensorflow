@@ -877,11 +877,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status Preprocess(HloInstruction* hlo) override {
-    VLOG(2) << hlo->ToString();
-    return Status::OK();
-  };
-
  private:
   template <typename IndexT>
   StatusOr<std::unique_ptr<Literal>> DynamicSlice(
@@ -1122,7 +1117,6 @@ std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
-  VLOG(2) << "HandleParameter: " << parameter->ToString();
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
   DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()));
@@ -1133,7 +1127,6 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 
 Status HloEvaluator::HandleConstant(HloInstruction* constant,
                                     const Literal& literal) {
-  VLOG(2) << "HandleConstant: " << constant->ToString();
   return Status::OK();
 }
 
@@ -1362,6 +1355,17 @@ Status HloEvaluator::HandleCopy(HloInstruction* copy) {
 
   auto result = MakeUnique<Literal>(GetEvaluatedLiteralFor(copy->operand(0)));
   evaluated_[copy] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::Preprocess(HloInstruction* hlo) {
+  VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  return Status::OK();
+}
+
+Status HloEvaluator::Postprocess(HloInstruction* hlo) {
+  VLOG(2) << "Finished visiting " << hlo->ToString()
+          << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   return Status::OK();
 }
 
