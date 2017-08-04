@@ -11,6 +11,11 @@ class GdrWorker : public GrpcWorker {
  public:
   GdrWorker(WorkerEnv* env, RemoteMemoryManager* remote_memory_manager);
 
+  // Serve the RecvTensorRequest but omit the tensor content and transmit it
+  // out-of-band using GPU Direct RDMA whenever possible.
+  // If it's not possible, it falls back to gRPC in-band tensor transport by
+  // encoding the tensor content into the grpc::ByteBuffer.
+  // The RecvTensorResponse will carry the necessary information for RDMA.
   virtual void RecvTensorAsync(CallOptions* opts,
                                const RecvTensorRequest* request,
                                ::grpc::ByteBuffer* response,
