@@ -123,7 +123,7 @@ class S3RandomAccessFile : public RandomAccessFile {
     if (!getObjectOutcome.IsSuccess()) {
       n = 0;
       *result = StringPiece(scratch, n);
-      return Status::OK();
+      return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
     }
     n = getObjectOutcome.GetResult().GetContentLength();
     std::stringstream ss;
