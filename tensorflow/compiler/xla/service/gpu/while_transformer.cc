@@ -222,7 +222,7 @@ class MatcherBase {
   TF_DISALLOW_COPY_AND_ASSIGN(MatcherBase);
 };
 
-// WhileConditionComputationMatcher attempst to match a target computation
+// WhileConditionComputationMatcher attempts to match a target computation
 // pattern in the while condition sub-computation.
 // If the target pattern is matched, two pieces of information are extracted
 // from 'tagged' instructions returned by the matcher:
