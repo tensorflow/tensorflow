@@ -698,11 +698,10 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   llvm::StringRef cpu_name = llvm_ir::AsStringRef(options.cpu_name());
   llvm::StringRef features = llvm_ir::AsStringRef(options.features());
   llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
-  std::unique_ptr<llvm::TargetMachine> target_machine =
-      WrapUnique(target->createTargetMachine(
-          triple.getTriple(), cpu_name, features,
-          CompilerTargetOptions(modules[0]->config()), reloc_model,
-          llvm::CodeModel::Default, opt_level));
+  std::unique_ptr<llvm::TargetMachine> target_machine = WrapUnique(
+      target->createTargetMachine(triple.getTriple(), cpu_name, features,
+                                  CompilerTargetOptions(modules[0]->config()),
+                                  reloc_model, llvm::None, opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   llvm::LLVMContext llvm_context;
