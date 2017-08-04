@@ -71,35 +71,35 @@ __device__ __forceinline__ void AccumulateInto(
 // to write results to global memory.
 // In the flattened view of input data (with only outer and inner
 // dimension), every thread processes a strip of input data of
-// size OUTER_DIM_TILE_SIZE x 1. This strip runs across multiple
+// size OuterDimTileSize x 1. This strip runs across multiple
 // rows of input data and all reduction elements share one inner
 // dimension index.
-#define OUTER_DIM_TILE_SIZE 8
-#define CEIL_DIV(x, y) (1 + (((x)-1) / (y)))
-template <typename T, typename Index>
+template <typename T, typename Index, int OuterDimTileSize>
 __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
                                              const Index inner_dim_size,
                                              const Index output_outer_dim_size,
                                              const Index* segment_ids,
-                                             const T* input, T* output) {
-  const Index input_outer_dim_num_strip =
-      CEIL_DIV(input_outer_dim_size, OUTER_DIM_TILE_SIZE);
-  const Index total_stripe_count = inner_dim_size * input_outer_dim_num_strip;
-
-  CUDA_1D_KERNEL_LOOP(strip_index, total_stripe_count) {
-    const Index segment_offset = strip_index % inner_dim_size;
+                                             const T* input, T* output,
+                                             const Index total_stripe_count) {
+  CUDA_1D_KERNEL_LOOP(stripe_index, total_stripe_count) {
+    const Index segment_offset = stripe_index % inner_dim_size;
     const Index input_outer_dim_index_base =
-        strip_index / inner_dim_size * OUTER_DIM_TILE_SIZE;
+        stripe_index / inner_dim_size * Index(OuterDimTileSize);
 
     T sum = T(0);
     Index first_segment_id = segment_ids[input_outer_dim_index_base];
     Index last_output_segment_id = output_outer_dim_size;
-    const Index actual_stripe_height = MIN(
-        OUTER_DIM_TILE_SIZE, input_outer_dim_size - input_outer_dim_index_base);
+
+    const Index actual_stripe_height =
+        min(Index(OuterDimTileSize),
+            input_outer_dim_size - input_outer_dim_index_base);
     for (Index j = 0; j < actual_stripe_height; j++) {
       Index current_output_segment_id =
           segment_ids[input_outer_dim_index_base + j];
-      // decide whether to write result to global memory
+      // Decide whether to write result to global memory.
+      // Result is only written to global memory if we move
+      // to another segment. Otherwise we can keep accumulating
+      // locally.
       if (current_output_segment_id > last_output_segment_id) {
         const Index output_index =
             last_output_segment_id * inner_dim_size + segment_offset;
@@ -116,6 +116,9 @@ __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
                  segment_offset);
       last_output_segment_id = current_output_segment_id;
     }
+    // For the last result in a strip, always write using atomic operations
+    // due to possible race conditions with threads computing
+    // the following strip.
     const Index output_index =
         last_output_segment_id * inner_dim_size + segment_offset;
     AccumulateInto<T>(output + output_index, sum);
@@ -174,16 +177,19 @@ void SegmentSumFunctor<T, Index>::operator()(
   const Index input_outer_dim_size = segment_ids.dimension(0);
   const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
 
-  const Index input_outer_dim_num_strip =
-      1 + (input_outer_dim_size - 1) / OUTER_DIM_TILE_SIZE;
+  const int OuterDimTileSize = 8;
+
+  const Index input_outer_dim_num_stripe =
+      Eigen::divup(input_outer_dim_size, Index(OuterDimTileSize));
+
   const Index total_stripe_count =
-      input_inner_dim_size * input_outer_dim_num_strip;
+      input_inner_dim_size * input_outer_dim_num_stripe;
 
   config = GetCudaLaunchConfig(total_stripe_count, d);
-  SortedSegmentSumCustomKernel<
-      T, Index><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+  SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize><<<
+      config.block_count, config.thread_per_block, 0, d.stream()>>>(
       input_outer_dim_size, input_inner_dim_size, output_rows,
-      segment_ids.data(), data, output.data());
+      segment_ids.data(), data, output.data(), total_stripe_count);
 };
 
 // UnsortedSegmentSumFunctor implementation for GPUDevice.
