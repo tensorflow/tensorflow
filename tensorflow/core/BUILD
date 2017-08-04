@@ -52,6 +52,15 @@
 # cc_library ":android_tensorflow_lib_selective_registration" - Native library
 #   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
+#
+# Note that :framework and :lib have incomplete transitive dependencies (they
+# declare but do not define some symbols). Missing symbols are included in
+# //tensorflow:libtfframework.so. This split supports custom op registration;
+# see comments on //tensorflow:libtfframework.so. It does mean that TensorFlow
+# cc_test and cc_binary rules will not build. Using tf_cc_test and tf_cc_binary
+# (from //tensorflow/tensorflow.bzl) will include the necessary symbols in
+# binary build targets; unfortunately transitive dependencies do not pick up
+# explicitly constructed shared objects.
 
 package(default_visibility = [
     "//tensorflow:internal",
@@ -238,6 +247,10 @@ cc_library(
     deps = tf_lib_proto_parsing_deps(),
 )
 
+# This build rule (along with :lib_internal, :framework, and
+# :framework_internal) purposefully omits the definitions of many declared
+# symbols, which are included in //tensorflow:libtfframework.so. Using
+# tf_cc_test and tf_cc_binary will include the necessary symbols.
 cc_library(
     name = "lib",
     hdrs = [
@@ -341,6 +354,10 @@ cc_library(
     ] + tf_additional_test_deps(),
 )
 
+# This build rule (along with :framework_internal, :lib, and :lib_internal)
+# purposefully omits the definitions of many declared symbols, which are
+# included in //tensorflow:libtfframework.so. Using tf_cc_test and tf_cc_binary
+# will include the necessary symbols.
 tf_cuda_library(
     name = "framework",
     hdrs = [

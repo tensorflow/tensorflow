@@ -441,6 +441,20 @@ filegroup(
     data = glob(["docs_src/**/*.md"]),
 )
 
+# A shared object which includes registration mechanisms for ops and
+# kernels. Does not include the implementations of any ops or kernels. Instead,
+# the library which loads libtfframework.so (e.g. _pywrap_tensorflow_internal.so
+# for Python, libtensorflow.so for the C API) is responsible for registering ops
+# with libtfframework.so. In addition to this core set of ops, user libraries
+# which are loaded (via TF_LoadLibrary/tf.load_op_library) register their ops
+# and kernels with this shared object directly.
+#
+# For example, from Python tf.load_op_library loads a custom op library (via
+# dlopen() on Linux), the library finds libtfframework.so and registers its ops
+# and kernels via REGISTER_OP and REGISTER_KERNEL_BUILDER (which use symbols
+# from libtfframework.so), and pywrap_tensorflow can then use these ops. Since
+# other languages use the same libtfframework.so, op libraries are language
+# agnostic.
 tf_cc_shared_object(
     name = "libtfframework.so",
     framework_so = [],

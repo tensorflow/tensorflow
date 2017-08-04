@@ -257,6 +257,8 @@ def tf_cc_shared_object(name,
     **kwargs)
 
 
+# Bazel-generated shared objects which must be linked into TensorFlow binaries
+# to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
 def _binary_additional_srcs():
   return ([clean_dep("//tensorflow:libtfframework.so")]
           + tf_additional_binary_srcs())
