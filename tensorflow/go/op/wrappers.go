@@ -6465,6 +6465,46 @@ func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// Returns a list of tensors with the same shapes and contents as the input
+//
+// tensors.
+//
+// This op can be used to override the gradient for complicated functions. For
+// example, suppose y = f(x) and we wish to apply a custom function g for backprop
+// such that dx = g(dy). In Python,
+//
+// ```python
+// with tf.get_default_graph().gradient_override_map(
+//     {'IdentityN': 'OverrideGradientWithG'}):
+//   y, _ = identity_n([f(x), x])
+//
+// @tf.RegisterGradient('OverrideGradientWithG')
+// def ApplyG(op, dy, _):
+//   return [None, g(dy)]  # Do not backprop to f(x).
+// ```
+func IdentityN(scope *Scope, input []tf.Output) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IdentityN",
+		Input: []tf.Input{
+			tf.OutputList(input),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("IdentityN", err)
+		return
+	}
+	return output
+}
+
 // Decode the first frame of a GIF-encoded image to a uint8 tensor.
 //
 // GIF with frame or transparency compression are not supported
