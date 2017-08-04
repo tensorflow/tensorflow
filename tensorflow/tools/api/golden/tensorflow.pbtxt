@@ -341,6 +341,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "initializers"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "int16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

@@ -71,6 +71,9 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# Namespaces
+from tensorflow.python.ops import initializers_ns as initializers
+
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
@@ -242,6 +245,7 @@ _allowed_symbols.extend([
     'user_ops',
     'layers',
     'profiler',
+    'initializers',
 ])
 
 # Variables framework.versions:

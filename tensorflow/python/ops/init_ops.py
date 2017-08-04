@@ -40,6 +40,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 class Initializer(object):
@@ -342,6 +344,9 @@ class UniformUnitScaling(Initializer):
     dtype: The data type. Only floating point types are supported.
   """
 
+  @deprecated(None,
+              "Use tf.initializers.variance_scaling instead with distribution="
+              "uniform to get equivalent behavior.")
   def __init__(self, factor=1.0, seed=None, dtype=dtypes.float32):
     self.factor = factor
     self.seed = seed

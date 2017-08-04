@@ -60,6 +60,7 @@ py_library(
         ":gradient_checker",
         ":histogram_ops",
         ":image_ops",
+        ":initializers_ns",
         ":io_ops",
         ":lib",
         ":math_ops",
@@ -1555,6 +1556,16 @@ py_library(
         ":math_ops",
         ":nn_ops",
         ":random_ops",
+    ],
+)
+
+py_library(
+    name = "initializers_ns",
+    srcs = ["ops/initializers_ns.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":init_ops",
+        ":variables",
     ],
 )
 
