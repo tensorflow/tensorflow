@@ -211,9 +211,7 @@ def tf_gen_op_libs(op_lib_names, deps=None):
 def _make_search_paths(prefix, levels_to_root):
   return ",".join(
       ["-rpath,%s/%s" % (prefix, "/".join([".."] * search_level))
-       for search_level in range(levels_to_root + 1)]
-      + ["-rpath,%s/%s" % (prefix, "/".join(
-          [".."] * (levels_to_root + 1) + ["external", "jemalloc"]))])
+       for search_level in range(levels_to_root + 1)])
 
 
 def _rpath_linkopts(name):
