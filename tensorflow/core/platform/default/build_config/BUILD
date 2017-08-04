@@ -131,7 +131,7 @@ cc_library(
     name = "protos_cc",
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all_cc_impl",
     ],
 )
 

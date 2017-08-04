@@ -1009,6 +1009,7 @@ cc_library(
         ":protos_cc",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
+        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
