@@ -411,6 +411,19 @@ class VariablesTestCase(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
 
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = variables.Variable(
+        lambda: constant_op.constant(1.),
+        constraint=constraint)
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = variables.Variable(
+          lambda: constant_op.constant(1.),
+          constraint=constraint)
+
   def testNoRefDataRace(self):
     with self.test_session():
       a = variables.Variable([1, 2, 3], dtype=dtypes.float32)

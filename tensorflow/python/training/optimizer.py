@@ -94,10 +94,18 @@ class _RefVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     if isinstance(g, ops.Tensor):
-      return optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
+      update_op = optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
+      if self._v.constraint is not None:
+        with ops.control_dependencies([update_op]):
+          return self._v.assign(self._v.constraint(self._v))
+      else:
+        return update_op
     else:
       assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
                                                 "tensor nor IndexedSlices.")
+      if self._v.constraint is not None:
+        raise RuntimeError(
+            "Cannot use a constraint function on a sparse variable.")
       # pylint: disable=protected-access
       return optimizer._apply_sparse_duplicate_indices(g, self._v)
 
@@ -113,7 +121,12 @@ class _DenseReadResourceVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
-    return optimizer._resource_apply_dense(g, self._v.op.inputs[0])
+    update_op = optimizer._resource_apply_dense(g, self._v.op.inputs[0])
+    if self._v.constraint is not None:
+      with ops.control_dependencies([update_op]):
+        return self._v.assign(self._v.constraint(self._v))
+    else:
+      return update_op
 
 
 class _DenseResourceVariableProcessor(_OptimizableVariable):
@@ -128,9 +141,17 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
     if isinstance(g, ops.IndexedSlices):
+      if self._v.constraint is not None:
+        raise RuntimeError(
+            "Cannot use a constraint function on a sparse variable.")
       return optimizer._resource_apply_sparse_duplicate_indices(
           g.values, self._v, g.indices)
-    return optimizer._resource_apply_dense(g, self._v)
+    update_op = optimizer._resource_apply_dense(g, self._v)
+    if self._v.constraint is not None:
+      with ops.control_dependencies([update_op]):
+        return self._v.assign(self._v.constraint(self._v))
+    else:
+      return update_op
 
 
 class _StreamingModelPortProcessor(_OptimizableVariable):

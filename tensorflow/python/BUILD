@@ -2159,6 +2159,7 @@ py_library(
         ":resource_variable_ops",
         ":tensor_shape",
         ":variables",
+        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
