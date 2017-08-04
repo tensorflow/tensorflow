@@ -58,13 +58,13 @@ namespace test {
       third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
       if (val.metadata().plugin_data().plugin_name() != "debugger") {
         // This plugin data was meant for another plugin.
-        return ::grpc::Status::CANCELLED;
+        continue;
       }
       auto status = tensorflow::protobuf::util::JsonStringToMessage(
           val.metadata().plugin_data().content(), &metadata);
       if (!status.ok()) {
-        // The device name has been determined.
-        return ::grpc::Status::CANCELLED;
+        // The device name could not be determined.
+        continue;
       }
 
       device_names.push_back(metadata.device());
