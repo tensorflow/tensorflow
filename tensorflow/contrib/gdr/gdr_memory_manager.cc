@@ -31,6 +31,11 @@ namespace tensorflow {
 namespace {
 
 bool IsGDRAvailable() {
+#if defined(__APPLE__)
+  return false;
+#elif defined(PLATFORM_WINDOWS)
+  return false;
+#else
   std::ifstream ifs("/proc/modules");
   string line;
   while (std::getline(ifs, line)) {
@@ -41,9 +46,18 @@ bool IsGDRAvailable() {
     }
   }
   return false;
+#endif
 }
 
 int TryToReadNumaNode(ibv_device* device) {
+#if defined(__APPLE__)
+  LOG(INFO) << "OS X does not support NUMA - returning NUMA node 0";
+  return 0;
+#elif defined(PLATFORM_WINDOWS)
+  // Windows support for NUMA is not currently implemented. Return node 0.
+  return 0;
+#else
+  VLOG(2) << "Trying to read NUMA node for device: " << device->name;
   static const int kUnknownNumaNode = -1;
 
   auto filename = string(device->ibdev_path) + "/device/numa_node";
@@ -64,6 +78,7 @@ int TryToReadNumaNode(ibv_device* device) {
     return value;
   }
   return kUnknownNumaNode;
+#endif
 }
 
 void EndpointDeleter(rdma_cm_id* id) {
