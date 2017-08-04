@@ -42,9 +42,12 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
       bool dma_ok = resp_.metadata().has_transport_options();
       if (s.ok() && tensor().TotalBytes() > 0 && (!is_dead()) && dma_ok) {
         auto transport_options = resp_.metadata().transport_options();
+        const bool on_host =
+            (dst_device_->tensorflow_gpu_device_info() == nullptr) ||
+            recv_args_.alloc_attrs.on_host();
         Status s = remote_memory_manager_->TensorFromTransportOptions(
             const_cast<Tensor*>(&tensor()), transport_options, dst_device_,
-            recv_args_.device_context, recv_args_.alloc_attrs.on_host());
+            recv_args_.device_context, on_host);
         if (!s.ok()) {
           mutex_lock l(mu_);
           status_.Update(s);

@@ -65,7 +65,9 @@ void GdrWorker::RecvTensorAsync(CallOptions* opts,
           // 3) the tensor has the on_host allocation attribute,
           // i.e. it's in CPU RAM *independent of its assigned
           // device type*.
-          const bool on_host = send_args.alloc_attrs.on_host();
+          const bool on_host =
+              (src_dev->tensorflow_gpu_device_info() == nullptr) ||
+              send_args.alloc_attrs.on_host();
           if (val.TotalBytes() > 0 && (!is_dead) &&
               DMAHelper::CanUseDMA(&val) && dma_ok) {
             // DMA cases.
