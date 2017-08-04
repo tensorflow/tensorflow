@@ -7,6 +7,11 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 cc_binary(
     name = "s3_file_system.so",
     srcs = [
@@ -27,6 +32,55 @@ cc_binary(
         "@curl//:curl",
         "@protobuf//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
+        "//external:aws",
+    ],
+)
+
+cc_library(
+    name = "s3_crypto",
+    srcs = [
+        "s3_crypto.cc",
+    ],
+    hdrs = [
+        "s3_crypto.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//external:aws",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "s3_file_system",
+    srcs = [
+        "s3_file_system.cc",
+    ],
+    hdrs = [
+        "s3_file_system.h",
+    ],
+    deps = [
+        ":s3_crypto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//external:aws",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "s3_file_system_test",
+    size = "small",
+    srcs = [
+        "s3_file_system_test.cc",
+    ],
+    deps = [
+        ":s3_file_system",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "//external:aws",
     ],
 )
