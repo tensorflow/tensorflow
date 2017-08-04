@@ -29,6 +29,7 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_proto_library",
     "tf_proto_library_cc",
+    "tf_additional_all_protos",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -52,8 +53,7 @@ tf_proto_library(
     cc_grpc_version = 1,
     protodeps = [
         ":debugger_event_metadata_proto",
-        "//tensorflow/core:protos_all",
-    ],
+    ] + tf_additional_all_protos(),
     visibility = ["//tensorflow:__subpackages__"],
 )
 

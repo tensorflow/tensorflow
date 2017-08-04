@@ -1676,6 +1676,35 @@ REGISTER_OP("_MklIdentity")
 )Doc");
 #endif
 
+REGISTER_OP("IdentityN")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type)")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<ShapeHandle> input;
+      TF_RETURN_IF_ERROR(c->input("input", &input));
+      TF_RETURN_IF_ERROR(c->set_output("output", input));
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Returns a list of tensors with the same shapes and contents as the input
+tensors.
+
+This op can be used to override the gradient for complicated functions. For
+example, suppose y = f(x) and we wish to apply a custom function g for backprop
+such that dx = g(dy). In Python,
+
+```python
+with tf.get_default_graph().gradient_override_map(
+    {'IdentityN': 'OverrideGradientWithG'}):
+  y, _ = identity_n([f(x), x])
+
+@tf.RegisterGradient('OverrideGradientWithG')
+def ApplyG(op, dy, _):
+  return [None, g(dy)]  # Do not backprop to f(x).
+```
+)Doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("RefIdentity")
     .Input("input: Ref(T)")

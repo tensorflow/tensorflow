@@ -111,8 +111,9 @@ Status HeapSimulator::RunComputation(
       points_to_analysis.GetPointsToSet(root).CreateFlattenedSet();
 
   for (const HloInstruction* instruction : instruction_sequence) {
-    const std::vector<const LogicalBuffer*>& buffers_defined_by_instruction =
-        points_to_analysis.GetBuffersDefinedByInstruction(instruction);
+    const TuplePointsToAnalysis::BufferDefinitionVector&
+        buffers_defined_by_instruction =
+            points_to_analysis.GetBuffersDefinedByInstruction(instruction);
 
     // Initialize live_buffers for each buffer that we're going to assign.  The
     // set of instructions that need to be visited contains all users of all

@@ -18,6 +18,7 @@
 See the @{$python/control_flow_ops} guide.
 
 @@identity
+@@identity_n
 @@tuple
 @@group
 @@no_op

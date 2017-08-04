@@ -9884,6 +9884,25 @@ op {
   summary: "Return a tensor with the same shape and contents as the input tensor or value."
 }
 op {
+  name: "IdentityN"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Returns a list of tensors with the same shapes and contents as the input"
+  description: "tensors.\n\nThis op can be used to override the gradient for complicated functions. For\nexample, suppose y = f(x) and we wish to apply a custom function g for backprop\nsuch that dx = g(dy). In Python,\n\n```python\nwith tf.get_default_graph().gradient_override_map(\n    {\'IdentityN\': \'OverrideGradientWithG\'}):\n  y, _ = identity_n([f(x), x])\n\n@tf.RegisterGradient(\'OverrideGradientWithG\')\ndef ApplyG(op, dy, _):\n  return [None, g(dy)]  # Do not backprop to f(x).\n```"
+}
+op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"

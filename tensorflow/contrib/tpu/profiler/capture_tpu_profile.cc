@@ -25,6 +25,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
+#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
+#include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/events_writer.h"
 
@@ -44,37 +47,44 @@ using ::tensorflow::TPUProfiler;
 
 using ::grpc::ClientContext;
 using ::tensorflow::io::JoinPath;
-using ::tensorflow::Env;
-using ::tensorflow::WriteStringToFile;
 
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-constexpr char kTraceFileName[] = "trace";
+constexpr char kProtoTraceFileName[] = "trace";
+constexpr char kJsonTraceFileName[] = "trace.json";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
 constexpr uint64 kMaxEvents = 1000000;
 
-tensorflow::string GetCurrentTimeStampAsString() {
+string GetCurrentTimeStampAsString() {
   char s[128];
   std::time_t t = std::time(nullptr);
   CHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
   return s;
 }
 
-// The trace will be stored in <logdir>/plugins/profile/<run>/trace.
-void DumpTraceToLogDirectory(tensorflow::StringPiece logdir,
-                             tensorflow::StringPiece run,
-                             tensorflow::StringPiece trace) {
-  tensorflow::string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
+// This dumps a rawproto trace and a JSON trace to
+// <logdir>/plugins/profile/<run>/.
+void DumpTraceToLogDirectory(StringPiece logdir, StringPiece run,
+                             const string& encoded_trace) {
+  string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
   TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  tensorflow::string path = JoinPath(run_dir, kTraceFileName);
-  TF_CHECK_OK(WriteStringToFile(tensorflow::Env::Default(), path, trace));
-  LOG(INFO) << "Dumped trace data to " << path;
+  string proto_path = JoinPath(run_dir, kProtoTraceFileName);
+  TF_CHECK_OK(WriteStringToFile(Env::Default(), proto_path, encoded_trace));
+  LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
+
+  string json_path = JoinPath(run_dir, kJsonTraceFileName);
+  Trace trace;
+  trace.ParseFromString(encoded_trace);
+  LOG(INFO) << "Trace contains " << trace.trace_events_size() << " events.";
+  TF_CHECK_OK(
+      WriteStringToFile(Env::Default(), json_path, TraceEventsToJson(trace)));
+  LOG(INFO) << "Dumped JSON trace data to " << json_path;
 }
 
-ProfileResponse Profile(const tensorflow::string& service_addr,
-                        int duration_ms) {
+ProfileResponse Profile(const string& service_addr, int duration_ms) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
+  LOG(INFO) << "Limiting the number of trace events number to " << kMaxEvents;
   ProfileResponse response;
   ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -88,14 +98,12 @@ ProfileResponse Profile(const tensorflow::string& service_addr,
   return response;
 }
 
-void DumpGraph(tensorflow::StringPiece logdir, tensorflow::StringPiece run,
-               const tensorflow::string& graph_def) {
+void DumpGraph(StringPiece logdir, StringPiece run, const string& graph_def) {
   // The graph plugin expects the graph in <logdir>/<run>/<event.file>.
-  tensorflow::string run_dir =
-      JoinPath(logdir, tensorflow::strings::StrCat(kGraphRunPrefix, run));
+  string run_dir = JoinPath(logdir, strings::StrCat(kGraphRunPrefix, run));
   TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  tensorflow::EventsWriter event_writer(JoinPath(run_dir, "events"));
-  tensorflow::Event event;
+  EventsWriter event_writer(JoinPath(run_dir, "events"));
+  Event event;
   event.set_graph_def(graph_def);
   event_writer.WriteEvent(event);
 }
@@ -135,6 +143,7 @@ int main(int argc, char** argv) {
     LOG(WARNING) << "No trace event is collected during the " << duration_ms
                  << "ms interval.";
   } else {
+    LOG(INFO) << "Converting trace events to TraceViewer JSON.";
     tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir, run,
                                              response.encoded_trace());
   }

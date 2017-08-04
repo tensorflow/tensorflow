@@ -401,6 +401,16 @@ TEST_F(ShapeTreeTest, IterateSimple) {
   EXPECT_EQ(10, num_nodes);
 }
 
+TEST_F(ShapeTreeTest, ConstIterate) {
+  const ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (const auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
 TEST_F(ShapeTreeTest, IterateAndMutate) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   int i = 0;

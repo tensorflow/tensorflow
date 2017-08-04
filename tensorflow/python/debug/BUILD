@@ -160,6 +160,16 @@ py_library(
 )
 
 py_library(
+    name = "evaluator",
+    srcs = ["cli/evaluator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "analyzer_cli",
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
@@ -168,6 +178,7 @@ py_library(
         ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
+        ":evaluator",
         ":source_utils",
         ":ui_factory",
         "@six_archive//:six",
@@ -705,6 +716,22 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "evaluator_test",
+    size = "small",
+    srcs = [
+        "cli/evaluator_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":evaluator",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
     ],
 )
 
