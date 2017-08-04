@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:batchnorm_rewriter",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:compiler",
@@ -285,6 +286,7 @@ cc_library(
         ":cpu_runtime_avx",
         ":cpu_runtime_sse4_1",
         ":disassembler",
+        ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -342,6 +344,21 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "llvm_ir_runtime",
+    srcs = [
+        "llvm_ir_runtime.cc",
+    ],
+    hdrs = [
+        "llvm_ir_runtime.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+        "@llvm//:transform_utils",
     ],
 )
 

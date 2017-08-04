@@ -15316,6 +15316,11 @@ func ResizeAreaAlignCorners(value bool) ResizeAreaAttr {
 //
 // Input images can be of different types but output images are always float.
 //
+// Each output pixel is computed by first transforming the pixel's footprint into
+// the input tensor and then averaging the pixels that intersect the footprint. An
+// input pixel's contribution to the average is weighted by the fraction of its
+// area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
+//
 // Arguments:
 //	images: 4-D with shape `[batch, height, width, channels]`.
 //	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
@@ -21772,7 +21777,7 @@ func Sin(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Computes the determinant of one ore more square matrices.
+// Computes the determinant of one or more square matrices.
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 // form square matrices. The output is a tensor containing the determinants

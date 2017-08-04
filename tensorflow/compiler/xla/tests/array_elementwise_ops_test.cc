@@ -1559,6 +1559,50 @@ TEST_F(ArrayElementwiseOpTest, TanhF32s) {
                              error_spec_);
 }
 
+TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
+  // This is like the test ArrayElementwiseOpTest.TanhF32s above, except that
+  // the input tensor is large enough to exercise the vectorized tanh
+  // implementation.
+  ComputationBuilder builder(client_, TestName());
+  auto input_literal = Literal::CreateR2<float>(
+      {{1.02, -0.32, 0.85, 0.90, 1.23, -0.91, -0.49, 0.80},
+       {-0.67, 0.16, -0.07, 0.39, -0.41, 0.04, 1.36, 1.25},
+       {0.41, 0.65, -1.08, 0.32, -1.45, -0.77, -1.09, 0.91},
+       {-1.03, -0.30, -1.11, -1.17, 1.50, -0.85, 0.04, 1.02},
+       {0.34, -0.61, 0.41, 0.07, -0.02, 1.42, -0.62, 0.81},
+       {0.08, 0.81, -0.30, 1.17, -0.65, -0.44, 0.92, 1.26},
+       {-1.29, 1.35, 0.08, -1.24, -0.92, 0.49, 1.17, -0.45},
+       {-1.31, -1.44, -0.13, -1.31, -0.79, 1.41, 1.21, 1.05}});
+  auto input_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Tanh(input);
+
+  ComputeAndCompareR2<float>(
+      &builder,
+      {{0.77009583, -0.30665702, 0.69070244, 0.71401149, 0.84400684,
+        -0.71985596, -0.45764771, 0.66664988},
+       {-0.58278900, 0.16050975, -0.06770509, 0.36843640, -0.38476998,
+        0.04018109, 0.87562293, 0.84788644},
+       {0.38603750, 0.57294142, -0.79140943, 0.31032649, -0.89590985,
+        -0.64770776, -0.79625875, 0.72234446},
+       {-0.77389336, -0.28871772, -0.80428445, -0.82541436, 0.90456349,
+        -0.68856895, 0.03877772, 0.76877952},
+       {0.32561871, -0.54546672, 0.39072621, 0.07273290, -0.01924866,
+        0.88924897, -0.55283129, 0.67183107},
+       {0.08006320, 0.66944766, -0.29068485, 0.82573754, -0.57170743,
+        -0.41581789, 0.72739530, 0.85025692},
+       {-0.85931867, 0.87357593, 0.07782833, -0.84597743, -0.72748238,
+        0.45396307, 0.82449573, -0.42462519},
+       {-0.86363792, -0.89368379, -0.12621804, -0.86445558, -0.65565848,
+        0.88789743, 0.83566397, 0.78287679}},
+      {input_data.get()},
+      // The error spec is unusually high here to account for the fact that we
+      // use a rational interpolant to approximate tanh.
+      ErrorSpec(0.004, 0.004));
+}
+
 TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {
   // a ------ (add) --------- (add)
   //         /               /

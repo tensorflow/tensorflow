@@ -36,7 +36,6 @@ namespace tensorflow {
 class Device;
 class DeviceMgr;
 }  // namespace tensorflow
-class TF_BufferAndDevice;
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -50,7 +49,7 @@ struct TF_Tensor {
 
   TF_DataType dtype;
   tensorflow::TensorShape shape;
-  TF_BufferAndDevice* buffer;
+  tensorflow::TensorBuffer* buffer;
 };
 
 struct TF_SessionOptions {
@@ -120,7 +119,6 @@ struct TF_Session {
   // buffers of a TF_Tensor pinned in device memory.
   const tensorflow::DeviceMgr* device_mgr;   // Owned by session.
   std::vector<tensorflow::Device*> devices;  // Owned by device_mgr.
-  int num_outstanding_buffers GUARDED_BY(mu);
 };
 
 struct TF_ImportGraphDefOptions {
@@ -129,28 +127,6 @@ struct TF_ImportGraphDefOptions {
 
 struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
-};
-
-// TF_BufferAndDevice encapsulates the memory addresses of data backing a Tensor
-// and the device (e.g., GPU or host) whose memory the addresses refer to.
-class TF_BufferAndDevice {
- public:
-  explicit TF_BufferAndDevice(tensorflow::TensorBuffer* buffer);
-  TF_BufferAndDevice(tensorflow::TensorBuffer* buffer, TF_Session* session,
-                     int device_index);
-  ~TF_BufferAndDevice();
-
-  tensorflow::TensorBuffer* buffer() const { return buffer_; }
-  tensorflow::Device* device() const {
-    if (device_owner_ == nullptr) return nullptr;
-    return device_owner_->devices[device_index_];
-  }
-  bool on_cpu() const { return device() == nullptr; }
-
- private:
-  tensorflow::TensorBuffer* buffer_;
-  TF_Session* device_owner_;
-  const int device_index_;
 };
 
 namespace tensorflow {
@@ -164,6 +140,7 @@ class TensorCApi {
   }
 };
 
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_C_C_API_INTERNAL_H_

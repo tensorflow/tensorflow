@@ -2192,7 +2192,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":fill_functor",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -3007,7 +3010,7 @@ tf_kernel_library(
         "maxpooling_op.h",
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
-    ],
+    ] + if_sycl(["pooling_ops_3d_sycl.h"]),
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",

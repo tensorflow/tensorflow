@@ -124,6 +124,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
                        HloInstruction* lhs, HloInstruction* rhs) override;
+  Status HandleTuple(
+      HloInstruction* tuple,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
+                               HloInstruction* operand) override;
+
+  Status HandleCopy(HloInstruction* copy) override;
 
  private:
   // Returns the already-evaluated literal result for the instruction.

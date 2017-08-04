@@ -33,6 +33,30 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Type traits to get CUDA complex types from std::complex<T>.
+template <typename T>
+struct CUDAComplexT {
+  typedef T type;
+};
+template <>
+struct CUDAComplexT<std::complex<float>> {
+  typedef cuComplex type;
+};
+template <>
+struct CUDAComplexT<std::complex<double>> {
+  typedef cuDoubleComplex type;
+};
+// Converts pointers of std::complex<> to pointers of
+// cuComplex/cuDoubleComplex. No type conversion for non-complex types.
+template <typename T>
+inline const typename CUDAComplexT<T>::type* CUDAComplex(const T* p) {
+  return reinterpret_cast<const typename CUDAComplexT<T>::type*>(p);
+}
+template <typename T>
+inline typename CUDAComplexT<T>::type* CUDAComplex(T* p) {
+  return reinterpret_cast<typename CUDAComplexT<T>::type*>(p);
+}
+
 // Container of LAPACK info data (an array of int) generated on-device by
 // a CudaSolver call. One or more such objects can be passed to
 // CudaSolver::CopyLapackInfoToHostAsync() along with a callback to
@@ -325,6 +349,15 @@ struct AdjointBatchFunctor {
   void operator()(const Device& d,
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output);
+};
+
+// Helper functor to compute the product of diagonal elements in all matrices
+// in a flattened batch.
+template <typename Device, typename Scalar>
+struct DeterminantFromPivotedLUFunctor {
+  void operator()(const Device& d, typename TTypes<Scalar, 3>::Tensor lu_factor,
+                  const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
+                  int* info);
 };
 }  // namespace functor
 

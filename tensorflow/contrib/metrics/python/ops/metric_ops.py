@@ -334,7 +334,7 @@ def streaming_mean(values, weights=None, metrics_collections=None,
   returned as `mean` which is an idempotent operation that simply divides
   `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `mean`.
   `update_op` increments `total` with the reduced sum of the product of `values`
   and `weights`, and it increments `count` with the reduced sum of `weights`.
@@ -381,7 +381,7 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
   `values`. This average is ultimately returned as `mean` which is an idempotent
   operation that simply divides `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `mean`.
   `update_op` increments `total` with the reduced sum of the product of `values`
   and `weights`, and it increments `count` with the reduced sum of `weights`.
@@ -425,7 +425,7 @@ def streaming_accuracy(predictions, labels, weights=None,
   matches `labels`. This frequency is ultimately returned as `accuracy`: an
   idempotent operation that simply divides `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `accuracy`.
   Internally, an `is_correct` operation computes a `Tensor` with elements 1.0
   where the corresponding elements of `predictions` and `labels` match and 0.0
@@ -477,7 +477,7 @@ def streaming_precision(predictions, labels, weights=None,
   operation that simply divides `true_positives` by the sum of `true_positives`
   and `false_positives`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
   `precision`. `update_op` weights each prediction by the corresponding value in
   `weights`.
@@ -526,7 +526,7 @@ def streaming_recall(predictions, labels, weights=None,
   ultimately returned as `recall`, an idempotent operation that simply divides
   `true_positives` by the sum of `true_positives`  and `false_negatives`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` that updates these variables and returns the `recall`. `update_op`
   weights each prediction by the corresponding value in `weights`.
 
@@ -1038,8 +1038,8 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
     weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
       must be broadcastable to `labels` (i.e., all dimensions must be either
       `1`, or the same as the corresponding `labels` dimension).
-    metrics_collections: An optional list of collections that `auc` should be
-      added to.
+    metrics_collections: An optional list of collections that `precision` should
+      be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     name: An optional variable_scope name.
@@ -1571,7 +1571,7 @@ def streaming_sparse_average_precision_at_k(predictions,
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
       precision values.
-    update: `Operation` that increments  variables appropriately, and whose
+    update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
   """
   return metrics.sparse_average_precision_at_k(
@@ -1628,7 +1628,7 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
       precision values.
-    update: `Operation` that increments  variables appropriately, and whose
+    update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
 
   Raises:

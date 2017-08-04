@@ -12170,7 +12170,7 @@ op {
       }
     }
   }
-  summary: "Computes the determinant of one ore more square matrices."
+  summary: "Computes the determinant of one or more square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
@@ -19617,7 +19617,7 @@ op {
     description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
   }
   summary: "Resize `images` to `size` using area interpolation."
-  description: "Input images can be of different types but output images are always float."
+  description: "Input images can be of different types but output images are always float.\n\nEach output pixel is computed by first transforming the pixel\'s footprint into\nthe input tensor and then averaging the pixels that intersect the footprint. An\ninput pixel\'s contribution to the average is weighted by the fraction of its\narea that intersects the footprint.  This is the same as OpenCV\'s INTER_AREA."
 }
 op {
   name: "ResizeBicubic"

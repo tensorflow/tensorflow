@@ -31,6 +31,7 @@ tf_custom_op_library(
 tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["kernels/cudnn_rnn_ops.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -82,7 +83,7 @@ tf_custom_op_py_library(
 
 cuda_py_test(
     name = "cudnn_rnn_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",
@@ -101,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    shard_count = 6,
     tags = [
         "manual",
         "requires_cudnn5",

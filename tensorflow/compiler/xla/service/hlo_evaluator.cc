@@ -194,14 +194,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleCopy(HloInstruction* copy) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[copy],
-                        ElementWiseUnaryOp(copy, [](ReturnT elem_operand) {
-                          return elem_operand;
-                        }));
-    return Status::OK();
-  };
-
   Status HandleConvert(HloInstruction* convert) override {
     const HloInstruction* operand = convert->operand(0);
     TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
@@ -399,6 +391,36 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         };
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
                         ElementWiseTernaryOp(select, std::move(select_op)));
+    return Status::OK();
+  };
+
+  Status HandleReverse(HloInstruction* reverse,
+                       HloInstruction* operand) override {
+    const auto result_shape = reverse->shape();
+    const auto reverse_dimensions = reverse->dimensions();
+
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferReverseShape(operand->shape(),
+                                                          reverse_dimensions));
+
+    TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+        << " but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    auto result = Literal::CreateFromShape(result_shape);
+
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+          std::vector<int64> from_index(out_index.begin(), out_index.end());
+          for (const int64 dim : reverse_dimensions) {
+            from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
+          }
+          return operand_literal.Get<ReturnT>(from_index);
+        }));
+
+    parent_->evaluated_[reverse] = std::move(result);
     return Status::OK();
   };
 
@@ -1079,6 +1101,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction) {
   TF_RET_CHECK(hlo_query::AllOperandsAreConstants(*instruction));
   TF_RET_CHECK(instruction->opcode() != HloOpcode::kParameter);
+  TF_RET_CHECK(instruction->opcode() != HloOpcode::kTuple);
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();
@@ -1298,6 +1321,47 @@ Status HloEvaluator::HandleSlice(HloInstruction* slice,
                                    AsInt64Slice(shape.dimensions())));
 
   evaluated_[slice] = std::move(literal);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleTuple(
+    HloInstruction* tuple,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  std::vector<const Literal*> operand_literals;
+  for (auto operand : operands) {
+    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  }
+
+  evaluated_[tuple] = Literal::MakeTuple(operand_literals);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element,
+                                           HloInstruction* operand) {
+  const auto result_shape = get_tuple_element->shape();
+  const int64 index = get_tuple_element->tuple_index();
+
+  TF_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferGetTupleElementShape(operand->shape(), index));
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
+
+  evaluated_[get_tuple_element] =
+      MakeUnique<Literal>(operand_tuple_literal.tuple_literals(index));
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCopy(HloInstruction* copy) {
+  TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
+
+  auto result = MakeUnique<Literal>(GetEvaluatedLiteralFor(copy->operand(0)));
+  evaluated_[copy] = std::move(result);
   return Status::OK();
 }
 

@@ -286,7 +286,7 @@ def _enqueue_data(data,
 
   Args:
     data: a numpy `ndarray`, `OrderedDict` of numpy arrays, or a generator
-       yielding `dict`s of numpy arrays  or pandas `DataFrame` that will be read
+       yielding `dict`s of numpy arrays or pandas `DataFrame` that will be read
        into the queue.
     capacity: the capacity of the queue.
     shuffle: whether or not to shuffle the rows of the array.

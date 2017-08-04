@@ -191,6 +191,13 @@ class Samples {
         } else if (type == kShown[0]) {
           sample_pb->mutable_value()->Add(
               gn->requested_bytes(node->node->step()));
+        } else if (type == kShown[11]) {
+          sample_pb->mutable_value()->Add(gn->peak_bytes(node->node->step()));
+        } else if (type == kShown[12]) {
+          sample_pb->mutable_value()->Add(
+              gn->residual_bytes(node->node->step()));
+        } else if (type == kShown[13]) {
+          sample_pb->mutable_value()->Add(gn->output_bytes(node->node->step()));
         } else if (type == kShown[2]) {
           sample_pb->mutable_value()->Add(gn->parameters());
         } else if (type == kShown[3]) {
@@ -296,9 +303,21 @@ class PprofProfileImpl : public PprofProfile {
             string_table_.GetIndex("CPU execution time."));
       }
     } else if (type == kShown[0]) {
-      sample_type->set_unit(string_table_.GetIndex("bytes"));
+      sample_type->set_unit(string_table_.GetIndex("requested bytes"));
       profile_pb->mutable_comment()->Add(
-          string_table_.GetIndex("Sum of operation output memory."));
+          string_table_.GetIndex("Sum of operation total requested memory."));
+    } else if (type == kShown[11]) {
+      sample_type->set_unit(string_table_.GetIndex("peak bytes"));
+      profile_pb->mutable_comment()->Add(
+          string_table_.GetIndex("Sum of operation peak memory usage."));
+    } else if (type == kShown[12]) {
+      sample_type->set_unit(string_table_.GetIndex("residual bytes"));
+      profile_pb->mutable_comment()->Add(string_table_.GetIndex(
+          "Sum of operation allocated memory after finish."));
+    } else if (type == kShown[13]) {
+      sample_type->set_unit(string_table_.GetIndex("output bytes"));
+      profile_pb->mutable_comment()->Add(
+          string_table_.GetIndex("Sum of operation output size."));
     } else if (type == kShown[2]) {
       sample_type->set_unit(string_table_.GetIndex("count"));
       profile_pb->mutable_comment()->Add(
@@ -370,10 +389,14 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
     }
     string select = *opts.select.begin();
     if (select != kShown[0] && select != kShown[1] && select != kShown[2] &&
-        select != kShown[3] && select != kShown[9] && select != kShown[10]) {
+        select != kShown[3] && select != kShown[9] && select != kShown[10] &&
+        select != kShown[11] && select != kShown[12] && select != kShown[13]) {
       fprintf(stderr, "pprof doesn't support -select=%s\n", select.c_str());
       return root_.get();
     }
+  }
+  if (opts.account_displayed_op_only) {
+    fprintf(stderr, "Note: code view ignores account_displayed_op_only\n");
   }
 
   std::vector<CodeNode*> roots = Account(root_->children, opts);
@@ -477,17 +500,10 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
         PrintScope(node->show_children, opts, depth + 1, ident);
     if (show) {
       node->show_children.clear();
-      if (opts.account_displayed_op_only) {
-        node->ResetTotalStats();
-        node->AddSelfToTotalStats();
-      }
 
       show_cnodes = SortNodes(show_cnodes, opts);
       for (CodeNode* sc : show_cnodes) {
         node->show_children.push_back(sc);
-        if (opts.account_displayed_op_only) {
-          node->AggregateTotalStats(sc);
-        }
       }
 
       node->formatted_str = FormatNode(node, opts, last_ident);
@@ -526,17 +542,37 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
   return act_nodes;
 }
 
-string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
+string TFCode::FormatNodeMemory(CodeNode* node, int64 bytes,
+                                int64 total_bytes) const {
+  string memory = FormatMemory(total_bytes);
+  if (node->account) {
+    memory = FormatMemory(bytes) + "/" + memory;
+  } else {
+    memory = "--/" + memory;
+  }
+  return memory;
+}
+
+string TFCode::FormatNode(CodeNode* node, const Options& opts,
+                          int64 indent) const {
   std::vector<string> attrs;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(node->proto().total_requested_bytes());
-    if (node->account) {
-      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
-    } else {
-      memory = "--/" + memory;
-    }
-    attrs.push_back(memory);
+    attrs.push_back(FormatNodeMemory(node, node->proto().requested_bytes(),
+                                     node->proto().total_requested_bytes()));
   }
+  if (opts.select.find(kShown[11]) != opts.select.end()) {
+    attrs.push_back(FormatNodeMemory(node, node->proto().peak_bytes(),
+                                     node->proto().total_peak_bytes()));
+  }
+  if (opts.select.find(kShown[12]) != opts.select.end()) {
+    attrs.push_back(FormatNodeMemory(node, node->proto().residual_bytes(),
+                                     node->proto().total_residual_bytes()));
+  }
+  if (opts.select.find(kShown[13]) != opts.select.end()) {
+    attrs.push_back(FormatNodeMemory(node, node->proto().output_bytes(),
+                                     node->proto().total_output_bytes()));
+  }
+
   std::vector<string> time_attrs = FormatTimes(node, opts);
   attrs.insert(attrs.end(), time_attrs.begin(), time_attrs.end());
 
