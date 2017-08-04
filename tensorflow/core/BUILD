@@ -2255,7 +2255,6 @@ tf_cc_tests(
         "platform/profile_utils/cpu_utils_test.cc",
         "platform/subprocess_test.cc",
         "platform/vmodule_benchmark_test.cc",
-        "platform/vmodule_test.cc",
     ],
     deps = [
         ":lib",
@@ -2264,6 +2263,19 @@ tf_cc_tests(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "platform_vmodule_test",
+    srcs = ["platform/vmodule_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
         "//third_party/eigen3",
     ],
 )
