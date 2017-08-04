@@ -947,7 +947,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":protos_cc",
+        ":protos_cc_impl",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -968,7 +968,7 @@ cc_library(
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
-        ":protos_cc",
+        ":protos_cc_impl",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
     ],
@@ -1006,7 +1006,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":android_tensorflow_lib_lite",
-        ":protos_cc",
+        ":protos_cc_impl",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf",
@@ -1031,7 +1031,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":protos_cc",
+        ":protos_cc_impl",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -1052,7 +1052,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":protos_cc",
+        ":protos_cc_impl",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -1128,7 +1128,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":android_tensorflow_lib",
-        ":protos_cc",
+        ":protos_cc_impl",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -1765,6 +1765,11 @@ cc_library(
 cc_library(
     name = "protos_cc",
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
+)
+
+cc_library(
+    name = "protos_cc_impl",
+    deps = ["//tensorflow/core/platform/default/build_config:protos_cc_impl"],
 )
 
 CORE_CPU_BASE_HDRS = [
