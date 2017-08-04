@@ -13,6 +13,10 @@ exports_files([
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_additional_binary_deps",
+)
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -471,7 +475,7 @@ tf_cc_shared_object(
             "//tensorflow/stream_executor:cuda_platform",
             "//tensorflow/core/platform/default/build_config:cuda",
         ],
-    ),
+    ) + tf_additional_binary_deps(),
 )
 
 # -------------------------------------------

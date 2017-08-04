@@ -14,8 +14,8 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_binary(
-    name = "libjemalloc.so",
+cc_library(
+    name = "jemalloc_impl",
     srcs = [
         "src/arena.c",
         "src/atomic.c",
@@ -85,7 +85,6 @@ cc_binary(
         "include/jemalloc/internal/util.h",
         "include/jemalloc/internal/valgrind.h",
         "include/jemalloc/internal/witness.h",
-        "include/jemalloc/jemalloc.h",
     ],
     # Same flags that jemalloc uses to build.
     copts = [
@@ -106,8 +105,8 @@ cc_binary(
         "//conditions:default": [
         ],
     }),
-    linkshared = 1,
     visibility = ["//visibility:public"],
+    deps = [":jemalloc_headers"],
 )
 
 sh_binary(

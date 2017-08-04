@@ -40,9 +40,9 @@ def tf_additional_mpi_deps():
       "//conditions:default": [],
   })
 
-def tf_additional_binary_srcs():
+def tf_additional_binary_deps():
   return select({
-      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:libjemalloc.so"],
-      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:libjemalloc.so"],
+      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
+      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
       "//conditions:default": [],
   })

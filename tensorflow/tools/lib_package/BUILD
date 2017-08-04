@@ -5,10 +5,6 @@ package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_additional_binary_srcs",
-)
 
 genrule(
     name = "libtensorflow_proto",
@@ -52,9 +48,7 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    files = [
-        "//tensorflow:libtfframework.so",
-    ] + tf_additional_binary_srcs(),
+    files = ["//tensorflow:libtfframework.so"],
     tags = ["manual"],
 )
 

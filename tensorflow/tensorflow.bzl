@@ -14,7 +14,6 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_sycl_tests_tags",
-    "tf_additional_binary_srcs",
     "tf_additional_xla_deps_py",)
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "cuda_default_copts")
 
@@ -244,7 +243,7 @@ def tf_cc_shared_object(name,
                         **kwargs):
   native.cc_binary(
     name=name,
-    srcs=srcs + framework_so + tf_additional_binary_srcs(),
+    srcs=srcs + framework_so,
     deps=deps + ["//tensorflow/core:safe_framework_dep"],
     linkshared = 1,
     linkopts=linkopts + _rpath_linkopts(name) + select({
@@ -260,8 +259,7 @@ def tf_cc_shared_object(name,
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
 def _binary_additional_srcs():
-  return ([clean_dep("//tensorflow:libtfframework.so")]
-          + tf_additional_binary_srcs())
+  return ([clean_dep("//tensorflow:libtfframework.so")])
 
 
 def tf_cc_binary(name,
