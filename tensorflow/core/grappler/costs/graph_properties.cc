@@ -211,8 +211,9 @@ Status GraphProperties::InferStatically() {
     }
 
     // Infer output shape for Restore op.
-    if (node->op_def().name() == "Restore") {
-      // TODO(yuefengz): deal with RestoreSlice and RestoreV2 ops.
+    if (node->op_def().name() == "Restore" ||
+        node->op_def().name() == "RestoreV2" ||
+        node->op_def().name() == "RestoreSlice") {
       auto ctx = shape_refiner.GetContext(node);
       int output_idx = 0;
       for (const Node* output : node->out_nodes()) {
@@ -225,6 +226,7 @@ Status GraphProperties::InferStatically() {
           auto output_ctx = shape_refiner.GetContext(output);
           if (output_ctx->FullyDefined(output_ctx->output(0))) {
             ctx->set_output(output_idx, output_ctx->output(0));
+            output_ctx->MergeInput(1, output_ctx->output(0));
           } else {
             const Node* var;
             TF_CHECK_OK(node->input_node(0, &var));
@@ -232,6 +234,7 @@ Status GraphProperties::InferStatically() {
               auto var_ctx = shape_refiner.GetContext(var);
               CHECK(var_ctx->FullyDefined(var_ctx->output(0)));
               ctx->set_output(output_idx, var_ctx->output(0));
+              output_ctx->MergeInput(1, var_ctx->output(0));
             }
           }
         }
