@@ -4,7 +4,7 @@
 #
 # Public targets:
 #
-# ":protos_all" - exports all core TensorFlow protos
+# ":protos_all_cc" - exports all core TensorFlow protos
 #     ":protos_all_py" - py_proto_library version (Google-internal)
 # ":lib" - exports the public non-test headers for:
 #     platform/: Platform-specific code and external dependencies
@@ -90,6 +90,7 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_proto_library_cc",
+    "tf_additional_all_protos",
     "tf_additional_core_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
@@ -218,7 +219,7 @@ tf_proto_library(
     name = "protos_test",
     srcs = ["util/example_proto_fast_parsing_test.proto"],
     cc_api_version = 2,
-    protodeps = [":protos_all"],
+    protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )
 
@@ -461,7 +462,7 @@ tf_proto_library_cc(
     name = "op_gen_overrides_proto",
     srcs = ["framework/op_gen_overrides.proto"],
     cc_api_version = 2,
-    protodeps = [":protos_all"],
+    protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )
 
@@ -1178,21 +1179,21 @@ cc_library(
 
 tf_pyclif_proto_library(
     name = "example/example_pyclif",
-    proto_lib = ":protos_all",
+    proto_lib = ":protos_all_cc",
     proto_srcfile = "example/example.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "example/feature_pyclif",
-    proto_lib = ":protos_all",
+    proto_lib = ":protos_all_cc",
     proto_srcfile = "example/feature.proto",
     visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
     name = "framework/tensor_pyclif",
-    proto_lib = ":protos_all",
+    proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/tensor.proto",
     visibility = ["//visibility:public"],
 )
@@ -1204,7 +1205,7 @@ tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
-    protodeps = [":protos_all"],
+    protodeps = tf_additional_all_protos() + [],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1226,7 +1227,7 @@ tf_proto_library_cc(
     name = "master_proto",
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
-    protodeps = [":protos_all"],
+    protodeps = tf_additional_all_protos(),
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1664,7 +1665,7 @@ cc_library(
     ],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
+# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
