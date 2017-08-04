@@ -38,6 +38,7 @@ cc_library(
         ":conv_canonicalization",
         ":cpu_executable",
         ":cpu_instruction_fusion",
+        ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
         ":ir_emission_utils",
@@ -186,6 +187,7 @@ cc_library(
         "ir_emitter.h",
     ],
     deps = [
+        ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
         ":elemental_ir_emitter",
@@ -570,6 +572,16 @@ cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "cpu_options",
+    srcs = ["cpu_options.cc"],
+    hdrs = ["cpu_options.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(
