@@ -9,6 +9,7 @@
   * `DNNLinearCombinedClassifier`
   * `DNNLinearCombinedRegressor`.
 * All our prebuilt binaries have been built with cuDNN 6.
+* `import tensorflow` now goes much faster.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
 * Added a `constant_values` keyword argument to `tf.pad`.
@@ -31,6 +32,7 @@
 * GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
 * Added `tf.contrib.signal`, a library for signal processing primitives.
+* Added `tf.contrib.resampler`, containing CPU and GPU ops for differentiable resampling of images.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
