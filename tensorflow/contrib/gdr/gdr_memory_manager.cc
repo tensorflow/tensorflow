@@ -7,6 +7,7 @@
 #include <fstream>
 #include <list>
 #include <map>
+#include <set>
 
 #include <fcntl.h>
 #include <rdma/rdma_cma.h>
@@ -162,6 +163,8 @@ class GdrMemoryManager : public RemoteMemoryManager {
   TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
 };
 
+// TODO(byronyi): remove this class duplicated from the one in
+// common/runtime/gpu/pool_allocator.h when it is available in common_runtime
 class BasicCPUAllocator : public SubAllocator {
  public:
   ~BasicCPUAllocator() override {}
@@ -172,6 +175,8 @@ class BasicCPUAllocator : public SubAllocator {
   void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
 };
 
+// TODO(byronyi): remove this class and its registration when the default
+// cpu_allocator() returns visitable allocator
 class BFCRdmaAllocator : public BFCAllocator {
  public:
   BFCRdmaAllocator()
@@ -249,8 +254,6 @@ Status GdrMemoryManager::Init() {
                                "cannot add server to epoll");
   }
 
-  std::set<Allocator*> instrumented_;
-
   Allocator* allocators[] = {
 #if GOOGLE_CUDA
     ProcessState::singleton()->GetCUDAHostAllocator(0),
@@ -265,14 +268,17 @@ Status GdrMemoryManager::Init() {
   VisitableAllocator::Visitor free_visitor =
       std::bind(&GdrMemoryManager::EvictMemoryRegion, this, _1, _2);
 
+  std::set<Allocator*> instrumented_;
+
   // Host memory allocators
   for (Allocator* allocator : allocators) {
     CHECK(allocator);
     auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
-    if (!visitable_allocator) {
-      LOG(WARNING) << "Cannot instrument non-visitable CPU allocator "
-                   << allocator->Name();
-    } else if (instrumented_.find(allocator) == std::end(instrumented_)) {
+    CHECK(visitable_allocator)
+        << "Cannot instrument non-visitable CPU allocator "
+        << allocator->Name();
+    // Make sure we don't instrument the same allocator twice
+    if (instrumented_.find(allocator) == std::end(instrumented_)) {
       visitable_allocator->AddAllocVisitor(alloc_visitor);
       visitable_allocator->AddFreeVisitor(free_visitor);
       instrumented_.insert(allocator);
