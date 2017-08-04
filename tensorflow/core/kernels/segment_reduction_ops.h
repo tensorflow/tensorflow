@@ -28,6 +28,7 @@ class OpKernelContext;
 namespace functor {
 
 #ifdef GOOGLE_CUDA
+typedef Eigen::GpuDevice GPUDevice;
 // Functor for SegmentSumGPUOp.
 // 'output_rows': the number of output segments (unique segment ids in
 //                'segment_ids').
@@ -37,8 +38,6 @@ namespace functor {
 // 'data_size': size of input data tensor.
 // 'data': input data tensor.
 // 'output': output reshaped to {output_rows, output.size/output_rows}
-typedef Eigen::GpuDevice GPUDevice;
-
 template <typename T, typename Index>
 struct SegmentSumFunctor {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
