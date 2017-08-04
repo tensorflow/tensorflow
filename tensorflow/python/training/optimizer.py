@@ -42,7 +42,7 @@ def _get_variable_for(v):
       if (isinstance(var, resource_variable_ops.ResourceVariable)
           and var.handle.op is v.op):
         return var
-    raise ValueError("Got %s but  could not locate source variable." % (str(v)))
+    raise ValueError("Got %s but could not locate source variable." % (str(v)))
   return v
 
 
@@ -738,7 +738,7 @@ class Optimizer(object):
       val: A `Tensor`.  The initial value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.
@@ -759,7 +759,7 @@ class Optimizer(object):
       dtype: Type of the value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.
@@ -777,7 +777,7 @@ class Optimizer(object):
       var: A `Variable` object.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
-        needs to be created for  the slot.
+        needs to be created for the slot.
 
     Returns:
       A `Variable` object.
