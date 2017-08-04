@@ -1658,8 +1658,8 @@ class MetaGraphTest(test.TestCase):
       self.assertEqual(1, len(savers.value))
 
       # Verifies that saver0 graph nodes are omitted from the saver1 export
-      self.assertEqual(29, len(meta_graph_def0.graph_def.node))
-      self.assertEqual(19, len(meta_graph_def1.graph_def.node))
+      self.assertEqual(31, len(meta_graph_def0.graph_def.node))
+      self.assertEqual(20, len(meta_graph_def1.graph_def.node))
 
   def testBinaryAndTextFormat(self):
     test_dir = self._get_test_dir("binary_and_text")
@@ -1857,13 +1857,14 @@ class MetaGraphTest(test.TestCase):
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(ops, [
-            "Add", "Assign", "Const", "Identity", "NoOp", "RestoreV2",
-            "SaveSlices", "Sub", "VariableV2"
+            "Add", "Assign", "Const", "Identity", "NoOp",
+            "PlaceholderWithDefault", "RestoreV2", "SaveSlices", "Sub",
+            "VariableV2"
         ])
       else:
         self.assertEqual(ops, [
-            "Add", "Assign", "Const", "Identity", "NoOp", "RestoreV2", "SaveV2",
-            "Sub", "VariableV2"
+            "Add", "Assign", "Const", "Identity", "NoOp",
+            "PlaceholderWithDefault", "RestoreV2", "SaveV2", "Sub", "VariableV2"
         ])
 
       # Test calling stripped_op_list_for_graph directly
