@@ -39,13 +39,22 @@ pkg_tar(
     files = [
         "include/tensorflow/jni/LICENSE",
         "//tensorflow/java:libtensorflow_jni",
-        "//tensorflow:libtfframework.so",
-    ] + tf_additional_binary_srcs(),
+    ],
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
     # are resolved, otherwise these rules break when built
     # with Python 3.
+    tags = ["manual"],
+    deps = [":common_deps"],
+)
+
+# Shared objects that all TensorFlow libraries depend on.
+pkg_tar(
+    name = "common_deps",
+    files = [
+        "//tensorflow:libtfframework.so",
+    ] + tf_additional_binary_srcs(),
     tags = ["manual"],
 )
 
@@ -71,6 +80,7 @@ pkg_tar(
     # are resolved, otherwise these rules break when built
     # with Python 3.
     tags = ["manual"],
+    deps = [":common_deps"],
 )
 
 pkg_tar(
