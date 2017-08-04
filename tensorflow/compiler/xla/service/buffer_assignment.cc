@@ -445,7 +445,9 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   // the buffer_size_ call might fail for some backends.
   const TuplePointsToAnalysis& points_to_analysis =
       liveness_->points_to_analysis();
-  for (const auto& buffer : points_to_analysis.logical_buffers()) {
+  for (LogicalBuffer::Id id = 0; id < points_to_analysis.num_logical_buffers();
+       id++) {
+    auto& buffer = points_to_analysis.logical_buffer(id);
     if (HasAllocation(*buffer)) {
       LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);

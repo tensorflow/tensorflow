@@ -108,6 +108,7 @@ tensorflow/core/kernels/inplace_ops.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc
+tensorflow/core/kernels/identity_n_op.cc
 tensorflow/core/kernels/gather_op.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc

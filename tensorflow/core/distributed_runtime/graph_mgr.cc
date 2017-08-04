@@ -70,10 +70,8 @@ GraphMgr::Item::~Item() {
       graph_mgr->cost_model_manager_.RemoveCostModelForGraph(unit.graph);
     }
     delete unit.root;
-    delete unit.lib;
     unit.device->op_segment()->RemoveHold(this->session);
   }
-  delete this->lib_def;
 }
 
 // NOTE: node->device_name() is not set by GraphConstructor.  We
@@ -120,8 +118,8 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
                           const DebugOptions& debug_options, Item* item) {
   item->session = session;
-  item->lib_def =
-      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library());
+  item->lib_def.reset(
+      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
@@ -130,6 +128,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     // should maintain graph validity.
     TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *item->lib_def));
   }
+
+  item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
+      device_mgr_, worker_env_->env, gdef.versions().producer(),
+      item->lib_def.get(), graph_options.optimizer_options()));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -176,7 +178,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
   }
 
   GraphOptimizationPassOptions optimization_options;
-  optimization_options.flib_def = item->lib_def;
+  optimization_options.flib_def = item->lib_def.get();
   optimization_options.partition_graphs = &partition_graphs;
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
@@ -213,15 +215,14 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     opseg->AddHold(session);
 
     // Function library runtime.
-    unit->lib = NewFunctionLibraryRuntime(
-                    device_mgr_, worker_env_->env, unit->device,
-                    subgraph->versions().producer(), item->lib_def,
-                    graph_options.optimizer_options())
-                    .release();
+    FunctionLibraryRuntime* lib = item->proc_flr->GetFLR(unit->device->name());
+    if (lib == nullptr) {
+      return errors::InvalidArgument("Cannot find FLR for device: ",
+                                     unit->device->name());
+    }
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
-    auto lib = unit->lib;
     params.function_library = lib;
     params.create_kernel = [session, lib, opseg](const NodeDef& ndef,
                                                  OpKernel** kernel) {

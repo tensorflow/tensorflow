@@ -173,7 +173,8 @@ def format_tensor(tensor,
       applicable) will be included.
 
   Returns:
-    (str) Formatted str representing the (potentially sliced) tensor.
+    An instance of `debugger_cli_common.RichTextLines` representing the
+    (potentially sliced) tensor.
   """
 
   if tensor_slicing:

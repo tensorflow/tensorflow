@@ -93,6 +93,8 @@ def freeze_graph_with_def_protos(input_graph_def,
       restorer = saver_lib.import_meta_graph(
           input_checkpoint + ".meta", clear_devices=True)
       restorer.restore(sess, input_checkpoint)
+      if initializer_nodes:
+        sess.run(initializer_nodes.split(","))
     else:
       var_list = {}
       reader = pywrap_tensorflow.NewCheckpointReader(input_checkpoint)
@@ -108,10 +110,10 @@ def freeze_graph_with_def_protos(input_graph_def,
       saver = saver_lib.Saver(var_list=var_list)
       saver.restore(sess, input_checkpoint)
       if initializer_nodes:
-        sess.run(initializer_nodes)
+        sess.run(initializer_nodes.split(","))
 
-    variable_names_blacklist = (variable_names_blacklist.split(",") if
-                                variable_names_blacklist else None)
+    variable_names_blacklist = (variable_names_blacklist.split(",")
+                                if variable_names_blacklist else None)
     output_graph_def = graph_util.convert_variables_to_constants(
         sess,
         input_graph_def,

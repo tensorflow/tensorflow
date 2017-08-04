@@ -204,6 +204,16 @@ addditional features:
     * Use the `prev` and `next` commands.
     * Click underlined `<--` and `-->` links near the top left corner of the
       screen.
+*   Evaluation of arbitrary expressions (with `numpy` imported as `np`) using
+    debug tensor names enclosed in pairs of backtics. Use the `-a` flag to
+    print large-sized results in its entirety. For example:
+
+  ```none
+  tfdbg> eval np.argmax(`Softmax:0`)
+  tfdbg> eval "np.matmul((`output/Identity:0` / `Softmax:0`).T, `Softmax:0`)"
+  tfdbg> eval -a 'np.sum(`Softmax:0`, axis=1)'
+  ```
+
 *   Tab completion of commands and some command arguments.
 *   To redirect the screen output to a file instead of the screen, end the
     command with bash-style redirection. For example, the following command

@@ -30,7 +30,7 @@ export TF_NEED_HDFS=0
 export TF_NEED_CUDA=0
 # Only running cc tests, python version does not matter.
 export PYTHON_BIN_PATH=`which python`
-$PYTHON_BIN_PATH configure.py
+yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test --test_lang_filters=cc -k \
