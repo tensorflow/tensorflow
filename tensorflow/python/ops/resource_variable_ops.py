@@ -277,7 +277,8 @@ class ResourceVariable(variables.Variable):
     """The name of the handle for this variable."""
     return self._handle.name
 
-  def get_shape(self):
+  @property
+  def shape(self):
     """The shape of this variable."""
     return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
 

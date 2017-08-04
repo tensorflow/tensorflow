@@ -262,6 +262,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(
           name="var1", initial_value=array_ops.ones(shape=[10, 20, 35]))
+      self.assertEqual("(10, 20, 35)", str(v.shape))
       self.assertEqual("(10, 20, 35)", str(v.get_shape()))
       self.assertEqual("(10, 20, 35)", str(v.value().shape))
       self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
