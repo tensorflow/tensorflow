@@ -3,3 +3,5 @@ Conv3DBackpropFilterV2GradTest.*          # No 3D conv
 Conv3DTransposeTest.*                     # No 3D conv
 TensorArrayTest.testTensorArrayEvalEmpty  # Test generates invalid graph
 DepthwiseConv2DTest.*                     # Too slow at the moment
+FusedBatchNormTest.testBasic              # Don't support batch_norm_training
+FusedBatchNormTest.testGradient           # Don't support batch_norm_grad
