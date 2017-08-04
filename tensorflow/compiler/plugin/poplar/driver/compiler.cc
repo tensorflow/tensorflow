@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -228,9 +229,8 @@ private:
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("IPU");
-  pipeline.AddPass<Inliner>();
+  pipeline.AddPass<BatchNormRewriter>(true, true, false);
   pipeline.AddPass<HloCSE>(false);
-
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
   pipeline.AddPass<ReshapeMover>();
