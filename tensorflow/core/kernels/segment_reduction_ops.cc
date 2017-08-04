@@ -207,11 +207,29 @@ class SegmentSumGPUOp : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
 
-    if (!SegmentReductionDoValidation(context, input, segment_ids)) {
+    OP_REQUIRES_ASYNC(
+        context, TensorShapeUtils::IsVector(segment_ids.shape()),
+        errors::InvalidArgument("segment_ids should be a vector."), done);
+
+    const int64 num_indices = segment_ids.NumElements();
+    OP_REQUIRES_ASYNC(
+        context, num_indices == input.dim_size(0),
+        errors::InvalidArgument(
+            "segment_ids should be the same size as dimension 0 of"
+            " input."),
+        done);
+
+    if (num_indices == 0) {
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, 0);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+      done();
       return;
     }
 
-    const int64 num_indices = segment_ids.NumElements();
     perftools::gputools::DeviceMemoryBase output_rows_device(
         (void*)(segment_ids.template flat<Index>().data() + (num_indices - 1)));
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
@@ -240,8 +258,8 @@ class SegmentSumGPUOp : public AsyncOpKernel {
       output_shape.set_dim(0, output_rows);
 
       Tensor* output = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, output_shape, &output));
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
 
       auto output_flat = output->flat_outer_dims<T>();
       auto data_ptr = input.template flat<T>().data();
