@@ -35,6 +35,15 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
 
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/platform/cuda.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -189,11 +198,12 @@ class SegmentReductionOp : public OpKernel {
 #ifdef GOOGLE_CUDA
 //  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
 template <class T, class Index>
-class SegmentSumGPUOp : public OpKernel {
+class SegmentSumGPUOp : public AsyncOpKernel {
  public:
-  explicit SegmentSumGPUOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit SegmentSumGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
 
-  void Compute(OpKernelContext* context) override {
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
 
@@ -202,35 +212,50 @@ class SegmentSumGPUOp : public OpKernel {
     }
 
     const int64 num_indices = segment_ids.NumElements();
+    perftools::gputools::DeviceMemoryBase output_rows_device(
+        (void*)(segment_ids.template flat<Index>().data() + (num_indices - 1)));
+    ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
 
-    Index output_rows;
-    context->eigen_device<GPUDevice>().memcpyDeviceToHost(
-        (void*)&output_rows,
-        (void*)(segment_ids.template flat<Index>().data() + (num_indices - 1)),
-        sizeof(Index));
-    output_rows++;
+    auto stream = context->op_device_context()->stream();
+    OP_REQUIRES_ASYNC(
+        context, stream
+                     ->ThenMemcpy(output_rows_host.mutable_data(),
+                                  output_rows_device, sizeof(Index))
+                     .ok(),
+        errors::Internal(
+            "SegmentSumGPUOp: failed to copy num_true from device"),
+        done);
 
-    OP_REQUIRES(context, output_rows > 0,
-                errors::InvalidArgument("segment ids must be >= 0"));
+    functor::SegmentSumFunctor<T, Index> functor_;
+    auto create_and_check_output = [context, output_rows_host, &input,
+                                    &segment_ids, &functor_, done]() {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
-    TensorShape output_shape = input.shape();
-    output_shape.set_dim(0, output_rows);
+      Index output_rows = *output_rows_host.data();
+      output_rows++;
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, output_rows);
 
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
 
-    auto output_flat = output->flat_outer_dims<T>();
-    auto data_ptr = input.template flat<T>().data();
-    auto segment_flat = segment_ids.flat<Index>();
+      auto output_flat = output->flat_outer_dims<T>();
+      auto data_ptr = input.template flat<T>().data();
+      auto segment_flat = segment_ids.flat<Index>();
+      functor_(context, context->eigen_device<GPUDevice>(), output_rows,
+               segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
+               output_flat);
 
-    functor_(context, context->eigen_device<GPUDevice>(), output_rows,
-             segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
-             output_flat);
+      done();
+    };
 
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, create_and_check_output);
   }
-
- private:
-  functor::SegmentSumFunctor<T, Index> functor_;
 };
 #endif  // GOOGLE_CUDA
 
