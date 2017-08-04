@@ -179,7 +179,7 @@ class BFCRdmaAllocator : public BFCAllocator {
   }
 };
 
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 300, BFCRdmaAllocator);
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocator);
 
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
