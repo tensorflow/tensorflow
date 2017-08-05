@@ -741,6 +741,11 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // layouts. So if 'output_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations.
+    if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
+        ShapeUtil::Rank(instruction->shape()) == 1) {
+      // Don't assign a layout in case of R1 -> effective R1 reshape.
+      return nullptr;
+    }
     const Shape& output_shape = instruction->shape();
     Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
@@ -800,6 +805,11 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     // layouts. So if 'operand_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations.
+    if (ShapeUtil::Rank(operand->shape()) == 1 &&
+        ShapeUtil::TrueRank(user->shape()) == 1) {
+      // Don't assign a layout in case of R1 -> effective R1 reshape.
+      return nullptr;
+    }
     Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         operand->shape().element_type(),
         AsInt64Slice(operand->shape().dimensions()),
