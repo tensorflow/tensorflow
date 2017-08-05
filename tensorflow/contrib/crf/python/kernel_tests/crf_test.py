@@ -23,6 +23,7 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.crf.python.ops import crf
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -198,6 +199,87 @@ class CrfTest(test.TestCase):
       self.assertAllClose(actual_max_score, expected_max_score)
       self.assertEqual(actual_max_sequence,
                        expected_max_sequence[:sequence_lengths])
+
+  def testCrfDecode(self):
+
+    def np_crf_decode(potentials, transition_params, seq_lens):
+      '''
+      This is a function for numpy arrays.
+      potentials: [B, T, num_tags]
+      transition_params: [num_tags, num_tags]
+      seq_lens: [B]
+      tag_indices: [B, T]
+
+      pred_tags: a list
+      scores: a list
+      '''
+      B, T, _ = potentials.shape
+      pred_tags, scores = [], []
+      for p, seq_len in zip(potentials, seq_lens):
+        p = p[:seq_len]
+        pred_tag, score = tf.contrib.crf.viterbi_decode(p, transition_params)
+        pred_tags.append(pred_tag)
+        scores.append(score)
+      return pred_tags, scores
+
+
+    def calc_accuracy(pred_tags, gold_tags, seq_lens):
+      correct, total = 0, 0
+      for pred, gold, seq_len in zip(pred_tags, gold_tags, seq_lens):
+        pred = pred[:seq_len]
+        gold = gold[:seq_len]
+        correct += np.sum(np.equal(pred, gold))
+        total += seq_len
+      accuracy = correct / total
+      return accuracy
+
+    batch_size = 32
+    max_seq_len = 100
+    num_tags = 4
+
+    # np.random.seed(1)
+    seq_lens_v = np.random.random_integers(low=max(max_seq_len / 2, 1),
+                                           high=max_seq_len,
+                                           size=[batch_size])
+
+    trans_params_v = np.random.rand(num_tags, num_tags)
+
+    potentials_v = np.random.rand(batch_size, max_seq_len, num_tags)
+    tag_indices_v = np.random.random_integers(low=0,
+                                              high=num_tags,
+                                              size=[batch_size,  max_seq_len])
+    # decode using numpy version
+    np_pred_tags, np_scores = np_crf_decode(potentials_v,
+                                            trans_params_v,
+                                            seq_lens_v)
+    np_accuracy = calc_accuracy(np_pred_tags,
+                                tag_indices_v,
+                                seq_lens_v)
+
+    with self.test_session() as sess:
+      seq_lens = constant_op.constant(seq_lens_v, dtype=dtypes.int32)
+      trans_params = constant_op.constant(trans_params_v, dtype=dtypes.float32)
+      potentials = constant_op.constant(potentials_v, dtype=dtypes.float32)
+      tag_indices = constant_op.constant(tag_indices_v, dtype=dtypes.int32)
+      # decode usig tensor version
+      pred_tags, scores = crf.crf_decode(potentials,
+                                         trans_params,
+                                         seq_lens)
+
+      tf_pred_tags, tf_scores = sess.run([pred_tags, scores])
+
+      tf_accuracy = calc_accuracy(tf_pred_tags,
+                                  tag_indices_v,
+                                  seq_lens_v)
+
+      self.assertLess(np.abs(tf_accuracy - np_accuracy), 1e-5)
+
+      for b in range(batch_size):
+        self.assertEqual(list(tf_pred_tags[b])[:seq_lens_v[b]],
+                         np_pred_tags[b])
+        score_diff = abs(tf_scores[b] - np_scores[b])
+        percent = score_diff / (abs(tf_scores[b]) + abs(np_scores[b]))
+        self.assertLess(percent, 1e-5)
 
 
 if __name__ == "__main__":
