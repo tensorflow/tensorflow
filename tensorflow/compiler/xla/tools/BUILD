@@ -107,6 +107,14 @@ cc_binary(
 )
 
 cc_binary(
+    name = "replay_computation_hlo_evaluator",
+    deps = [
+        ":replay_computation_library",
+        "//tensorflow/compiler/plugin/executor:plugin_lib",
+    ],
+)
+
+cc_binary(
     name = "show_literal",
     srcs = ["show_literal.cc"],
     deps = [

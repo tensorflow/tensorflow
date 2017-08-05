@@ -1058,6 +1058,8 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     const HloComputation& computation,
     tensorflow::gtl::ArraySlice<const Literal*> arg_literals) {
+  XLA_VLOG_LINES(
+      2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
   arg_literals_ = arg_literals;
   evaluated_.clear();
 
