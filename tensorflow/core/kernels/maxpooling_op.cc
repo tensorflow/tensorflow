@@ -1144,9 +1144,16 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
 #define REGISTER_GPU_ONLY_POOL_KERNELS(T)                            \
   REGISTER_KERNEL_BUILDER(Name("MaxPool")                            \
                               .Device(DEVICE_GPU)                    \
+                              .HostMemory("ksize")                   \
+                              .HostMemory("strides")                 \
                               .TypeConstraint<T>("T")                \
                               .Label("eigen_tensor"),                \
                           MaxPoolingOp<GPUDevice, T>);               \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                          \
+                              .Device(DEVICE_GPU)                    \
+                              .TypeConstraint<T>("T")                \
+                              .Label("eigen_tensor"),                \
+                          MaxPoolingV2Op<GPUDevice, T>);             \
   REGISTER_KERNEL_BUILDER(                                           \
       Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"),     \
       MaxPoolingNoMaskOp<GPUDevice, T>);                             \
