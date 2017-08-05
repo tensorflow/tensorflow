@@ -352,16 +352,17 @@ class CrfDecodeForwardRnnCell(rnn_cell.RNNCell):
       backpointers: [batch_size, num_tags], containing backpointers.
       new_state: [batch_size, num_tags], containing new score values.
     """
-    state = array_ops.expand_dims(state, 2)         # [B, T, 1]
+    # for simplicity, in shape comments, denote:
+    # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
+    state = array_ops.expand_dims(state, 2)                         # [B, O, 1]
 
     # This addition op broadcasts self._transitions_params along the zeroth
     # dimension and state along the second dimension.
-    # [B, num_tags, 1] + [1, num_tags, num_tags] ->
-    # [B, num_tags, num_tags]
-    transition_scores = state + self._transition_params
-    new_state = inputs + math_ops.reduce_max(transition_scores, [1])
+    # [B, O, 1] + [1, O, O] -> [B, O, O]
+    transition_scores = state + self._transition_params             # [B, O, O]
+    new_state = inputs + math_ops.reduce_max(transition_scores, [1])  # [B, O]
     backpointers = math_ops.argmax(transition_scores, 1)
-    backpointers = math_ops.cast(backpointers, dtype=dtypes.int32)
+    backpointers = math_ops.cast(backpointers, dtype=dtypes.int32)    # [B, O]
     return backpointers, new_state
 
 
@@ -390,7 +391,7 @@ class CrfDecodeBackwardRnnCell(rnn_cell.RNNCell):
 
     Args:
       inputs: [batch_size, num_tags], backpointer of next step (in time order).
-      state: [batch_size, 1], next position's tag index
+      state: [batch_size, 1], next position's tag index.
       scope: Unused variable scope of this cell.
 
     Returns:
@@ -417,17 +418,19 @@ def crf_decode(potentials, transition_params, sequence_length):
     potentials: A [batch_size, max_seq_len, num_tags] tensor, matrix of
               unary potentials.
     transition_params: A [num_tags, num_tags] tensor, matrix of
-              binary potentials
-    sequence_length: a [batch_size] tensor
+              binary potentials.
+    sequence_length: A [batch_size] tensor, containing sequence lengths.
 
   Returns:
     decode_tags: A [batch_size, max_seq_len] tensor, with dtype tf.int32.
                 Contains the highest scoring tag indicies.
-    best_score: A [batch_size] tensor, containing the score of decode_tags
+    best_score: A [batch_size] tensor, containing the score of decode_tags.
   '''
-  _, _, num_tags = potentials.shape.as_list()
+  # for simplicity, in shape comments, denote:
+  # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
+  num_tags = potentials.get_shape()[2].value
 
-  # Computes forward decoding. Get last score and backpointers
+  # Computes forward decoding. Get last score and backpointers.
   crf_fwd_cell = CrfDecodeForwardRnnCell(transition_params)
   initial_state = array_ops.slice(potentials, [0, 0, 0], [-1, 1, -1])
   initial_state = array_ops.squeeze(initial_state, axis=[1])      # [B, O]
@@ -442,7 +445,7 @@ def crf_decode(potentials, transition_params, sequence_length):
   backpointers = gen_array_ops.reverse_sequence(
       backpointers, sequence_length - 1, seq_dim=1)               # [B, T-1, O]
 
-  # Computes backward decoding. Extract tag indices from backpointers
+  # Computes backward decoding. Extract tag indices from backpointers.
   crf_bwd_cell = CrfDecodeBackwardRnnCell(num_tags)
   initial_state = math_ops.cast(math_ops.argmax(last_score, axis=1),
                                 dtype=dtypes.int32)               # [B]

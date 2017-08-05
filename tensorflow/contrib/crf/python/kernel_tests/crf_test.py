@@ -250,7 +250,7 @@ class CrfTest(test.TestCase):
     tag_indices_v = np.random.randint(low=0,
                                       high=num_tags,
                                       size=[batch_size, max_seq_len])
-    # decode using numpy version
+    # decode using numpy version.
     np_pred_tags, np_scores = np_crf_decode(potentials_v,
                                             trans_params_v,
                                             seq_lens_v)
@@ -262,8 +262,7 @@ class CrfTest(test.TestCase):
       seq_lens = constant_op.constant(seq_lens_v, dtype=dtypes.int32)
       trans_params = constant_op.constant(trans_params_v, dtype=dtypes.float32)
       potentials = constant_op.constant(potentials_v, dtype=dtypes.float32)
-      tag_indices = constant_op.constant(tag_indices_v, dtype=dtypes.int32)
-      # decode usig tensor version
+      # decode using tensor version.
       pred_tags, scores = crf.crf_decode(potentials,
                                          trans_params,
                                          seq_lens)
@@ -274,7 +273,7 @@ class CrfTest(test.TestCase):
                                   tag_indices_v,
                                   seq_lens_v)
 
-      self.assertLess(np.abs(tf_accuracy - np_accuracy), 1e-5)
+      self.assertLess(abs(tf_accuracy - np_accuracy), 1e-5)
 
       for b in range(batch_size):
         self.assertEqual(list(tf_pred_tags[b])[:seq_lens_v[b]],
