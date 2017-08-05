@@ -1,9 +1,6 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
+    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -69,6 +66,8 @@ tf_cc_test(
     srcs = ["tfprof_advisor_test.cc"],
     deps = [
         ":tfprof_advisor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core/profiler/internal:tfprof_tf_testlib",
     ],
 )

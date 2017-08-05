@@ -5,10 +5,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
+    features = ["-parse_headers"],
 )
 
 package_group(
@@ -116,6 +113,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@llvm//:core",
+        "@llvm//:execution_engine",
         "@llvm//:mc",  # fixdeps: keep
         "@llvm//:orc_jit",
         "@llvm//:support",
@@ -215,6 +213,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
+        "@llvm//:target",
     ],
 )
 
@@ -296,6 +295,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:analysis",
         "@llvm//:core",
+        "@llvm//:execution_engine",
         "@llvm//:ipo",
         "@llvm//:mc",
         "@llvm//:object",
@@ -446,6 +446,7 @@ cc_test(
     srcs = ["xfeed_manager_test.cc"],
     deps = [
         ":cpu_runtime",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
