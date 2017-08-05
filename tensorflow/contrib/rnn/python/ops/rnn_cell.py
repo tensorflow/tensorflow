@@ -26,6 +26,7 @@ from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -1970,22 +1971,19 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
     if self._skip_connection:
       self._total_output_channels += self._input_shape[-1]
 
+    state_size = tensor_shape.TensorShape(self._input_shape[:-1] 
+                                          + [self._output_channels])
+    self._state_size = rnn_cell_impl.LSTMStateTuple(state_size, state_size)
+    self._output_size = tensor_shape.TensorShape(self._input_shape[:-1]
+                                                 + [self._total_output_channels])
+
   @property
   def output_size(self):
-    return self._input_shape[:-1] + [self._total_output_channels]
+    return self._output_size
 
   @property
   def state_size(self):
-    return self._input_shape[:-1] + [self._output_channels]
-
-  def zero_state(self, batch_size, dtype):
-    shape = ([batch_size]
-            + self._input_shape[:-1]
-            + [self._total_output_channels])
-    zero_cell = array_ops.zeros(shape, dtype=dtype)
-    zero_hidden = array_ops.zeros(shape, dtype=dtype)
-    zero_state = rnn_cell_impl.LSTMStateTuple(zero_cell, zero_hidden)
-    return zero_state
+    return self._state_size
 
   def call(self, inputs, state, scope=None):
     cell, hidden = state

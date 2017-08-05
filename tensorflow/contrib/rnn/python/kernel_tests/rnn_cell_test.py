@@ -891,12 +891,11 @@ class RNNCellTest(test.TestCase):
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/2.0)):
-        x = array_ops.zeros([batch_size, 2, 1])
-        #print(x.get_shape()[1:])
+        x = array_ops.placeholder(dtypes.float32, [None, None, 1])
         cell = contrib_rnn_cell.Conv1DLSTMCell(input_shape=shape,
                                                kernel_shape=filter_size,
                                                output_channels=num_features)
-        hidden = cell.zero_state(batch_size, dtypes.float32)
+        hidden = cell.zero_state(array_ops.shape(x)[0], dtypes.float32)
         output, state = cell(x, hidden)
 
         sess.run([variables.global_variables_initializer()])
@@ -934,11 +933,11 @@ class RNNCellTest(test.TestCase):
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/4.0)):
-        x = array_ops.zeros([batch_size, 2, 2, 1])
+        x = array_ops.placeholder(dtypes.float32, [None, None, None, 1])
         cell = contrib_rnn_cell.Conv2DLSTMCell(input_shape=shape,
                                                kernel_shape=filter_size,
                                                output_channels=num_features)
-        hidden = cell.zero_state(batch_size, dtypes.float32)
+        hidden = cell.zero_state(array_ops.shape(x)[0], dtypes.float32)
         output, state = cell(x, hidden)
 
         sess.run([variables.global_variables_initializer()])
@@ -988,11 +987,11 @@ class RNNCellTest(test.TestCase):
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/8.0)):
-        x = array_ops.zeros([batch_size, 2, 2, 2, 1])
+        x = array_ops.placeholder(dtypes.float32, [None, None, None, None, 1])
         cell = contrib_rnn_cell.Conv3DLSTMCell(input_shape=shape,
                                                kernel_shape=filter_size,
                                                output_channels=num_features)
-        hidden = cell.zero_state(batch_size, dtypes.float32)
+        hidden = cell.zero_state(array_ops.shape(x)[0], dtypes.float32)
         output, state = cell(x, hidden)
 
         sess.run([variables.global_variables_initializer()])
