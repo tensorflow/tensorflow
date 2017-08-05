@@ -6,7 +6,7 @@ This PR implements GDR out-of-band transport for TensorFlow distributed runtime,
 Design
 ===
 
-The GDR out-of-band transport is designed to avoid any unnecessary memory copies, especially for large tensors (>100MB). That typically requires registration of tensor buffers to NIC in an ad-hoc manner, which is rather slow as described in the design trade-off of [the verbs runtime](`tensorflow/contrib/verbs/README.md`). The verbs runtime thus chooses to manager its own NIC-registered buffers and copy the tensors from/to those buffers for every single tensor transfer.
+The GDR out-of-band transport is designed to avoid any unnecessary memory copies, especially for large tensors (>100MB). That typically requires registration of tensor buffers to NIC in an ad-hoc manner, which is rather slow as described in the design trade-off of the verbs runtime. The verbs runtime thus chooses to manager its own NIC-registered buffers and copy the tensors from/to those buffers for every single tensor transfer.
 
 We show that, however, such design trade-off is not always relevant. In this patch, we manage both computation and communication buffers in a unified manner. By pre-registration of large buffers to NIC and allocating small tensors from the buffer pool using a BFC allocator, it is possible to avoid both ad-hoc buffer registration and memory copies all together.
 
