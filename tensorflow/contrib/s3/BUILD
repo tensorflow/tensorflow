@@ -30,7 +30,7 @@ cc_binary(
     linkshared = 1,
     deps = [
         "@curl//:curl",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//external:aws",
     ],

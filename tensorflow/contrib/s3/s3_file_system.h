@@ -22,7 +22,7 @@ namespace tensorflow {
 
 class S3FileSystem : public FileSystem {
  public:
-  S3FileSystem(); 
+  S3FileSystem();
   ~S3FileSystem();
 
   Status NewRandomAccessFile(
@@ -57,4 +57,4 @@ class S3FileSystem : public FileSystem {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_ 
+#endif  // TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_

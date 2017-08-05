@@ -28,7 +28,7 @@ namespace {
 class S3FileSystemTest : public ::testing::Test {
  protected:
   S3FileSystemTest() {}
- 
+
   string TmpDir(const string& path) {
     char* test_dir = getenv("S3_TEST_TMPDIR");
     if (test_dir != nullptr) {
@@ -37,14 +37,14 @@ class S3FileSystemTest : public ::testing::Test {
       return "s3://" + io::JoinPath(testing::TmpDir(), path);
     }
   }
- 
+
   Status WriteString(const string& fname, const string& content) {
     std::unique_ptr<WritableFile> writer;
     TF_RETURN_IF_ERROR(s3fs.NewWritableFile(fname, &writer));
     TF_RETURN_IF_ERROR(writer->Append(content));
     TF_RETURN_IF_ERROR(writer->Close());
     return Status::OK();
-  } 
+  }
 
   Status ReadAll(const string& fname, string* content) {
     std::unique_ptr<RandomAccessFile> reader;
@@ -63,7 +63,7 @@ class S3FileSystemTest : public ::testing::Test {
     }
     return Status::OK();
   }
-  
+
   S3FileSystem s3fs;
 };
 
@@ -108,11 +108,11 @@ TEST_F(S3FileSystemTest, NewWritableFile) {
 
 TEST_F(S3FileSystemTest, NewAppendableFile) {
   std::unique_ptr<WritableFile> writer;
-  
+
   const string fname = TmpDir("AppendableFile");
   TF_ASSERT_OK(WriteString(fname, "test"));
-  
-  TF_EXPECT_OK(s3fs.NewAppendableFile(fname, &writer));  
+
+  TF_EXPECT_OK(s3fs.NewAppendableFile(fname, &writer));
   TF_EXPECT_OK(writer->Append("content"));
   TF_EXPECT_OK(writer->Close());
 }
@@ -120,10 +120,9 @@ TEST_F(S3FileSystemTest, NewAppendableFile) {
 TEST_F(S3FileSystemTest, NewReadOnlyMemoryRegionFromFile) {
   const string fname = TmpDir("MemoryFile");
   const string content = "content";
-  TF_ASSERT_OK(WriteString(fname, content)); 
+  TF_ASSERT_OK(WriteString(fname, content));
   std::unique_ptr<ReadOnlyMemoryRegion> region;
-  TF_EXPECT_OK(s3fs.NewReadOnlyMemoryRegionFromFile(
-      fname, &region));
+  TF_EXPECT_OK(s3fs.NewReadOnlyMemoryRegionFromFile(fname, &region));
 
   EXPECT_EQ(content, StringPiece(reinterpret_cast<const char*>(region->data()),
                                  region->length()));
@@ -142,13 +141,14 @@ TEST_F(S3FileSystemTest, GetChildren) {
 
   const string file = io::JoinPath(base, "TestFile.csv");
   TF_EXPECT_OK(WriteString(file, "test"));
-  
+
   const string subdir = io::JoinPath(base, "SubDir");
   TF_EXPECT_OK(s3fs.CreateDir(subdir));
-  //s3 object storage doesn't support empty directory, we create file in the directory 
+  // s3 object storage doesn't support empty directory, we create file in the
+  // directory
   const string subfile = io::JoinPath(subdir, "TestSubFile.csv");
   TF_EXPECT_OK(WriteString(subfile, "test"));
-  
+
   std::vector<string> children;
   TF_EXPECT_OK(s3fs.GetChildren(base, &children));
   std::sort(children.begin(), children.end());
@@ -170,7 +170,8 @@ TEST_F(S3FileSystemTest, GetFileSize) {
 }
 
 TEST_F(S3FileSystemTest, CreateDir) {
-  //s3 object storage doesn't support empty directory, we create file in the directory
+  // s3 object storage doesn't support empty directory, we create file in the
+  // directory
   const string dir = TmpDir("CreateDir");
   TF_EXPECT_OK(s3fs.CreateDir(dir));
 
@@ -182,13 +183,14 @@ TEST_F(S3FileSystemTest, CreateDir) {
 }
 
 TEST_F(S3FileSystemTest, DeleteDir) {
-  //s3 object storage doesn't support empty directory, we create file in the directory
+  // s3 object storage doesn't support empty directory, we create file in the
+  // directory
   const string dir = TmpDir("DeleteDir");
   const string file = io::JoinPath(dir, "DeleteDirFile.csv");
   TF_EXPECT_OK(WriteString(file, "test"));
   EXPECT_FALSE(s3fs.DeleteDir(dir).ok());
 
-  TF_EXPECT_OK(s3fs.DeleteFile(file));  
+  TF_EXPECT_OK(s3fs.DeleteFile(file));
   TF_EXPECT_OK(s3fs.DeleteDir(dir));
   FileStatistics stat;
   EXPECT_FALSE(s3fs.Stat(dir, &stat).ok());

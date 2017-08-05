@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/contrib/s3/s3_crypto.h"
 #include "tensorflow/contrib/s3/s3_file_system.h"
+#include "tensorflow/contrib/s3/s3_crypto.h"
+#include "tensorflow/core/lib/io/path.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/FileSystemUtils.h>
@@ -250,7 +250,7 @@ Status S3FileSystem::NewRandomAccessFile(
 }
 
 Status S3FileSystem::NewWritableFile(const string& fname,
-                       std::unique_ptr<WritableFile>* result) {
+                                     std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
   result->reset(new S3WritableFile(bucket, object));
@@ -258,7 +258,7 @@ Status S3FileSystem::NewWritableFile(const string& fname,
 }
 
 Status S3FileSystem::NewAppendableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) {
+                                       std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[S3ReadAppendableFileBufferSize]);
@@ -289,8 +289,7 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
 }
 
 Status S3FileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   uint64 size;
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
@@ -311,7 +310,8 @@ Status S3FileSystem::FileExists(const string& fname) {
   return Status::OK();
 }
 
-Status S3FileSystem::GetChildren(const string& dir, std::vector<string>* result) {
+Status S3FileSystem::GetChildren(const string& dir,
+                                 std::vector<string>* result) {
   string bucket, prefix;
   TF_RETURN_IF_ERROR(ParseS3Path(dir, false, &bucket, &prefix));
 
@@ -325,9 +325,8 @@ Status S3FileSystem::GetChildren(const string& dir, std::vector<string>* result)
       .WithPrefix(prefix.c_str())
       .WithMaxKeys(S3GetChildrenMaxKeys)
       .WithDelimiter("/");
-  listObjectsRequest.SetResponseStreamFactory([]() {
-    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-  });
+  listObjectsRequest.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
@@ -385,9 +384,8 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
 
   Aws::S3::Model::HeadObjectRequest headObjectRequest;
   headObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
-  headObjectRequest.SetResponseStreamFactory([]() {
-    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-  });
+  headObjectRequest.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
   auto headObjectOutcome = s3Client.HeadObject(headObjectRequest);
   if (headObjectOutcome.IsSuccess()) {
     stats->length = headObjectOutcome.GetResult().GetContentLength();
@@ -404,9 +402,8 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   listObjectsRequest.WithBucket(bucket.c_str())
       .WithPrefix(prefix.c_str())
       .WithMaxKeys(1);
-  listObjectsRequest.SetResponseStreamFactory([]() {
-    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-  });
+  listObjectsRequest.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
   auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
@@ -476,16 +473,14 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
   listObjectsRequest.WithBucket(bucket.c_str())
       .WithPrefix(prefix.c_str())
       .WithMaxKeys(2);
-  listObjectsRequest.SetResponseStreamFactory([]() {
-    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-  });
+  listObjectsRequest.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
   auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     auto contents = listObjectsOutcome.GetResult().GetContents();
     if (contents.size() > 1 ||
         (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
-      return errors::FailedPrecondition(
-          "Cannot delete a non-empty directory.");
+      return errors::FailedPrecondition("Cannot delete a non-empty directory.");
     }
     if (contents.size() == 1 && contents[0].GetKey() == prefix.c_str()) {
       string filename = dirname;
@@ -529,9 +524,8 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
   listObjectsRequest.WithBucket(src_bucket.c_str())
       .WithPrefix(src_object.c_str())
       .WithMaxKeys(S3GetChildrenMaxKeys);
-  listObjectsRequest.SetResponseStreamFactory([]() {
-    return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
-  });
+  listObjectsRequest.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
