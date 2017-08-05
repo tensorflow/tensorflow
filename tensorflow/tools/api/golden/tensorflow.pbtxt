@@ -722,7 +722,7 @@ tf_module {
   }
   member_method {
     name: "case"
-    argspec: "args=[\'pred_fn_pairs\', \'default\', \'exclusive\', \'strict\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'case\'], "
+    argspec: "args=[\'pred_fn_pairs\', \'default\', \'exclusive\', \'strict\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\', \'case\'], "
   }
   member_method {
     name: "cast"
