@@ -203,21 +203,23 @@ class CrfTest(test.TestCase):
   def testCrfDecode(self):
 
     def np_crf_decode(potentials, transition_params, seq_lens):
-      '''
-      This is a function for numpy arrays.
-      potentials: [B, T, num_tags]
-      transition_params: [num_tags, num_tags]
-      seq_lens: [B]
-      tag_indices: [B, T]
+      '''This is a function for numpy arrays.
 
-      pred_tags: a list
-      scores: a list
+      Args:
+        potentials: [B, T, num_tags]
+        transition_params: [num_tags, num_tags]
+        seq_lens: [B]
+        tag_indices: [B, T]
+
+      Returns:
+        pred_tags: a list
+        scores: a list
       '''
       B, T, _ = potentials.shape
       pred_tags, scores = [], []
       for p, seq_len in zip(potentials, seq_lens):
         p = p[:seq_len]
-        pred_tag, score = tf.contrib.crf.viterbi_decode(p, transition_params)
+        pred_tag, score = crf.viterbi_decode(p, transition_params)
         pred_tags.append(pred_tag)
         scores.append(score)
       return pred_tags, scores
@@ -238,16 +240,16 @@ class CrfTest(test.TestCase):
     num_tags = 4
 
     # np.random.seed(1)
-    seq_lens_v = np.random.random_integers(low=max(max_seq_len / 2, 1),
-                                           high=max_seq_len,
-                                           size=[batch_size])
+    seq_lens_v = np.random.randint(low=max(max_seq_len / 2, 1),
+                                   high=max_seq_len,
+                                   size=[batch_size])
 
     trans_params_v = np.random.rand(num_tags, num_tags)
 
     potentials_v = np.random.rand(batch_size, max_seq_len, num_tags)
-    tag_indices_v = np.random.random_integers(low=0,
-                                              high=num_tags,
-                                              size=[batch_size,  max_seq_len])
+    tag_indices_v = np.random.randint(low=0,
+                                      high=num_tags,
+                                      size=[batch_size, max_seq_len])
     # decode using numpy version
     np_pred_tags, np_scores = np_crf_decode(potentials_v,
                                             trans_params_v,
