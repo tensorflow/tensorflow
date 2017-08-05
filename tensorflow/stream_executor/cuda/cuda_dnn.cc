@@ -944,7 +944,6 @@ class CudnnDropoutDescriptor : public CudnnDescriptorCommon<void> {
   cudnnDropoutDescriptor_t handle_;
   float dropout_;
   uint64 seed_;
-  port::Status status_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnDropoutDescriptor);
 };
 
@@ -980,7 +979,6 @@ class CudnnRnnParamsDescriptor : public CudnnDescriptorCommon<void> {
   int64 params_size_in_bytes_;
   ParamsRegions weights_;
   ParamsRegions biases_;
-  port::Status status_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnParamsDescriptor);
 };
 
@@ -1076,7 +1074,6 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
   cudnnDirectionMode_t direction_mode_;
   cudnnRNNMode_t rnn_mode_;
   cudnnDataType_t data_type_;
-  port::Status status_;
   std::unique_ptr<CudnnDropoutDescriptor> cudnn_dropout_desc_;
   std::unique_ptr<CudnnRnnParamsDescriptor> cudnn_params_desc_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnDescriptor);
@@ -1260,7 +1257,6 @@ class CudnnRnnSequenceTensorDescriptor
   int data_size_;
   cudnnDataType_t data_type_;
   std::vector<cudnnTensorDescriptor_t> handles_;
-  port::Status status_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnSequenceTensorDescriptor);
 };
 
@@ -1309,7 +1305,6 @@ class CudnnRnnStateTensorDescriptor
   int num_layers_;
   int batch_size_;
   int data_size_;
-  port::Status status_;
   cudnnDataType_t data_type_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnStateTensorDescriptor);
 };
