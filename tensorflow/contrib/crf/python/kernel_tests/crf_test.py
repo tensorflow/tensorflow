@@ -215,7 +215,6 @@ class CrfTest(test.TestCase):
         pred_tags: a list
         scores: a list
       '''
-      B, T, _ = potentials.shape
       pred_tags, scores = [], []
       for p, seq_len in zip(potentials, seq_lens):
         p = p[:seq_len]
