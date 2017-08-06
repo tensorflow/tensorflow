@@ -31,6 +31,7 @@ truncated_normal = init_ops.truncated_normal_initializer
 uniform_unit_scaling = init_ops.uniform_unit_scaling_initializer
 variance_scaling = init_ops.variance_scaling_initializer
 orthogonal = init_ops.orthogonal_initializer
+identity = init_ops.identity_initializer
 
 # variable initializer ops
 variables = _variables.variables_initializer

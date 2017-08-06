@@ -1405,6 +1405,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],

@@ -457,7 +457,7 @@ class VarianceScaling(Initializer):
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
-  If the shape of the tensor to initialize is two-dimensional, i is initialized
+  If the shape of the tensor to initialize is two-dimensional, it is initialized
   with an orthogonal matrix obtained from the QR decomposition of a matrix of
   uniform random numbers. If the matrix has fewer rows than columns then the
   output will have orthogonal rows. Otherwise, the output will have orthogonal
@@ -513,6 +513,36 @@ class Orthogonal(Initializer):
     return {"gain": self.gain, "seed": self.seed, "dtype": self.dtype.name}
 
 
+class Identity(Initializer):
+  """Initializer that generates the identity matrix.
+
+  Only use for 2D matrices.
+
+  Args:
+    gain: Multiplicative factor to apply to the identity matrix.
+    dtype: The type of the output.
+  """
+
+  def __init__(self, gain=1.0, dtype=dtypes.float32):
+    self.gain = gain
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
+
+  def __call__(self, shape, dtype=None, partition_info=None):
+    full_shape = shape if partition_info is None else partition_info.full_shape
+    if len(full_shape) != 2:
+      raise ValueError(
+          "Identity matrix initializer can only be used for 2D matrices.")
+    if dtype is None:
+      dtype = self.dtype
+    initializer = linalg_ops.eye(*full_shape, dtype=dtype)
+    if partition_info is not None:
+      initializer = array_ops.slice(initializer, partition_info.var_offset,
+                                    shape)
+    return self.gain * initializer
+
+  def get_config(self):
+    return {"gain": self.gain, "dtype": self.dtype.name}
+
 # Aliases.
 
 # pylint: disable=invalid-name
@@ -525,6 +555,7 @@ truncated_normal_initializer = TruncatedNormal
 uniform_unit_scaling_initializer = UniformUnitScaling
 variance_scaling_initializer = VarianceScaling
 orthogonal_initializer = Orthogonal
+identity_initializer = Identity
 
 # pylint: enable=invalid-name
 
