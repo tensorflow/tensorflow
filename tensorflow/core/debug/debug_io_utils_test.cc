@@ -245,7 +245,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
     // Determine and validate some information from the metadata.
     third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
     auto status = tensorflow::protobuf::util::JsonStringToMessage(
-        event.summary().value().metadata().plugin_data().content(), &metadata);
+        event.summary().value(0).metadata().plugin_data().content(), &metadata);
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
     ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
