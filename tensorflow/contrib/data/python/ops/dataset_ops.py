@@ -988,7 +988,7 @@ class Dataset(object):
     filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ..."]
     dataset = (Dataset.from_tensor_slices(filenames)
                .interleave(
-                   lambda x: TextLineDataset(x).map(parse_fn, num_threads=1)
+                   lambda x: TextLineDataset(x).map(parse_fn, num_threads=1),
                    cycle_length=4, block_length=16))
     ```
 
