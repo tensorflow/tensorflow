@@ -950,16 +950,15 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << "\nmajor: " << cc_major
-              << " minor: " << cc_minor << " memoryClockRate (GHz) "
-              << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id() << "\nTotal memory: "
+              << "\nname: " << description.name() << " major: " << cc_major
+              << " minor: " << cc_minor
+              << " memoryClockRate(GHz): " << description.clock_rate_ghz()
+              << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
               << strings::HumanReadableNumBytes(total_bytes)
-              << "\nFree memory: "
-              << strings::HumanReadableNumBytes(free_bytes);
+              << " freeMemory: " << strings::HumanReadableNumBytes(free_bytes);
   }
-
-  if (new_gpu_found) {
+  // Checking peering and shows matrix if more than one gpu found.
+  if (new_gpu_found && visible_gpu_order.size() > 1) {
     // Enable peer access
     TF_RETURN_IF_ERROR(EnablePeerAccess(gpu_manager, visible_gpu_order));
 
