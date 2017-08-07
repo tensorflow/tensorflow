@@ -149,7 +149,7 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the given shape by copying elements from the buffer (starting from its
    * current position) into the tensor. For example, if {@code shape = {2,3} } (which represents a
-   * 2×3 matrix) then the buffer must have 6 elements remaining, which will be consumed by this
+   * 2x3 matrix) then the buffer must have 6 elements remaining, which will be consumed by this
    * method.
    *
    * @param shape the tensor shape.
