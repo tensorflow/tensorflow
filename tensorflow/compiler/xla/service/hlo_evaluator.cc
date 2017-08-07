@@ -1098,7 +1098,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction) {
   TF_RET_CHECK(hlo_query::AllOperandsAreConstants(*instruction));
   TF_RET_CHECK(instruction->opcode() != HloOpcode::kParameter);
-  TF_RET_CHECK(instruction->opcode() != HloOpcode::kTuple);
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();
