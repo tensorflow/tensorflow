@@ -2085,10 +2085,10 @@ def _conv(args,
                   strides,
                   padding='SAME')
   else:
-   res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
-                 kernel,
-                 strides,
-                 padding='SAME')
+    res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
+                  kernel,
+                  strides,
+                  padding='SAME')
   if not bias:
     return res
   bias_term = vs.get_variable(
