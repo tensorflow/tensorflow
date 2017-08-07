@@ -60,10 +60,9 @@ Status FullVisitor::HandleConcatenate(
   int64 dimension(inst->concatenate_dimension());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  out = out.slice(0, 0, dimension);
-  for (auto op : operands) {
+  for (int i=1; i<inst->operand_count(); i++) {
     poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionOutput(tensor_map, op, 0));
+    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
     out = poplar::concat(out, t, dimension);
   }
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));

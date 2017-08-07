@@ -230,10 +230,10 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
   return built.release();
 }
 
-se::DeviceMemoryBase
+std::tuple<se::DeviceMemoryBase,int64>
 PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
-                                     int64 n,
-                                     ConversionFn convertor_fn,
+                                     const int64 n,
+                                     const ConversionList& output_convertors,
                                      const OutputMap& map,
                                      const Args& args) {
   auto it(map.find(n));
@@ -242,62 +242,66 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
     tc->on_device = true;
     tc->output_handle = n;
-    tc->output_convertor = convertor_fn;
-    return buf;
+    tc->output_convertor = output_convertors[n];
+    return std::make_tuple(buf, n+1);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
     TensorControl* tc =
             reinterpret_cast<TensorControl*>(Allocate(size));
     tc->on_device = true;
     tc->output_handle = n;
-    tc->output_convertor = convertor_fn;
-    return se::DeviceMemoryBase(tc, size);
+    tc->output_convertor = output_convertors[n];
+    return std::make_tuple(se::DeviceMemoryBase(tc, size), n+1);
   }
 }
 
-port::StatusOr<se::DeviceMemoryBase>
+std::tuple<se::DeviceMemoryBase,int64>
 PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
-                                     const OutputMap& map,
+                                     const int64 n,
                                      const ConversionList& output_convertors,
+                                     const OutputMap& map,
                                      const Args& args) {
 
   if (shape.element_type() != xla::TUPLE) {
-    return AllocateSingleOutput(shape, 0, output_convertors[0], map, args);
+    return AllocateSingleOutput(shape, n, output_convertors, map, args);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     TensorControl* tc = reinterpret_cast<TensorControl*>(Allocate(size));
-
     void** buf = reinterpret_cast<void**>(tc->data);
-    for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
-      se::DeviceMemoryBase out(AllocateSingleOutput(shape.tuple_shapes(n),
-                                                    n,
-                                                    output_convertors[n],
-                                                    map,
-                                                    args));
+    int64 new_n = n;
+    for (int64 i=0; i<xla::ShapeUtil::TupleElementCount(shape); i++) {
+      se::DeviceMemoryBase out;
+      std::tie(out, new_n) = AllocateOutputBuffer(shape.tuple_shapes(i),
+                                                  new_n,
+                                                  output_convertors,
+                                                  map,
+                                                  args);
       *buf++ = out.opaque();
     }
 
-    return se::DeviceMemoryBase(tc, size);
+    return std::make_tuple(se::DeviceMemoryBase(tc, size), new_n);
   }
 }
 
-port::StatusOr<DeviceMemoryBase>
+std::tuple<se::DeviceMemoryBase,int64>
 PoplarExecutor::RemapArgs(const xla::Shape& shape,
-                          const OutputMap& output_map,
+                          const int64 n,
                           const Args& args) {
   if (shape.element_type() != xla::TUPLE) {
-    return args[0];
+    return std::make_tuple(args[n], n+1);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void *)));
     TensorControl *tc = reinterpret_cast<TensorControl *>(Allocate(size));
 
     void **buf = reinterpret_cast<void **>(tc->data);
-    for (int64 n = 0; n < xla::ShapeUtil::TupleElementCount(shape); n++) {
-      se::DeviceMemoryBase out(args[n]);
+    int64 new_n = n;
+    for (int64 i = 0; i < xla::ShapeUtil::TupleElementCount(shape); i++) {
+      se::DeviceMemoryBase out;
+      std::tie(out, new_n) = RemapArgs(shape.tuple_shapes(i), new_n, args);
       *buf++ = out.opaque();
     }
 
-    return se::DeviceMemoryBase(tc, size);
+    return std::make_tuple(se::DeviceMemoryBase(tc, size), new_n);
 
   }
 }
@@ -330,6 +334,7 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
                               const ConversionList& output_convertors) {
 
   perftools::gputools::DeviceMemoryBase retbuf;
+  int64 tensor_count;
 
   bool engine_changed(current_engine_ != engine);
   {
@@ -338,9 +343,7 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
     if (engine == NULL) {
       // An empty engine is a graph that just passes its inputs through
       // to its outputs.  A variable reading graph is such a thing.
-      TF_ASSIGN_OR_RETURN(retbuf,
-                          RemapArgs(shape, output_map, args));
-
+      std::tie(retbuf, tensor_count) = RemapArgs(shape, 0, args);
     } else {
       // Pull previous execution output back from device if:
       // a) the engine is changing
@@ -380,11 +383,9 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
         }
       }
 
-      TF_ASSIGN_OR_RETURN(retbuf,
-                          AllocateOutputBuffer(shape,
-                                               output_map,
-                                               output_convertors,
-                                               args));
+      std::tie(retbuf, tensor_count) = AllocateOutputBuffer(shape, 0,
+                                                            output_convertors,
+                                                            output_map, args);
 
       engine->run(0);
 

@@ -213,20 +213,24 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
     char data[0];
   };
 
-  DeviceMemoryBase AllocateSingleOutput(const xla::Shape& shape,
-                                        int64 n,
-                                        ConversionFn,
-                                        const OutputMap& map,
-                                        const Args& args);
+  std::tuple<DeviceMemoryBase,int64>
+  AllocateSingleOutput(const xla::Shape& shape,
+                       const int64 n,
+                       const ConversionList&,
+                       const OutputMap& map,
+                       const Args& args);
 
-  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape&,
-                                                        const OutputMap&,
-                                                        const ConversionList&,
-                                                        const Args&);
+  std::tuple<DeviceMemoryBase,int64>
+  AllocateOutputBuffer(const xla::Shape& shape,
+                       const int64 n,
+                       const ConversionList&,
+                       const OutputMap& map,
+                       const Args& args);
 
-  port::StatusOr<DeviceMemoryBase> RemapArgs(const xla::Shape&,
-                                             const OutputMap&,
-                                             const Args&);
+  std::tuple<DeviceMemoryBase,int64>
+  RemapArgs(const xla::Shape&,
+            const int64,
+            const Args&);
 
   port::Status MoveDeviceToHost(TensorControl* tc) const;
 
