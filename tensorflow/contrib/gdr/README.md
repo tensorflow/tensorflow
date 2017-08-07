@@ -1,7 +1,7 @@
 Introduction
 ===
 
-This PR implements GDR out-of-band transport for TensorFlow distributed runtime, complementary to current gRPC transport. It uses gRPC as control plane to setup rendezvous for each tensor transmission, and utilizes [GPU Direct RDMA](https://developer.nvidia.com/gpudirect) whenever possible to transmit tensors in remote GPU memory through network interface card (NIC), bypassing host memory and CPU entirely. It gracefully falls back to ordinary RDMA or even gRPC when GDR is not available.
+This is an implementation of GDR out-of-band transport for TensorFlow distributed runtime, complementary to current gRPC transport. It uses gRPC as control plane to setup rendezvous for each tensor transmission, and utilizes [GPU Direct RDMA](https://developer.nvidia.com/gpudirect) whenever possible to transmit tensors in remote GPU memory through network interface card (NIC), bypassing host memory and CPU entirely. It gracefully falls back to ordinary RDMA or even gRPC when GDR is not available.
 
 Design
 ===
@@ -79,7 +79,8 @@ How to build and run in GDR mode
 
 To test it out on a GDR capable environment, choose to enable GDR in your configure script.
 
-``` Do you wish to build TensorFlow with GDR support? [y/N]: y
+```
+Do you wish to build TensorFlow with GDR support? [y/N]: y
 GDR support will be enabled for TensorFlow.
 ```
 
