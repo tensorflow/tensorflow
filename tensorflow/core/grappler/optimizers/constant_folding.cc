@@ -696,14 +696,6 @@ bool ConstantFolding::IsSimplifiableReshape(
 
 Status ConstantFolding::SimplifyGraph(GraphDef* output,
                                       const GraphProperties& properties) {
-  bool has_placeholder = false;
-  for (const auto& node : output->node()) {
-    if (IsPlaceholder(node)) {
-      has_placeholder = true;
-      break;
-    }
-  }
-
   for (auto& node : *output->mutable_node()) {
     if (IsSimplifiableReduction(node)) {
       // Replace the reduction node with an identity node, that can be further
@@ -731,7 +723,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // It's possible to feed a placeholder with a tensor that doesn't have the
     // proper shape, and reshape this tensor later on. Therefore only remove
     // reshapes in graphs that don't have placeholders.
-    if (!has_placeholder && IsSimplifiableReshape(node, properties)) {
+    if (IsSimplifiableReshape(node, properties)) {
       const NodeDef* new_shape = node_map_->GetNode(node.input(1));
       DataType output_type = node.attr().at("T").type();
       node.set_op("Identity");
@@ -763,16 +755,33 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   device_.reset(new DeviceSimple());
   *output = GraphDef();
 
+  bool has_placeholder = false;
+  for (const auto& node : item.graph.node()) {
+    if (IsPlaceholder(node)) {
+      has_placeholder = true;
+      break;
+    }
+  }
+
   GraphProperties properties(item);
-  Status s = properties.InferStatically();
-  if (!s.ok()) {
-    VLOG(1) << "Failed to infer graph shapes: " << s;
-  } else {
-    TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
+  if (!has_placeholder) {
+    // Only use static shape information when there is no placeholder in the
+    // graph. That's because it's possible to feed a placeholder with a tensor
+    // of any shape, which could make the static information inconsistent with
+    // the shapes actually fed.
+    Status s = properties.InferStatically();
+    if (!s.ok()) {
+      VLOG(1) << "Failed to infer graph shapes: " << s;
+    } else {
+      TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
+    }
   }
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
-  TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
+
+  if (!has_placeholder) {
+    TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
+  }
 
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();
