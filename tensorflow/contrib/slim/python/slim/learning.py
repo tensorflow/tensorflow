@@ -251,7 +251,6 @@ import os
 import sys
 import time
 
-from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import timeline
@@ -646,7 +645,7 @@ def train(train_op,
   graph = graph or ops.get_default_graph()
   with graph.as_default():
     if global_step is None:
-      global_step = variables.get_or_create_global_step()
+      global_step = training_util.get_or_create_global_step()
     saver = saver or tf_saver.Saver()
 
     if sync_optimizer is not None:
