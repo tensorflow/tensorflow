@@ -2,10 +2,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -350,6 +346,20 @@ tf_py_test(
     name = "identity_op_py_test",
     size = "small",
     srcs = ["identity_op_py_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_py_test(
+    name = "identity_n_op_py_test",
+    size = "small",
+    srcs = ["identity_n_op_py_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -1394,6 +1404,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],

@@ -245,12 +245,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->RecvTensorAsync(call_opts, &call->request, &call->response,
-                               [call, call_opts](const Status& s) {
-                                 call->ClearCancelCallback();
-                                 delete call_opts;
-                                 call->SendResponse(ToGrpcStatus(s));
-                               });
+      worker_->GrpcRecvTensorAsync(call_opts, &call->request, &call->response,
+                                   [call, call_opts](const Status& s) {
+                                     call->ClearCancelCallback();
+                                     delete call_opts;
+                                     call->SendResponse(ToGrpcStatus(s));
+                                   });
     });
     EnqueueRecvTensorRequestRaw();
   }
@@ -301,13 +301,13 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
 GrpcWorker::GrpcWorker(WorkerEnv* worker_env) : Worker(worker_env) {}
 
-// RecvTensorAsync: unlike the other Worker methods, which use protocol buffers
-// for a response object, to avoid extra protocol buffer serialization overhead
-// we generate our response directly into a ::grpc::ByteBuffer object
-void GrpcWorker::RecvTensorAsync(CallOptions* opts,
-                                 const RecvTensorRequest* request,
-                                 ::grpc::ByteBuffer* response,
-                                 StatusCallback done) {
+// GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
+// buffers for a response object, to avoid extra protocol buffer serialization
+// overhead we generate our response directly into a ::grpc::ByteBuffer object
+void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
+                                     const RecvTensorRequest* request,
+                                     ::grpc::ByteBuffer* response,
+                                     StatusCallback done) {
   const int64 step_id = request->step_id();
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
