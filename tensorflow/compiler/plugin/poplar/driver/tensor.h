@@ -31,6 +31,9 @@ xla::Shape
 XlaShapeFromPoplarShape(PrimitiveType element_type,
                         const std::vector<size_t> &poplar_shape);
 
+std::vector<xla::Shape>
+FlattenedXlaShape(const xla::Shape& shape);
+
 bool
 PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                            const xla::Shape& shape);

@@ -407,5 +407,21 @@ LiteralVectorToInt64Vector(const xla::Literal& lit) {
   return std::vector<int64>(start, start + s64_lit->shape().dimensions(0));
 }
 
+
+std::vector<xla::Shape>
+FlattenedXlaShape(const xla::Shape& shape) {
+  std::vector<xla::Shape> out;
+  if (ShapeUtil::IsTuple(shape)) {
+    for (int i=0; i<ShapeUtil::TupleElementCount(shape); i++) {
+      std::vector<xla::Shape> shapes = FlattenedXlaShape(ShapeUtil::GetTupleElementShape(shape, i));
+      out.insert(out.end(), shapes.begin(), shapes.end());
+    }
+  } else {
+    out.push_back(shape);
+  }
+
+  return out;
+}
+
 }
 }
