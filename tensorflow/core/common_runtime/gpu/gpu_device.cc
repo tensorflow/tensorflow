@@ -842,9 +842,6 @@ Status EnablePeerAccess(gpu::Platform* platform,
         } else {
           ++enabled_peer_count;
         }
-      } else {
-        LOG(INFO) << "Peer access not supported between device ordinals "
-                  << i_gpu_id << " and " << j_gpu_id;
       }
     }
   }
@@ -967,6 +964,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 
     // Print out a matrix showing which devices can DMA to one
     // another.
+    LOG(INFO) << "Device peer to peer matrix";
     auto access_map = GetPeerAccessMap(gpu_manager, visible_gpu_order);
     string line_buf = "DMA: ";
     for (int i = 0; i < visible_gpu_order.size(); ++i) {

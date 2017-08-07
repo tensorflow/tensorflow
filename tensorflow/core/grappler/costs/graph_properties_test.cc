@@ -560,19 +560,51 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
       ops::Const(s.WithOpName("tensorname"), string("a"), TensorShape());
   Output restore = ops::Restore(s.WithOpName("restore"), filename, tensor_name,
                                 DataType::DT_FLOAT);
-  Output init = ops::Assign(s.WithOpName("init"), var, restore);
+  Output init_restore = ops::Assign(s.WithOpName("init_restore"), var, restore);
+
+  Output shape_and_slice = ops::Const(s.WithOpName("shape_and_slice"),
+                                      string("256 256 0,128:-"), TensorShape());
+  Output restore_slice =
+      ops::RestoreSlice(s.WithOpName("restore_slice"), filename, tensor_name,
+                        shape_and_slice, DataType::DT_FLOAT);
+  Output init_restore_slice =
+      ops::Assign(s.WithOpName("init_restore_slice"), var, restore_slice);
+
+  Output restore_v2 =
+      ops::RestoreSlice(s.WithOpName("restore_v2"), filename, tensor_name,
+                        shape_and_slice, DataType::DT_FLOAT);
+  Output init_restore_v2 =
+      ops::Assign(s.WithOpName("init_restore_v2"), var, restore_v2);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch.push_back("init");
+  item.fetch.push_back("init_restore");
 
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically());
 
-  const auto props = properties.GetOutputProperties("restore");
-  const OpInfo::TensorProperties& prop = props[0];
-  EXPECT_EQ(DT_FLOAT, prop.dtype());
-  EXPECT_EQ("float: [128,256]", PropToString(prop));
+  const auto restore_props = properties.GetOutputProperties("restore");
+  const OpInfo::TensorProperties& restore_prop = restore_props[0];
+  EXPECT_EQ(DT_FLOAT, restore_prop.dtype());
+  EXPECT_EQ("float: [128,256]", PropToString(restore_prop));
+
+  const auto restore_slice_props =
+      properties.GetOutputProperties("restore_slice");
+  const OpInfo::TensorProperties& restore_slice_prop = restore_slice_props[0];
+  EXPECT_EQ(DT_FLOAT, restore_slice_prop.dtype());
+  EXPECT_EQ("float: [128,256]", PropToString(restore_slice_prop));
+
+  const auto restorev2_props = properties.GetOutputProperties("restore_v2");
+  const OpInfo::TensorProperties& restorev2_prop = restorev2_props[0];
+  EXPECT_EQ(DT_FLOAT, restorev2_prop.dtype());
+  EXPECT_EQ("float: [128,256]", PropToString(restorev2_prop));
+
+  // Check input shapes of assign op are propagted correctly.
+  const auto input_props = properties.GetInputProperties("init_restore");
+  ASSERT_EQ(2, input_props.size());
+  const OpInfo::TensorProperties& input_prop = input_props[1];
+  EXPECT_EQ(DT_FLOAT, input_prop.dtype());
+  EXPECT_EQ("float: [128,256]", PropToString(input_prop));
 }
 
 }  // namespace

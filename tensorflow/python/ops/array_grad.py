@@ -461,6 +461,11 @@ def _RefIdGrad(_, grad):
   return grad
 
 
+@ops.RegisterGradient("IdentityN")
+def _IdNGrad(_, *grad):
+  return grad
+
+
 ops.NotDifferentiable("StopGradient")
 
 

@@ -1,6 +1,9 @@
 # Reading data
 
-There are three main methods of getting data into a TensorFlow program:
+Note: The preferred way to feed data into a tensorflow program is using the
+@{$datasets$Datasets API}.
+
+There are three other methods of getting data into a TensorFlow program:
 
 *   Feeding: Python code provides the data when running each step.
 *   Reading from files: an input pipeline reads the data from files
@@ -18,6 +21,9 @@ graph.
 
 Supply feed data through the `feed_dict` argument to a run() or eval() call
 that initiates computation.
+
+Note: "Feeding" is the least efficient way to feed data into a tensorflow
+program and should only be used for small experiments and debugging.
 
 ```python
 with tf.Session():
@@ -50,6 +56,9 @@ A typical pipeline for reading records from files has the following stages:
 6.  A decoder for a record read by the reader
 7.  *Optional* preprocessing
 8.  Example queue
+
+Note: This section discusses implementing input pipelines useing the
+queue-based APIs which can be cleanly replaced by the ${$datasets$Dataset API}.
 
 ### Filenames, shuffling, and epoch limits
 
@@ -405,7 +414,8 @@ This is only used for small data sets that can be loaded entirely in memory.
 There are two approaches:
 
 * Store the data in a constant.
-* Store the data in a variable, that you initialize and then never change.
+* Store the data in a variable, that you initialize (or assign to) and then
+  never change.
 
 Using a constant is a bit simpler, but uses more memory (since the constant is
 stored inline in the graph data structure, which may be duplicated a few times).
@@ -461,19 +471,31 @@ You can compare these with the `fully_connected_feed` and
 ## Multiple input pipelines
 
 Commonly you will want to train on one dataset and evaluate (or "eval") on
-another.  One way to do this is to actually have two separate processes:
+another.  One way to do this is to actually have two separate graphs and
+sessions, maybe in separate processes:
 
 * The training process reads training input data and periodically writes
   checkpoint files with all the trained variables.
 * The evaluation process restores the checkpoint files into an inference
   model that reads validation input data.
 
-This is what is done in
-@{$deep_cnn#save-and-restore-checkpoints$the example CIFAR-10 model}.  This has a couple of benefits:
+This is what is done @{tf.estimator$estimators} and manually in
+@{$deep_cnn#save-and-restore-checkpoints$the example CIFAR-10 model}.
+This has a couple of benefits:
 
 * The eval is performed on a single snapshot of the trained variables.
 * You can perform the eval even after training has completed and exited.
 
 You can have the train and eval in the same graph in the same process, and share
-their trained variables.  See
-@{$variables$the shared variables tutorial}.
+their trained variables or layers. See @{$variables$the shared variables tutorial}.
+
+To support the single-graph approach
+@{$programmers_guide/datasets$Datasets} also supplies
+@{$programmers_guide/datasets#creating_an_iterator$advanced iterator types} that
+that allow the user to change the input pipeline without rebuilding the graph or
+session.
+
+Note: Regardless of the implementation, many
+operations (like ${tf.layers.batch_normalization}, and @{tf.layers.dropout})
+need to know if they are in training or evaluation mode, and you must be
+careful to set this apropriately if you change the data source.

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/elemental_ir_emitter.h"
@@ -59,14 +60,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-
-namespace {
-const char* kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
-bool VectorizedReduceDisabled(const xla::HloModuleConfig& config) {
-  return config.debug_options().xla_backend_extra_options().count(
-      kXlaDisableVectorizedReduce);
-}
-}  // namespace
 
 namespace xla {
 
@@ -235,6 +228,13 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
     }
     compute_function_->addAttribute(argument.getArgNo() + 1,
                                     llvm::Attribute::NoAlias);
+  }
+
+  // Add the optize attribute to the function if optimizing for size. This
+  // controls internal behavior of some optimization passes (e.g. loop
+  // unrolling).
+  if (options::OptimizeForSizeRequested(hlo_module_config_)) {
+    compute_function_->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 
   ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(
@@ -1859,7 +1859,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
                                HloInstruction* init_value,
                                tensorflow::gtl::ArraySlice<int64> dimensions,
                                HloComputation* function) {
-  if (!VectorizedReduceDisabled(hlo_module_config_)) {
+  if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
     TF_ASSIGN_OR_RETURN(
         bool vectorization_successful,

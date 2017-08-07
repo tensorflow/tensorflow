@@ -1676,20 +1676,34 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
     if constant_values != 0:
-      return gen_array_ops._pad_v2(tensor, paddings, constant_values, name=name)
+      result = gen_array_ops._pad_v2(
+          tensor, paddings, constant_values, name=name)
     else:
-      return gen_array_ops._pad(tensor, paddings, name=name)
-  if mode == "REFLECT":
-    return gen_array_ops._mirror_pad(tensor,
-                                     paddings,
-                                     mode="REFLECT",
-                                     name=name)
-  if mode == "SYMMETRIC":
-    return gen_array_ops._mirror_pad(tensor,
-                                     paddings,
-                                     mode="SYMMETRIC",
-                                     name=name)
-  raise ValueError("Unknown padding mode: %s" % mode)
+      result = gen_array_ops._pad(tensor, paddings, name=name)
+  elif mode == "REFLECT":
+    result = gen_array_ops._mirror_pad(
+        tensor, paddings, mode="REFLECT", name=name)
+  elif mode == "SYMMETRIC":
+    result = gen_array_ops._mirror_pad(
+        tensor, paddings, mode="SYMMETRIC", name=name)
+  else:
+    raise ValueError("Unknown padding mode: %s" % mode)
+
+  # Restore shape information where possible.
+  paddings_constant = tensor_util.constant_value(
+      result.op.inputs[1], partial=True)
+  input_shape = result.op.inputs[0].shape
+  if (input_shape.ndims is not None and not result.shape.is_fully_defined() and
+      paddings_constant is not None):
+    new_shape = []
+    for padding, dim in zip(paddings_constant, input_shape.as_list()):
+      if padding is None or dim is None or not all(padding):
+        new_shape.append(None)
+      else:
+        new_shape.append(sum(padding) + dim)
+    result.set_shape(new_shape)
+
+  return result
 
 
 def meshgrid(*args, **kwargs):

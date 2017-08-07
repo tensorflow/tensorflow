@@ -60,6 +60,7 @@ py_library(
         ":gradient_checker",
         ":histogram_ops",
         ":image_ops",
+        ":initializers_ns",
         ":io_ops",
         ":lib",
         ":math_ops",
@@ -80,6 +81,7 @@ py_library(
         ":training",
         ":ops",
         ":saver_test_utils",
+        ":subscribe",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         ":weights_broadcast_ops",
@@ -404,6 +406,18 @@ py_library(
 )
 
 py_library(
+    name = "subscribe",
+    srcs = ["framework/subscribe.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework_ops",
+        ":platform",
+        ":variables",
+    ],
+)
+
+py_library(
     name = "framework",
     srcs = [
         "framework/framework_lib.py",
@@ -411,7 +425,6 @@ py_library(
         "framework/importer.py",
         "framework/load_library.py",
         "framework/meta_graph.py",
-        "framework/subscribe.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -729,6 +742,7 @@ py_test(
         ":math_ops",
         ":platform_test",
         ":script_ops",
+        ":subscribe",
     ],
 )
 
@@ -1546,6 +1560,16 @@ py_library(
 )
 
 py_library(
+    name = "initializers_ns",
+    srcs = ["ops/initializers_ns.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":init_ops",
+        ":variables",
+    ],
+)
+
+py_library(
     name = "io_ops",
     srcs = ["ops/io_ops.py"],
     srcs_version = "PY2AND3",
@@ -2135,6 +2159,7 @@ py_library(
         ":resource_variable_ops",
         ":tensor_shape",
         ":variables",
+        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
@@ -3224,7 +3249,7 @@ cuda_py_test(
 
 cuda_py_tests(
     name = "training_tests",
-    size = "small",
+    size = "medium",
     srcs = [
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
@@ -3586,6 +3611,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/estimator:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

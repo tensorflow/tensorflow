@@ -869,10 +869,6 @@ class SeparableConv2D(Conv2D):
     self.built = True
 
   def call(self, inputs):
-    if self.data_format == 'channels_first':
-      # Reshape to channels last
-      inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
-
     # Apply the actual ops.
     outputs = nn.separable_conv2d(
         inputs,
@@ -880,11 +876,8 @@ class SeparableConv2D(Conv2D):
         self.pointwise_kernel,
         strides=(1,) + self.strides + (1,),
         padding=self.padding.upper(),
-        rate=self.dilation_rate)
-
-    if self.data_format == 'channels_first':
-      # Reshape to channels first
-      outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
+        rate=self.dilation_rate,
+        data_format=utils.convert_data_format(self.data_format, ndim=4))
 
     if self.bias is not None:
       outputs = nn.bias_add(
