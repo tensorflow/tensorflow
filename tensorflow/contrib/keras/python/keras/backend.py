@@ -3570,7 +3570,7 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
 
   Returns:
       the tensor after 1d conv with un-shared weights, with shape (batch_size,
-      output_lenght, filters)
+      output_length, filters)
 
   Raises:
       ValueError: if `data_format` is neither `channels_last` or
