@@ -145,7 +145,7 @@ class TF_ManagedBuffer : public TensorBuffer {
 void* allocate_tensor(const char* operation, size_t len) {
   void* data =
       tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawAllocation(
         operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
         len, data, tensorflow::cpu_allocator());
@@ -154,7 +154,7 @@ void* allocate_tensor(const char* operation, size_t len) {
 }
 
 void deallocate_buffer(void* data, size_t len, void* arg) {
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawDeallocation(
         "TensorFlow C Api",
         tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,

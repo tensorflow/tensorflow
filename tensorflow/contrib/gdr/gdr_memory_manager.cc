@@ -272,11 +272,9 @@ Status GdrMemoryManager::Init() {
 
   // Host memory allocators
   for (Allocator* allocator : allocators) {
-    CHECK(allocator);
     auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
-    CHECK(visitable_allocator)
-        << "Cannot instrument non-visitable CPU allocator "
-        << allocator->Name();
+    CHECK(visitable_allocator) << "is not visitable for instrumentation"
+                               << allocator->Name();
     // Make sure we don't instrument the same allocator twice
     if (instrumented_.find(allocator) == std::end(instrumented_)) {
       visitable_allocator->AddAllocVisitor(alloc_visitor);
@@ -444,12 +442,28 @@ Status GdrMemoryManager::TransportOptionsFromTensor(
     tensor_buffers_.insert(std::make_pair(tensor_key, buffer));
   }
 
+  uint64_t checksum = 0;
+  if (VLOG_IS_ON(2)) {
+#ifdef GOOGLE_CUDA
+    if (device->tensorflow_gpu_device_info() && (!on_host)) {
+      if (host_copy.NumElements() > 0) {
+        checksum = GPUUtil::Checksum(device, device_context, host_copy);
+      } else {
+        checksum = GPUUtil::Checksum(device, device_context, tensor);
+      }
+    } else {
+      checksum = GPUUtil::Checksum(tensor);
+    }
+#endif
+  }
+
   RemoteMemoryRegion remote_mr;
   remote_mr.set_host(host_);
   remote_mr.set_port(port_);
   remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
   remote_mr.set_rkey(mr->rkey);
   remote_mr.set_tensor_key(tensor_key);
+  remote_mr.set_checksum(checksum);
   mutable_transport_options->PackFrom(remote_mr);
 
   return Status::OK();
@@ -457,7 +471,7 @@ Status GdrMemoryManager::TransportOptionsFromTensor(
 
 Status GdrMemoryManager::TensorFromTransportOptions(
     Tensor* tensor, const ::google::protobuf::Any& transport_options,
-    Device* dst_device, DeviceContext* dst_device_context, bool on_host) {
+    Device* device, DeviceContext* device_context, bool on_host) {
   RemoteMemoryRegion remote_mr;
   if (!transport_options.UnpackTo(&remote_mr)) {
     return errors::NotFound("No RDMA transport options found");
@@ -524,8 +538,8 @@ Status GdrMemoryManager::TensorFromTransportOptions(
   if (host_copy.NumElements() > 0) {
     Status s;
     Notification n;
-    GPUUtil::CopyCPUTensorToGPU(&host_copy, dst_device_context, dst_device,
-                                tensor, [&s, &n](const Status& status) {
+    GPUUtil::CopyCPUTensorToGPU(&host_copy, device_context, device, tensor,
+                                [&s, &n](const Status& status) {
                                   s.Update(status);
                                   n.Notify();
                                 });
@@ -542,6 +556,22 @@ Status GdrMemoryManager::TensorFromTransportOptions(
           << " of size " << buffer->size() << " with tensor key "
           << remote_mr.tensor_key() << " took " << (end - start) << " micros";
 
+  uint64_t checksum = 0;
+  if (VLOG_IS_ON(2)) {
+#ifdef GOOGLE_CUDA
+    if (device->tensorflow_gpu_device_info() && (!on_host)) {
+      if (host_copy.NumElements() > 0) {
+        checksum = GPUUtil::Checksum(device, device_context, host_copy);
+      } else {
+        checksum = GPUUtil::Checksum(device, device_context, *tensor);
+      }
+    } else {
+      checksum = GPUUtil::Checksum(*tensor);
+    }
+    CHECK(checksum == remote_mr.checksum()) << "Checksum mismatch: " << checksum
+                                            << "!=" << remote_mr.checksum();
+#endif
+  }
   return Status::OK();
 }
 
