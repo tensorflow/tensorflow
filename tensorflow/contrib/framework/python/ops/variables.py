@@ -37,6 +37,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ['add_model_variable',
@@ -114,7 +115,8 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
 def get_global_step(graph=None):
   return training_util.get_global_step(graph)
 
-
+@deprecated(
+    "2017-03-15", "Please switch to tf.train.create_global_step")
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
