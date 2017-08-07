@@ -90,9 +90,10 @@ CreateParallelMap(poplar::Graph &graph,
   MapVisitor visitor(&graph, res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
-  for (size_t i=0; i<visitor.output().size(); i++) {
+  auto outputs = visitor.outputs();
+  for (size_t i=0; i<outputs.size(); i++) {
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                       visitor.output()[i]));
+                                       outputs[i]));
   }
 
   return visitor.sequence;

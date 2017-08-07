@@ -48,19 +48,8 @@ Status InlineCallVisitor::HandleParameter(HloInstruction* inst) {
 }
 
 Status InlineCallVisitor::FinishVisit(HloInstruction* inst) {
-  int64 c = 1;
-  if (ShapeUtil::IsTuple(inst->shape())) {
-    c = ShapeUtil::TupleElementCount(inst->shape());
-  }
-
-  for (int64 i=0; i<c; i++) {
-    poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
-    outputs_.push_back(out);
-  }
-
+  outputs_ = FindInstructionOutputs(tensor_map, inst);
   tensor_map.clear();
-
   return Status::OK();
 }
 

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -10,8 +11,8 @@ namespace poplarplugin {
 port::StatusOr<poplar::Tensor>
 FindInstructionInput(const TensorMap& map,
                      const HloInstruction* inst,
-                     uint64 input,
-                     uint64 n) {
+                     int64 input,
+                     int64 n) {
   auto it = map.find(std::make_pair(inst->operand(input)->name(),n));
   if (it == map.end()) {
     return port::Status(port::error::UNKNOWN,
@@ -23,24 +24,22 @@ FindInstructionInput(const TensorMap& map,
   return it->second;
 }
 
-port::StatusOr<poplar::Tensor>
-FindInstructionOutput(const TensorMap& map,
-                      const HloInstruction* inst,
-                      uint64 n) {
-  auto it = map.find(std::make_pair(inst->name(),n));
-  if (it == map.end()) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Poplar] Couldn't find output for ",
-                                     inst->name(),
-                                     ":", n));
+std::vector<poplar::Tensor>
+FindInstructionOutputs(const TensorMap& map,
+                       const HloInstruction* inst) {
+  auto lower = std::make_pair(inst->name(), 0);
+  auto upper = std::make_pair(inst->name(), std::numeric_limits<int64>::max());
+  std::vector<poplar::Tensor> outputs;
+  for (auto it = map.lower_bound(lower); it != map.upper_bound(upper); it++) {
+    outputs.push_back(it->second);
   }
-  return it->second;
+  return outputs;
 }
 
 port::Status
 AddOutputTensor(TensorMap& map,
                 const HloInstruction* inst,
-                uint64 n,
+                int64 n,
                 const poplar::Tensor& tensor) {
   auto p = std::make_pair(inst->name(),n);
   auto it = map.find(p);

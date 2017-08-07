@@ -44,13 +44,13 @@ public:
     return shape_;
   }
 
-  const std::vector<poplar::Tensor>& output() {
-    return output_;
+  const std::vector<poplar::Tensor>& outputs() {
+    return outputs_;
   }
 
 private:
   std::vector<poplar::Tensor> operands_;
-  std::vector<poplar::Tensor> output_;
+  std::vector<poplar::Tensor> outputs_;
   xla::Shape shape_;
 };
 

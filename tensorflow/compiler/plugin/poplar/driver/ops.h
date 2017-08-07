@@ -52,19 +52,18 @@ ShuffleConvolutionWeights(const HloInstruction* inst,
 port::Status
 AddOutputTensor(TensorMap& map,
                 const HloInstruction* inst,
-                uint64 n,
+                int64 n,
                 const poplar::Tensor& tensor);
 
 port::StatusOr<poplar::Tensor>
 FindInstructionInput(const TensorMap& map,
                      const HloInstruction* inst,
-                     uint64 input,
-                     uint64 n);
+                     int64 input,
+                     int64 n);
 
-port::StatusOr<poplar::Tensor>
-FindInstructionOutput(const TensorMap& map,
-                      const HloInstruction* inst,
-                      uint64 n);
+std::vector<poplar::Tensor>
+FindInstructionOutputs(const TensorMap& map,
+                       const HloInstruction* inst);
 
 /* Ops */
 

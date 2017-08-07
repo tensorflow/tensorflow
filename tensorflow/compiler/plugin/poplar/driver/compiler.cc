@@ -115,17 +115,23 @@ public:
   }
 
   Status FinishVisit(HloInstruction* inst) {
-    size_t num_outputs;
-    if (ShapeUtil::IsTuple(inst->shape())) {
-      num_outputs = ShapeUtil::TupleElementCount(inst->shape());
-    } else {
-      num_outputs = 1;
-    }
+    const HloComputation* comp = inst->parent();
 
-    for (size_t i=0; i<num_outputs; i++) {
-      poplar::Tensor out;
-      TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
-      graph_->createHostRead(sep::GetCopyHandle(i), out);
+    auto outputs = FindInstructionOutputs(tensor_map, inst);
+
+    for (size_t o=0; o<outputs.size(); o++) {
+
+      // For each output, if there is an identical input, put it into the map
+      for (int64 i=0; i<comp->num_parameters(); i++) {
+        HloInstruction* param = comp->parameter_instruction(i);
+        auto in = FindInstructionOutputs(tensor_map, param);
+
+        if (in[0] == outputs[o]) {
+          output_map[o] = i;
+        }
+      }
+
+      graph_->createHostRead(sep::GetCopyHandle(o), outputs[o]);
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -137,38 +143,17 @@ public:
       }
     }
 
-    // For each output, see if there is an identical input and put it into the map
-    const HloComputation* comp = inst->parent();
-    for (size_t o=0; o<num_outputs; o++) {
-      poplar::Tensor out;
-      TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, o));
-
-      for (int64 i=0; i<comp->num_parameters(); i++) {
-        HloInstruction* param = comp->parameter_instruction(i);
-        poplar::Tensor in;
-        TF_ASSIGN_OR_RETURN(in, FindInstructionOutput(tensor_map, param, 0));
-
-        if (in == out) {
-          output_map[o] = i;
-        }
-      }
-    }
-
     input_convertors.resize(comp->num_parameters());
-    output_convertors.resize(num_outputs);
+    output_convertors.resize(outputs.size());
 
     for (int64 i=0; i<comp->num_parameters(); i++) {
       HloInstruction* param = comp->parameter_instruction(i);
       input_convertors[i] = GetInputConversionFunction(param->shape());
     }
 
-    if (ShapeUtil::IsTuple(inst->shape())) {
-      for (size_t o=0; o<num_outputs; o++) {
-        output_convertors[o] = GetOutputConversionFunction(
-                ShapeUtil::GetTupleElementShape(inst->shape(), o));
-      }
-    } else {
-      output_convertors[0] = GetOutputConversionFunction(inst->shape());
+    std::vector<xla::Shape> output_shapes = FlattenedXlaShape(inst->shape());
+    for (size_t o=0; o<output_shapes.size(); o++) {
+      output_convertors[o] = GetOutputConversionFunction(output_shapes[o]);
     }
 
     tensor_map.clear();
