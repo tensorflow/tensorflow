@@ -113,8 +113,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
             << "EigenAllocator for GPU ran out of memory when allocating "
             << num_bytes << ". See error logs for more detailed info.";
       }
-    }
-    if (LogMemory::IsEnabled()) {
+    } else if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
                                      allocator_);
     }
