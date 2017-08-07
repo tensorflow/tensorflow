@@ -1492,7 +1492,7 @@ class BaseStagingArea(object):
     # Sanity check number of values
     if not len(vals) <= len(self._dtypes):
       raise ValueError("Unexpected number of inputs '%s' vs '%s'" % (
-                          len(values), len(self._dtypes)))
+                          len(vals), len(self._dtypes)))
 
     tensors = []
 
