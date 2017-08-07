@@ -28,6 +28,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -750,8 +750,8 @@ struct CudaVersion {
   // Initialize from version_name in the form of "3.5"
   explicit CudaVersion(const std::string& version_name) {
     size_t dot_pos = version_name.find('.');
-    CHECK(dot_pos != string::npos) << "Illegal version name: [" << version_name
-                                   << "]";
+    CHECK(dot_pos != string::npos)
+        << "Illegal version name: [" << version_name << "]";
     string major_str = version_name.substr(0, dot_pos);
     CHECK(strings::safe_strto32(major_str, &major_part))
         << "Illegal version name: [" << version_name << "]";
@@ -776,8 +776,7 @@ struct CudaVersion {
 };
 
 std::vector<CudaVersion> supported_cuda_compute_capabilities = {
-    TF_CUDA_CAPABILITIES,
-};
+    TF_CUDA_CAPABILITIES,};
 
 std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
   auto cuda_caps = supported_cuda_compute_capabilities;

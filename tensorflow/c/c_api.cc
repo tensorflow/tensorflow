@@ -600,9 +600,8 @@ static void TF_Run_Helper(
 
   if (handle == nullptr) {
     RunOptions run_options_proto;
-    if (run_options != nullptr &&
-        !run_options_proto.ParseFromArray(run_options->data,
-                                          run_options->length)) {
+    if (run_options != nullptr && !run_options_proto.ParseFromArray(
+                                      run_options->data, run_options->length)) {
       status->status = InvalidArgument("Unparseable RunOptions proto");
       return;
     }
@@ -2222,9 +2221,8 @@ TF_Session* TF_LoadSessionFromSavedModel(
   }
 
   RunOptions run_options_proto;
-  if (run_options != nullptr &&
-      !run_options_proto.ParseFromArray(run_options->data,
-                                        run_options->length)) {
+  if (run_options != nullptr && !run_options_proto.ParseFromArray(
+                                    run_options->data, run_options->length)) {
     status->status = InvalidArgument("Unparseable RunOptions proto");
     return nullptr;
   }
