@@ -106,7 +106,7 @@ ConstantFolding::ConstantFolding() {
   ops_to_preserve_ = std::regex(
       "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|"
       "Enter|RefEnter|Exit|RefExit|NextIteration|RefNextIteration|"
-      ".*Quantized.*",
+      ".*Quantized.*|Sparse.*",
       std::regex_constants::optimize);
 }
 
@@ -397,8 +397,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   TensorVector output_tensors;
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
   if (output_tensors.empty()) {
-    Status(error::INVALID_ARGUMENT, "Expected at least one output.");
+    return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
+
   for (size_t i = 0; i < output_tensors.size(); i++) {
     string node_name = AddPrefixToNodeName(node.name(), kConstantFoldingConst);
     if (output_tensors.size() > 1) {
