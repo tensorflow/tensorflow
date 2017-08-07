@@ -2448,6 +2448,10 @@ def tensordot(a, b, axes, name=None):
         raise ValueError("'axes' must be an integer or have length 2.")
       a_axes = axes[0]
       b_axes = axes[1]
+      if isinstance(a_axes, compat.integral_types) and \
+          isinstance(b_axes, compat.integral_types):
+        a_axes = [a_axes]
+        b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
         raise ValueError(
             "Different number of contraction axes 'a' and 'b', %s != %s.",
