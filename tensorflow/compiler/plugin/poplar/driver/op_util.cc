@@ -13,15 +13,16 @@ FindInstructionInput(const TensorMap& map,
                      const HloInstruction* inst,
                      int64 input,
                      int64 n) {
-  auto it = map.find(std::make_pair(inst->operand(input)->name(),n));
-  if (it == map.end()) {
+  const HloInstruction* operand = inst->operand(input);
+  std::vector<poplar::Tensor> outputs = FindInstructionOutputs(map, operand);
+  if (outputs.size() == 0) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Poplar] Couldn't find input ",
                                      input,
                                      " for ",
                                      inst->name()));
   }
-  return it->second;
+  return outputs[0];
 }
 
 std::vector<poplar::Tensor>
