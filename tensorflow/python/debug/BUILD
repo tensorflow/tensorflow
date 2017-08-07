@@ -10,7 +10,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0

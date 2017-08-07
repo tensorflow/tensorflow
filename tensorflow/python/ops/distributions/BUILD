@@ -1,6 +1,5 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = ["-parse_headers"],
 )
 
 load("//tensorflow:tensorflow.bzl", "py_test")

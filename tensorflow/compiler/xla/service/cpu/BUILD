@@ -5,7 +5,6 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
-    features = ["-parse_headers"],
 )
 
 package_group(

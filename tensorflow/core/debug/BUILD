@@ -10,7 +10,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -106,6 +105,7 @@ tf_cuda_library(
     deps = [
         ":debug_graph_utils",
         ":debug_io_utils",
+        "//tensorflow/core:core_cpu_internal",
     ],
     alwayslink = 1,
 )

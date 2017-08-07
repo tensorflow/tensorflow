@@ -1,6 +1,5 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -12,6 +11,7 @@ cc_library(
     hdrs = ["checker.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/internal:tfprof_stats",
     ],
 )
@@ -21,6 +21,7 @@ cc_library(
     srcs = ["internal_checker_runner_dummy.cc"],
     hdrs = ["internal_checker_runner.h"],
     deps = [
+        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/internal:tfprof_utils",
     ],
 )
@@ -58,6 +59,7 @@ cc_library(
         ":expensive_operation_checker",
         ":internal_checker_runner_dummy",
         ":operation_checker",
+        "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
 
