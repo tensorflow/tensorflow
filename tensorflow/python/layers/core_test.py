@@ -286,7 +286,7 @@ class DropoutTest(test.TestCase):
     dp = core_layers.Dropout(0.5, name='dropout')
     self.assertEqual(dp.rate, 0.5)
     self.assertEqual(dp.noise_shape, None)
-    dp.apply(np.ones(()))
+    dp.apply(array_ops.ones(()))
     self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NEON_TYPES_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NEON_TYPES_H_
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 namespace neon {
 

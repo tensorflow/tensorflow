@@ -52,7 +52,7 @@ Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
 
   // Save a tensor after the proto to check that alignment works.
   test::FillFn<float>(test_tensor,
-                      [](int i) { return static_cast<float>(i * i * i); });
+                      [](int i) { return static_cast<float>(i) * i * i; });
   TF_RETURN_IF_ERROR(writer.SaveTensor(*test_tensor, kTensor2FileName));
 
   if (!corrupted) {

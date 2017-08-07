@@ -1,0 +1,67 @@
+path: "tensorflow.initializers"
+tf_module {
+  member {
+    name: "absolute_import"
+    mtype: "<type \'instance\'>"
+  }
+  member {
+    name: "constant"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "division"
+    mtype: "<type \'instance\'>"
+  }
+  member {
+    name: "identity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ones"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "orthogonal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "print_function"
+    mtype: "<type \'instance\'>"
+  }
+  member {
+    name: "random_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "random_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "truncated_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "uniform_unit_scaling"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "variance_scaling"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "zeros"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "global_variables"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_variables"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables"
+    argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'init\'], "
+  }
+}

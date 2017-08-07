@@ -71,7 +71,7 @@ struct ShapeTreeNode {
 
 }  // namespace internal
 
-template <typename T>
+template <typename T, bool is_const>
 class ShapeTreeIterator;
 
 // A ShapeTree<T> is a recursive data structure which mirrors the structure of a
@@ -95,7 +95,8 @@ class ShapeTreeIterator;
 // before its ShapeTree goes away.
 template <typename T>
 class ShapeTree {
-  friend class ShapeTreeIterator<T>;
+  friend class ShapeTreeIterator<T, /*is_const=*/true>;
+  friend class ShapeTreeIterator<T, /*is_const=*/false>;
 
  public:
   // Default constructor creates a tree with a nil shape (i.e. an empty tuple).
@@ -156,8 +157,8 @@ class ShapeTree {
 
   // iterator implements a forward_iterator with value_type =
   // std::pair<ShapeIndex, T&>
-  using iterator = ShapeTreeIterator<T>;
-  using const_iterator = ShapeTreeIterator<const T>;
+  using iterator = ShapeTreeIterator<T, /*is_const=*/false>;
+  using const_iterator = ShapeTreeIterator<T, /*is_const=*/true>;
 
   // begin/end for iterating over all nodes.
   iterator begin() { return iterator(&root_, /*iterate_leaves_only=*/false); }
@@ -271,17 +272,22 @@ class ShapeTree {
 // expensive. The iterator value_type is equivalent to a std::pair<ShapeIndex,
 // T&>, similar to std::map. The non-const iterator's T& type can be mutated
 // in-place.
-template <typename T>
+template <typename T, bool is_const>
 class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
                                                std::pair<ShapeIndex, T&>> {
  public:
-  using value_type = std::pair<ShapeIndex, T&>;
+  using value_type =
+      typename std::conditional<is_const, std::pair<ShapeIndex, const T&>,
+                                std::pair<ShapeIndex, T&>>::type;
+  using NodeType =
+      typename std::conditional<is_const, const typename ShapeTree<T>::Node,
+                                typename ShapeTree<T>::Node>::type;
 
   // Construct an iterator pointing at node. Node must either be the tree root
   // or nullptr (which is equivalent to end() and should not be dereferenced or
   // incremented). If iterate_leaves_only is true, the iterator will not include
   // interior tree nodes, only leaves.
-  ShapeTreeIterator(typename ShapeTree<T>::Node* node, bool iterate_leaves_only)
+  ShapeTreeIterator(NodeType* node, bool iterate_leaves_only)
       : node_(node), iterate_leaves_only_(iterate_leaves_only) {
     if (node_ && !node_->children.empty() && iterate_leaves_only) {
       ++*this;
@@ -291,6 +297,7 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
       : node_(other.node_),
         stack_(other.stack_),
         iterate_leaves_only_(other.iterate_leaves_only_) {}
+
   ShapeTreeIterator& operator++() {
     CHECK_NE(nullptr, node_) << "walking off the end() of an iterator!";
     // We're doing a pre-order walk, so if our current node has children take
@@ -357,10 +364,10 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
   // The node to which this iterator is pointing. This is the source of truth in
   // the iterator - the stack only exists to facilitate walking back from
   // children to parents.
-  typename ShapeTree<T>::Node* node_;
+  NodeType* node_;
   // Stack of {node, child-index} pairs of the path taken from the root to get
   // to node_. This allows us to backtrack and know where to go next.
-  std::vector<std::pair<typename ShapeTree<T>::Node*, int64>> stack_;
+  std::vector<std::pair<NodeType*, int64>> stack_;
   // True if we should not include interior nodes in our walk.
   bool iterate_leaves_only_;
   // Placeholder for the current value. Ideally this wouldn't exist and would
