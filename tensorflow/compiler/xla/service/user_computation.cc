@@ -2881,7 +2881,8 @@ void ComputationLowerer::Visit(
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
       }
-      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast() &&
+          binary_op_request.binop() != BINOP_DOT) {
         if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =

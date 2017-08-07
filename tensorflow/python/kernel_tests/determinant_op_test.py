@@ -34,11 +34,11 @@ class DeterminantOpTest(test.TestCase):
       np_ans = np.ones(shape[:-2]).astype(matrix_x.dtype)
     else:
       np_ans = np.array(np.linalg.det(matrix_x)).astype(matrix_x.dtype)
-    self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
+    self.assertAllClose(np_ans, out, atol=5e-5)
 
   def _compareDeterminant(self, matrix_x):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
 

@@ -55,17 +55,17 @@ from tensorflow.python.training import saver as saver_lib
 FLAGS = None
 
 
-def freeze_graph_with_def_protos(
-    input_graph_def,
-    input_saver_def,
-    input_checkpoint,
-    output_node_names,
-    restore_op_name,
-    filename_tensor_name,
-    output_graph,
-    clear_devices,
-    initializer_nodes,
-    variable_names_blacklist=""):
+def freeze_graph_with_def_protos(input_graph_def,
+                                 input_saver_def,
+                                 input_checkpoint,
+                                 output_node_names,
+                                 restore_op_name,
+                                 filename_tensor_name,
+                                 output_graph,
+                                 clear_devices,
+                                 initializer_nodes,
+                                 variable_names_blacklist="",
+                                 input_meta_graph=False):
   """Converts all variables in a graph and checkpoint into constants."""
   del restore_op_name, filename_tensor_name  # Unused by updated loading code.
 
@@ -85,11 +85,14 @@ def freeze_graph_with_def_protos(
       node.device = ""
 
   _ = importer.import_graph_def(input_graph_def, name="")
-
   with session.Session() as sess:
     if input_saver_def:
       saver = saver_lib.Saver(saver_def=input_saver_def)
       saver.restore(sess, input_checkpoint)
+    elif input_meta_graph:
+      restorer = saver_lib.import_meta_graph(
+          input_checkpoint + ".meta", clear_devices=True)
+      restorer.restore(sess, input_checkpoint)
     else:
       var_list = {}
       reader = pywrap_tensorflow.NewCheckpointReader(input_checkpoint)
@@ -119,8 +122,6 @@ def freeze_graph_with_def_protos(
   if output_graph:
     with gfile.GFile(output_graph, "wb") as f:
       f.write(output_graph_def.SerializeToString())
-
-  print("%d ops in the final graph." % len(output_graph_def.node))
 
   return output_graph_def
 
@@ -165,23 +166,17 @@ def freeze_graph(input_graph,
                  output_graph,
                  clear_devices,
                  initializer_nodes,
-                 variable_names_blacklist=""):
+                 variable_names_blacklist="",
+                 input_meta_graph=False):
   """Converts all variables in a graph and checkpoint into constants."""
   input_graph_def = _parse_input_graph_proto(input_graph, input_binary)
   input_saver_def = None
   if input_saver:
     input_saver_def = _parse_input_saver_proto(input_saver, input_binary)
   freeze_graph_with_def_protos(
-      input_graph_def,
-      input_saver_def,
-      input_checkpoint,
-      output_node_names,
-      restore_op_name,
-      filename_tensor_name,
-      output_graph,
-      clear_devices,
-      initializer_nodes,
-      variable_names_blacklist)
+      input_graph_def, input_saver_def, input_checkpoint, output_node_names,
+      restore_op_name, filename_tensor_name, output_graph, clear_devices,
+      initializer_nodes, variable_names_blacklist, input_meta_graph)
 
 
 def main(unused_args):
@@ -189,7 +184,7 @@ def main(unused_args):
                FLAGS.input_checkpoint, FLAGS.output_node_names,
                FLAGS.restore_op_name, FLAGS.filename_tensor_name,
                FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
-               FLAGS.variable_names_blacklist)
+               FLAGS.variable_names_blacklist, FLAGS.input_meta_graph)
 
 
 if __name__ == "__main__":
@@ -256,5 +251,12 @@ if __name__ == "__main__":
       help="""\
       comma separated list of variables to skip converting to constants\
       """)
+  parser.add_argument(
+      "--input_meta_graph",
+      nargs="?",
+      const=True,
+      type="bool",
+      default=False,
+      help="Whether the input files are meta_graphs.")
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

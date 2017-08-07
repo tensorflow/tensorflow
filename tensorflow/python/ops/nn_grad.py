@@ -670,21 +670,51 @@ def _FusedBatchNormGrad(op, *grad):
     grad_x: gradient for x, which is scale * rsqrt(variance + epsilon) *
             [grad_y - mean(grad_y) - (x - mean(x)) *
             mean(grad_y * (x - mean(x))) / (variance + epsilon)]
+            in training mode; grad_y * scale * rsqrt(pop_variance + epsilon)
+            in freeze mode.
 
     grad_scale: gradient for scale, which is sum(grad_y * (x - mean(x)) *
-                rsqrt(variance + epsilon))
+                rsqrt(variance + epsilon)) in training mode;
+                sum(grad_y * (x - pop_mean) * rsqrt(pop_variance + epsilon))
+                in freeze mode.
 
-    grad_offset: gradient for offset, which is sum(grad_y)
+    grad_offset: gradient for offset, which is sum(grad_y) in training mode;
+                 sum(grad_y) in freeze mode.
   """
-  return gen_nn_ops.fused_batch_norm_grad(
-      grad[0],
-      op.inputs[0],
-      op.inputs[1],
-      op.outputs[3],
-      op.outputs[4],
-      epsilon=op.get_attr("epsilon"),
-      data_format=op.get_attr("data_format"),
-      is_training=op.get_attr("is_training"))
+  x = op.inputs[0]
+  grad_y = grad[0]
+  scale = op.inputs[1]
+  epsilon = op.get_attr("epsilon")
+  data_format = op.get_attr("data_format")
+  is_training = op.get_attr("is_training")
+  if is_training:
+    return gen_nn_ops.fused_batch_norm_grad(
+        grad_y,
+        x,
+        scale,
+        op.outputs[3],
+        op.outputs[4],
+        epsilon=epsilon,
+        data_format=data_format,
+        is_training=is_training)
+  else:
+    pop_mean = op.inputs[3]
+    pop_var = op.inputs[4]
+    if data_format == b"NHWC":
+      reduce_axis = [0, 1, 2]
+    else:
+      reduce_axis = [0, 2, 3]
+      shape = [1, array_ops.size(pop_mean), 1, 1]
+      pop_mean = array_ops.reshape(pop_mean, shape)
+      pop_var = array_ops.reshape(pop_var, shape)
+      scale = array_ops.reshape(scale, shape)
+
+    grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
+    var_rsqrt = math_ops.rsqrt(pop_var + epsilon)
+    grad_scale = math_ops.reduce_sum(
+        grad_y * (x - pop_mean) * var_rsqrt, axis=reduce_axis)
+    grad_x = grad_y * scale * var_rsqrt
+    return grad_x, grad_scale, grad_offset, None, None
 
 
 @ops.RegisterGradient("L2Loss")
