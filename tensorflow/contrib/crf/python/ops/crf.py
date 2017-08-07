@@ -16,13 +16,24 @@
 
 The following snippet is an example of a CRF layer on top of a batched sequence
 of unary scores (logits for every word). This example also decodes the most
-likely sequence at test time:
+likely sequence at test time. There are two ways to do decoding. One
+is using crf_decode to do decoding in Tensorflow , and the other one is using
+viterbi_decode in Numpy.
 
 log_likelihood, transition_params = tf.contrib.crf.crf_log_likelihood(
     unary_scores, gold_tags, sequence_lengths)
+
 loss = tf.reduce_mean(-log_likelihood)
 train_op = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
 
+# Decoding in Tensorflow.
+viterbi_sequence, viterbi_score = tf.contrib.crf.crf_decode(
+    unary_scores, transition_params, sequence_lengths)
+
+tf_viterbi_sequence, tf_viterbi_score, _ = session.run(
+    [viterbi_sequence, viterbi_score, train_op])
+
+# Decoding in Numpy.
 tf_unary_scores, tf_sequence_lengths, tf_transition_params, _ = session.run(
     [unary_scores, sequence_lengths, transition_params, train_op])
 for tf_unary_scores_, tf_sequence_length_ in zip(tf_unary_scores,
@@ -31,7 +42,7 @@ for tf_unary_scores_, tf_sequence_length_ in zip(tf_unary_scores,
 tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
 
 # Compute the highest score and its tag sequence.
-viterbi_sequence, viterbi_score = tf.contrib.crf.viterbi_decode(
+tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
     tf_unary_scores_, tf_transition_params)
 """
 
@@ -410,7 +421,7 @@ class CrfDecodeBackwardRnnCell(rnn_cell.RNNCell):
 
 
 def crf_decode(potentials, transition_params, sequence_length):
-  '''Decode the highest scoring sequence of tags in TensorFlow.
+  """Decode the highest scoring sequence of tags in TensorFlow.
 
   This is a function for tensor.
 
@@ -425,7 +436,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     decode_tags: A [batch_size, max_seq_len] tensor, with dtype tf.int32.
                 Contains the highest scoring tag indicies.
     best_score: A [batch_size] tensor, containing the score of decode_tags.
-  '''
+  """
   # for simplicity, in shape comments, denote:
   # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
   num_tags = potentials.get_shape()[2].value

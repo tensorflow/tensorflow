@@ -203,18 +203,22 @@ class CrfTest(test.TestCase):
   def testCrfDecode(self):
 
     def np_crf_decode(potentials, transition_params, seq_lens):
-      '''This is a function for numpy arrays.
+      """This is a function for numpy arrays.
 
       Args:
-        potentials: [B, T, num_tags]
-        transition_params: [num_tags, num_tags]
-        seq_lens: [B]
-        tag_indices: [B, T]
+        potentials: A [batch_size, max_seq_len, num_tags] array containing
+                    unary potentials.
+        transition_params: A [num_tags, num_tags] array containing binary
+                    potentials.
+        seq_lens: A [batch_size] array containing true sequence lengths.
 
       Returns:
-        pred_tags: a list
-        scores: a list
-      '''
+        pred_tags: A list of 1-d array, with length batch_size and i-th
+                   element's length seq_lens[i]. Contains the highest scoring
+                   tag indicies.
+        scores: A list of integers, with length batch_size. Contains the score
+                   of pred_tags.
+      """
       pred_tags, scores = [], []
       for p, seq_len in zip(potentials, seq_lens):
         p = p[:seq_len]
@@ -238,7 +242,7 @@ class CrfTest(test.TestCase):
     max_seq_len = 100
     num_tags = 4
 
-    # np.random.seed(1)
+    np.random.seed(1)
     seq_lens_v = np.random.randint(low=max(max_seq_len / 2, 1),
                                    high=max_seq_len,
                                    size=[batch_size])
@@ -249,7 +253,7 @@ class CrfTest(test.TestCase):
     tag_indices_v = np.random.randint(low=0,
                                       high=num_tags,
                                       size=[batch_size, max_seq_len])
-    # decode using numpy version.
+    # Decode using numpy version.
     np_pred_tags, np_scores = np_crf_decode(potentials_v,
                                             trans_params_v,
                                             seq_lens_v)
@@ -261,7 +265,7 @@ class CrfTest(test.TestCase):
       seq_lens = constant_op.constant(seq_lens_v, dtype=dtypes.int32)
       trans_params = constant_op.constant(trans_params_v, dtype=dtypes.float32)
       potentials = constant_op.constant(potentials_v, dtype=dtypes.float32)
-      # decode using tensor version.
+      # Decode using tensor version.
       pred_tags, scores = crf.crf_decode(potentials,
                                          trans_params,
                                          seq_lens)
