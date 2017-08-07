@@ -162,7 +162,7 @@ class SvdOpGpu : public AsyncOpKernel {
       outputVT_reshaped_ptr = outputVT_reshaped.data();
     }
 
-    // Launch a SVD kernel for each matrix in the batch.
+    // Launch an SVD kernel for each matrix in the batch.
     const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
     dev_info.emplace_back(context, batch_size, "gesvd");
@@ -217,7 +217,7 @@ class SvdOpGpu : public AsyncOpKernel {
     }
 
     // Now we check if the SVD operation succeeded or not
-    auto info_checker = [context, dev_info, done](
+    auto info_checker = [context, dev_info, done, input_copy](
                             const Status& status,
                             const std::vector<HostLapackInfo>& /* unused */) {
       Status full_status = status;
