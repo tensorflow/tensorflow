@@ -330,8 +330,12 @@ def get_run_start_intro(run_call_count,
   else:
     feed_dict_lines = []
     for feed_key in feed_dict:
-      feed_key_name = (feed_key if isinstance(feed_key, six.string_types)
-                       else feed_key.name)
+      if isinstance(feed_key, six.string_types):
+        feed_key_name = feed_key
+      elif hasattr(feed_key, "name"):
+        feed_key_name = feed_key.name
+      else:
+        feed_key_name = str(feed_key)
       feed_dict_line = debugger_cli_common.RichLine("  ")
       feed_dict_line += debugger_cli_common.RichLine(
           feed_key_name,
@@ -456,7 +460,8 @@ def get_run_short_description(run_call_count,
     if len(feed_dict) == 1:
       for key in feed_dict:
         description += "1 feed (%s)" % (
-            key if isinstance(key, six.string_types) else key.name)
+            key if isinstance(key, six.string_types) or not hasattr(key, "name")
+            else key.name)
     else:
       description += "%d feeds" % len(feed_dict)
 
