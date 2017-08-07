@@ -146,7 +146,7 @@ class TF_ManagedBuffer : public TensorBuffer {
 void* allocate_tensor(const char* operation, size_t len) {
   void* data =
       tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawAllocation(
         operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
         len, data, tensorflow::cpu_allocator());
@@ -600,8 +600,9 @@ static void TF_Run_Helper(
 
   if (handle == nullptr) {
     RunOptions run_options_proto;
-    if (run_options != nullptr && !run_options_proto.ParseFromArray(
-                                      run_options->data, run_options->length)) {
+    if (run_options != nullptr &&
+        !run_options_proto.ParseFromArray(run_options->data,
+                                          run_options->length)) {
       status->status = InvalidArgument("Unparseable RunOptions proto");
       return;
     }
@@ -2221,8 +2222,9 @@ TF_Session* TF_LoadSessionFromSavedModel(
   }
 
   RunOptions run_options_proto;
-  if (run_options != nullptr && !run_options_proto.ParseFromArray(
-                                    run_options->data, run_options->length)) {
+  if (run_options != nullptr &&
+      !run_options_proto.ParseFromArray(run_options->data,
+                                        run_options->length)) {
     status->status = InvalidArgument("Unparseable RunOptions proto");
     return nullptr;
   }
