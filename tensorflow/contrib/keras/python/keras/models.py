@@ -414,6 +414,7 @@ class Sequential(Model):
     self.outputs = []  # List of length 1: the output tensor (unique).
     self._trainable = True
     self._initial_weights = None
+    self._input_layers = []
 
     # Model attributes.
     self.inbound_nodes = []
@@ -501,10 +502,7 @@ class Sequential(Model):
           node_indices=[],
           tensor_indices=[],
           input_tensors=self.inputs,
-          output_tensors=self.outputs,
-          # no model-level masking for now
-          input_masks=[None for _ in self.inputs],
-          output_masks=[None])
+          output_tensors=self.outputs)
     else:
       output_tensor = layer(self.outputs[0])
       if isinstance(output_tensor, list):
@@ -578,14 +576,12 @@ class Sequential(Model):
     self._output_mask_cache = self.model._output_mask_cache
     self._output_tensor_cache = self.model._output_tensor_cache
     self._output_shape_cache = self.model._output_shape_cache
-    self.input_layers = self.model.input_layers
-    self.input_layers_node_indices = self.model.input_layers_node_indices
-    self.input_layers_tensor_indices = self.model.input_layers_tensor_indices
-    self.output_layers = self.model.output_layers
-    self.output_layers_node_indices = self.model.output_layers_node_indices
-    self.output_layers_tensor_indices = self.model.output_layers_tensor_indices
-    self.nodes_by_depth = self.model.nodes_by_depth
-    self.container_nodes = self.model.container_nodes
+    self._input_layers = self.model._input_layers
+    self._output_layers = self.model._output_layers
+    self._input_coordinates = self.model._input_coordinates
+    self._output_coordinates = self.model._output_coordinates
+    self._nodes_by_depth = self.model._nodes_by_depth
+    self._network_nodes = self.model._network_nodes
     self.output_names = self.model.output_names
     self.input_names = self.model.input_names
     self._feed_input_names = self.model._feed_input_names

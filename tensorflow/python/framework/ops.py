@@ -1705,7 +1705,7 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor"]
+    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
     if name not in self._node_def.attr:
       raise ValueError("No attr named '" + name + "' in " +
                        str(self._node_def))

@@ -121,7 +121,7 @@ cuDNN can operate on both formats, it is faster to operate in its default
 format.
 
 The best practice is to build models that work with both `NCHW` and `NHWC` as it
-is common to train using `NCHW` on GPU, and then do inference with NHWC on CPU.
+is common to train using `NCHW` on GPU, and then do inference with `NHWC` on CPU.
 
 There are edge cases where `NCHW` can be slower on GPU than `NHWC`. One
 [case](https://github.com/tensorflow/tensorflow/issues/7551#issuecomment-280421351)
