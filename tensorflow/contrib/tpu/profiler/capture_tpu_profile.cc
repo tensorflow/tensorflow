@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -50,7 +51,7 @@ using ::tensorflow::io::JoinPath;
 
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kProtoTraceFileName[] = "trace";
-constexpr char kJsonTraceFileName[] = "trace.json";
+constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
 constexpr uint64 kMaxEvents = 1000000;
 
@@ -59,6 +60,19 @@ string GetCurrentTimeStampAsString() {
   std::time_t t = std::time(nullptr);
   CHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
   return s;
+}
+
+Status WriteGzippedDataToFile(const string& filename, const string& data) {
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(filename, &file));
+  io::ZlibCompressionOptions options = io::ZlibCompressionOptions::GZIP();
+  io::ZlibOutputBuffer buffer(file.get(), options.input_buffer_size,
+                              options.output_buffer_size, options);
+  TF_RETURN_IF_ERROR(buffer.Init());
+  TF_RETURN_IF_ERROR(buffer.Append(data));
+  TF_RETURN_IF_ERROR(buffer.Close());
+  TF_RETURN_IF_ERROR(file->Close());
+  return Status::OK();
 }
 
 // This dumps a rawproto trace and a JSON trace to
@@ -74,17 +88,18 @@ void DumpTraceToLogDirectory(StringPiece logdir, StringPiece run,
   string json_path = JoinPath(run_dir, kJsonTraceFileName);
   Trace trace;
   trace.ParseFromString(encoded_trace);
-  LOG(INFO) << "Trace contains " << trace.trace_events_size() << " events.";
-  TF_CHECK_OK(
-      WriteStringToFile(Env::Default(), json_path, TraceEventsToJson(trace)));
-  LOG(INFO) << "Dumped JSON trace data to " << json_path;
+  std::cout << "Trace contains " << trace.trace_events_size() << " events."
+            << std::endl;
+  TF_CHECK_OK(WriteGzippedDataToFile(json_path, TraceEventsToJson(trace)));
+  std::cout << "Dumped JSON trace data to " << json_path << std::endl;
 }
 
 ProfileResponse Profile(const string& service_addr, int duration_ms) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
-  LOG(INFO) << "Limiting the number of trace events number to " << kMaxEvents;
+  std::cout << "Limiting the number of trace events to " << kMaxEvents
+            << std::endl;
   ProfileResponse response;
   ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -140,8 +155,8 @@ int main(int argc, char** argv) {
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
   // Ignore computation_graph for now.
   if (response.encoded_trace().empty()) {
-    LOG(WARNING) << "No trace event is collected during the " << duration_ms
-                 << "ms interval.";
+    std::cout << "No trace event is collected during the " << duration_ms
+              << "ms interval." << std::endl;
   } else {
     LOG(INFO) << "Converting trace events to TraceViewer JSON.";
     tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir, run,
@@ -152,9 +167,10 @@ int main(int argc, char** argv) {
     // The server might generates multiple graphs for one program; we simply
     // pick the first one.
     if (num_graphs > 1) {
-      LOG(INFO) << num_graphs
+      std::cout << num_graphs
                 << " TPU program variants observed over the profiling period. "
-                << "One computation graph will be chosen arbitrarily.";
+                << "One computation graph will be chosen arbitrarily."
+                << std::endl;
     }
     tensorflow::tpu::DumpGraph(
         FLAGS_logdir, run, response.computation_graph(0).SerializeAsString());
