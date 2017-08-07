@@ -755,17 +755,11 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   device_.reset(new DeviceSimple());
   *output = GraphDef();
 
-  bool has_placeholder = false;
-  for (const auto& node : item.graph.node()) {
-    if (IsPlaceholder(node)) {
-      has_placeholder = true;
-      break;
-    }
-  }
+  bool has_feed = !item.feed.empty();
 
   GraphProperties properties(item);
-  if (!has_placeholder) {
-    // Only use static shape information when there is no placeholder in the
+  if (!has_feed) {
+    // Only use static shape information when there is no feed in the
     // graph. That's because it's possible to feed a placeholder with a tensor
     // of any shape, which could make the static information inconsistent with
     // the shapes actually fed.
@@ -779,7 +773,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
 
-  if (!has_placeholder) {
+  if (!has_feed) {
     TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
   }
 
