@@ -66,7 +66,7 @@
 * Exported model signatures using the 'predict' method will no longer have their input and output keys silently ignored and rewritten to 'inputs' and 'outputs'. If a model was exported with different names before 1.2, and is now served with tensorflow/serving, it will accept requests using 'inputs' and 'outputs'. Starting at 1.2, such a model will accept the keys specified during export. Therefore, inference requests using 'inputs' and 'outputs' may start to fail. To fix this, either update any inference clients to send requests with the actual input and output keys used by the trainer code, or conversely, update the trainer code to name the input and output Tensors 'inputs' and 'outputs', respectively. Signatures using the 'classify' and 'regress' methods are not affected by this change; they will continue to standardize their input and output keys as before.
 * Add in-memory caching to the Dataset API.
 * Set default end_of_sequence variable in datasets iterators to false.
-* [Performance] Increase performance of `tf.layers.con2d` when setting use_bias=True by 2x by using nn.bias_add.
+* [Performance] Increase performance of `tf.layers.conv2d` when setting use_bias=True by 2x by using nn.bias_add.
 * Update iOS examples to use CocoaPods, and moved to tensorflow/examples/ios.
 * Adds a family= attribute in `tf.summary` ops to allow controlling the tab name used in Tensorboard for organizing summaries.
 * When GPU is configured, do not require --config=cuda, instead, automatically build for GPU if this is requested in the configure script.
