@@ -146,7 +146,7 @@ class TF_ManagedBuffer : public TensorBuffer {
 void* allocate_tensor(const char* operation, size_t len) {
   void* data =
       tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
+  if (tensorflow::LogMemory::IsEnabled()) {
     tensorflow::LogMemory::RecordRawAllocation(
         operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
         len, data, tensorflow::cpu_allocator());
