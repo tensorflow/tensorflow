@@ -198,6 +198,11 @@ std::vector<string> Split(StringPiece text, char delims, Predicate p) {
   return Split(text, StringPiece(&delims, 1), p);
 }
 
+// Returns the length of the given null-terminated byte string 'str'.
+// Returns strsz if the null character was not found in the first
+// 'strsz' bytes of 'str'.
+size_t Strnlen(const char* str, size_t strsz);
+
 }  // namespace str_util
 }  // namespace tensorflow
 

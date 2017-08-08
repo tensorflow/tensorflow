@@ -384,5 +384,13 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
                                     result);
 }
 
+size_t Strnlen(const char* str, size_t strsz) {
+  size_t len = 0;
+  while (len < strsz && str[len] != '\0') {
+    ++len;
+  }
+  return len;
+}
+
 }  // namespace str_util
 }  // namespace tensorflow
