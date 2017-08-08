@@ -147,8 +147,8 @@ void MemoryTracker::TrackNodeConnection(int64 step, const GraphNode* node,
   if (output_idx == node->node->src_output_idx().end()) {
     return;
   }
-  const auto& output = src->node->output_bytes(step).find(output_idx->second);
-  if (output == src->node->output_bytes(step).end()) {
+  const auto& output = src->node->output_memory(step).find(output_idx->second);
+  if (output == src->node->output_memory(step).end()) {
     return;
   }
   int64 output_bytes = output->second.first;

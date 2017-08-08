@@ -102,7 +102,6 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 XlaCompiler::~XlaCompiler() = default;
 
 int64 XlaCompiler::NextStepId() {
-  mutex_lock l(mu_);
   return next_step_id_++;
 }
 
@@ -161,7 +160,7 @@ Status XlaCompiler::CompileFunction(
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
   optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
-                     /*device=*/nullptr, &graph);
+                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
@@ -552,7 +551,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
 Status XlaCompiler::GetChannelHandle(const string& key,
                                      xla::ChannelHandle* channel) {
-  mutex_lock lock(mu_);
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second, client()->CreateChannelHandle());

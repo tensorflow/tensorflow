@@ -877,7 +877,8 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
         resource_tensor.dtype()));
   }
 
-  ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle =
+      resource_tensor.scalar<ResourceHandle>()();
 
   if (resource_handle.container() ==
       SessionState::kTensorHandleResourceTypeName) {
@@ -886,7 +887,11 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
     return errors::InvalidArgument(strings::StrCat(
         "Invalid resource type hash code: ", resource_handle.hash_code(),
         "(name: ", resource_handle.name(),
-        " type: ", resource_handle.maybe_type_name(), ")"));
+        " type: ", resource_handle.maybe_type_name(),
+        "). Perhaps a resource tensor was being provided as a feed? That is "
+        "not currently allowed. Please file an issue at "
+        "https://github.com/tensorflow/tensorflow/issues/new, ideally with a "
+        "short code snippet that leads to this error message."));
   }
 }
 
@@ -1146,25 +1151,36 @@ Status DirectSession::GetOrCreateExecutors(
   ek->items.reserve(graphs.size());
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
+
+  int graph_def_version;
+  {
+    mutex_lock l(graph_def_lock_);
+    graph_def_version =
+        execution_state_->original_graph_def().versions().producer();
+  }
+  ek->proc_flr.reset(new ProcessFunctionLibraryRuntime(
+      device_mgr_.get(), options_.env, graph_def_version, ek->flib_def.get(),
+      optimizer_opts));
+
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
     const string& partition_name = iter->first;
     std::unique_ptr<Graph>& partition_graph = iter->second;
-    const int graph_def_version = partition_graph->versions().producer();
 
     Device* device;
     TF_RETURN_IF_ERROR(device_mgr_->LookupDevice(partition_name, &device));
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), options_.env,
-                                           device, graph_def_version,
-                                           ek->flib_def.get(), optimizer_opts);
+    auto lib = ek->proc_flr->GetFLR(partition_name);
+    if (lib == nullptr) {
+      return errors::Internal("Could not find device: ", partition_name);
+    }
+    item->flib = lib;
 
     LocalExecutorParams params;
     params.device = device;
-    params.function_library = item->flib.get();
-    auto lib = item->flib.get();
+    params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
@@ -1189,7 +1205,8 @@ Status DirectSession::GetOrCreateExecutors(
     };
     params.node_outputs_cb = node_outputs_callback_;
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second);
+    optimizer.Optimize(lib, options_.env, device, &iter->second,
+                       /*shape_map=*/nullptr);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
     if (!options.debug_options.debug_tensor_watch_opts().empty()) {

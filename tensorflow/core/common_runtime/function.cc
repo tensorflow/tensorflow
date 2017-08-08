@@ -461,7 +461,7 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->env(), lib->device(), g);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g, /*shape_map=*/nullptr);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
@@ -470,7 +470,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   std::unique_ptr<Graph> g(new Graph(lib_def_));
   CopyGraph(*fbody->graph, g.get());
 
-  optimizer_.Optimize(this, env(), device(), &g);
+  optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
 
@@ -679,9 +679,15 @@ bool RemoveIdentityNodes(Graph* g) {
   bool removed_any = false;
   gtl::InlinedVector<Node*, 8> matches;
   for (Node* n : g->nodes()) {
-    if (n->IsIdentity() && GetTheOnlyDataEdge(n->in_edges())) {
-      matches.push_back(n);
-    }
+    if (!n->IsIdentity()) continue;
+    if (!GetTheOnlyDataEdge(n->in_edges())) continue;
+
+    // Some identity nodes are used as sink nodes to give names to output
+    // tensors. These nodes are not going to be executed unless they are in the
+    // fetch set. But if they are in the fetch set we don't want to remove them.
+    if (n->out_edges().empty()) continue;
+
+    matches.push_back(n);
   }
   if (!matches.empty()) {
     for (Node* n : matches) {
@@ -1030,7 +1036,9 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     NodeDef* ndef = gdef->add_node();
     ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
-    *(ndef->mutable_attr()) = n->def().attr();
+    for (const auto& attr : n->attrs()) {
+      (*ndef->mutable_attr())[attr.first] = attr.second;
+    }
     inputs.clear();
     inputs.resize(n->num_inputs());
     for (const Edge* e : n->in_edges()) {

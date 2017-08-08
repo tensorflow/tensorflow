@@ -13,18 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/types.h"
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_OPTIONS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_OPTIONS_H_
 
-using tensorflow::int64;
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
-// A dummy implementation that fills the output with 0, 1, 2,...
-// to test the custom call implementation of DepthwiseConv2dNative op.
-// TODO(keveman): Test this after adding a real implementation for the kernel.
-extern "C" void DummyDepthwiseConv2dKernel(float* output, void** inputs) {
-  const int64* output_size = reinterpret_cast<const int64*>(inputs[4]);
-  const int64 total_size =
-      output_size[0] * output_size[1] * output_size[2] * output_size[3];
-  for (int64 i = 0; i < total_size; ++i) {
-    *(output + i) = i;
-  }
-}
+// Helper functions for querying options that are specific to the CPU backend.
+
+namespace xla {
+namespace cpu {
+namespace options {
+
+bool CpuParallelBackendRequested(const HloModuleConfig& config);
+bool OptimizeForSizeRequested(const HloModuleConfig& config);
+bool VectorizedReduceDisabled(const HloModuleConfig& config);
+
+}  // namespace options
+}  // namespace cpu
+}  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_OPTIONS_H_

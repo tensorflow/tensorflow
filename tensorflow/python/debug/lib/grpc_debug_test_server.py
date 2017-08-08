@@ -75,6 +75,7 @@ class EventListenerTestStreamHandler(
   """Implementation of EventListenerBaseStreamHandler that dumps to file."""
 
   def __init__(self, dump_dir, event_listener_servicer):
+    super(EventListenerTestStreamHandler, self).__init__()
     self._dump_dir = dump_dir
     self._event_listener_servicer = event_listener_servicer
     if self._dump_dir:

@@ -142,8 +142,10 @@ if [[ $(uname) == "Darwin" ]]; then
 fi
 
 
+# Check if in a virtualenv
+IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
 # If still in a virtualenv, deactivate it first
-if [[ -n "$(which deactivate)" ]]; then
+if [[ "$IN_VENV" == "1" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || die "FAILED: Unable to deactivate from existing virtualenv"
 fi
@@ -299,7 +301,7 @@ create_activate_virtualenv_and_install_tensorflow() {
 
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
-  pip install --upgrade pip==8.1.2
+  pip install --upgrade pip==9.0.1
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
@@ -489,10 +491,10 @@ while [[ ${COUNTER} -lt "${#PIP_TASKS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
-  echo ""
-  echo "=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
-"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ==="
-  echo ""
+  echo
+  printf "${COLOR_BOLD}=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
+"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ===${COLOR_NC}"
+  echo
 
   ${PIP_TASKS[COUNTER]}
   RESULT=$?

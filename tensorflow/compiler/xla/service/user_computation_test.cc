@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/user_computation.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -148,10 +147,8 @@ TEST_F(UserComputationTest, SimpleComputation) {
 }
 
 TEST_F(UserComputationTest, EliminateScalarBroadcast) {
-  if (!legacy_flags::GetDebugOptionsFromFlags()
-           .xla_eliminate_hlo_implicit_broadcast()) {
-    return;
-  }
+  auto debug_options = DebugOptions();
+  debug_options.set_xla_eliminate_hlo_implicit_broadcast(true);
 
   // Build a binary computation with scalar broadcast.
   //
@@ -188,11 +185,12 @@ TEST_F(UserComputationTest, EliminateScalarBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloComputation> hlo_computation,
       computation.BuildHloComputation(latest_version.version, hlo_resolver,
-                                      DebugOptions()));
+                                      debug_options));
   // The binary operation has implicit scalar broadcast, should be converted
   // to an explicit broadcast intruction and a binary instruction.
   EXPECT_EQ(4, hlo_computation->instruction_count());
   EXPECT_THAT(hlo_computation->root_instruction(), op::Add());
+  LOG(INFO) << hlo_computation->root_instruction()->ToString();
   const auto& operands = hlo_computation->root_instruction()->operands();
   ASSERT_EQ(2, operands.size());
   EXPECT_TRUE(operands[0]->opcode() == HloOpcode::kBroadcast ||
@@ -200,10 +198,8 @@ TEST_F(UserComputationTest, EliminateScalarBroadcast) {
 }
 
 TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
-  if (!legacy_flags::GetDebugOptionsFromFlags()
-           .xla_eliminate_hlo_implicit_broadcast()) {
-    return;
-  }
+  auto debug_options = DebugOptions();
+  debug_options.set_xla_eliminate_hlo_implicit_broadcast(true);
 
   // Build a binary computation with in-dim broadcast and degenerate broadcast.
   //
@@ -245,7 +241,7 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloComputation> hlo_computation,
       computation.BuildHloComputation(latest_version.version, hlo_resolver,
-                                      DebugOptions()));
+                                      debug_options));
 
   // The binary operation has in-dim broadcast and degenerate broadcast, should
   // first do the in-dim broadcast then convert the degnerate broadcast into a
@@ -266,22 +262,50 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
               operands[1]->opcode() == HloOpcode::kBroadcast);
 }
 
+TEST_F(UserComputationTest, SkipDotInEliminatingImplicitBroadcast) {
+  auto debug_options = DebugOptions();
+  debug_options.set_xla_eliminate_hlo_implicit_broadcast(true);
+
+  //  %a = Param({1, 3});
+  //  %b = Param({3, 1});
+  //  %dot = Dot(%a, %b);
+  ComputationHandle handle;
+  handle.set_handle(123);
+  UserComputation computation("TheComputation", handle);
+
+  ParameterRequest a_request;
+  *a_request.mutable_shape() = ShapeUtil::MakeShape(F32, {1, 3});
+  a_request.set_name("a");
+  a_request.set_parameter(0);
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle a_handle,
+                          computation.AddParameterInstruction(a_request));
+
+  ParameterRequest b_request;
+  *b_request.mutable_shape() = ShapeUtil::MakeShape(F32, {3, 1});
+  b_request.set_name("b");
+  b_request.set_parameter(1);
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
+                          computation.AddParameterInstruction(b_request));
+
+  BinaryOpRequest dot;
+  dot.set_binop(BINOP_DOT);
+  *dot.mutable_lhs() = a_handle;
+  *dot.mutable_rhs() = b_handle;
+  TF_ASSERT_OK(computation.AddBinaryInstruction(dot).status());
+
+  auto hlo_resolver = [](const VersionedComputationHandle& handle) {
+    return nullptr;
+  };
+  VersionedComputationHandle latest_version = computation.GetVersionedHandle();
+
+  // Build the HLO computation.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloComputation> hlo_computation,
+      computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                      debug_options));
+
+  EXPECT_EQ(3, hlo_computation->instruction_count());
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/elemental_ir_emitter.h"
@@ -59,14 +60,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-
-namespace {
-const char* kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
-bool VectorizedReduceDisabled(const xla::HloModuleConfig& config) {
-  return config.debug_options().xla_backend_extra_options().count(
-      kXlaDisableVectorizedReduce);
-}
-}  // namespace
 
 namespace xla {
 
@@ -235,6 +228,13 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
     }
     compute_function_->addAttribute(argument.getArgNo() + 1,
                                     llvm::Attribute::NoAlias);
+  }
+
+  // Add the optize attribute to the function if optimizing for size. This
+  // controls internal behavior of some optimization passes (e.g. loop
+  // unrolling).
+  if (options::OptimizeForSizeRequested(hlo_module_config_)) {
+    compute_function_->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 
   ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(
@@ -1859,7 +1859,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
                                HloInstruction* init_value,
                                tensorflow::gtl::ArraySlice<int64> dimensions,
                                HloComputation* function) {
-  if (!VectorizedReduceDisabled(hlo_module_config_)) {
+  if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
     TF_ASSIGN_OR_RETURN(
         bool vectorization_successful,
@@ -2089,15 +2089,116 @@ Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
   return DefaultAction(dynamic_slice);
 }
 
+namespace {
+
+// Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
+// If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
+// (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
+const HloInstruction* LatestNonGteAncestorAndIndex(const HloInstruction* hlo,
+                                                   ShapeIndex* index) {
+  if (hlo->opcode() == HloOpcode::kGetTupleElement) {
+    const auto* operand = LatestNonGteAncestorAndIndex(hlo->operand(0), index);
+    index->push_back(hlo->tuple_index());
+    return operand;
+  }
+  return hlo;
+}
+
+// Checks if we can emit code for DynamicUpdateSlice to update data in-place.
+// Returns true if operand 0 of DynamicUpdateSlice and its output buffer
+// share the same buffer allocation.
+// Returns false otherwise.
+// TODO(b/64142684) Share code with GPU implementation.
+bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
+                                  HloInstruction* dynamic_update_slice) {
+  CHECK_EQ(HloOpcode::kDynamicUpdateSlice, dynamic_update_slice->opcode());
+
+  // Walk DynamicUpdateSlice operand(0) to parameter and get its
+  // associated operand. See if it shares an allocation with this operand.
+  ShapeIndex index;
+  auto* operand =
+      LatestNonGteAncestorAndIndex(dynamic_update_slice->operand(0), &index);
+  if (operand->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+
+  BufferAllocation::Slice operand_slice =
+      assignment.GetUniqueSlice(operand, index).ConsumeValueOrDie();
+
+  BufferAllocation::Slice dynamic_update_slice_slice =
+      assignment.GetUniqueTopLevelSlice(dynamic_update_slice)
+          .ConsumeValueOrDie();
+
+  return operand_slice == dynamic_update_slice_slice;
+}
+
+}  // namespace
+
 Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                           HloInstruction* /*operand*/,
+                                           HloInstruction* operand,
                                            HloInstruction* update,
-                                           HloInstruction* /*start_indices*/) {
+                                           HloInstruction* start_indices) {
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
     TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
                         EmitTargetAddressForOp(dynamic_update_slice));
     emitted_value_[dynamic_update_slice] = target_address;
     return EmitMemcpy(*update, *dynamic_update_slice);
+  } else if (CanUpdateDynamicSliceInPlace(assignment_, dynamic_update_slice)) {
+    VLOG(2) << "Emitting HandleDynamicUpdateSlice in-place.";
+    // DynamicUpdateSlice's operand(0) and 'fusion' output share the same
+    // BufferAllocation::Slice, so it is safe to emit code to update the slice
+    // 'in-place'. This avoids copying data outside of the slice update region.
+    // TODO(b/64142684) Implement in-place update for fused DynamicUpdateSlice.
+
+    // Emit IR to read dynamic start indices from 'start_indices'.
+    const int64 rank = ShapeUtil::Rank(operand->shape());
+    llvm_ir::IrArray::Index start_index(rank);
+    for (int64 i = 0; i < rank; ++i) {
+      llvm_ir::IrArray::Index dim_index({ir_builder_.getInt64(i)});
+      llvm_ir::IrArray start_indices_array(GetIrArrayForOp(start_indices));
+      start_index[i] =
+          start_indices_array.EmitReadArrayElement(dim_index, &ir_builder_);
+    }
+
+    // Create loop body emitter which emits code to do the following:
+    // *) Map requested 'index' and slice 'start_index' to input/output shape
+    //    as 'output_index'.
+    // *) Reads value from 'update'.
+    // *) Writes value to input/output array at 'output_index'.
+    auto loop_body_emitter =
+        [&](const llvm_ir::IrArray::Index& index) -> Status {
+      // Calculate 'output_index' at which to write value from update.
+      llvm_ir::IrArray::Index output_index(rank);
+      for (int64 i = 0; i < rank; ++i) {
+        // Emit IR which computes:
+        //   output_index = (start_index + index) % dim_size
+        llvm::Value* dim_size = llvm::ConstantInt::get(
+            index[i]->getType(), operand->shape().dimensions(i));
+        llvm::Value* start_index0 = ir_builder_.CreateZExtOrBitCast(
+            start_index[i], index[i]->getType());
+        output_index[i] = ir_builder_.CreateURem(
+            ir_builder_.CreateAdd(start_index0, index[i]), dim_size);
+      }
+
+      // Read value from 'update'.
+      llvm_ir::IrArray update_array(GetIrArrayForOp(update));
+      llvm::Value* update_data =
+          update_array.EmitReadArrayElement(index, &ir_builder_);
+
+      // Write value to output array.
+      llvm_ir::IrArray(GetEmittedValueFor(operand), operand->shape())
+          .EmitWriteArrayElement(output_index, update_data, &ir_builder_);
+      return Status::OK();
+    };
+
+    TF_RETURN_IF_ERROR(
+        llvm_ir::LoopEmitter(loop_body_emitter, update->shape(), &ir_builder_)
+            .EmitLoop());
+
+    TF_ASSIGN_OR_RETURN(llvm::Value * dynamic_update_slice_address,
+                        EmitTargetAddressForOp(dynamic_update_slice));
+    emitted_value_[dynamic_update_slice] = dynamic_update_slice_address;
+    return Status::OK();
   }
   return DefaultAction(dynamic_update_slice);
 }

@@ -326,6 +326,9 @@ string DataTypeToPython(DataType dtype, const string& dtype_module) {
 }
 
 string ShapeToPython(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return "None";
+  }
   string python = "[";
   for (const auto& dim : shape.dim()) {
     if (python.size() > 1) strings::StrAppend(&python, ", ");
@@ -722,8 +725,6 @@ This file is MACHINE GENERATED! Do not edit.
 
 import collections as _collections
 
-from google.protobuf import text_format as _text_format
-
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 
 # Needed to trigger the call to _set_call_cpp_shape_fn.
@@ -772,21 +773,24 @@ from tensorflow.python.framework import op_def_library as _op_def_library
     RemoveNonDeprecationDescriptionsFromOpDef(added);
   }
 
-  strings::Appendf(&result, R"(def _InitOpDefLibrary():
+  result.append(R"(def _InitOpDefLibrary(op_list_proto_bytes):
   op_list = _op_def_pb2.OpList()
-  _text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
+  op_list.ParseFromString(op_list_proto_bytes)
   _op_def_registry.register_op_list(op_list)
   op_def_lib = _op_def_library.OpDefLibrary()
   op_def_lib.add_op_list(op_list)
   return op_def_lib
 
 
-_InitOpDefLibrary.op_list_ascii = """%s"""
+)");
 
-
-_op_def_lib = _InitOpDefLibrary()
-)",
-                   ProtoDebugString(cleaned_ops).c_str());
+  result.append("# ");
+  auto ops_text = ProtoDebugString(cleaned_ops);
+  str_util::StripTrailingWhitespace(&ops_text);
+  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
+  result.append("\n");
+  strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
+                   str_util::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
 }
 

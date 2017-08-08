@@ -93,10 +93,8 @@ class JITSymbolTable {
     ADD_JIT_SYMBOL_TO_TABLE(ReleaseOutfeedBufferAfterPopulation);
     ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32);
     ADD_JIT_SYMBOL_TO_TABLE(LogV8F32);
-    ADD_JIT_SYMBOL_TO_TABLE(TanhV8F32);
     ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32);
     ADD_JIT_SYMBOL_TO_TABLE(LogV4F32);
-    ADD_JIT_SYMBOL_TO_TABLE(TanhV4F32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenConvF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF64);
@@ -173,6 +171,7 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
+                           bool optimize_for_size,
                            CompilerFunctor::ModuleHook pre_optimization_hook,
                            CompilerFunctor::ModuleHook post_optimization_hook)
     : target_machine_(
@@ -187,11 +186,12 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       data_layout_(target_machine_->createDataLayout()),
       object_layer_(
           [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
-      compile_layer_(object_layer_,
-                     CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, GetAvailableIntrinsics(),
-                                     std::move(pre_optimization_hook),
-                                     std::move(post_optimization_hook))) {
+      compile_layer_(
+          object_layer_,
+          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
+                          optimize_for_size, GetAvailableIntrinsics(),
+                          std::move(pre_optimization_hook),
+                          std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }

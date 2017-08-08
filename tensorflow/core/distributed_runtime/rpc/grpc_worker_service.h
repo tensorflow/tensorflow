@@ -34,10 +34,10 @@ class GrpcWorker : public Worker {
   GrpcWorker(WorkerEnv* env);
 
   // Specialized version of RecvTensor for gRPC, which avoids a copy.
-  virtual void RecvTensorAsync(CallOptions* opts,
-                               const RecvTensorRequest* request,
-                               ::grpc::ByteBuffer* response,
-                               StatusCallback done);
+  virtual void GrpcRecvTensorAsync(CallOptions* opts,
+                                   const RecvTensorRequest* request,
+                                   ::grpc::ByteBuffer* response,
+                                   StatusCallback done);
 
   WorkerEnv* env();
 };

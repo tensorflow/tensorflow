@@ -293,10 +293,8 @@ class XlaCompiler {
   // Returns the next step sequence number.
   int64 NextStepId();
 
-  mutex mu_;
-
   // Internal sequence number for steps executed on the compilation device.
-  int64 next_step_id_ GUARDED_BY(mu_);
+  int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
@@ -318,7 +316,7 @@ class XlaCompiler {
                      CompilationResult, SignatureHash>
       cache_;
 
-  std::unordered_map<string, xla::ChannelHandle> channels_ GUARDED_BY(mu_);
+  std::unordered_map<string, xla::ChannelHandle> channels_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

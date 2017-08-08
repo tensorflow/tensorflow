@@ -200,15 +200,20 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
   return const_cast<BufferAllocation*>(&GetAllocation(index));
 }
 
-bool BufferAssignment::HasTopLevelAllocation(
-    const HloInstruction* instruction) const {
+bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
+                                       const ShapeIndex& index) const {
   for (const LogicalBuffer* buffer :
-       GetPointsToSet(instruction).element(/*index=*/{})) {
+       GetPointsToSet(instruction).element(index)) {
     if (allocation_index_for_buffer_.count(buffer) > 0) {
       return true;
     }
   }
   return false;
+}
+
+bool BufferAssignment::HasTopLevelAllocation(
+    const HloInstruction* instruction) const {
+  return HasAllocationAt(instruction, /*index=*/{});
 }
 
 StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
@@ -440,7 +445,9 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   // the buffer_size_ call might fail for some backends.
   const TuplePointsToAnalysis& points_to_analysis =
       liveness_->points_to_analysis();
-  for (const auto& buffer : points_to_analysis.logical_buffers()) {
+  for (LogicalBuffer::Id id = 0; id < points_to_analysis.num_logical_buffers();
+       id++) {
+    auto& buffer = points_to_analysis.logical_buffer(id);
     if (HasAllocation(*buffer)) {
       LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);
@@ -804,6 +811,17 @@ Status BufferAssigner::AssignBuffersForComputation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for thread-local/CustomCall: " << *buffer;
+      continue;
+    }
+
+    if (instruction->opcode() == HloOpcode::kRecv) {
+      // Make sure that recv operations get a new unique allocation so that
+      // don't share their buffer with any other operations.
+      BufferAllocation* allocation = assignment->NewAllocation(
+          *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
+      allocation_indices.push_back(allocation->index());
+      VLOG(3) << "New allocation #" << allocation->index()
+              << " for recv: " << *buffer;
       continue;
     }
 

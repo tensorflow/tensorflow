@@ -28,10 +28,10 @@ GdrWorker::GdrWorker(WorkerEnv* worker_env,
                      RemoteMemoryManager* remote_memory_manager)
     : GrpcWorker(worker_env), remote_memory_manager_(remote_memory_manager) {}
 
-void GdrWorker::RecvTensorAsync(CallOptions* opts,
-                                const RecvTensorRequest* request,
-                                ::grpc::ByteBuffer* response,
-                                StatusCallback done) {
+void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
+                                    const RecvTensorRequest* request,
+                                    ::grpc::ByteBuffer* response,
+                                    StatusCallback done) {
   const int64 step_id = request->step_id();
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());

@@ -444,17 +444,16 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T>::launch(
         }
       }
     }
-    OP_REQUIRES(
-        ctx,
-        best_result.is_valid() && best_result.algorithm() != kDefaultAlgorithm,
-        errors::NotFound("No algorithm worked!"));
     OP_REQUIRES(ctx,
-                best_result_no_scratch.is_valid() &&
-                    best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                errors::NotFound("No algorithm without scratch worked!"));
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_algorithm_no_scratch(
-        best_result_no_scratch.algorithm());
+                best_result.is_valid() || best_result_no_scratch.is_valid(),
+                errors::NotFound("No algorithm worked!"));
+    if (best_result.is_valid()) {
+      algorithm_config.set_algorithm(best_result.algorithm());
+    }
+    if (best_result_no_scratch.is_valid()) {
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+    }
     AutoTuneConvBiasActivation::GetInstance()->Insert(conv_parameters,
                                                       algorithm_config);
   }

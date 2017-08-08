@@ -150,7 +150,7 @@ def get_python_path(environ_cp):
   return paths
 
 
-def setup_python(environ_cp):
+def setup_python(environ_cp, bazel_version):
   """Setup python related env variables."""
   # Get PYTHON_BIN_PATH, default is the current running python.
   default_python_bin_path = sys.executable
@@ -200,8 +200,17 @@ def setup_python(environ_cp):
   write_to_bazelrc('build --define PYTHON_LIB_PATH="%s"' % python_lib_path)
   write_to_bazelrc('build --force_python=py%s' % python_major_version)
   write_to_bazelrc('build --host_force_python=py%s' % python_major_version)
-  write_to_bazelrc('build --python%s_path=\"%s"' % (python_major_version,
-                                                    python_bin_path))
+  bazel_version_int = convert_version_to_int(bazel_version)
+  version_0_5_3_int = convert_version_to_int('0.5.3')
+  # If bazel_version_int is None, we are testing a release Bazel, then the
+  # version should be higher than 0.5.3
+  # TODO(pcloudy): remove this after required min bazel version is higher
+  # than 0.5.3
+  if not bazel_version_int or bazel_version_int >= version_0_5_3_int:
+    write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
+  else:
+    write_to_bazelrc('build --python%s_path=\"%s"' % (python_major_version,
+                                                      python_bin_path))
   write_to_bazelrc('test --force_python=py%s' % python_major_version)
   write_to_bazelrc('test --host_force_python=py%s' % python_major_version)
   write_to_bazelrc('test --define PYTHON_BIN_PATH="%s"' % python_bin_path)
@@ -372,11 +381,32 @@ def set_action_env_var(environ_cp,
   environ_cp[var_name] = str(var)
 
 
+def convert_version_to_int(version):
+  """Convert a version number to a integer that can be used to compare.
+
+  Args:
+    version: a version to be covnerted
+
+  Returns:
+    An integer if converted successfully, otherwise return None.
+  """
+  version_segments = version.split('.')
+  for seg in version_segments:
+    if not seg.isdigit():
+      return None
+
+  version_str = ''.join(['%03d' % int(seg) for seg in version_segments])
+  return int(version_str)
+
+
 def check_bazel_version(min_version):
   """Check installed bezel version is at least min_version.
 
   Args:
     min_version: string for minimum bazel version.
+
+  Returns:
+    The bazel version detected.
   """
   try:
     curr_version = run_shell('bazel --batch version')
@@ -389,23 +419,20 @@ def check_bazel_version(min_version):
       curr_version = line.split('Build label: ')[1]
       break
 
-  min_version_segments = min_version.split('.')
-  curr_version_segments = curr_version.split('.')
+  min_version_int = convert_version_to_int(min_version)
+  curr_version_int = convert_version_to_int(curr_version)
 
   # Check if current bazel version can be detected properly.
-  for seg in curr_version_segments:
-    if not seg.isdigit():
-      print('WARNING: current bazel installation is not a release version.')
-      print('Make sure you are running at least bazel %s' % min_version)
-      return
+  if not curr_version_int:
+    print('WARNING: current bazel installation is not a release version.')
+    print('Make sure you are running at least bazel %s' % min_version)
+    return curr_version
 
-  min_version_str = ''.join(['%03d' % int(seg) for seg in min_version_segments])
-  curr_version_str = ''.join(
-      ['%03d' % int(seg) for seg in curr_version_segments])
-  if int(curr_version_str) < int(min_version_str):
+  if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
           'build TensorFlow!' % min_version)
     sys.exit(0)
+  return curr_version
 
 
 def set_cc_opt_flags(environ_cp):
@@ -886,11 +913,11 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.4.5')
+  bazel_version = check_bazel_version('0.4.5')
 
   reset_tf_configure_bazelrc()
   cleanup_makefile()
-  setup_python(environ_cp)
+  setup_python(environ_cp, bazel_version)
   run_gen_git_source(environ_cp)
 
   if is_windows():

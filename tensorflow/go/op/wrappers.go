@@ -1269,46 +1269,6 @@ func MirrorPad(scope *Scope, input tf.Output, paddings tf.Output, mode string) (
 	return op.Output(0)
 }
 
-// Pads a tensor.
-//
-// This operation pads `input` according to the `paddings` and `constant_values`
-// you specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is
-// the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
-// how many padding values to add before the contents of `input` in that dimension,
-// and `paddings[D, 1]` indicates how many padding values to add after the contents
-// of `input` in that dimension. `constant_values` is a scalar tensor of the same
-// type as `input` that indicates the value to use for padding `input`.
-//
-// The padded size of each dimension D of the output is:
-//
-// `paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
-//
-// For example:
-//
-// ```
-// # 't' is [[1, 1], [2, 2]]
-// # 'paddings' is [[1, 1], [2, 2]]
-// # 'constant_values' is 0
-// # rank of 't' is 2
-// pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
-//                       [0, 0, 1, 1, 0, 0]
-//                       [0, 0, 2, 2, 0, 0]
-//                       [0, 0, 0, 0, 0, 0]]
-// ```
-func PadV2(scope *Scope, input tf.Output, paddings tf.Output, constant_values tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "PadV2",
-		Input: []tf.Input{
-			input, paddings, constant_values,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Return the reduction indices for computing gradients of s0 op s1 with broadcast.
 //
 // This is typically used by gradient computations for a broadcasting operation.
@@ -6452,9 +6412,9 @@ func SampleDistortedBoundingBoxV2(scope *Scope, image_size tf.Output, bounding_b
 // bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 // height of the underlying image.
 //
-// For example, if an image is 100 x 200 pixels and the bounding box is
-// `[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
-// bounding box will be `(10, 40)` to `(50, 180)`.
+// For example, if an image is 100 x 200 pixels (height x width) and the bounding
+// box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+// the bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).
 //
 // Parts of the bounding box may fall outside the image.
 //
@@ -6503,6 +6463,46 @@ func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Returns a list of tensors with the same shapes and contents as the input
+//
+// tensors.
+//
+// This op can be used to override the gradient for complicated functions. For
+// example, suppose y = f(x) and we wish to apply a custom function g for backprop
+// such that dx = g(dy). In Python,
+//
+// ```python
+// with tf.get_default_graph().gradient_override_map(
+//     {'IdentityN': 'OverrideGradientWithG'}):
+//   y, _ = identity_n([f(x), x])
+//
+// @tf.RegisterGradient('OverrideGradientWithG')
+// def ApplyG(op, dy, _):
+//   return [None, g(dy)]  # Do not backprop to f(x).
+// ```
+func IdentityN(scope *Scope, input []tf.Output) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IdentityN",
+		Input: []tf.Input{
+			tf.OutputList(input),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("IdentityN", err)
+		return
+	}
+	return output
 }
 
 // Decode the first frame of a GIF-encoded image to a uint8 tensor.
@@ -10457,6 +10457,43 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 	return op.Output(0), op.Output(1)
 }
 
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed precision at `k` as a `bool Tensor`.
+func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InTopKV2",
+		Input: []tf.Input{
+			predictions, targets, k,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TakeManySparseFromTensorsMapAttr is an optional argument to TakeManySparseFromTensorsMap.
 type TakeManySparseFromTensorsMapAttr func(optionalAttr)
 
@@ -11034,6 +11071,54 @@ func SparseTensorDenseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output,
 		Input: []tf.Input{
 			a_indices, a_values, a_shape, b,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// AvgPoolAttr is an optional argument to AvgPool.
+type AvgPoolAttr func(optionalAttr)
+
+// AvgPoolDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// If not specified, defaults to "NHWC"
+func AvgPoolDataFormat(value string) AvgPoolAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Performs average pooling on the input.
+//
+// Each entry in `output` is the mean of the corresponding size `ksize`
+// window in `value`.
+//
+// Arguments:
+//	value: 4-D with shape `[batch, height, width, channels]`.
+//	ksize: The size of the sliding window for each dimension of `value`.
+//	strides: The stride of the sliding window for each dimension of `value`.
+//	padding: The type of padding algorithm to use.
+//
+// Returns The average pooled output tensor.
+func AvgPool(scope *Scope, value tf.Output, ksize []int64, strides []int64, padding string, optional ...AvgPoolAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AvgPool",
+		Input: []tf.Input{
+			value,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -14907,6 +14992,97 @@ func ResourceApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom tf.Out
 	return scope.AddOperation(opspec)
 }
 
+// ResourceApplyAdamAttr is an optional argument to ResourceApplyAdam.
+type ResourceApplyAdamAttr func(optionalAttr)
+
+// ResourceApplyAdamUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var, m, and v tensors will be protected
+// by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyAdamUseLocking(value bool) ResourceApplyAdamAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyAdamUseNesterov sets the optional use_nesterov attribute to value.
+//
+// value: If `True`, uses the nesterov update.
+// If not specified, defaults to false
+func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
+	return func(m optionalAttr) {
+		m["use_nesterov"] = value
+	}
+}
+
+// Update '*var' according to the Adam algorithm.
+//
+// lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
+// v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
+// variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	m: Should be from a Variable().
+//	v: Should be from a Variable().
+//	beta1_power: Must be a scalar.
+//	beta2_power: Must be a scalar.
+//	lr: Scaling factor. Must be a scalar.
+//	beta1: Momentum factor. Must be a scalar.
+//	beta2: Momentum factor. Must be a scalar.
+//	epsilon: Ridge term. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyAdam(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output, beta1_power tf.Output, beta2_power tf.Output, lr tf.Output, beta1 tf.Output, beta2 tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyAdamAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyAdam",
+		Input: []tf.Input{
+			var_, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// 3D fast Fourier transform.
+//
+// Computes the 3-dimensional discrete Fourier transform over the inner-most 3
+// dimensions of `input`.
+//
+// Arguments:
+//	input: A complex64 tensor.
+//
+// Returns A complex64 tensor of the same shape as `input`. The inner-most 3
+//   dimensions of `input` are replaced with their 3D Fourier transform.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fftn with 3 dimensions.
+// @end_compatibility
+func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FFT3D",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Elementwise computes the bitwise XOR of `x` and `y`.
 //
 // The result will have those bits set, that are different in `x` and `y`. The
@@ -15179,6 +15355,11 @@ func ResizeAreaAlignCorners(value bool) ResizeAreaAttr {
 // Resize `images` to `size` using area interpolation.
 //
 // Input images can be of different types but output images are always float.
+//
+// Each output pixel is computed by first transforming the pixel's footprint into
+// the input tensor and then averaging the pixels that intersect the footprint. An
+// input pixel's contribution to the average is weighted by the fraction of its
+// area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
 //
 // Arguments:
 //	images: 4-D with shape `[batch, height, width, channels]`.
@@ -16263,28 +16444,6 @@ func DestroyResourceOp(scope *Scope, resource tf.Output, optional ...DestroyReso
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Computes gradients for the scaled exponential linear (Selu) operation.
-//
-// Arguments:
-//	gradients: The backpropagated gradients to the corresponding Selu operation.
-//	outputs: The outputs of the corresponding Selu operation.
-//
-// Returns The gradients: `gradients * (outputs + scale * alpha)` if outputs < 0,
-// `scale * gradients` otherwise.
-func SeluGrad(scope *Scope, gradients tf.Output, outputs tf.Output) (backprops tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SeluGrad",
-		Input: []tf.Input{
-			gradients, outputs,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Converts each string in the input Tensor to its hash mod by a number of buckets.
@@ -19096,6 +19255,151 @@ func FractionalAvgPoolGrad(scope *Scope, orig_input_tensor_shape tf.Output, out_
 	return op.Output(0)
 }
 
+// Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
+//
+// if < 0, `scale * features` otherwise.
+//
+// See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Selu",
+		Input: []tf.Input{
+			features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResourceSparseApplyAdadeltaAttr is an optional argument to ResourceSparseApplyAdadelta.
+type ResourceSparseApplyAdadeltaAttr func(optionalAttr)
+
+// ResourceSparseApplyAdadeltaUseLocking sets the optional use_locking attribute to value.
+//
+// value: If True, updating of the var and accum tensors will be protected by
+// a lock; otherwise the behavior is undefined, but may exhibit less contention.
+// If not specified, defaults to false
+func ResourceSparseApplyAdadeltaUseLocking(value bool) ResourceSparseApplyAdadeltaAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// var: Should be from a Variable().
+//
+// Arguments:
+//
+//	accum: Should be from a Variable().
+//	accum_update: : Should be from a Variable().
+//	lr: Learning rate. Must be a scalar.
+//	rho: Decay factor. Must be a scalar.
+//	epsilon: Constant factor. Must be a scalar.
+//	grad: The gradient.
+//	indices: A vector of indices into the first dimension of var and accum.
+//
+// Returns the created operation.
+func ResourceSparseApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_update tf.Output, lr tf.Output, rho tf.Output, epsilon tf.Output, grad tf.Output, indices tf.Output, optional ...ResourceSparseApplyAdadeltaAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceSparseApplyAdadelta",
+		Input: []tf.Input{
+			var_, accum, accum_update, lr, rho, epsilon, grad, indices,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Returns which elements of x are NaN.
+//
+// @compatibility(numpy)
+// Equivalent to np.isnan
+// @end_compatibility
+func IsNan(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IsNan",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Pads a tensor.
+//
+// This operation pads `input` according to the `paddings` and `constant_values`
+// you specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is
+// the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+// how many padding values to add before the contents of `input` in that dimension,
+// and `paddings[D, 1]` indicates how many padding values to add after the contents
+// of `input` in that dimension. `constant_values` is a scalar tensor of the same
+// type as `input` that indicates the value to use for padding `input`.
+//
+// The padded size of each dimension D of the output is:
+//
+// `paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+//
+// For example:
+//
+// ```
+// # 't' is [[1, 1], [2, 2]]
+// # 'paddings' is [[1, 1], [2, 2]]
+// # 'constant_values' is 0
+// # rank of 't' is 2
+// pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
+//                       [0, 0, 1, 1, 0, 0]
+//                       [0, 0, 2, 2, 0, 0]
+//                       [0, 0, 0, 0, 0, 0]]
+// ```
+func PadV2(scope *Scope, input tf.Output, paddings tf.Output, constant_values tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "PadV2",
+		Input: []tf.Input{
+			input, paddings, constant_values,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes gradients for the scaled exponential linear (Selu) operation.
+//
+// Arguments:
+//	gradients: The backpropagated gradients to the corresponding Selu operation.
+//	outputs: The outputs of the corresponding Selu operation.
+//
+// Returns The gradients: `gradients * (outputs + scale * alpha)`
+// if outputs < 0, `scale * gradients` otherwise.
+func SeluGrad(scope *Scope, gradients tf.Output, outputs tf.Output) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SeluGrad",
+		Input: []tf.Input{
+			gradients, outputs,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes softplus: `log(exp(features) + 1)`.
 func Softplus(scope *Scope, features tf.Output) (activations tf.Output) {
 	if scope.Err() != nil {
@@ -19520,97 +19824,6 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 		Type: "ScalarSummary",
 		Input: []tf.Input{
 			tags, values,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceApplyAdamAttr is an optional argument to ResourceApplyAdam.
-type ResourceApplyAdamAttr func(optionalAttr)
-
-// ResourceApplyAdamUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var, m, and v tensors will be protected
-// by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyAdamUseLocking(value bool) ResourceApplyAdamAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// ResourceApplyAdamUseNesterov sets the optional use_nesterov attribute to value.
-//
-// value: If `True`, uses the nesterov update.
-// If not specified, defaults to false
-func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
-	return func(m optionalAttr) {
-		m["use_nesterov"] = value
-	}
-}
-
-// Update '*var' according to the Adam algorithm.
-//
-// lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
-// m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
-// v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
-// variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	m: Should be from a Variable().
-//	v: Should be from a Variable().
-//	beta1_power: Must be a scalar.
-//	beta2_power: Must be a scalar.
-//	lr: Scaling factor. Must be a scalar.
-//	beta1: Momentum factor. Must be a scalar.
-//	beta2: Momentum factor. Must be a scalar.
-//	epsilon: Ridge term. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyAdam(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output, beta1_power tf.Output, beta2_power tf.Output, lr tf.Output, beta1 tf.Output, beta2 tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyAdamAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyAdam",
-		Input: []tf.Input{
-			var_, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// 3D fast Fourier transform.
-//
-// Computes the 3-dimensional discrete Fourier transform over the inner-most 3
-// dimensions of `input`.
-//
-// Arguments:
-//	input: A complex64 tensor.
-//
-// Returns A complex64 tensor of the same shape as `input`. The inner-most 3
-//   dimensions of `input` are replaced with their 3D Fourier transform.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.fftn with 3 dimensions.
-// @end_compatibility
-func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "FFT3D",
-		Input: []tf.Input{
-			input,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -20563,24 +20776,6 @@ func Elu(scope *Scope, features tf.Output) (activations tf.Output) {
 	return op.Output(0)
 }
 
-// Computes scaled exponential linear: `1.758099 * (exp(features) - 1)` if < 0,
-// `1.050701 * features` otherwise.
-//
-// See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
-func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Selu",
-		Input: []tf.Input{
-			features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes square of x element-wise.
 //
 // I.e., \\(y = x * x = x^2\\).
@@ -21334,6 +21529,147 @@ func RealDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Returns the number of work units this Reader has finished processing.
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units_completed tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderNumWorkUnitsCompletedV2",
+		Input: []tf.Input{
+			reader_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv2DBackpropFilterAttr is an optional argument to Conv2DBackpropFilter.
+type Conv2DBackpropFilterAttr func(optionalAttr)
+
+// Conv2DBackpropFilterUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropFilterDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the filter.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	filter_sizes: An integer vector representing the tensor shape of `filter`,
+// where `filter` is a 4-D
+// `[filter_height, filter_width, in_channels, out_channels]` tensor.
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+// Gradients w.r.t. the output of the convolution.
+//	strides: The stride of the sliding window for each dimension of the input
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+// the `filter` input of the convolution.
+func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropFilter",
+		Input: []tf.Input{
+			input, filter_sizes, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MinAttr is an optional argument to Min.
+type MinAttr func(optionalAttr)
+
+// MinKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func MinKeepDims(value bool) MinAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the minimum of elements across dimensions of a tensor.
+//
+// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// retained with length 1.
+//
+// Arguments:
+//	input: The tensor to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
+//
+// Returns The reduced tensor.
+func Min(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MinAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Min",
+		Input: []tf.Input{
+			input, reduction_indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes Psi, the derivative of Lgamma (the log of the absolute value of
+//
+// `Gamma(x)`), element-wise.
+func Digamma(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Digamma",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns element-wise largest integer not greater than x.
 func Floor(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
@@ -21481,7 +21817,7 @@ func Sin(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Computes the determinant of one ore more square matrices.
+// Computes the determinant of one or more square matrices.
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 // form square matrices. The output is a tensor containing the determinants
@@ -22023,70 +22359,6 @@ func QuantizedAdd(scope *Scope, x tf.Output, y tf.Output, min_x tf.Output, max_x
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// ResourceSparseApplyAdadeltaAttr is an optional argument to ResourceSparseApplyAdadelta.
-type ResourceSparseApplyAdadeltaAttr func(optionalAttr)
-
-// ResourceSparseApplyAdadeltaUseLocking sets the optional use_locking attribute to value.
-//
-// value: If True, updating of the var and accum tensors will be protected by
-// a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to false
-func ResourceSparseApplyAdadeltaUseLocking(value bool) ResourceSparseApplyAdadeltaAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// var: Should be from a Variable().
-//
-// Arguments:
-//
-//	accum: Should be from a Variable().
-//	accum_update: : Should be from a Variable().
-//	lr: Learning rate. Must be a scalar.
-//	rho: Decay factor. Must be a scalar.
-//	epsilon: Constant factor. Must be a scalar.
-//	grad: The gradient.
-//	indices: A vector of indices into the first dimension of var and accum.
-//
-// Returns the created operation.
-func ResourceSparseApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_update tf.Output, lr tf.Output, rho tf.Output, epsilon tf.Output, grad tf.Output, indices tf.Output, optional ...ResourceSparseApplyAdadeltaAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceSparseApplyAdadelta",
-		Input: []tf.Input{
-			var_, accum, accum_update, lr, rho, epsilon, grad, indices,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Returns which elements of x are NaN.
-//
-// @compatibility(numpy)
-// Equivalent to np.isnan
-// @end_compatibility
-func IsNan(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IsNan",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Returns an element-wise indication of the sign of a number.
@@ -22830,147 +23102,6 @@ func Mean(scope *Scope, input tf.Output, reduction_indices tf.Output, optional .
 	return op.Output(0)
 }
 
-// Returns the number of work units this Reader has finished processing.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units_completed tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderNumWorkUnitsCompletedV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Conv2DBackpropFilterAttr is an optional argument to Conv2DBackpropFilter.
-type Conv2DBackpropFilterAttr func(optionalAttr)
-
-// Conv2DBackpropFilterUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
-// If not specified, defaults to true
-func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["use_cudnn_on_gpu"] = value
-	}
-}
-
-// Conv2DBackpropFilterDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to "NHWC"
-func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Computes the gradients of convolution with respect to the filter.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-//	filter_sizes: An integer vector representing the tensor shape of `filter`,
-// where `filter` is a 4-D
-// `[filter_height, filter_width, in_channels, out_channels]` tensor.
-//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
-// Gradients w.r.t. the output of the convolution.
-//	strides: The stride of the sliding window for each dimension of the input
-// of the convolution. Must be in the same order as the dimension specified with
-// format.
-//	padding: The type of padding algorithm to use.
-//
-// Returns 4-D with shape
-// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
-// the `filter` input of the convolution.
-func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv2DBackpropFilter",
-		Input: []tf.Input{
-			input, filter_sizes, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes Psi, the derivative of Lgamma (the log of the absolute value of
-//
-// `Gamma(x)`), element-wise.
-func Digamma(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Digamma",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MinAttr is an optional argument to Min.
-type MinAttr func(optionalAttr)
-
-// MinKeepDims sets the optional keep_dims attribute to value.
-//
-// value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to false
-func MinKeepDims(value bool) MinAttr {
-	return func(m optionalAttr) {
-		m["keep_dims"] = value
-	}
-}
-
-// Computes the minimum of elements across dimensions of a tensor.
-//
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
-// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
-// retained with length 1.
-//
-// Arguments:
-//	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
-// `[-rank(input), rank(input))`.
-//
-// Returns The reduced tensor.
-func Min(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MinAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Min",
-		Input: []tf.Input{
-			input, reduction_indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns which elements of x are finite.
 //
 // @compatibility(numpy)
@@ -23402,6 +23533,106 @@ func Bincount(scope *Scope, arr tf.Output, size tf.Output, weights tf.Output) (b
 		Type: "Bincount",
 		Input: []tf.Input{
 			arr, size, weights,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Pop the element at the top of the stack.
+//
+// Arguments:
+//	handle: The handle to a stack.
+//	elem_type: The type of the elem that is popped.
+//
+// Returns The tensor that is popped from the top of the stack.
+func StackPopV2(scope *Scope, handle tf.Output, elem_type tf.DataType) (elem tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"elem_type": elem_type}
+	opspec := tf.OpSpec{
+		Type: "StackPopV2",
+		Input: []tf.Input{
+			handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// WholeFileReaderV2Attr is an optional argument to WholeFileReaderV2.
+type WholeFileReaderV2Attr func(optionalAttr)
+
+// WholeFileReaderV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this reader is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func WholeFileReaderV2Container(value string) WholeFileReaderV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// WholeFileReaderV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this reader is named in the given bucket
+// with this shared_name. Otherwise, the node name is used instead.
+// If not specified, defaults to ""
+func WholeFileReaderV2SharedName(value string) WholeFileReaderV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// A Reader that outputs the entire contents of a file as a value.
+//
+// To use, enqueue filenames in a Queue.  The output of ReaderRead will
+// be a filename (key) and the contents of that file (value).
+//
+// Returns The handle to reference the Reader.
+func WholeFileReaderV2(scope *Scope, optional ...WholeFileReaderV2Attr) (reader_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "WholeFileReaderV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the mean along sparse segments of a tensor.
+//
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
+//
+// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+// dimension, selecting a subset of dimension 0, specified by `indices`.
+//
+// Arguments:
+//
+//	indices: A 1-D tensor. Has same rank as `segment_ids`.
+//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMean",
+		Input: []tf.Input{
+			data, indices, segment_ids,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -25065,152 +25296,4 @@ func RestoreV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and
 		return
 	}
 	return tensors
-}
-
-// AvgPoolAttr is an optional argument to AvgPool.
-type AvgPoolAttr func(optionalAttr)
-
-// AvgPoolDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to "NHWC"
-func AvgPoolDataFormat(value string) AvgPoolAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Performs average pooling on the input.
-//
-// Each entry in `output` is the mean of the corresponding size `ksize`
-// window in `value`.
-//
-// Arguments:
-//	value: 4-D with shape `[batch, height, width, channels]`.
-//	ksize: The size of the sliding window for each dimension of `value`.
-//	strides: The stride of the sliding window for each dimension of `value`.
-//	padding: The type of padding algorithm to use.
-//
-// Returns The average pooled output tensor.
-func AvgPool(scope *Scope, value tf.Output, ksize []int64, strides []int64, padding string, optional ...AvgPoolAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AvgPool",
-		Input: []tf.Input{
-			value,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Pop the element at the top of the stack.
-//
-// Arguments:
-//	handle: The handle to a stack.
-//	elem_type: The type of the elem that is popped.
-//
-// Returns The tensor that is popped from the top of the stack.
-func StackPopV2(scope *Scope, handle tf.Output, elem_type tf.DataType) (elem tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"elem_type": elem_type}
-	opspec := tf.OpSpec{
-		Type: "StackPopV2",
-		Input: []tf.Input{
-			handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the mean along sparse segments of a tensor.
-//
-// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-// segments.
-//
-// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-// dimension, selecting a subset of dimension 0, specified by `indices`.
-//
-// Arguments:
-//
-//	indices: A 1-D tensor. Has same rank as `segment_ids`.
-//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentMean",
-		Input: []tf.Input{
-			data, indices, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// WholeFileReaderV2Attr is an optional argument to WholeFileReaderV2.
-type WholeFileReaderV2Attr func(optionalAttr)
-
-// WholeFileReaderV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this reader is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func WholeFileReaderV2Container(value string) WholeFileReaderV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// WholeFileReaderV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this reader is named in the given bucket
-// with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to ""
-func WholeFileReaderV2SharedName(value string) WholeFileReaderV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// A Reader that outputs the entire contents of a file as a value.
-//
-// To use, enqueue filenames in a Queue.  The output of ReaderRead will
-// be a filename (key) and the contents of that file (value).
-//
-// Returns The handle to reference the Reader.
-func WholeFileReaderV2(scope *Scope, optional ...WholeFileReaderV2Attr) (reader_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "WholeFileReaderV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }

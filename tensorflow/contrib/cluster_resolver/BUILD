@@ -23,7 +23,10 @@ filegroup(
 
 py_library(
     name = "cluster_resolver_pip",
-    srcs = ["python/training/__init__.py"],
+    srcs = [
+        "__init__.py",
+        "python/training/__init__.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":cluster_resolver_py",

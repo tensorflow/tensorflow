@@ -7135,7 +7135,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels (height x width) and the bounding\nbox is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of\nthe bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -9884,6 +9884,25 @@ op {
   summary: "Return a tensor with the same shape and contents as the input tensor or value."
 }
 op {
+  name: "IdentityN"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Returns a list of tensors with the same shapes and contents as the input"
+  description: "tensors.\n\nThis op can be used to override the gradient for complicated functions. For\nexample, suppose y = f(x) and we wish to apply a custom function g for backprop\nsuch that dx = g(dy). In Python,\n\n```python\nwith tf.get_default_graph().gradient_override_map(\n    {\'IdentityN\': \'OverrideGradientWithG\'}):\n  y, _ = identity_n([f(x), x])\n\n@tf.RegisterGradient(\'OverrideGradientWithG\')\ndef ApplyG(op, dy, _):\n  return [None, g(dy)]  # Do not backprop to f(x).\n```"
+}
+op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"
@@ -10164,6 +10183,44 @@ op {
     name: "k"
     type: "int"
     description: "Number of top elements to look at for computing precision."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Says whether the targets are in the top `K` predictions."
+  description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
+}
+op {
+  name: "InTopKV2"
+  input_arg {
+    name: "predictions"
+    description: "A `batch_size` x `classes` tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "targets"
+    description: "A `batch_size` vector of class ids."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "Number of top elements to look at for computing precision."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "precision"
+    description: "Computed precision at `k` as a `bool Tensor`."
+    type: DT_BOOL
   }
   attr {
     name: "T"
@@ -12132,7 +12189,7 @@ op {
       }
     }
   }
-  summary: "Computes the determinant of one ore more square matrices."
+  summary: "Computes the determinant of one or more square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
@@ -19579,7 +19636,7 @@ op {
     description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
   }
   summary: "Resize `images` to `size` using area interpolation."
-  description: "Input images can be of different types but output images are always float."
+  description: "Input images can be of different types but output images are always float.\n\nEach output pixel is computed by first transforming the pixel\'s footprint into\nthe input tensor and then averaging the pixels that intersect the footprint. An\ninput pixel\'s contribution to the average is weighted by the fraction of its\narea that intersects the footprint.  This is the same as OpenCV\'s INTER_AREA."
 }
 op {
   name: "ResizeBicubic"
@@ -23404,8 +23461,8 @@ op {
       }
     }
   }
-  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)` if < 0, `scale * features` otherwise."
-  description: "See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
+  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`"
+  description: "if < 0, `scale * features` otherwise.\n\nSee [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
 }
 op {
   name: "SeluGrad"
@@ -23421,7 +23478,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients * (outputs + scale * alpha)` if outputs < 0,\n`scale * gradients` otherwise."
+    description: "The gradients: `gradients * (outputs + scale * alpha)`\nif outputs < 0, `scale * gradients` otherwise."
     type_attr: "T"
   }
   attr {

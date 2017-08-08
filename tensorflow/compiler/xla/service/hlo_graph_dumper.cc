@@ -312,12 +312,11 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
-               bool show_addresses, bool show_layouts,
-               const HloExecutionProfile* profile, NodeFilter filter)
+               bool show_addresses, const HloExecutionProfile* profile,
+               NodeFilter filter)
       : computation_(computation),
         label_(label.ToString()),
         show_addresses_(show_addresses),
-        show_layouts_(show_layouts),
         profile_(profile),
         filter_(std::move(filter)) {}
 
@@ -364,7 +363,6 @@ class HloDotDumper {
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
   const bool show_addresses_;
-  const bool show_layouts_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
@@ -524,7 +522,7 @@ HloDotDumper::SubcomputationsToDump() {
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
                                         const HloInstruction* parent_instr) {
   const char* computation_fmt = R"(subgraph %s {
-%s;
+%s
 label = <%s>;
 labelloc = t;
 tooltip = " ";
@@ -542,14 +540,19 @@ tooltip = " ";
     subcomp_label = Printf("Fused expression for <b>%s</b><br/>%s",
                            HtmlLikeStringSanitize(parent_instr->name()),
                            HtmlLikeStringSanitize(parent_instr->ToCategory()));
+    string extra_info = GetInstructionNodeExtraInfo(parent_instr);
+    if (!extra_info.empty()) {
+      StrAppend(&subcomp_label, "<br/>", extra_info);
+    }
 
     // Subcomputation's fill/stroke color is light/dark red/gray, depending on
     // whether or not the subcomputation's fusion node is highlighted.
     bool highlight = filter_.Highlight(parent_instr);
     const char* fillcolor = highlight ? "#ffcdd2" : "#f5f5f5";
     const char* strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
-    style = Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s")",
-                   fillcolor, strokecolor);
+    style =
+        Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
+               fillcolor, strokecolor);
   } else {
     subcomp_label = Printf("Subcomputation for <b>%s</b><br/>%s",
                            HtmlLikeStringSanitize(parent_instr->name()),
@@ -642,8 +645,8 @@ string HloDotDumper::GetInstructionNodeInlinedConstants(
     if (ShapeUtil::IsEffectiveScalar(constant->shape())) {
       auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
           constant->shape(), /*linear_index=*/0);
-      return Printf("%s{%s}", ShapeUtil::HumanString(constant->shape()),
-                    constant->literal().GetAsString(elem_idx));
+      return Printf("%s (%s)", constant->literal().GetAsString(elem_idx),
+                    ShapeUtil::HumanString(constant->shape()));
     }
     if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
       return constant->name();
@@ -659,7 +662,7 @@ string HloDotDumper::GetInstructionNodeInlinedConstants(
     if (operand->opcode() != HloOpcode::kConstant) {
       return "";
     }
-    return stringify_constant(operand);
+    return StrCat("<b>constant</b> ", stringify_constant(operand));
   }
 
   std::vector<string> lines;
@@ -823,30 +826,33 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     lines.push_back(opcode_specific_info);
   }
 
-  // Some instructions have giant tuples as their shapes, so truncate the HLO's
-  // shape to kMaxShapeLen characters.
-  constexpr int kMaxShapeLen = 64;
-  string instr_shape = ShapeUtil::HumanString(instr->shape());
-  if (instr_shape.length() > kMaxShapeLen) {
-    instr_shape =
-        StrCat(tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
-               "...");
+  // Show the shape and layout of the instruction, unless it's an inlined fusion
+  // node -- there the shape and layout is present in the output node.
+  if (instr->opcode() != HloOpcode::kFusion ||
+      !filter_.ShowFusionSubcomputation(instr)) {
+    string instr_shape = ShapeUtil::HumanString(instr->shape());
+
+    // Show layout of non-tuple shapes with more than one dimension.
+    if (LayoutUtil::HasLayout(instr->shape()) &&
+        instr->shape().dimensions_size() > 1 &&
+        !ShapeUtil::IsTuple(instr->shape())) {
+      StrAppend(&instr_shape, "{",
+                Join(instr->shape().layout().minor_to_major(), ","), "}");
+    }
+
+    // Some instructions have giant tuples as their shapes, so truncate the
+    // HLO's shape to kMaxShapeLen characters.
+    constexpr int kMaxShapeLen = 64;
+    if (instr_shape.length() > kMaxShapeLen) {
+      instr_shape = StrCat(
+          tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
+          "...");
+    }
+    lines.push_back(instr_shape);
   }
-  lines.push_back(instr_shape);
 
   if (show_addresses_) {
     lines.push_back(Printf("[%p]", instr));
-  }
-  if (show_layouts_ && LayoutUtil::HasLayout(instr->shape())) {
-    string layout_str;
-    if (ShapeUtil::IsTuple(instr->shape())) {
-      // For tuples, emit the full shape because the layout of a tuple is not
-      // represented in a single Layout field.
-      layout_str = ShapeUtil::HumanStringWithLayout(instr->shape());
-    } else {
-      layout_str = Join(instr->shape().layout().minor_to_major(), ",");
-    }
-    lines.push_back(Printf("layout={%s}", layout_str));
   }
   if (profile_ != nullptr) {
     double hlo_cycles_executed = profile_->GetProfileResult(*instr);
@@ -1115,7 +1121,6 @@ string DumpGraph(const HloComputation& computation, const string& label,
     graph =
         HloDotDumper(&computation, label,
                      /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
-                     /*show_layouts=*/debug_options.xla_hlo_graph_layout(),
                      hlo_execution_profile, NodeFilter())
             .Dump();
     graph_url = GetGraphRenderer()->RenderGraph(
@@ -1134,7 +1139,6 @@ string DumpNeighborhoodAround(const HloInstruction& node, int radius) {
   string graph =
       HloDotDumper(node.parent(), label,
                    /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
-                   /*show_layouts=*/debug_options.xla_hlo_graph_layout(),
                    /*profile=*/nullptr, filter)
           .Dump();
   return GetGraphRenderer()->RenderGraph(

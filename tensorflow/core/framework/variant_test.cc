@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -130,10 +131,10 @@ TEST(VariantTest, TypeMismatch) {
 }
 
 struct TensorList {
-  void Encode(VariantTensorData* data) const { data->tensors = vec; }
+  void Encode(VariantTensorData* data) const { data->tensors_ = vec; }
 
   bool Decode(const VariantTensorData& data) {
-    vec = data.tensors;
+    vec = data.tensors_;
     return true;
   }
 

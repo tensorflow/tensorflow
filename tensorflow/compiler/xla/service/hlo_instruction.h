@@ -64,8 +64,8 @@ class HloInstruction {
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
 
-    kCustom,              // Custom category for backend-specific fusions that
-                          // do not match any of the more specific ones.
+    kCustom,  // Custom category for backend-specific fusions that
+              // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
@@ -627,6 +627,11 @@ class HloInstruction {
     return fusion_kind_;
   }
 
+  void set_fusion_kind(FusionKind kind) {
+    CHECK_EQ(HloOpcode::kFusion, opcode_);
+    fusion_kind_ = kind;
+  }
+
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
@@ -810,6 +815,17 @@ class HloInstruction {
   // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Set the unique id for this instruction to "id"
+  void SetUniqueId(int id) {
+    CHECK_EQ(unique_id_, -1);  // Should not be assigned already
+    CHECK_GE(id, 0);
+    unique_id_ = id;
+  }
+
+  // Return the unique ID assigned to this node via SetUniqueId (or -1
+  // if no id has been assigned yet).
+  int unique_id() const { return unique_id_; }
+
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
   const OpMetadata& metadata() const { return metadata_; }
@@ -892,6 +908,8 @@ class HloInstruction {
 
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
+
+  int unique_id_;  // Unique to this HloInstruction within a HloModule
 
   // Shape of outfeed request.
   Shape outfeed_shape_;

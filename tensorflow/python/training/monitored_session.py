@@ -375,7 +375,7 @@ class SessionCreator(object):
 
 
 class ChiefSessionCreator(SessionCreator):
-  """Creates a tf.Session  for a chief."""
+  """Creates a tf.Session for a chief."""
 
   def __init__(self,
                scaffold=None,

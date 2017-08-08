@@ -171,6 +171,7 @@ Status InvalidArgument(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unimplemented(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status InternalError(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status FailedPrecondition(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
+Status Cancelled(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
@@ -298,10 +299,23 @@ T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
 }
 
+// Rounds the value down to a multiple of the divisor by first calling
+// FloorOfRatio then multiplying by the divisor. For example:
+// RoundUpToMultiple(13, 8) => 8
+template <typename T>
+T RoundDownToNearest(T value, T divisor) {
+  return FloorOfRatio(value, divisor) * divisor;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
 string HumanReadableNumFlops(double flops, double nanoseconds);
+
+// Given a number of transcendental ops executed in an amount of time, produces
+// a string that represents the throughput;
+// e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
+string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.

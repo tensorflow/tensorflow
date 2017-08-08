@@ -16,10 +16,10 @@ class GdrWorker : public GrpcWorker {
   // If it's not possible, it falls back to gRPC in-band tensor transport by
   // encoding the tensor content into the grpc::ByteBuffer.
   // The RecvTensorResponse will carry the necessary information for RDMA.
-  virtual void RecvTensorAsync(CallOptions* opts,
-                               const RecvTensorRequest* request,
-                               ::grpc::ByteBuffer* response,
-                               StatusCallback done) override;
+  virtual void GrpcRecvTensorAsync(CallOptions* opts,
+                                   const RecvTensorRequest* request,
+                                   ::grpc::ByteBuffer* response,
+                                   StatusCallback done) override;
 
  private:
   RemoteMemoryManager* remote_memory_manager_;  // Not owned

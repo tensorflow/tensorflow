@@ -13,34 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 
-REGISTER_OP("_TPUSend")
-    .Input("tensor: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string")
-    .SetIsStateful()
-    .Doc(R"doc(
-Sends the named tensor over the TPU fabric.
-
-tensor: The tensor to send.
-tensor_name: The name of the tensor to send.
-)doc");
-
-REGISTER_OP("_TPURecv")
-    .Output("tensor: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string")
-    .Attr("shape: shape")
-    .SetIsStateful()
-    .Doc(R"doc(
-Receives the named tensor over the TPU fabric.
-
-tensor: The tensor to receive.
-tensor_name: The name of the tensor to receive.
-shape: The shape of the input tensor.
-)doc");
+static void BM_DisabledVlog(int iters) {
+  for (int i = 0; i < iters; ++i) {
+    VLOG(1) << "Testing VLOG(1)!";
+  }
+}
+BENCHMARK(BM_DisabledVlog);
 
 }  // namespace tensorflow

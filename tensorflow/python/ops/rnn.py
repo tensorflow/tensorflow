@@ -890,7 +890,7 @@ def raw_rnn(cell, loop_fn,
       appropriate type and shape `[batch_size] + cell.state_size`.
       If `cell.state_size` is a (possibly nested) tuple of ints or
       `TensorShape`, this will be a tuple having the corresponding shapes.
-      The `emit_output` value may be  either `None` or a (possibly nested)
+      The `emit_output` value may be either `None` or a (possibly nested)
       tuple structure of tensors, e.g.,
       `(tf.zeros(shape_0, dtype=dtype_0), tf.zeros(shape_1, dtype=dtype_1))`.
       If this first `emit_output` return value is `None`,

@@ -263,9 +263,6 @@ TF_CAPI_EXPORT extern int64_t TF_Dim(const TF_Tensor* tensor, int dim_index);
 TF_CAPI_EXPORT extern size_t TF_TensorByteSize(const TF_Tensor*);
 
 // Return a pointer to the underlying data buffer.
-//
-// Returns NULL if the underlying data is not in host memory
-// (for example, if it refers to addresses in GPU memory).
 TF_CAPI_EXPORT extern void* TF_TensorData(const TF_Tensor*);
 
 // --------------------------------------------------------------------------
@@ -363,9 +360,9 @@ typedef struct TF_Output {
 // Sets the shape of the Tensor referenced by `output` in `graph` to
 // the shape described by `dims` and `num_dims`.
 //
-// If the number of dimensions is unknown, `num_dims` must be
-// set to -1 and dims can be null. If a dimension is unknown,
-// the corresponding entry in the `dims` array must be -1.
+// If the number of dimensions is unknown, `num_dims` must be set to
+// -1 and `dims` can be null. If a dimension is unknown, the
+// corresponding entry in the `dims` array must be -1.
 //
 // This does not overwrite the existing shape associated with `output`,
 // but merges the input shape with the existing shape.  For example,

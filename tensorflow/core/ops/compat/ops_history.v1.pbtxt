@@ -10647,6 +10647,23 @@ op {
   }
 }
 op {
+  name: "IdentityN"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"
@@ -10894,6 +10911,38 @@ op {
   attr {
     name: "k"
     type: "int"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "InTopKV2"
+  input_arg {
+    name: "predictions"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "targets"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "precision"
+    type: DT_BOOL
   }
   attr {
     name: "T"
@@ -23619,6 +23668,54 @@ op {
         type: DT_FLOAT
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Selu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "SeluGrad"
+  input_arg {
+    name: "gradients"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "outputs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
