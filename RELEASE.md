@@ -44,6 +44,9 @@
 * Adds time series models to contrib. See contrib/timeseries/README.md for details.
 * Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
 
+## Known Issues
+* Tensorflow_gpu compilation fails with Bazel 0.5.3.
+
 ## Bug Fixes and Other Changes
 * Fixes `strides` and `begin` dtype mismatch when slicing using int64 Tensor index in python.
 * Improved convolution padding documentation.
