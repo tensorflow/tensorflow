@@ -231,18 +231,19 @@ def generate_backend_test_macros(backends=[]):
   if not backends:
     backends = all_backends
   for backend in filter_backends(backends):
-    this_copts = ["-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper()]
+    manifest = ""
     if backend in plugins:
-      this_copts += plugins[backend]["test_macro_copts"]
-    else:
-      this_copts += ["-DXLA_DISABLED_MANIFEST=\\\"\\\""]
+      manifest = plugins[backend]["disabled_manifest"]
 
     native.cc_library(
         name="test_macros_%s" % backend,
         testonly = True,
         srcs = ["test_macros.cc"],
         hdrs = ["test_macros.h"],
-        copts = this_copts,
+        copts = [
+          "-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper(),
+          "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
+        ],
         deps = [
             "//tensorflow/compiler/xla:types",
             "//tensorflow/core:lib",

@@ -20,9 +20,7 @@ plugins = {
       "//tensorflow/compiler/plugin/poplar:poplar_lib",
       "//tensorflow/compiler/xla/tests:test_macros_poplar",
     ],
-    "test_macro_copts": [
-      "-DXLA_DISABLED_MANIFEST=\\\"tensorflow/compiler/plugin/poplar/disabled_xla_tests_manifest.txt\\\"",
-    ],
+    "disabled_manifest": "tensorflow/compiler/plugin/poplar/disabled_xla_tests_manifest.txt",
     "copts": [],
     "tags": [],
     "args": [],
