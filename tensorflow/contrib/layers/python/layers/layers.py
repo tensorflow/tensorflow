@@ -2548,7 +2548,8 @@ def separable_convolution2d(
       dtype = inputs.dtype.base_dtype
       kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
       stride_h, stride_w = utils.two_element_tuple(stride)
-      num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+      num_filters_in = inputs.get_shape().value[1] if data_format.startswith('NC') else \
+          utils.last_dimension(inputs.get_shape(), min_rank=4)
       weights_collections = utils.get_variable_collections(
           variables_collections, 'weights')
 
@@ -2562,7 +2563,7 @@ def separable_convolution2d(
           regularizer=weights_regularizer,
           trainable=trainable,
           collections=weights_collections)
-      strides = [1, stride_h, stride_w, 1]
+      strides = [1, 1, stride_h, stride_w] if data_format.startswith('NC') else [1, stride_h, stride_w, 1]
 
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
                                     rate=utils.two_element_tuple(rate),
