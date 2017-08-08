@@ -56,3 +56,6 @@ ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
 
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1d conv
 ConvolutionTest.Convolve1D_Valid  POPLAR // 1d conv
+
+DotOperationTest POPLAR // Test hangs
+
