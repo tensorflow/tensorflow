@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -99,7 +100,7 @@ struct TF_OperationDescription {
 
   tensorflow::NodeBuilder node_builder;
   TF_Graph* graph;
-  std::vector<tensorflow::string> colocation_constraints;
+  std::set<tensorflow::string> colocation_constraints;
 };
 
 struct TF_Operation {

@@ -696,6 +696,14 @@ bool ConstantFolding::IsSimplifiableReshape(
 
 Status ConstantFolding::SimplifyGraph(GraphDef* output,
                                       const GraphProperties& properties) {
+  bool has_placeholder = false;
+  for (const auto& node : output->node()) {
+    if (IsPlaceholder(node)) {
+      has_placeholder = true;
+      break;
+    }
+  }
+
   for (auto& node : *output->mutable_node()) {
     if (IsSimplifiableReduction(node)) {
       // Replace the reduction node with an identity node, that can be further
@@ -720,7 +728,10 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         *node.add_input() = input;
       }
     }
-    if (IsSimplifiableReshape(node, properties)) {
+    // It's possible to feed a placeholder with a tensor that doesn't have the
+    // proper shape, and reshape this tensor later on. Therefore only remove
+    // reshapes in graphs that don't have placeholders.
+    if (!has_placeholder && IsSimplifiableReshape(node, properties)) {
       const NodeDef* new_shape = node_map_->GetNode(node.input(1));
       DataType output_type = node.attr().at("T").type();
       node.set_op("Identity");

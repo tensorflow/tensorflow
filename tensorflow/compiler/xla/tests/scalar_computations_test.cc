@@ -123,7 +123,7 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU64) {
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS64) {
   ComputationBuilder builder(client_, TestName());
   const int64 a = static_cast<int64>(1) << 62;
-  const int64 b = a + 1;
+  const int64 b = a - 1;
   builder.Add(builder.ConstantR0<int64>(a), builder.ConstantR0<int64>(b));
 
   ComputeAndCompareR0<int64>(&builder, a + b, {});

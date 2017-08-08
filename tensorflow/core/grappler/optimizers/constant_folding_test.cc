@@ -521,7 +521,7 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
 
   // A reshape than can be optimized
   Output d1 = ops::Const(scope.WithOpName("d1"), 3.14f, {17});
-  Output v1 = ops::PlaceholderWithDefault(scope.WithOpName("v1"), d1, {17});
+  Output v1 = ops::Variable(scope.WithOpName("v1"), {17}, DT_FLOAT);
   Output c1 =
       ops::Const(scope.WithOpName("c1").WithControlDependencies(v1), 17, {1});
   Output i1 = ops::Identity(scope.WithOpName("i1"), c1);
@@ -530,9 +530,7 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
   Output s1 = ops::Square(scope.WithOpName("s1"), r1);
 
   // A multi dimensional reshape than can be optimized
-  Output d3 = ops::Const(scope.WithOpName("d3"), 3.14f, {5, 5, 5});
-  Output v3 =
-      ops::PlaceholderWithDefault(scope.WithOpName("v3"), d3, {5, 5, 5});
+  Output v3 = ops::Variable(scope.WithOpName("v3"), {5, 5, 5}, DT_FLOAT);
   Output c3 =
       ops::Const(scope.WithOpName("c3").WithControlDependencies(v3), 5, {3});
   Output i3 = ops::Identity(scope.WithOpName("i3"), c3);
@@ -540,9 +538,7 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
   Output s3 = ops::Square(scope.WithOpName("s3"), r3);
 
   // A multi dimensional partially defined reshape than can be optimized
-  Output d4 = ops::Const(scope.WithOpName("d4"), 3.14f, {5, 5, 5});
-  Output v4 =
-      ops::PlaceholderWithDefault(scope.WithOpName("v4"), d4, {5, 5, 5});
+  Output v4 = ops::Variable(scope.WithOpName("v4"), {5, 5, 5}, DT_FLOAT);
   Output c4 = ops::Const(scope.WithOpName("c4").WithControlDependencies(v4),
                          {5, -1, 5}, {3});
   Output i4 = ops::Identity(scope.WithOpName("i4"), c4);
@@ -550,8 +546,7 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
   Output s4 = ops::Square(scope.WithOpName("s4"), r4);
 
   // A reshape that can't be optimized
-  Output d2 = ops::Const(scope.WithOpName("d2"), 2.7f, {17, 1});
-  Output v2 = ops::PlaceholderWithDefault(scope.WithOpName("v2"), d2, {17, 1});
+  Output v2 = ops::Variable(scope.WithOpName("v2"), {17, 1}, DT_FLOAT);
   Output c2 =
       ops::Const(scope.WithOpName("c2").WithControlDependencies(v2), 17, {1});
   Output r2 = ops::Reshape(scope.WithOpName("r2"), v2, c2);
@@ -565,15 +560,6 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
   GraphDef output;
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-
-  auto expected = EvaluateNodes(item.graph, item.fetch);
-  auto optimized = EvaluateNodes(output, item.fetch);
-  ASSERT_EQ(4, expected.size());
-  ASSERT_EQ(4, optimized.size());
-  test::ExpectTensorEqual<float>(expected[0], optimized[0]);
-  test::ExpectTensorEqual<float>(expected[1], optimized[1]);
-  test::ExpectTensorEqual<float>(expected[2], optimized[2]);
-  test::ExpectTensorEqual<float>(expected[3], optimized[3]);
 
   int found = 0;
   for (const auto& node : output.node()) {

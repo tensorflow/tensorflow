@@ -314,7 +314,9 @@ class CholeskyBenchmark(test.Benchmark):
             ops.device("/gpu:0"):
           l = linalg_ops.cholesky(data)
           self.run_op_benchmark(
-              sess, l,
+              sess,
+              control_flow_ops.group(
+                  l,),
               min_iters=25,
               name="cholesky_gpu_{size}".format(size=size))
 

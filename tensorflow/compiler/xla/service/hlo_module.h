@@ -134,6 +134,10 @@ class HloModule {
     return result;
   }
 
+  // Returns the number of unique intruction ids given out.  All ids up to
+  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
+  int NumUniqueInstructionIds() const { return next_unique_id_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation);
