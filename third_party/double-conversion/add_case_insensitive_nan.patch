@@ -1,0 +1,188 @@
+diff --git a/double-conversion/double-conversion.cc b/double-conversion/double-conversion.cc
+index 6f21a01..835e426 100644
+--- a/double-conversion/double-conversion.cc
++++ b/double-conversion/double-conversion.cc
+@@ -26,6 +26,7 @@
+ // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ #include <limits.h>
++#include <locale>
+ #include <math.h>
+ 
+ #include "double-conversion.h"
+@@ -414,21 +415,55 @@ void DoubleToStringConverter::DoubleToAscii(double v,
+ }
+ 
+ 
++namespace {
++
++static inline char ToLower(char ch) {
++  static const std::ctype<char>& cType =
++      std::use_facet<std::ctype<char> >(std::locale::classic());
++  return cType.tolower(ch);
++}
++
++static inline char Pass(char ch) {
++  return ch;
++}
++
++template <class Iterator, class Converter>
++static inline bool ConsumeSubStringImpl(Iterator* current,
++                                        Iterator end,
++                                        const char* substring,
++                                        Converter converter) {
++  ASSERT(converter(**current) == *substring);
++  for (substring++; *substring != '\0'; substring++) {
++    ++*current;
++    if (*current == end || converter(**current) != *substring) {
++      return false;
++    }
++  }
++  ++*current;
++  return true;
++}
++
+ // Consumes the given substring from the iterator.
+ // Returns false, if the substring does not match.
+ template <class Iterator>
+ static bool ConsumeSubString(Iterator* current,
+                              Iterator end,
+-                             const char* substring) {
+-  ASSERT(**current == *substring);
+-  for (substring++; *substring != '\0'; substring++) {
+-    ++*current;
+-    if (*current == end || **current != *substring) return false;
++                             const char* substring,
++                             bool allow_case_insensibility) {
++  if (allow_case_insensibility) {
++    return ConsumeSubStringImpl(current, end, substring, ToLower);
++  } else {
++    return ConsumeSubStringImpl(current, end, substring, Pass);
+   }
+-  ++*current;
+-  return true;
+ }
+ 
++// Consumes first character of the str is equal to ch
++static inline bool ConsumeFirstCharacter(char ch,
++                                         const char* str,
++                                         bool case_insensibility) {
++  return case_insensibility ? ToLower(ch) == str[0] : ch == str[0];
++}
++}
+ 
+ // Maximum number of significant digits in decimal representation.
+ // The longest possible double in decimal representation is
+@@ -629,7 +664,6 @@ static double RadixStringToIeee(Iterator* current,
+   return Double(DiyFp(number, exponent)).value();
+ }
+ 
+-
+ template <class Iterator>
+ double StringToDoubleConverter::StringToIeee(
+     Iterator input,
+@@ -645,6 +679,8 @@ double StringToDoubleConverter::StringToIeee(
+   const bool allow_leading_spaces = (flags_ & ALLOW_LEADING_SPACES) != 0;
+   const bool allow_trailing_spaces = (flags_ & ALLOW_TRAILING_SPACES) != 0;
+   const bool allow_spaces_after_sign = (flags_ & ALLOW_SPACES_AFTER_SIGN) != 0;
++  const bool allow_case_insensibility = (flags_ & ALLOW_CASE_INSENSIBILITY) != 0;
++
+ 
+   // To make sure that iterator dereferencing is valid the following
+   // convention is used:
+@@ -694,8 +730,8 @@ double StringToDoubleConverter::StringToIeee(
+   }
+ 
+   if (infinity_symbol_ != NULL) {
+-    if (*current == infinity_symbol_[0]) {
+-      if (!ConsumeSubString(&current, end, infinity_symbol_)) {
++    if (ConsumeFirstCharacter(*current, infinity_symbol_, allow_case_insensibility)) {
++      if (!ConsumeSubString(&current, end, infinity_symbol_, allow_case_insensibility)) {
+         return junk_string_value_;
+       }
+ 
+@@ -713,8 +749,8 @@ double StringToDoubleConverter::StringToIeee(
+   }
+ 
+   if (nan_symbol_ != NULL) {
+-    if (*current == nan_symbol_[0]) {
+-      if (!ConsumeSubString(&current, end, nan_symbol_)) {
++    if (ConsumeFirstCharacter(*current, nan_symbol_, allow_case_insensibility)) {
++      if (!ConsumeSubString(&current, end, nan_symbol_, allow_case_insensibility)) {
+         return junk_string_value_;
+       }
+ 
+diff --git a/double-conversion/double-conversion.h b/double-conversion/double-conversion.h
+index 6bdfa8d..42aaa3e 100644
+--- a/double-conversion/double-conversion.h
++++ b/double-conversion/double-conversion.h
+@@ -389,7 +389,8 @@ class StringToDoubleConverter {
+     ALLOW_TRAILING_JUNK = 4,
+     ALLOW_LEADING_SPACES = 8,
+     ALLOW_TRAILING_SPACES = 16,
+-    ALLOW_SPACES_AFTER_SIGN = 32
++    ALLOW_SPACES_AFTER_SIGN = 32,
++    ALLOW_CASE_INSENSIBILITY = 64,
+   };
+ 
+   // Flags should be a bit-or combination of the possible Flags-enum.
+@@ -421,6 +422,8 @@ class StringToDoubleConverter {
+   //  - ALLOW_SPACES_AFTER_SIGN: ignore whitespace after the sign.
+   //       Ex: StringToDouble("-   123.2") -> -123.2.
+   //           StringToDouble("+   123.2") -> 123.2
++  //  - ALLOW_CASE_INSENSIBILITY: ignore case of characters for special values:
++  //      infinity and nan.
+   //
+   // empty_string_value is returned when an empty string is given as input.
+   // If ALLOW_LEADING_SPACES or ALLOW_TRAILING_SPACES are set, then a string
+diff --git a/test/cctest/test-conversions.cc b/test/cctest/test-conversions.cc
+index 42bca87..6b709ed 100644
+--- a/test/cctest/test-conversions.cc
++++ b/test/cctest/test-conversions.cc
+@@ -4710,3 +4710,46 @@ TEST(StringToDoubleFloatWhitespace) {
+                            &processed, &all_used));
+   CHECK(all_used);
+ }
++
++
++TEST(StringToDoubleCaseInsensitiveSpecialValues) {
++  int processed = 0;
++
++  int flags = StringToDoubleConverter::ALLOW_CASE_INSENSIBILITY |
++    StringToDoubleConverter::ALLOW_LEADING_SPACES |
++    StringToDoubleConverter::ALLOW_TRAILING_JUNK |
++    StringToDoubleConverter::ALLOW_TRAILING_SPACES;
++
++  // Use 1.0 as junk_string_value.
++  StringToDoubleConverter converter(flags, 0.0, 1.0, "infinity", "nan");
++
++  CHECK_EQ(Double::NaN(), converter.StringToDouble("+nan", 4, &processed));
++  CHECK_EQ(4, processed);
++
++  CHECK_EQ(Double::NaN(), converter.StringToDouble("-nAN", 4, &processed));
++  CHECK_EQ(4, processed);
++
++  CHECK_EQ(Double::NaN(), converter.StringToDouble("nAN", 3, &processed));
++  CHECK_EQ(3, processed);
++
++  CHECK_EQ(Double::NaN(), converter.StringToDouble("nANabc", 6, &processed));
++  CHECK_EQ(3, processed);
++
++  CHECK_EQ(+Double::Infinity(),
++           converter.StringToDouble("+Infinity", 9, &processed));
++  CHECK_EQ(9, processed);
++
++  CHECK_EQ(-Double::Infinity(),
++           converter.StringToDouble("-INFinity", 9, &processed));
++  CHECK_EQ(9, processed);
++
++  CHECK_EQ(Double::Infinity(),
++           converter.StringToDouble("infINITY", 8, &processed));
++  CHECK_EQ(8, processed);
++
++  CHECK_EQ(1.0, converter.StringToDouble("INF", 3, &processed));
++  CHECK_EQ(0, processed);
++
++  CHECK_EQ(1.0, converter.StringToDouble("+inf", 4, &processed));
++  CHECK_EQ(0, processed);
++}
