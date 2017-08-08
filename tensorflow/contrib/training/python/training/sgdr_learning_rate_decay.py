@@ -27,11 +27,12 @@ from tensorflow.python.ops import math_ops, control_flow_ops
 
 def sgdr_decay(learning_rate, global_step, initial_period_steps,
                t_mul=2.0, m_mul=1.0, name=None):
-  """ This procedure implements Stochastic Gradient Descent with Warm
-  Restarts (SGDR) as described in "SGDR: Stochastic Gradient Descent
+  """Implements Stochastic Gradient Descent with Warm Restarts (SGDR).
+  
+  As described in "SGDR: Stochastic Gradient Descent
   with Warm Restarts" by Ilya Loshchilov & Frank Hutter, Proceedings of
   ICLR'2017, available at https://arxiv.org/pdf/1608.03983.pdf
-  The basic idea of the algorithm is the following.
+
   The learning rate decreases according to cosine annealing:
 
   ```python
@@ -42,17 +43,19 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
   the learning rate decreases for `initial_period_steps` steps from the initial
   learning rate `learning_rate` (when `x_val=0`, we get `cos(0)=1`) to
   0 (when `x_val=1`, we get `cos(pi)=-1`).
+
   The decrease within the i-th period takes `t_i` steps,
-  where `t_0` = `initial_period_steps` is user-defined number of batch
+  where `t_0` = `initial_period_steps` is the user-defined number of batch
   iterations (not epochs as in the paper) to be performed before the first
   restart is launched.
+  
   Then, we perform the first restart (i=1) by setting the learning rate to
   `learning_rate*(m_mul^i)`, where `m_mul in [0,1]` (set to 1 by default).
   The i-th restart runs for `t_i=t_0*(t_mul^i)` steps, i.e., every new
   restart runs `t_mul` times longer than the previous one.
 
   Importantly, when one has no access to a validation set, SGDR suggests
-  to report the best expected / recommended solution in the following way.
+  to report the best expected / recommended solution in the following way:
   When we are within our initial run (i=0), every new solution represents
   SGDR's recommended solution. Instead, when i>0, the recommended solution is
   the one obtained at the end of each restart.
@@ -65,20 +68,19 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
   of number of minibatch updates. If one wants to use epochs, one should compute
   the number of updates required for an epoch.
 
-  Clarification:
+  For example, assume the following parameters and intention:
       Minibatch size: 100
-      Training dataset size: 10 000
+      Training dataset size: 10000
       If the user wants the first decay period to span across 5 epochs, then
       `initial_period_steps` = 5 * 10000/100 = 500
-
-
-  Example:
+  
       Train for 10000 batch iterations with the initial learning rate set to
       0.1, then restart to run 2 times longer, i.e, for 20000 batch iterations
       and with the initial learning rate 0.05, then restart again and again,
       doubling the runtime of each new period and with two times smaller
       initial learning rate.
 
+  To accomplish the above, one would write:
 
   ```python
   ...
@@ -99,7 +101,6 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
   # LR    | 0.025 | 0.0003 | 0.00  | 0.025 |
   ```
 
-  ```
   Args:
     learning_rate: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The initial learning rate.
@@ -111,11 +112,12 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
     t_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
       Must be positive.
       Used to derive the number of iterations in the i-th period:
-      `initial_period_steps * (t_mul^i)`. Defaults to 2.
+      `initial_period_steps * (t_mul^i)`. Defaults to 2.0.
     m_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
       Must be positive.
       Used to derive the initial learning rate of the i-th period:
-      `learning_rate * (m_mul^i)`. Defaults to 1.
+      `learning_rate * (m_mul^i)`. Defaults to 1.0
+
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.
     The learning rate for a provided global_step.
