@@ -33,11 +33,11 @@ mkdir -p "$TMPDIR"
 export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 
 # Set Python path for ./configure
-export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python"
+export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python.exe"
 export PYTHON_LIB_PATH="C:/Program Files/Anaconda3/lib/site-packages"
 
 # Set Python path for cc_configure.bzl
-export BAZEL_PYTHON="C:/Program Files/Anaconda3/python"
+export BAZEL_PYTHON="C:/Program Files/Anaconda3/python.exe"
 
 # Set Visual Studio path
 export BAZEL_VS="C:/Program Files (x86)/Microsoft Visual Studio 14.0"
