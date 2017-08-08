@@ -241,7 +241,7 @@ class SegmentSumGPUOp : public AsyncOpKernel {
                                   output_rows_device, sizeof(Index))
                      .ok(),
         errors::Internal(
-            "SegmentSumGPUOp: failed to copy num_true from device"),
+            "SegmentSumGPUOp: failed to copy output_rows from device"),
         done);
 
     functor::SegmentSumFunctor<T, Index> functor_;
@@ -254,6 +254,10 @@ class SegmentSumGPUOp : public AsyncOpKernel {
 
       Index output_rows = *output_rows_host.data();
       output_rows++;
+      OP_REQUIRES_ASYNC(context, output_rows > 0,
+                        errors::InvalidArgument("segment ids must be >= 0"),
+                        done);
+
       TensorShape output_shape = input.shape();
       output_shape.set_dim(0, output_rows);
 
