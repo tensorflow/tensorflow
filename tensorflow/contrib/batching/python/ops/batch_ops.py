@@ -129,7 +129,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
           unbatched = [
               gen_batch_ops.unbatch(t, batch_index, id_t,
                                     timeout_micros=unbatch_timeout_micros,
-                                    shared_name=unbatch_name)
+                                    shared_name=unbatch_name + "/" + t.name)
               for t in outputs_list]
         if isinstance(outputs, ops.Tensor):
           return unbatched[0]
