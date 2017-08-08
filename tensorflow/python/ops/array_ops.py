@@ -83,6 +83,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+
 import numpy as np
 
 from tensorflow.python.framework import common_shapes
@@ -100,7 +101,6 @@ from tensorflow.python.ops import gen_math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.util import deprecation
-from tensorflow.python.util.deprecation import deprecated
 # pylint: enable=wildcard-import
 
 
@@ -173,7 +173,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
 
 # Aliases for some automatically-generated names.
 # pylint: disable=protected-access
-@deprecated(
+@deprecation.deprecated(
     "2016-11-30",
     "This op will be removed after the deprecation date. "
     "Please switch to tf.setdiff1d().")
