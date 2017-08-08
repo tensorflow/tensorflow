@@ -283,24 +283,32 @@ CreateSelectOp(poplar::Graph &graph,
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
 
-  poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 1));
+  std::vector<poplar::Tensor> in0 = FindInstructionInputs(tensor_map, inst, 1);
+  std::vector<poplar::Tensor> in1 = FindInstructionInputs(tensor_map, inst, 2);
 
-  poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2));
-
-  if (pred.numElements() == 1) {
-    pred = pred.reshape({1});
-    pred = pred.broadcast(in1.numElements(), 0);
-    pred = pred.reshape(in0.shape());
+  if (in0.size() != in1.size()) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        port::StrCat("Mismatching tuple sizes on ",
+                                     inst->name()));
   }
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = popstd::select(graph, in0, in1, pred, seq, inst->name());
 
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+  for (unsigned int i=0; i<in0.size(); i++) {
+    poplar::Tensor p = pred;
+    poplar::Tensor i0 = in0[i];
+    poplar::Tensor i1 = in1[i];
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    if (p.numElements() == 1) {
+      p = p.reshape({1});
+      p = p.broadcast(i0.numElements(), 0);
+      p = p.reshape(i0.shape());
+    }
+
+    poplar::Tensor out = popstd::select(graph, i0, i1, p, seq, inst->name());
+
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+  }
 
   return seq;
 }
