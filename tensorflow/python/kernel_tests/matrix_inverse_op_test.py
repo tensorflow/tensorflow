@@ -44,7 +44,7 @@ class InverseOpTest(test.TestCase):
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
         out = tf_ans.eval()
-        self.assertAllClose(np_ans, out)
+        self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
         self.assertShapeEqual(y, tf_ans)
 
   def _verifyInverseReal(self, x):
@@ -122,6 +122,17 @@ class InverseOpTest(test.TestCase):
   def testEmpty(self):
     self._verifyInverseReal(np.empty([0, 2, 2]))
     self._verifyInverseReal(np.empty([2, 0, 0]))
+
+  def testRandomSmallAndLarge(self):
+    np.random.seed(42)
+    for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for batch_dims in [(), (1,), (3,), (2, 2)]:
+        for size in 8, 31, 32:
+          shape = batch_dims + (size, size)
+          matrix = np.random.uniform(
+              low=-1.0, high=1.0,
+              size=np.prod(shape)).reshape(shape).astype(dtype)
+          self._verifyInverseReal(matrix)
 
 
 class MatrixInverseBenchmark(test.Benchmark):
