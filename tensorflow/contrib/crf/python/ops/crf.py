@@ -363,7 +363,7 @@ class CrfDecodeForwardRnnCell(rnn_cell.RNNCell):
       backpointers: [batch_size, num_tags], containing backpointers.
       new_state: [batch_size, num_tags], containing new score values.
     """
-    # for simplicity, in shape comments, denote:
+    # For simplicity, in shape comments, denote:
     # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
     state = array_ops.expand_dims(state, 2)                         # [B, O, 1]
 
@@ -437,7 +437,7 @@ def crf_decode(potentials, transition_params, sequence_length):
                 Contains the highest scoring tag indicies.
     best_score: A [batch_size] tensor, containing the score of decode_tags.
   """
-  # for simplicity, in shape comments, denote:
+  # For simplicity, in shape comments, denote:
   # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
   num_tags = potentials.get_shape()[2].value
 
