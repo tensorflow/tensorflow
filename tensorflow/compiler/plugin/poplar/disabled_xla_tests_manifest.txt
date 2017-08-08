@@ -1,0 +1,58 @@
+ArrayElementwiseOpTest.RemF64s    POPLAR // F64
+ArrayElementwiseOpTest.MaxF64s    POPLAR // F64
+ArrayElementwiseOpTest.MinF64s    POPLAR // F64
+ScalarComputationsTest.TanhDoubleScalar    POPLAR // F64
+ScalarComputationsTest.AddTwoScalarsF64    POPLAR // F64
+DotOperationTest.OneElementVectorDotF64    POPLAR // F64
+DotOperationTest.VectorDotF64    POPLAR // F64
+
+UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
+UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
+ReduceTest.VectorizedReduce_Add       POPLAR // U32
+ReduceTest.UnsignedInt_MaxReduce      POPLAR // U32
+ReduceTest.VectorizedReduce_Max       POPLAR // U32
+ReduceTest.VectorizedReduce_Multiply  POPLAR // U32
+ReduceTest.VectorizedReduce_Min       POPLAR // U32
+ReduceTest.UnsignedInt_MinReduce      POPLAR // U32
+ScalarComputationsTest.MulTwoScalarsU32      POPLAR // U32
+ScalarComputationsTest.CompareLtU32      POPLAR // U32
+ScalarComputationsTest.CompareLeU32      POPLAR // U32
+ScalarComputationsTest.CompareGtU32      POPLAR // U32
+ScalarComputationsTest.CompareNeU32       POPLAR // U32
+ScalarComputationsTest.CompareGeU32Equal      POPLAR // U32
+ScalarComputationsTest.CompareGeU32Greater    POPLAR // U32
+ScalarComputationsTest.MaxU32Below      POPLAR // U32
+ScalarComputationsTest.AddTwoScalarsU32      POPLAR // U32
+ScalarComputationsTest.CompareEqU32False      POPLAR // U32
+ScalarComputationsTest.MinU32Above      POPLAR // U32
+ScalarComputationsTest.MinU32Below      POPLAR // U32
+ScalarComputationsTest.RemTwoScalarsU32      POPLAR // U32
+ScalarComputationsTest.RemU32s      POPLAR // U32
+ScalarComputationsTest.DivU32s      POPLAR // U32
+ScalarComputationsTest.DivideTwoScalarsU32   POPLAR // U32
+ScalarComputationsTest.MaxU32Above      POPLAR // U32
+ArrayElementwiseOpTest.MulTwoConstantU32s      POPLAR // U32
+ArrayElementwiseOpTest.CompareLeU32s      POPLAR // U32
+ArrayElementwiseOpTest.CompareLtU32s      POPLAR // U32
+ArrayElementwiseOpTest.DivU32s      POPLAR // U32
+ArrayElementwiseOpTest.CompareGtU32s      POPLAR // U32
+ArrayElementwiseOpTest.MinU32s      POPLAR // U32
+ArrayElementwiseOpTest.MaxU32s      POPLAR // U32
+ArrayElementwiseOpTest.CompareGeU32s      POPLAR // U32
+ArrayElementwiseOpTest.CompareNeU32s      POPLAR // U32
+ArrayElementwiseOpTest.CompareEqU32s      POPLAR // U32
+VecOpsSimpleTest.NegateUint32Values      POPLAR // U32
+PrngTest.HundredValuesB10p5      POPLAR // U32
+PrngTest.HundredValuesB10p1      POPLAR // U32
+
+ScalarComputationsTest.AddTwoScalarsS64      POPLAR // S64
+
+ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
+
+ParamsTest.ConstantR1U8Param      POPLAR // U8
+ScalarComputationsTest.AddTwoScalarsU8      POPLAR // U8
+
+ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
+
+ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1d conv
+ConvolutionTest.Convolve1D_Valid  POPLAR // 1d conv

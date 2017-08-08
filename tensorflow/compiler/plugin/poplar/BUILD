@@ -316,6 +316,7 @@ test_suite(
 
 exports_files([
     "disabled_manifest.txt",
+    "disables_xla_tests_manifest.txt",
 ])
 
 filegroup(
