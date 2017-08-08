@@ -429,22 +429,23 @@ def _bahdanau_score(processed_query, keys, normalize):
   processed_query = array_ops.expand_dims(processed_query, 1)
   v = variable_scope.get_variable(
       "attention_v", [num_units], dtype=dtype)
+  # Bias added prior to the nonlinearity
+  b = variable_scope.get_variable(
+      "attention_b", [num_units], dtype=dtype,
+      initializer=init_ops.zeros_initializer())
   if normalize:
     # Scalar used in weight normalization
     g = variable_scope.get_variable(
         "attention_g", dtype=dtype,
         initializer=math.sqrt((1. / num_units)))
-    # Bias added prior to the nonlinearity
-    b = variable_scope.get_variable(
-        "attention_b", [num_units], dtype=dtype,
-        initializer=init_ops.zeros_initializer())
     # normed_v = g * v / ||v||
     normed_v = g * v * math_ops.rsqrt(
         math_ops.reduce_sum(math_ops.square(v)))
     return math_ops.reduce_sum(
         normed_v * math_ops.tanh(keys + processed_query + b), [2])
   else:
-    return math_ops.reduce_sum(v * math_ops.tanh(keys + processed_query), [2])
+    return math_ops.reduce_sum(
+        v * math_ops.tanh(keys + processed_query + b), [2])
 
 
 class BahdanauAttention(_BaseAttentionMechanism):
