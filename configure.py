@@ -384,12 +384,16 @@ def set_action_env_var(environ_cp,
 def convert_version_to_int(version):
   """Convert a version number to a integer that can be used to compare.
 
+  Version strings of the form X.YZ and X.Y.Z-xxxxx are supported. The
+  'xxxxx' part, for instance 'homebrew' on OS/X, is ignored.
+
   Args:
-    version: a version to be covnerted
+    version: a version to be converted
 
   Returns:
     An integer if converted successfully, otherwise return None.
   """
+  version = version.split('-')[0]
   version_segments = version.split('.')
   for seg in version_segments:
     if not seg.isdigit():
