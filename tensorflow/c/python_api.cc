@@ -19,10 +19,28 @@ limitations under the License.
 
 namespace tensorflow {
 
+void UpdateInput(TF_Graph* graph, TF_Operation* op, int index, TF_Output output) {
+  mutex_lock l(graph->mu);
+  const tensorflow::Edge* edge;
+  Status s = &op->node.input_edge(index, &edge);
+  if (s.ok())
+    graph->graph.RemoveEdge(edge);
+  graph->graph.AddEdge(&output.oper->node, output.index, &op->node, index);
+}
+
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
   // TODO(skyewm): make sure cycles are prevented
   mutex_lock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
+}
+
+void ClearControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  for (const auto* edge : &op->node.in_edges()) {
+    if (edge->IsControlEdge()) {
+      graph->graph.RemoveEdge(edge);
+    }
+  }
 }
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
