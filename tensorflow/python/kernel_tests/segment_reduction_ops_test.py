@@ -107,19 +107,19 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         curr_ops_list = complex_ops_list
       else:
         curr_ops_list = ops_list
-
-      with self.test_session(use_gpu=False):
-        tf_x, np_x = self._input(shape, dtype=dtype)
-        for np_op1, np_op2, tf_op in curr_ops_list:
-          np_ans = self._segmentReduce(indices, np_x, np_op1, np_op2)
-          s = tf_op(data=tf_x, segment_ids=indices)
-          tf_ans = s.eval()
-          self.assertAllClose(np_ans, tf_ans)
-          # NOTE(mrry): The static shape inference that computes
-          # `tf_ans.shape` can only infer that sizes from dimension 1
-          # onwards, because the size of dimension 0 is data-dependent
-          # and may therefore vary dynamically.
-          self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
+      for use_gpu in [True, False]:
+        with self.test_session(use_gpu=use_gpu):
+          tf_x, np_x = self._input(shape, dtype=dtype)
+          for np_op1, np_op2, tf_op in curr_ops_list:
+            np_ans = self._segmentReduce(indices, np_x, np_op1, np_op2)
+            s = tf_op(data=tf_x, segment_ids=indices)
+            tf_ans = s.eval()
+            self.assertAllClose(np_ans, tf_ans)
+            # NOTE(mrry): The static shape inference that computes
+            # `tf_ans.shape` can only infer that sizes from dimension 1
+            # onwards, because the size of dimension 0 is data-dependent
+            # and may therefore vary dynamically.
+            self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
 
   def testSegmentIdsShape(self):
     shape = [4, 4]
@@ -130,41 +130,45 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsSize(self):
     shape = [4, 4]
-    with self.test_session():
-      tf_x, _ = self._input(shape)
-      indices = [0, 1]
-      s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-      with self.assertRaisesOpError("segment_ids should be the same size"):
-        s.eval()
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        tf_x, _ = self._input(shape)
+        indices = [0, 1]
+        s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        with self.assertRaisesOpError("segment_ids should be the same size"):
+          s.eval()
 
   def testSegmentIdsValid(self):
     # This is a baseline for the following SegmentIdsInvalid* tests.
     shape = [4, 4]
-    with self.test_session():
-      tf_x, _ = self._input(shape)
-      indices = [0, 0, 0, 1]
-      result = math_ops.segment_sum(data=tf_x, segment_ids=indices).eval()
-      self.assertAllEqual([[15, 18, 21, 24], [13, 14, 15, 16]], result)
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        tf_x, _ = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [0, 0, 0, 1]
+        result = math_ops.segment_sum(data=tf_x, segment_ids=indices).eval()
+        self.assertAllEqual([[15, 18, 21, 24], [13, 14, 15, 16]], result)
 
   def testSegmentIdsGreaterThanZero(self):
     shape = [4, 4]
-    with self.test_session():
-      tf_x, np_x = self._input(shape)
-      indices = [1, 1, 2, 2]
-      np_ans = self._segmentReduce(indices, np_x, np.add)
-      s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-      tf_ans = s.eval()
-      self.assertAllClose(np_ans, tf_ans)
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        tf_x, np_x = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [1, 1, 2, 2]
+        np_ans = self._segmentReduce(indices, np_x, np.add)
+        s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        tf_ans = s.eval()
+        self.assertAllClose(np_ans, tf_ans)
 
   def testSegmentIdsHole(self):
     shape = [4, 4]
-    with self.test_session():
-      tf_x, np_x = self._input(shape)
-      indices = [0, 0, 3, 3]
-      np_ans = self._segmentReduce(indices, np_x, np.add)
-      s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-      tf_ans = s.eval()
-      self.assertAllClose(np_ans, tf_ans)
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        tf_x, np_x = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [0, 0, 3, 3]
+        np_ans = self._segmentReduce(indices, np_x, np.add)
+        s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        tf_ans = s.eval()
+        self.assertAllClose(np_ans, tf_ans)
 
   def testSegmentIdsInvalid1(self):
     shape = [4, 4]
@@ -199,21 +203,23 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid4(self):
     shape = [4, 4]
-    with self.test_session():
-      tf_x, _ = self._input(shape)
-      indices = [0, 0, 0, -1]
-      s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-      with self.assertRaisesOpError("segment ids must be >= 0"):
-        s.eval()
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        tf_x, _ = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [0, 0, 0, -1]
+        s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        with self.assertRaisesOpError("segment ids must be >= 0"):
+          s.eval()
 
   def testSegmentIdsInvalid5(self):
     shape = [4, 4]
-    with self.test_session():
-      tf_x, _ = self._input(shape)
-      indices = [0, 0, 0, -2]
-      s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-      with self.assertRaisesOpError("segment ids must be >= 0"):
-        s.eval()
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        tf_x, _ = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [0, 0, 0, -2]
+        s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        with self.assertRaisesOpError("segment ids must be >= 0"):
+          s.eval()
 
   def testGradient(self):
     shape = [4, 4]
