@@ -184,7 +184,7 @@ class EventListenerTestStreamHandler(
     if not summary_metadata.plugin_data:
       raise ValueError("The value lacks plugin data.")
     try:
-      content = json.loads(summary_metadata.plugin_data[0].content)
+      content = json.loads(summary_metadata.plugin_data.content)
     except ValueError as err:
       raise ValueError("Could not parse content into JSON: %r, %r" % (content,
                                                                       err))
