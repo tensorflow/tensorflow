@@ -404,10 +404,10 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   }
 
   do {
-
-    const StringPiece basename = WideCharToUtf8(find_data.cFileName);
+	string file_name = WideCharToUtf8(find_data.cFileName);
+	const StringPiece basename = file_name;
     if (basename != "." && basename != "..") {
-      result->push_back(WideCharToUtf8(find_data.cFileName));
+      result->push_back(file_name);
     }
   } while (::FindNextFileW(find_handle, &find_data));
 
@@ -421,7 +421,8 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
 Status WindowsFileSystem::DeleteFile(const string& fname) {
   Status result;
-  if (unlink(TranslateName(fname).c_str()) != 0) {
+  std::wstring file_name = Utf8ToWideChar(fname);
+  if (_wunlink(file_name.c_str()) != 0) {
     result = IOError("Failed to delete a file: " + fname, errno);
   }
   return result;
@@ -429,7 +430,8 @@ Status WindowsFileSystem::DeleteFile(const string& fname) {
 
 Status WindowsFileSystem::CreateDir(const string& name) {
   Status result;
-  if (_mkdir(TranslateName(name).c_str()) != 0) {
+  std::wstring ws_name = Utf8ToWideChar(name);
+  if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
   }
   return result;
@@ -437,7 +439,8 @@ Status WindowsFileSystem::CreateDir(const string& name) {
 
 Status WindowsFileSystem::DeleteDir(const string& name) {
   Status result;
-  if (_rmdir(TranslateName(name).c_str()) != 0) {
+  std::wstring ws_name = Utf8ToWideChar(name);
+  if (_wrmdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to remove a directory: " + name, errno);
   }
   return result;
@@ -497,7 +500,7 @@ Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   Status result;
   struct _stat sbuf;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  if (_stat(TranslateName(fname).c_str(), &sbuf) != 0) {
+  if (_wstat(ws_translated_fname.c_str(), &sbuf) != 0) {
     result = IOError(fname, errno);
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/windows/windows_file_system.h"
 
 namespace tensorflow {
 
@@ -262,8 +263,11 @@ string Env::GetExecutablePath() {
   _NSGetExecutablePath(unresolved_path, &buffer_size);
   CHECK(realpath(unresolved_path, exe_path));
 #elif defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
+  HMODULE hModule = GetModuleHandleW(NULL);
+  WCHAR wc_file_path[MAX_PATH] = {0};
+  GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
+  string file_path = WindowsFileSystem::WideCharToUtf8(wc_file_path);
+  std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
   CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
 #endif
