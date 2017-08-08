@@ -189,10 +189,10 @@ CreateSimpleReduction(poplar::Graph &graph,
 
   // Find the input tensors
   poplar::Tensor to_reduce;
-  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
 
   // Find the type and vertex
   HloInstruction* root(inst->to_apply()->root_instruction());
@@ -264,10 +264,10 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
 
   // Find the input tensors
   poplar::Tensor to_reduce;
-  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
 
   // Find the type and vertex
   HloInstruction* root(inst->to_apply()->root_instruction());
@@ -360,7 +360,7 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
 
   // Find the input tensors
   poplar::Tensor to_reduce;
-  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
   const Window& window(pooling_inst->window());
   std::vector<std::size_t> kernel_shape = {
@@ -401,13 +401,13 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   // Find the input tensors
   poplar::Tensor operand;
-  TF_ASSIGN_OR_RETURN(operand, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(operand, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor source;
-  TF_ASSIGN_OR_RETURN(source, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(source, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 2, 0));
+  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 2));
 
   /*
    * Selection

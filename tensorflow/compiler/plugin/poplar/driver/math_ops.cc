@@ -136,19 +136,7 @@ IsInPlaceUpdate(const HloInstruction *inst) {
     return false;
   }
 
-  // Operation must have a Parameter as an input
-  const HloInstruction* op0(inst->operand(0));
-  if (op0->opcode() != HloOpcode::kParameter) return false;
-
-  // Operation must be the root or have the root as an output
-  const HloInstruction* root(inst->parent()->root_instruction());
-  if (inst == root) return true;
-
-  const std::vector<HloInstruction*>& users(inst->users());
-  if (users.size() != 1) return false;
-  if (users[0] == root) return true;
-
-  return false;
+  return true;
 }
 
 port::StatusOr<poplar::program::Program>
@@ -160,7 +148,7 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   popstd_unary_fn fn;
   TF_ASSIGN_OR_RETURN(fn, LookupUnaryFn(inst->opcode()));
@@ -184,12 +172,14 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
   // Find the input tensors
   poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
-  if (IsInPlaceUpdate(inst) && (in0.shape() == in1.shape())) {
+  if (IsInPlaceUpdate(inst) &&
+      (in0.shape() == in1.shape()) &&
+      in0.isParallelWriteable()) {
 
     popstd_inplace_binary_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst->opcode()));
@@ -254,10 +244,10 @@ CreateMatMulOp(poplar::Graph &graph,
 
   // Find the input tensors
   poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::Tensor out;
   poplar::program::Sequence seq;
@@ -291,13 +281,13 @@ CreateSelectOp(poplar::Graph &graph,
                TensorMap& tensor_map) {
 
   poplar::Tensor pred;
-  TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2, 0));
+  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2));
 
   if (pred.numElements() == 1) {
     pred = pred.reshape({1});
@@ -324,7 +314,7 @@ CreateCastOp(poplar::Graph &graph,
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   std::string poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
@@ -347,19 +337,19 @@ CreateClampOp(poplar::Graph &graph,
               TensorMap& tensor_map) {
 
   poplar::Tensor min;
-  TF_ASSIGN_OR_RETURN(min, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(min, FindInstructionInput(tensor_map, inst, 0));
   if (!PoplarShapeMatchesXLAShape(min, output_shape)) {
     TF_ASSIGN_OR_RETURN(min, BroadcastTensor(min, output_shape));
   }
 
   poplar::Tensor arg;
-  TF_ASSIGN_OR_RETURN(arg, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(arg, FindInstructionInput(tensor_map, inst, 1));
   if (!PoplarShapeMatchesXLAShape(arg, output_shape)) {
     TF_ASSIGN_OR_RETURN(arg, BroadcastTensor(arg, output_shape));
   }
 
   poplar::Tensor max;
-  TF_ASSIGN_OR_RETURN(max, FindInstructionInput(tensor_map, inst, 2, 0));
+  TF_ASSIGN_OR_RETURN(max, FindInstructionInput(tensor_map, inst, 2));
   if (!PoplarShapeMatchesXLAShape(max, output_shape)) {
     TF_ASSIGN_OR_RETURN(max, BroadcastTensor(max, output_shape));
   }
@@ -381,7 +371,7 @@ CreateReluOp(poplar::Graph &graph,
              const xla::Shape& output_shape,
              TensorMap& tensor_map) {
   poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence seq;
   poplar::Tensor out = graph.clone(t);
@@ -403,7 +393,7 @@ CreateSigmoidOp(poplar::Graph &graph,
                 const xla::Shape& output_shape,
                 TensorMap& tensor_map) {
   poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence seq;
   poplar::Tensor out = graph.clone(t);

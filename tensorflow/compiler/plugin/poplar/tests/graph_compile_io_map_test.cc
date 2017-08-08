@@ -211,6 +211,108 @@ TEST_F(GraphCompileIoMapTest, Int64Conversion) {
   EXPECT_EQ(&ConvInt32ToInt64, GetOutputList(e)[0]);
 }
 
+TEST_F(GraphCompileIoMapTest, TupleInTuple) {
+  Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto in1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, image_shape, "input1"));
+  auto in2 = builder.AddInstruction(
+          HloInstruction::CreateParameter(1, image_shape, "input2"));
+  auto in3 = builder.AddInstruction(
+          HloInstruction::CreateParameter(2, image_shape, "input3"));
+  auto add1 = builder.AddInstruction(
+          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+  auto add2 = builder.AddInstruction(
+          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
+  auto tup1 = builder.AddInstruction(
+          HloInstruction::CreateTuple({add1, add2}));
+  auto tup2 = builder.AddInstruction(
+          HloInstruction::CreateTuple({add2, in3}));
+  builder.AddInstruction(
+          HloInstruction::CreateTuple({tup1, tup2}));
+
+  OpMetadata metadata1;
+  metadata1.set_op_name("grad%1");
+  metadata1.set_op_type("ResourceApplyGradientDescent");
+  add1->set_metadata(metadata1);
+
+  OpMetadata metadata2;
+  metadata2.set_op_name("grad%2");
+  metadata2.set_op_type("ResourceApplyGradientDescent");
+  add2->set_metadata(metadata2);
+
+  auto computation = builder.Build();
+
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  PoplarCompiler compiler;
+
+  std::unique_ptr<Executable> executable =
+          compiler.Compile(std::move(hlo_module),
+                           nullptr).ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  ASSERT_EQ(4, GetMap(e).size());
+  EXPECT_EQ(0, GetMap(e).at(0));
+  EXPECT_EQ(1, GetMap(e).at(1));
+  EXPECT_EQ(1, GetMap(e).at(2));
+  EXPECT_EQ(2, GetMap(e).at(3));
+}
+
+TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
+  Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto in1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, image_shape, "input1"));
+  auto in2 = builder.AddInstruction(
+          HloInstruction::CreateParameter(1, image_shape, "input2"));
+  auto in3 = builder.AddInstruction(
+          HloInstruction::CreateParameter(2, image_shape, "input3"));
+  auto add1 = builder.AddInstruction(
+          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+  auto add2 = builder.AddInstruction(
+          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
+  auto tup1 = builder.AddInstruction(
+          HloInstruction::CreateTuple({add1, add2}));
+  auto tup2 = builder.AddInstruction(
+          HloInstruction::CreateTuple({add2, in3}));
+  auto tup3 = builder.AddInstruction(
+          HloInstruction::CreateTuple({tup1, tup2}));
+  builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(tup3->shape(), tup3, 1));
+
+  OpMetadata metadata1;
+  metadata1.set_op_name("grad%1");
+  metadata1.set_op_type("ResourceApplyGradientDescent");
+  add1->set_metadata(metadata1);
+
+  OpMetadata metadata2;
+  metadata2.set_op_name("grad%2");
+  metadata2.set_op_type("ResourceApplyGradientDescent");
+  add2->set_metadata(metadata2);
+
+  auto computation = builder.Build();
+
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  PoplarCompiler compiler;
+
+  std::unique_ptr<Executable> executable =
+          compiler.Compile(std::move(hlo_module),
+                           nullptr).ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  ASSERT_EQ(2, GetMap(e).size());
+  EXPECT_EQ(1, GetMap(e).at(0));
+  EXPECT_EQ(2, GetMap(e).at(1));
+}
+
 }
 }
 }

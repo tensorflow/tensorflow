@@ -55,12 +55,35 @@ AddOutputTensor(TensorMap& map,
                 int64 n,
                 const poplar::Tensor& tensor);
 
+
+/* This returns the vector of all poplar tensors which are part of the n'th
+ * member of the tuple which is the input to the instruction.
+ */
+std::vector<poplar::Tensor>
+FindTupleInInstructionInput(const TensorMap& map,
+                            const HloInstruction* inst,
+                            int64 input,
+                            int64 n);
+
+/* This returns the single poplar tensor which is the non-tuple input to the
+ * input to the instruction
+ */
 port::StatusOr<poplar::Tensor>
 FindInstructionInput(const TensorMap& map,
                      const HloInstruction* inst,
-                     int64 input,
-                     int64 n);
+                     int64 input);
 
+/* This returns a vector of all poplar tensors which are part of the tuple
+ * or non-tuple on the input to the instruction
+ */
+std::vector<poplar::Tensor>
+FindInstructionInputs(const TensorMap& map,
+                      const HloInstruction* inst,
+                      int64 input);
+
+/* This returns a vector of poplar tensors which are all of the outputs from
+ * the given instruction
+ */
 std::vector<poplar::Tensor>
 FindInstructionOutputs(const TensorMap& map,
                        const HloInstruction* inst);

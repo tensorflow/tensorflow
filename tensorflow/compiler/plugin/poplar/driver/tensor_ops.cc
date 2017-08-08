@@ -25,10 +25,10 @@ CreateSliceUpdateOp(poplar::Graph &graph,
 
   poplar::Tensor input;
   TF_ASSIGN_OR_RETURN(input,
-                      FindInstructionInput(tensor_map, inst, 0, 0));
+                      FindInstructionInput(tensor_map, inst, 0));
   poplar::Tensor update;
   TF_ASSIGN_OR_RETURN(update,
-                      FindInstructionInput(tensor_map, inst, 1, 0));
+                      FindInstructionInput(tensor_map, inst, 1));
 
   const HloInstruction* root = inst->fused_expression_root();
 
@@ -79,7 +79,7 @@ CreateSliceOp(poplar::Graph &graph,
               TensorMap& tensor_map) {
   poplar::Tensor input;
   TF_ASSIGN_OR_RETURN(input,
-                      FindInstructionInput(tensor_map, inst, 0, 0));
+                      FindInstructionInput(tensor_map, inst, 0));
 
   const HloInstruction* root = inst->fused_expression_root();
 
@@ -115,15 +115,15 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
                            TensorMap& tensor_map) {
   poplar::Tensor input;
   TF_ASSIGN_OR_RETURN(input,
-                      FindInstructionInput(tensor_map, inst, 0, 0));
+                      FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor update;
   TF_ASSIGN_OR_RETURN(update,
-                      FindInstructionInput(tensor_map, inst, 1, 0));
+                      FindInstructionInput(tensor_map, inst, 1));
 
   poplar::Tensor indices;
   TF_ASSIGN_OR_RETURN(indices,
-                      FindInstructionInput(tensor_map, inst, 2, 0));
+                      FindInstructionInput(tensor_map, inst, 2));
 
   std::string vertex_name =
           templateVertex("DynamicUpdateSlice", input.elementType());
@@ -173,11 +173,11 @@ CreateDynamicSliceOp(poplar::Graph &graph,
                      TensorMap& tensor_map) {
   poplar::Tensor input;
   TF_ASSIGN_OR_RETURN(input,
-                      FindInstructionInput(tensor_map, inst, 0, 0));
+                      FindInstructionInput(tensor_map, inst, 0));
 
   poplar::Tensor indices;
   TF_ASSIGN_OR_RETURN(indices,
-                      FindInstructionInput(tensor_map, inst, 1, 0));
+                      FindInstructionInput(tensor_map, inst, 1));
 
   std::string vertex_name =
           templateVertex("DynamicSlice", input.elementType());

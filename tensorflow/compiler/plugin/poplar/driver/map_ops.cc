@@ -83,7 +83,7 @@ CreateParallelMap(poplar::Graph &graph,
 
   for (int64 i = 0; i < op_count; i++) {
     poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
+    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
     inputs.push_back(t);
   }
 
@@ -119,7 +119,7 @@ CreateCallOp(poplar::Graph &graph,
 
     for (int64 i = 0; i < op_count; i++) {
       poplar::Tensor t;
-      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
+      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
       inputs.push_back(t);
     }
 
@@ -138,7 +138,7 @@ CreateCallOp(poplar::Graph &graph,
 
     for (int64 i = 0; i < op_count; i++) {
       poplar::Tensor t;
-      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
+      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
       seq.add(poplar::program::Copy(t, subcomp_visitor->second.inputs()[i]));
     }
 
@@ -191,7 +191,7 @@ CreateWhileOp(poplar::Graph &graph,
   poplar::Tensor cond_output = condition_visitor->second.outputs()[0];
 
   poplar::Tensor init;
-  TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence main_seq;
   main_seq.add(poplar::program::Copy(init, body_input));

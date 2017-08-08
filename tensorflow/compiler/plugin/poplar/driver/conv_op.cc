@@ -127,11 +127,11 @@ CreateConv2D(poplar::Graph &graph,
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   // Find the kernel tensor
   poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
@@ -199,11 +199,11 @@ CreateBiasAddOp(poplar::Graph &graph,
 
   // Find the activations tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   // Find the bias tensor
   poplar::Tensor bias;
-  TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1, 0));
+  TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::program::Sequence prog;
 
