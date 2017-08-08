@@ -631,8 +631,18 @@ int64 MinSystemMemory(int64 available_memory) {
 
 static string GetShortDeviceDescription(int device_id,
                                         const gpu::DeviceDescription& desc) {
+  int cc_major;
+  int cc_minor;
+  if (!desc.cuda_compute_capability(&cc_major, &cc_minor)) {
+    cc_major = 0;
+    cc_minor = 0;
+  }
+  // LINT.IfChange
   return strings::StrCat("device: ", device_id, ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id());
+                         ", pci bus id: ", desc.pci_bus_id(),
+                         ", compute capability: ", cc_major, ".", cc_minor);
+  // LINT.ThenChange(//tensorflow/python/platform/\
+  //                 test.py)
 }
 
 Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
