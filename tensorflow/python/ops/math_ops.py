@@ -1639,12 +1639,16 @@ def reduce_logsumexp(input_tensor,
     The reduced tensor.
   """
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
+    raw_max = reduce_max(
+        input_tensor,
+        axis=axis,
+        reduction_indices=reduction_indices,
+        keep_dims=True)
     my_max = array_ops.stop_gradient(
-        reduce_max(
-            input_tensor,
-            axis=axis,
-            reduction_indices=reduction_indices,
-            keep_dims=True))
+        array_ops.where(
+            gen_math_ops.is_finite(raw_max),
+            raw_max,
+            array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
