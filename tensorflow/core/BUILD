@@ -1378,6 +1378,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
         "@zlib_archive//:zlib",
+        "@double-conversion//:double-conversion",
     ],
 )
 

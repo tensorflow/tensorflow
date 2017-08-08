@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 
 #include <string>
+#include <cmath>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -278,6 +279,30 @@ TEST(safe_strtof, Float) {
   EXPECT_EQ(-42.0f, result);
 
   EXPECT_FALSE(safe_strtof("-infinity is awesome", &result));
+
+  EXPECT_TRUE(safe_strtof("-inf", &result));
+  EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("+inf", &result));
+  EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("InF", &result));
+  EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("-INF", &result));
+  EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("nan", &result));
+  EXPECT_TRUE(std::isnan(result));
+
+  EXPECT_TRUE(safe_strtof("-nan", &result));
+  EXPECT_TRUE(std::isnan(result));
+
+  EXPECT_TRUE(safe_strtof("-NaN", &result));
+  EXPECT_TRUE(std::isnan(result));
+
+  EXPECT_TRUE(safe_strtof("+NAN", &result));
+  EXPECT_TRUE(std::isnan(result));
 }
 
 TEST(safe_strtod, Double) {
@@ -296,6 +321,32 @@ TEST(safe_strtod, Double) {
 
   EXPECT_TRUE(safe_strtod("1e-325", &result));
   EXPECT_EQ(0, result);
+
+  EXPECT_FALSE(safe_strtod("infinity", &result));
+
+  EXPECT_TRUE(safe_strtod("-inf", &result));
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("+inf", &result));
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("InF", &result));
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("-INF", &result));
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("nan", &result));
+  EXPECT_TRUE(std::isnan(result));
+
+  EXPECT_TRUE(safe_strtod("-nan", &result));
+  EXPECT_TRUE(std::isnan(result));
+
+  EXPECT_TRUE(safe_strtod("-NaN", &result));
+  EXPECT_TRUE(std::isnan(result));
+
+  EXPECT_TRUE(safe_strtod("+NAN", &result));
+  EXPECT_TRUE(std::isnan(result));
 }
 
 }  // namespace strings
