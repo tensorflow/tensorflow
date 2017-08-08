@@ -21,6 +21,7 @@ limitations under the License.
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
+#include "tensorflow/core/platform/windows/windows_file_system.h"
 #define PATH_MAX MAX_PATH
 #else
 #include <unistd.h>
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/windows/windows_file_system.h"
 
 namespace tensorflow {
 
