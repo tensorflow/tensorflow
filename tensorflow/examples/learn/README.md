@@ -3,7 +3,7 @@
 TensorFlow Estimators are a high-level API for TensorFlow that allows you to
 create, train, and use deep learning models easily.
 
-See the [Quickstart tutorial](https://www.tensorflow.org/get_started/estimator)
+See the [Quickstart tutorial](https://www.tensorflow.org/versions/r1.3/get_started/estimator)
 for an introduction to the API.
 
 To run most of these examples, you need to install the `scikit learn` library
