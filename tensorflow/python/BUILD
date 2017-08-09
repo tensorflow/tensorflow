@@ -2351,6 +2351,7 @@ cuda_py_test(
         ":math_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2368,6 +2369,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2448,6 +2450,7 @@ cuda_py_test(
         ":special_math_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_library(

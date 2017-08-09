@@ -432,6 +432,8 @@ def check_bazel_version(min_version):
     print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
 
+  print("You have bazel %s installed." % curr_version)
+
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
           'build TensorFlow!' % min_version)
