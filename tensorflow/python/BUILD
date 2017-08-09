@@ -965,6 +965,15 @@ py_test(
 )
 
 py_test(
+    name = "framework_pip_dependencies_test",
+    size = "small",
+    srcs = ["framework/pip_dependencies_test.py"],
+    main = "framework/pip_dependencies_test.py",
+    srcs_version = "PY2AND3",
+    deps = [":client_testlib"],
+)
+
+py_test(
     name = "framework_tensor_shape_test",
     size = "small",
     srcs = ["framework/tensor_shape_test.py"],

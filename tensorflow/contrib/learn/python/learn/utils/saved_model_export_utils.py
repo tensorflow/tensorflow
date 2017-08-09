@@ -43,6 +43,7 @@ from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
 from tensorflow.python.estimator import estimator as core_estimator
+from tensorflow.python.estimator.export import export as core_export
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
@@ -421,7 +422,8 @@ def make_parsing_export_strategy(feature_columns,
                                  default_output_alternative_key=None,
                                  assets_extra=None,
                                  as_text=False,
-                                 exports_to_keep=5):
+                                 exports_to_keep=5,
+                                 target_core=False):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -446,12 +448,20 @@ def make_parsing_export_strategy(feature_columns,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
+    target_core: If True, prepare an ExportStrategy for use with
+      tensorflow.python.estimator.*.  If False (default), prepare an
+      ExportStrategy for use with tensorflow.contrib.learn.python.learn.*.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
   feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
-  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  if target_core:
+    serving_input_fn = (
+        core_export.build_parsing_serving_input_receiver_fn(feature_spec))
+  else:
+    serving_input_fn = (
+        input_fn_utils.build_parsing_serving_input_fn(feature_spec))
   return make_export_strategy(
       serving_input_fn,
       default_output_alternative_key=default_output_alternative_key,
