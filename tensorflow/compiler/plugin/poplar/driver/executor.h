@@ -208,7 +208,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
     size_t size = 0;
     bool on_device = false;
     int64 input_handle = -1;
-    int64 output_handle = -1;
+    std::string output_handle;
     ConversionFn output_convertor;
     char data[0];
   };

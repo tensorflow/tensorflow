@@ -133,7 +133,8 @@ public:
       for (int64 i=0; i<comp->num_parameters(); i++) {
         HloInstruction* param = comp->parameter_instruction(i);
         auto in = FindInstructionOutputs(tensor_map, param);
-// TODO in might be longer than 1 - need to fix output_map to keep this idea too
+
+        // TODO work with deep inputs
         if (in[0] == outputs[o]) {
           output_map[o] = i;
         }
