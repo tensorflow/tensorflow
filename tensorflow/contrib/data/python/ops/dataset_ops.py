@@ -654,6 +654,18 @@ class Dataset(object):
     """
     return ConcatenateDataset(self, dataset)
 
+  def prefetch(self, buffer_size):
+    """Creates a `Dataset` that prefetches elements from this dataset.
+
+    Args:
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        maximum number elements that will be buffered when prefetching.
+
+    Returns:
+      A `Dataset`.
+    """
+    return PrefetchDataset(self, buffer_size)
+
   @staticmethod
   def read_batch_features(file_pattern,
                           batch_size,
@@ -1933,6 +1945,31 @@ class FilterDataset(Dataset):
         predicate=self._predicate,
         output_types=nest.flatten(self.output_types),
         output_shapes=nest.flatten(self.output_shapes))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+
+class PrefetchDataset(Dataset):
+  """A `Dataset` that asynchronously prefetches its input."""
+
+  def __init__(self, input_dataset, buffer_size):
+    """See `Dataset.prefetch()` for details."""
+    super(PrefetchDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64)
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.prefetch_dataset(
+        self._input_dataset.make_dataset_resource(),
+        buffer_size=self._buffer_size,
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
 
   @property
   def output_shapes(self):
