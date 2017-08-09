@@ -2121,4 +2121,4 @@ def in_top_k(predictions, targets, k, handle_ties='SAMPLE', name=None):
   """
   with ops.name_scope(name, 'in_top_k'):
     # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_nn_ops._in_top_kv2(predictions, targets, k, handle_ties, name=name)
+    return gen_nn_ops._in_top_k(predictions, targets, k, handle_ties, name=name)
