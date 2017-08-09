@@ -12,20 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-FROM ubuntu:16.04
+"""Tests for pip package dependencies tensorflow versions."""
 
-MAINTAINER Shanqing Cai <cais@google.com>
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-# Copy and run the install scripts.
-COPY install/*.sh /install/
-RUN /install/install_bootstrap_deb_packages.sh
-RUN /install/install_deb_packages.sh
+import autograd
 
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends python-pip
-RUN pip install --upgrade numpy
-RUN pip install --upgrade autograd
+from tensorflow.python.platform import test
 
-# Install golang
-RUN add-apt-repository -y ppa:ubuntu-lxc/lxd-stable
-RUN apt-get install -y golang
+
+class PipDependenciesTest(test.TestCase):
+
+  def testAutograd(self):
+    self.assertTrue(autograd.grad is not None)
