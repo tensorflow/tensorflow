@@ -156,6 +156,7 @@ py_test(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
