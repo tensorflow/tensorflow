@@ -70,8 +70,7 @@ REGISTER_KERNEL_BUILDER(Name("ParseTensor").Device(DEVICE_CPU), ParseTensorOp);
 template <typename T>
 class SerializeTensorOp : public OpKernel {
  public:
-  explicit SerializeTensorOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  using OpKernel::OpKernel;
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor = context->input(0);
