@@ -104,6 +104,7 @@ class PoolingTest(test.TestCase):
         t = test_util.NHWCToNCHW(t)
         ksize = test_util.NHWCToNCHW(ksize)
         strides = test_util.NHWCToNCHW(strides)
+      v2 = v2 and data_format != "NCHW"
       ksize_placeholder = array_ops.placeholder(dtypes.int32, shape=[4])
       strides_placeholder = array_ops.placeholder(dtypes.int32, shape=[4])
       if v2:
@@ -342,7 +343,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 3, 3, 3],
           ksize=[1, 2, 2, 1],
           strides=[1, 2, 2, 1],
@@ -364,7 +365,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 2, 3, 3],
           ksize=[1, 2, 2, 1],
           strides=[1, 2, 2, 1],
@@ -393,7 +394,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 2, 2, 1],
           ksize=[1, 1, 2, 1],
           strides=[1, 1, 1, 1],
@@ -422,7 +423,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 4, 4, 1],
           ksize=[1, 2, 2, 1],
           strides=[1, 1, 2, 1],
@@ -431,7 +432,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu,
           v2=v2)
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 4, 4, 1],
           ksize=[1, 2, 2, 1],
           strides=[1, 2, 1, 1],
@@ -456,7 +457,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 4, 4, 4],
           ksize=[1, 2, 2, 1],
           strides=[1, 2, 2, 1],
@@ -492,7 +493,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 8, 8, 8],
           ksize=[1, 3, 3, 1],
           strides=[1, 2, 2, 1],
@@ -527,7 +528,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 1, 1, 10],
           ksize=[1, 1, 1, 2],
           strides=[1, 1, 1, 2],
@@ -553,7 +554,7 @@ class PoolingTest(test.TestCase):
 
     for v2 in [True, False]:
       self._VerifyValues(
-          gen_nn_ops.max_pool_v2,
+          gen_nn_ops._max_pool_v2,
           input_sizes=[1, 2, 2, 6],
           ksize=[1, 1, 1, 3],
           strides=[1, 1, 1, 3],
@@ -575,7 +576,7 @@ class PoolingTest(test.TestCase):
 
       for v2 in [True, False]:
         self._VerifyValues(
-            gen_nn_ops.max_pool_v2,
+            gen_nn_ops._max_pool_v2,
             input_sizes=[1, 7, 7, 1],
             ksize=[1, 2, 2, 1],
             strides=[1, 3, 3, 1],
@@ -616,7 +617,7 @@ class PoolingTest(test.TestCase):
 
       for v2 in [True, False]:
         self._VerifyValues(
-            gen_nn_ops.max_pool_v2,
+            gen_nn_ops._max_pool_v2,
             input_sizes=[1, 3, 3, 1],
             ksize=[1, 1, 1, 1],
             strides=[1, 2, 2, 1],
@@ -626,7 +627,7 @@ class PoolingTest(test.TestCase):
             v2=v2)
 
         self._VerifyValues(
-            gen_nn_ops.max_pool_v2,
+            gen_nn_ops._max_pool_v2,
             input_sizes=[1, 4, 4, 1],
             ksize=[1, 1, 1, 1],
             strides=[1, 2, 2, 1],
@@ -956,7 +957,7 @@ class PoolingTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   def _testMaxPoolGradValidPadding1_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[1, 3, 3, 1],
@@ -970,7 +971,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradValidPadding2_1_6(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[2, 6, 6, 3],
@@ -984,7 +985,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradValidPadding2_1_7(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[2, 7, 7, 3],
@@ -998,7 +999,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradValidPadding2_2(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[2, 2, 2, 3],
@@ -1012,7 +1013,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradSamePadding1_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[2, 2, 4, 3],
@@ -1026,7 +1027,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradSamePadding2_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[2, 2, 4, 3],
@@ -1040,7 +1041,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradSamePadding2_2(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
           pool_func,
           input_sizes=[2, 2, 4, 3],
@@ -1054,7 +1055,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradSamePadding3_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
         pool_func,
         input_sizes=[1, 7, 7, 1],
@@ -1105,7 +1106,7 @@ class PoolingTest(test.TestCase):
                              expected_input_backprop, input_sizes, output_sizes,
                              window_rows, window_cols, row_stride, col_stride,
                              padding, use_gpu, v2):
-    pool_func = gen_nn_ops.max_pool_v2 if v2 else nn_ops.max_pool
+    pool_func = gen_nn_ops._max_pool_v2 if v2 else nn_ops.max_pool
     with self.test_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(input_data, shape=input_sizes)
       output_tensor = pool_func(input_tensor,
@@ -1348,7 +1349,7 @@ class PoolingTest(test.TestCase):
     self._testMaxPoolGradDirectWithNans2_2()
 
   def _testMaxPoolGradGradValidPadding1_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[1, 3, 3, 1],
@@ -1362,7 +1363,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradValidPadding2_1_6(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[2, 6, 6, 3],
@@ -1376,7 +1377,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradValidPadding2_1_7(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[2, 7, 7, 3],
@@ -1390,7 +1391,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradValidPadding2_2(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[2, 2, 2, 3],
@@ -1404,7 +1405,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradSamePadding1_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[2, 2, 4, 3],
@@ -1418,7 +1419,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradSamePadding2_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[2, 2, 4, 3],
@@ -1432,7 +1433,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradSamePadding2_2(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[2, 2, 4, 3],
@@ -1446,7 +1447,7 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   def _testMaxPoolGradGradSamePadding3_1(self, data_format, use_gpu):
-    for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
           pool_func,
           input_sizes=[1, 7, 7, 1],

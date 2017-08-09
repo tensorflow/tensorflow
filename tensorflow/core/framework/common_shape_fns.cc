@@ -731,7 +731,8 @@ Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs) {
   int32 kernel_rows, kernel_cols, kernel_depth;
 
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference.
+    // Canonicalize input shape to NHWC so the shape inference code below can
+    // process it.
     auto dim = [&](char dimension) {
       return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
     };
