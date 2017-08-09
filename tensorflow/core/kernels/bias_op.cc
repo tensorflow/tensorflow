@@ -101,7 +101,6 @@ class BiasOp : public BinaryOp<T> {
   template <int Dims>
   void Compute(OpKernelContext* ctx, const Tensor& input, const Tensor& bias,
                Tensor* output) {
-
     functor::Bias<Device, T, Dims> functor;
     functor(ctx->eigen_device<Device>(), input.tensor<T, Dims>(), bias.vec<T>(),
             output->tensor<T, Dims>());
@@ -134,7 +133,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
-
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
