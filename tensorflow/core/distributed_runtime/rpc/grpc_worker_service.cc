@@ -356,16 +356,16 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
                   << "send dev name: " << src_dev->name()
                   << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
               // "val" is on a GPU. Uses GPUUtil to fill the copy on host.
-              StatusCallback copy_ready = [response, done,
-                                           copy, is_dead] (const Status& s) {
+              StatusCallback copy_ready = [response, done, copy,
+                                           is_dead](const Status& s) {
                 // The value is now ready to be returned on the wire.
                 grpc::EncodeTensorToByteBuffer(is_dead, *copy, response);
                 done(s);
                 delete copy;
               };
 
-              GPUUtil::CopyGPUTensorToCPU(src_dev, send_dev_context,
-                                          &val, copy, copy_ready);
+              GPUUtil::CopyGPUTensorToCPU(src_dev, send_dev_context, &val, copy,
+                                          copy_ready);
 #else
               done(errors::Internal("No GPU device in process"));
 #endif  // GOOGLE_CUDA
