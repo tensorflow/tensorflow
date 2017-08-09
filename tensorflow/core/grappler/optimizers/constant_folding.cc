@@ -102,12 +102,6 @@ string AsControlDependency(const NodeDef& node) {
 
 ConstantFolding::ConstantFolding() {
   resource_mgr_.reset(new ResourceMgr());
-
-  ops_to_preserve_ = std::regex(
-      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|"
-      "Enter|RefEnter|Exit|RefExit|NextIteration|RefNextIteration|"
-      ".*Quantized.*|Sparse.*",
-      std::regex_constants::optimize);
 }
 
 string ConstantFolding::AddControlDependency(const string& input_name) {
@@ -253,8 +247,25 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (std::regex_match(node.op().c_str(), ops_to_preserve_,
-                       std::regex_constants::match_any)) {
+
+  const string& op = node.op();
+  // Skip constants, they're already folded
+  if (op == "Const") {
+    return false;
+  }
+  // Skip constrol flow nodes, they can't be folded
+  if (op == "Enter" || op == "RefEnter" || op == "Exit" || op == "RefExit" ||
+      op == "NextIteration" || op == "RefNextIteration") {
+    return false;
+  }
+  if (op.find("Placeholder") == 0) {
+    return false;
+  }
+  if (op.find("Save") != string::npos || op.find("Restore") != string::npos ||
+      op.find("Reader") != string::npos) {
+    return false;
+  }
+  if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
     return false;
   }
 
