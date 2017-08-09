@@ -3735,7 +3735,7 @@ py_test(
 
 cuda_py_test(
     name = "layers_normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/normalization_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3748,6 +3748,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     main = "layers/normalization_test.py",
+    shard_count = 10,
 )
 
 # -----------------------------------------------------------------------------
