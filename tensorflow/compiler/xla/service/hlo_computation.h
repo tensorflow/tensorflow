@@ -259,6 +259,10 @@ class HloComputation {
   // is removable for a fusion computation.
   bool IsRemovable(const HloInstruction* instruction);
 
+  // Returns true if this computation has a side effect. A computation has a
+  // side effect if it contains one or more instructions with a side effect.
+  bool HasSideEffect() const;
+
   // Returns if this computation is a fusion computation.
   bool IsFusionComputation() const { return is_fusion_computation_; }
 
