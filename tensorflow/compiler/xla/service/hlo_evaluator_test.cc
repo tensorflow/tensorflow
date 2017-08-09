@@ -311,6 +311,27 @@ TEST_F(HloEvaluatorTest, DoesBroadcast) {
   LiteralTestUtil::ExpectEqual(*result, *output_literal);
 }
 
+TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
+  HloComputation::Builder b(TestName());
+  auto input_literal = Literal::CreateR0<int32>(111);
+  auto output_literal = Literal::CreateR2<int32>(
+      {{111, 111}, {111, 111}, {111, 111}, {111, 111}, {111, 111}, {111, 111}});
+
+  HloInstruction* literal_instruction = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+  // Broadcast dimension is ignored in the case of scalars.
+  b.AddInstruction(HloInstruction::CreateBroadcast(
+      output_literal->shape(), literal_instruction,
+      /*broadcast_dimensions=*/{1}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  LiteralTestUtil::ExpectEqual(*result, *output_literal);
+}
+
 TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {
   HloComputation::Builder b(TestName());
 
