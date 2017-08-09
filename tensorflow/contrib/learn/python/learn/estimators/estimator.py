@@ -65,11 +65,11 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_decorator
@@ -330,7 +330,7 @@ def _write_dict_to_summary(output_dir,
   """
   logging.info('Saving dict for global step %d: %s', current_global_step,
                _dict_to_str(dictionary))
-  summary_writer = summary_io.SummaryWriterCache.get(output_dir)
+  summary_writer = core_summary.FileWriterCache.get(output_dir)
   summary_proto = summary_pb2.Summary()
   for key in dictionary:
     if dictionary[key] is None:
@@ -1019,7 +1019,7 @@ class BaseEstimator(
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      summary_io.SummaryWriterCache.clear()
+      core_summary.FileWriterCache.clear()
       return loss
 
 
