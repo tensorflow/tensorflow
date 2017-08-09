@@ -22,6 +22,7 @@ namespace tensorflow {
 
 bool CanUseCudnn();
 bool CudnnUseAutotune();
+bool CudnnDisableConv1x1Optimization();
 
 }  // namespace tensorflow
 
