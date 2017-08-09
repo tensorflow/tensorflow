@@ -34,6 +34,8 @@ limitations under the License.
 #include <popstd/TileMapping.hpp>
 #include <popstd/Pad.hpp>
 
+namespace sep = ::perftools::gputools::poplarplugin;
+
 namespace xla {
 namespace poplarplugin {
 
@@ -212,7 +214,7 @@ Add64BitConstantTensor(poplar::Graph&graph,
   const void* data(static_cast<const void*>(literal.InternalData()));
 
   std::vector<char> converted =
-          ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
+          sep::ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
 
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 

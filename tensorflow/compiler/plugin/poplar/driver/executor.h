@@ -45,7 +45,8 @@ namespace perftools {
 namespace gputools {
 namespace poplarplugin {
 
-std::string GetCopyHandle(int64 i);
+std::string GetInputCopyHandle(int64 parameter, int64 index);
+std::string GetOutputCopyHandle(int64 index);
 
 typedef std::vector<char> (*ConversionFn)(const void*, int64, int64);
 
@@ -200,8 +201,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
                 const xla::Shape&,
                 const Args&,
                 const OutputMap&,
-                const ConversionList&,
-                const ConversionList&);
+                const std::vector<xla::Shape>&);
 
  private:
   struct TensorControl {
@@ -216,14 +216,12 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   std::tuple<DeviceMemoryBase,int64>
   AllocateSingleOutput(const xla::Shape& shape,
                        const int64 n,
-                       const ConversionList&,
                        const OutputMap& map,
                        const Args& args);
 
   std::tuple<DeviceMemoryBase,int64>
   AllocateOutputBuffer(const xla::Shape& shape,
                        const int64 n,
-                       const ConversionList&,
                        const OutputMap& map,
                        const Args& args);
 

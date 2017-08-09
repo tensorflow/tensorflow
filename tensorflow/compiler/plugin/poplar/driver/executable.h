@@ -46,8 +46,7 @@ class PoplarExecutable : public Executable {
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
                    std::shared_ptr<poplar::Engine> engine,
                    const sep::OutputMap& output_map,
-                   const sep::ConversionList& input_convertors,
-                   const sep::ConversionList& output_convertors);
+                   const std::vector<Shape>& parameter_shapes);
   ~PoplarExecutable() override;
 
 
@@ -76,8 +75,7 @@ class PoplarExecutable : public Executable {
 
   std::shared_ptr<poplar::Engine> poplar_engine_;
   sep::OutputMap output_map_;
-  sep::ConversionList input_convertors_;
-  sep::ConversionList output_convertors_;
+  std::vector<Shape> parameter_shapes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };

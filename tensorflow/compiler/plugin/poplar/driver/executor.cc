@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -88,11 +89,13 @@ namespace gputools {
 namespace poplarplugin {
 
 std::string
-GetCopyHandle(int64 i) {
-  static const std::string handles[10] = {
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
-  if (i < 10) return handles[i];
-  return tensorflow::strings::Printf("%lld", i);
+GetInputCopyHandle(int64 parameter, int64 index) {
+  return tensorflow::strings::Printf("%lld.%lld", parameter, index);
+}
+
+std::string
+GetOutputCopyHandle(int64 index) {
+  return tensorflow::strings::Printf("%lld", index);
 }
 
 host::HostStream *AsPoplarStream(Stream *stream) {
@@ -233,16 +236,16 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
 std::tuple<se::DeviceMemoryBase,int64>
 PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
                                      const int64 n,
-                                     const ConversionList& output_convertors,
                                      const OutputMap& map,
                                      const Args& args) {
   auto it(map.find(n));
+  ConversionFn conversion_fn = GetOutputConversionFunction(shape);
   if (it != map.end()) {
     se::DeviceMemoryBase buf(args[it->second]);
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
     tc->on_device = true;
     tc->output_handle = n;
-    tc->output_convertor = output_convertors[n];
+    tc->output_convertor = conversion_fn;
     return std::make_tuple(buf, n+1);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
@@ -250,7 +253,7 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
             reinterpret_cast<TensorControl*>(Allocate(size));
     tc->on_device = true;
     tc->output_handle = n;
-    tc->output_convertor = output_convertors[n];
+    tc->output_convertor = conversion_fn;
     return std::make_tuple(se::DeviceMemoryBase(tc, size), n+1);
   }
 }
@@ -258,12 +261,11 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
 std::tuple<se::DeviceMemoryBase,int64>
 PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
                                      const int64 n,
-                                     const ConversionList& output_convertors,
                                      const OutputMap& map,
                                      const Args& args) {
 
   if (shape.element_type() != xla::TUPLE) {
-    return AllocateSingleOutput(shape, n, output_convertors, map, args);
+    return AllocateSingleOutput(shape, n, map, args);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     TensorControl* tc = reinterpret_cast<TensorControl*>(Allocate(size));
@@ -273,7 +275,6 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
       se::DeviceMemoryBase out;
       std::tie(out, new_n) = AllocateOutputBuffer(shape.tuple_shapes(i),
                                                   new_n,
-                                                  output_convertors,
                                                   map,
                                                   args);
       *buf++ = out.opaque();
@@ -311,11 +312,11 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   if (tc->on_device == true && tc->output_handle != -1) {
     void* buf(static_cast<void*>(tc->data));
     if (tc->output_convertor) {
-      current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+      current_engine_->readTensor(GetOutputCopyHandle(tc->output_handle), buf);
       std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
       memcpy(buf, converted.data(), converted.size());
     } else {
-      current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+      current_engine_->readTensor(GetOutputCopyHandle(tc->output_handle), buf);
     }
     tc->on_device = false;
     tc->output_handle = -1;
@@ -327,11 +328,10 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
 
 port::StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
-                              const xla::Shape& shape,
+                              const xla::Shape& output_shape,
                               const Args& args,
                               const OutputMap& output_map,
-                              const ConversionList& input_convertors,
-                              const ConversionList& output_convertors) {
+                              const std::vector<xla::Shape>& parameter_shapes) {
 
   perftools::gputools::DeviceMemoryBase retbuf;
   int64 tensor_count;
@@ -343,7 +343,7 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
     if (engine == NULL) {
       // An empty engine is a graph that just passes its inputs through
       // to its outputs.  A variable reading graph is such a thing.
-      std::tie(retbuf, tensor_count) = RemapArgs(shape, 0, args);
+      std::tie(retbuf, tensor_count) = RemapArgs(output_shape, 0, args);
     } else {
       // Pull previous execution output back from device if:
       // a) the engine is changing
@@ -367,24 +367,28 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
       // a) the engine has changed
       // b) it is not on the device
       // c) it is on the device, but in the wrong place
+      // TODO recognise that inputs can be deep
       for (size_t a = 0; a < args.size(); a++) {
         auto mem = args[a];
+        std::string handle = GetInputCopyHandle(a, 0);
         TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
-        if (tc->on_device == false || tc->input_handle != (int64)a || engine_changed) {
+        if (tc->on_device == false ||
+            tc->input_handle != (int64)a ||
+            engine_changed) {
           void *buf(static_cast<void *>(tc->data));
-          if (input_convertors[a]) {
-            std::vector<char> converted = input_convertors[a](buf, tc->size, 0);
-            current_engine_->writeTensor(GetCopyHandle(a), converted.data());
+          ConversionFn fn = GetInputConversionFunction(parameter_shapes[a]);
+          if (fn != nullptr) {
+            std::vector<char> converted = fn(buf, tc->size, 0);
+            current_engine_->writeTensor(handle, converted.data());
           } else {
-            current_engine_->writeTensor(GetCopyHandle(a), buf);
+            current_engine_->writeTensor(handle, buf);
           }
           tc->on_device = true;
           tc->input_handle = a;
         }
       }
 
-      std::tie(retbuf, tensor_count) = AllocateOutputBuffer(shape, 0,
-                                                            output_convertors,
+      std::tie(retbuf, tensor_count) = AllocateOutputBuffer(output_shape, 0,
                                                             output_map, args);
 
       engine->run(0);

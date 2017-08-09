@@ -7,7 +7,8 @@
 
 namespace sep = ::perftools::gputools::poplarplugin;
 
-namespace xla {
+namespace perftools {
+namespace gputools {
 namespace poplarplugin {
 
 // NOTE: There is an assumption in executor.cc that the device representation
@@ -18,13 +19,14 @@ namespace poplarplugin {
 // NOTE: for these convertors, either the source size or the dest size will be
 //       non-zero.  The convertor needs to work out the number of items to
 //       transfer by considering both.
-std::vector<char> ConvInt64ToInt32(const void* src, int64 ssize, int64 dsize);
-std::vector<char> ConvInt32ToInt64(const void* src, int64 ssize, int64 dsize);
+std::vector<char> ConvInt64ToInt32(const void *src, int64 ssize, int64 dsize);
+std::vector<char> ConvInt32ToInt64(const void *src, int64 ssize, int64 dsize);
 
-sep::ConversionFn GetInputConversionFunction(const xla::Shape&);
-sep::ConversionFn GetOutputConversionFunction(const xla::Shape&);
+sep::ConversionFn GetInputConversionFunction(const xla::Shape &);
+sep::ConversionFn GetOutputConversionFunction(const xla::Shape &);
 
 
+}
 }
 }
 

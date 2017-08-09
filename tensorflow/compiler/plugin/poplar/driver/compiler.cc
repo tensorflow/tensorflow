@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -102,15 +101,24 @@ public:
                     CompilerResources& resources,
                     uint64 num_parameters)
           : FullVisitor(graph, resources),
+            parameter_shapes(num_parameters),
             all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
-    poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out,
-                        AddTensor(*graph_, inst, inst->shape(), resources_));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
-    graph_->createHostWrite(sep::GetCopyHandle(inst->parameter_number()), out);
+    parameter_shapes[inst->parameter_number()] = inst->shape();
+
+    std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
+
+    for (unsigned i=0; i<shapes.size(); i++) {
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out,
+                          AddTensor(*graph_, inst, shapes[i], resources_));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+
+      graph_->createHostWrite(
+              sep::GetInputCopyHandle(inst->parameter_number(), i), out);
+    }
     return Status::OK();
   }
 
@@ -125,13 +133,13 @@ public:
       for (int64 i=0; i<comp->num_parameters(); i++) {
         HloInstruction* param = comp->parameter_instruction(i);
         auto in = FindInstructionOutputs(tensor_map, param);
-
+// TODO in might be longer than 1 - need to fix output_map to keep this idea too
         if (in[0] == outputs[o]) {
           output_map[o] = i;
         }
       }
 
-      graph_->createHostRead(sep::GetCopyHandle(o), outputs[o]);
+      graph_->createHostRead(sep::GetOutputCopyHandle(o), outputs[o]);
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -143,27 +151,14 @@ public:
       }
     }
 
-    input_convertors.resize(comp->num_parameters());
-    output_convertors.resize(outputs.size());
-
-    for (int64 i=0; i<comp->num_parameters(); i++) {
-      HloInstruction* param = comp->parameter_instruction(i);
-      input_convertors[i] = GetInputConversionFunction(param->shape());
-    }
-
-    std::vector<xla::Shape> output_shapes = FlattenedXlaShape(inst->shape());
-    for (size_t o=0; o<output_shapes.size(); o++) {
-      output_convertors[o] = GetOutputConversionFunction(output_shapes[o]);
-    }
-
     tensor_map.clear();
 
     return Status::OK();
   }
 
   sep::OutputMap output_map;
-  sep::ConversionList input_convertors;
-  sep::ConversionList output_convertors;
+  std::vector<Shape> parameter_shapes;
+
   bool all_outputs_are_parameters;
 };
 
@@ -341,8 +336,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
           new PoplarExecutable(std::move(hlo_module),
                                std::move(engine),
                                std::move(visitor.output_map),
-                               std::move(visitor.input_convertors),
-                               std::move(visitor.output_convertors)));
+                               std::move(visitor.parameter_shapes)));
 
   return std::move(executable);
 }
