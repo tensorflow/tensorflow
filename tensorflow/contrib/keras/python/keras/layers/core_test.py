@@ -172,10 +172,13 @@ class CoreLayersTest(test.TestCase):
 
     # Test constraints
     with self.test_session():
+      k_constraint = keras.constraints.max_norm(0.01)
+      b_constraint = keras.constraints.max_norm(0.01)
       layer = keras.layers.Dense(
-          3, kernel_constraint='max_norm', bias_constraint='max_norm')
+          3, kernel_constraint=k_constraint, bias_constraint=b_constraint)
       layer(keras.backend.variable(np.ones((2, 4))))
-      self.assertEqual(2, len(layer.constraints))
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_activity_regularization(self):
     with self.test_session():

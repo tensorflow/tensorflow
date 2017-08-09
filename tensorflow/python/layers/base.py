@@ -351,7 +351,8 @@ class Layer(object):
             scope, default_name=self._base_name).gen)
 
   def add_variable(self, name, shape, dtype=None,
-                   initializer=None, regularizer=None, trainable=True):
+                   initializer=None, regularizer=None,
+                   trainable=True, constraint=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -363,6 +364,7 @@ class Layer(object):
       trainable: whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
+      constraint: constraint instance (callable).
 
     Returns:
       The created variable.
@@ -380,6 +382,7 @@ class Layer(object):
                                    shape=shape,
                                    initializer=initializer,
                                    dtype=dtypes.as_dtype(dtype),
+                                   constraint=constraint,
                                    trainable=trainable and self.trainable)
         if variable in existing_variables:
           return variable
