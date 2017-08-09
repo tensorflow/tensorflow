@@ -29,10 +29,10 @@ from tensorflow.python.platform import test
 
 class InTopKTest(test.TestCase):
 
-  def _validateInTopK(self, predictions, target, k, expected):
+  def _validateInTopK(self, predictions, target, k, handle_ties, expected):
     np_ans = np.array(expected)
     with self.test_session():
-      precision = nn_ops.in_top_k(predictions, target, k)
+      precision = nn_ops.in_top_k(predictions, target, k, handle_ties)
       out = precision.eval()
       self.assertAllClose(np_ans, out)
       self.assertShapeEqual(np_ans, precision)
@@ -40,28 +40,38 @@ class InTopKTest(test.TestCase):
   def testInTop1(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     target = [3, 1]
-    self._validateInTopK(predictions, target, 1, [True, False])
+    self._validateInTopK(predictions, target, 1, "INCLUDE", [True, False])
 
   def testInTop2(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     target = [0, 2]
-    self._validateInTopK(predictions, target, 2, [False, True])
+    self._validateInTopK(predictions, target, 2, "INCLUDE", [False, True])
 
   def testInTop2Tie(self):
     # Class 2 and 3 tie for 2nd, so both are considered in top 2.
     predictions = [[0.1, 0.3, 0.2, 0.2], [0.1, 0.3, 0.2, 0.2]]
     target = [2, 3]
-    self._validateInTopK(predictions, target, 2, [True, True])
+    self._validateInTopK(predictions, target, 2, "INCLUDE", [True, True])
 
   def testInTop2_int64Target(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     target = np.asarray([0, 2]).astype(np.int64)
-    self._validateInTopK(predictions, target, 2, [False, True])
+    self._validateInTopK(predictions, target, 2, "INCLUDE", [False, True])
 
   def testInTopNan(self):
     predictions = [[0.1, float("nan"), 0.2, 0.4], [0.1, 0.2, 0.3, float("inf")]]
     target = [0, 2]
-    self._validateInTopK(predictions, target, 2, [False, False])
+    self._validateInTopK(predictions, target, 2, "INCLUDE", [False, False])
+
+  def testTieSample(self):
+    predictions = [[0.1, 0.4, 0.4, 0.2], [0.1, 0.2, 0.3, 0.1]]
+    target = [2, 2]
+    self._validateInTopK(predictions, target, 2, "SAMPLE", [True, True])
+
+  def testTieExclude(self):
+    predictions = [[0.1, 0.2, 0.4, 0.2], [0.1, 0.2, 0.3, 0.3], [0.1, 0.3, 0.3, 0.3]]
+    target = [1, 2, 2]
+    self._validateInTopK(predictions, target, 2, "EXCLUDE", [False, True, False])
 
   def testBadTarget(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
@@ -69,7 +79,7 @@ class InTopKTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "target.*out of range"):
-        nn_ops.in_top_k(predictions, target, 2).eval()
+        nn_ops.in_top_k(predictions, target, 2, "INCLUDE").eval()
 
   def testTensorK(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
@@ -79,7 +89,7 @@ class InTopKTest(test.TestCase):
     with self.test_session():
       # TODO (yongtang): The test will be switch to nn_ops.in_top
       # once nn_ops.in_top points to _in_top_kv2 later
-      precision = gen_nn_ops._in_top_kv2(predictions, target, k)
+      precision = nn_ops.in_top_k(predictions, target, k, "INCLUDE")
       out = precision.eval()
       self.assertAllClose(np_ans, out)
       self.assertShapeEqual(np_ans, precision)
