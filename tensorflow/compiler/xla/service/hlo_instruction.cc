@@ -659,6 +659,26 @@ RandomDistribution HloInstruction::random_distribution() const {
   return distribution_;
 }
 
+bool HloInstruction::HasSideEffect() const {
+  switch (opcode_) {
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kTrace:
+      return true;
+    default: {
+      // Check if any of the called computations has a side effect.
+      for (const auto& computation : called_computations()) {
+        if (computation->HasSideEffect()) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+}
+
 void HloInstruction::CheckFusionInstruction() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
 
