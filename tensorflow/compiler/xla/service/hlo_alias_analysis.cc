@@ -44,10 +44,10 @@ void HloAliasAnalysis::InitializeBufferSets() {
   std::unordered_map<HloValue::Id, const HloBuffer*> value_to_buffer;
 
   // Initially define a buffer for every HloValue in the module.
-  for (const HloValue* value : dataflow_analysis_->values()) {
+  for (const HloValue& value : dataflow_analysis_->values()) {
     HloBuffer* buffer = NewHloBuffer();
-    buffer->AddValue(*value);
-    value_to_buffer[value->id()] = buffer;
+    buffer->AddValue(value);
+    value_to_buffer[value.id()] = buffer;
   }
 
   // Construct the Instruction buffer set to contain the HloBuffers for each
