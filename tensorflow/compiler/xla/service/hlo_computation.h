@@ -161,7 +161,7 @@ class HloComputation {
   // reachability. Trivially an instruction is reachable from itself.
   std::unique_ptr<HloReachabilityMap> ComputeReachability() const;
 
-  // Updates the given reachabilty map after the immediate predecessor set
+  // Updates the given reachability map after the immediate predecessor set
   // (operands and control predecessors) of 'instruction' has changed.
   void UpdateReachabilityThroughInstruction(
       const HloInstruction* instruction, HloReachabilityMap* reachability_map);
