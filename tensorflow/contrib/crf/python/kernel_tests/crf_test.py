@@ -201,89 +201,50 @@ class CrfTest(test.TestCase):
                        expected_max_sequence[:sequence_lengths])
 
   def testCrfDecode(self):
-
-    def np_crf_decode(potentials, transition_params, seq_lens):
-      """This is a function for numpy arrays.
-
-      Args:
-        potentials: A [batch_size, max_seq_len, num_tags] array containing
-                    unary potentials.
-        transition_params: A [num_tags, num_tags] array containing binary
-                    potentials.
-        seq_lens: A [batch_size] array containing true sequence lengths.
-
-      Returns:
-        pred_tags: A list of 1-d array, with length batch_size and i-th
-                   element's length seq_lens[i]. Contains the highest scoring
-                   tag indicies.
-        scores: A list of integers, with length batch_size. Contains the score
-                   of pred_tags.
-      """
-      pred_tags, scores = [], []
-      for p, seq_len in zip(potentials, seq_lens):
-        p = p[:seq_len]
-        pred_tag, score = crf.viterbi_decode(p, transition_params)
-        pred_tags.append(pred_tag)
-        scores.append(score)
-      return pred_tags, scores
-
-
-    def calc_accuracy(pred_tags, gold_tags, seq_lens):
-      correct, total = 0, 0
-      for pred, gold, seq_len in zip(pred_tags, gold_tags, seq_lens):
-        pred = pred[:seq_len]
-        gold = gold[:seq_len]
-        correct += np.sum(np.equal(pred, gold))
-        total += seq_len
-      accuracy = correct / total
-      return accuracy
-
-    batch_size = 32
-    max_seq_len = 100
-    num_tags = 4
-
-    np.random.seed(1)
-    seq_lens_v = np.random.randint(low=max(max_seq_len / 2, 1),
-                                   high=max_seq_len,
-                                   size=[batch_size])
-
-    trans_params_v = np.random.rand(num_tags, num_tags)
-
-    potentials_v = np.random.rand(batch_size, max_seq_len, num_tags)
-    tag_indices_v = np.random.randint(low=0,
-                                      high=num_tags,
-                                      size=[batch_size, max_seq_len])
-    # Decode using numpy version.
-    np_pred_tags, np_scores = np_crf_decode(potentials_v,
-                                            trans_params_v,
-                                            seq_lens_v)
-    np_accuracy = calc_accuracy(np_pred_tags,
-                                tag_indices_v,
-                                seq_lens_v)
+    inputs = np.array(
+        [[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]], dtype=np.float32)
+    transition_params = np.array(
+        [[-3, 5, -2], [3, 4, 1], [1, 2, 1]], dtype=np.float32)
+    sequence_lengths = np.array(3, dtype=np.int32)
+    num_words = inputs.shape[0]
+    num_tags = inputs.shape[1]
 
     with self.test_session() as sess:
-      seq_lens = constant_op.constant(seq_lens_v, dtype=dtypes.int32)
-      trans_params = constant_op.constant(trans_params_v, dtype=dtypes.float32)
-      potentials = constant_op.constant(potentials_v, dtype=dtypes.float32)
-      # Decode using tensor version.
-      pred_tags, scores = crf.crf_decode(potentials,
-                                         trans_params,
-                                         seq_lens)
+      all_sequence_scores = []
+      all_sequences = []
 
-      tf_pred_tags, tf_scores = sess.run([pred_tags, scores])
+      # Compare the dynamic program with brute force computation.
+      for tag_indices in itertools.product(
+          range(num_tags), repeat=sequence_lengths):
+        tag_indices = list(tag_indices)
+        tag_indices.extend([0] * (num_words - sequence_lengths))
+        all_sequences.append(tag_indices)
+        sequence_score = crf.crf_sequence_score(
+            inputs=array_ops.expand_dims(inputs, 0),
+            tag_indices=array_ops.expand_dims(tag_indices, 0),
+            sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+            transition_params=constant_op.constant(transition_params))
+        sequence_score = array_ops.squeeze(sequence_score, [0])
+        all_sequence_scores.append(sequence_score)
 
-      tf_accuracy = calc_accuracy(tf_pred_tags,
-                                  tag_indices_v,
-                                  seq_lens_v)
+      tf_all_sequence_scores = sess.run(all_sequence_scores)
 
-      self.assertLess(abs(tf_accuracy - np_accuracy), 1e-5)
+      expected_max_sequence_index = np.argmax(tf_all_sequence_scores)
+      expected_max_sequence = all_sequences[expected_max_sequence_index]
+      expected_max_score = tf_all_sequence_scores[expected_max_sequence_index]
 
-      for b in range(batch_size):
-        self.assertEqual(list(tf_pred_tags[b])[:seq_lens_v[b]],
-                         np_pred_tags[b])
-        score_diff = abs(tf_scores[b] - np_scores[b])
-        percent = score_diff / (abs(tf_scores[b]) + abs(np_scores[b]))
-        self.assertLess(percent, 1e-5)
+      actual_max_sequence, actual_max_score = crf.crf_decode(
+          array_ops.expand_dims(inputs, 0),
+          constant_op.constant(transition_params),
+          array_ops.expand_dims(sequence_lengths, 0))
+      actual_max_sequence = array_ops.squeeze(actual_max_sequence, [0])
+      actual_max_score = array_ops.squeeze(actual_max_score, [0])
+      tf_actual_max_sequence, tf_actual_max_score = sess.run(
+          [actual_max_sequence, actual_max_score])
+
+      self.assertAllClose(tf_actual_max_score, expected_max_score)
+      self.assertEqual(list(tf_actual_max_sequence[:sequence_lengths]),
+                       expected_max_sequence[:sequence_lengths])
 
 
 if __name__ == "__main__":
