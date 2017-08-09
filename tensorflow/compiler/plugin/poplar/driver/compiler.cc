@@ -134,8 +134,8 @@ public:
         HloInstruction* param = comp->parameter_instruction(i);
         auto in = FindInstructionOutputs(tensor_map, param);
 
-        // TODO work with deep inputs
-        if (in[0] == outputs[o]) {
+        // Only non-tuple inputs are considered for input<->output mapping
+        if (in.size() == 1 && in[0] == outputs[o]) {
           output_map[o] = i;
         }
       }

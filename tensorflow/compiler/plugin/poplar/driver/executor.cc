@@ -66,20 +66,21 @@ limitations under the License.
  *       does not need to be recopied to the device.  I suspect that this case
  *       is rare.
  *
- *     on_device=true, input_handle==-1, output_handle is not empty :
+ *     on_device=true, input_handle==-1, output_handle not empty :
  *       During the last execution, the buffer was allocated to represent one
  *       of the outputs of the engine.  If the host wants to read the data back
- *       then it will have to be retreived from the device.  If the next
+ *       then it will have to be retrieved from the device.  If the next
  *       execution changes the engine, then the data will have to be read back.
  *
- *     on_device=true, input_handle!=-1, output_handle is not empty :
+ *     on_device=true, input_handle!=-1, output_handle not empty :
  *       During the last execution, the buffer was an argument to the execution
  *       and was also one of the output parameters.  This typically indicates
  *       that it is a variable (weights/biases) that has been updated in place.
  *       If the next execution doesn't change the engine, and the data is not
- *       read back to the host inbetween, then the data does not need to be
- *       copied back to the host.  This is the ideal situation when executing
- *       an engine repeatedly with the same set of weights/biases.
+ *       read back to the host in between executions, and the data remains as
+ *       an argument to the same input number, then the data does not need to be
+ *       copied back to the host.  This is the ideal situation when executing an
+ *       engine repeatedly with the same set of weights/biases.
  *
  */
 namespace se = ::perftools::gputools;
@@ -255,6 +256,7 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
                                      const Args& args) {
   auto it(map.find(n));
   if (it != map.end()) {
+    // The output is an in-place update of one of the inputs
     se::DeviceMemoryBase buf(args[it->second]);
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
     tc->on_device = true;
@@ -262,6 +264,7 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
     tc->output_convertor = GetOutputConversionFunction(shape);
     return std::make_tuple(buf, n+1);
   } else {
+    // The output is not one of the inputs
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
     TensorControl* tc =
             reinterpret_cast<TensorControl*>(Allocate(size));
@@ -334,6 +337,7 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   }
   tc->on_device = false;
   tc->output_handle.clear();
+  tc->input_handle = -1;
   return port::Status::OK();
 }
 
