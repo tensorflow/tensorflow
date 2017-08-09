@@ -505,7 +505,7 @@ class EstimatorModelFnTest(test.TestCase):
       return input_fn_utils.InputFnOps(
           features, labels, {'examples': serialized_tf_example})
 
-    est.export_savedmodel(os.path.join(est.model_dir, 'export'), serving_input_fn) 
+    est.export_savedmodel(os.path.join(est.model_dir, 'export'), serving_input_fn)
     self.assertTrue(self.mock_saver.restore.called)
 
 
@@ -957,7 +957,7 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
         self.assertItemsEqual(
           ['bogus_lookup', 'feature'],
-          [x.decode("utf-8") for x in graph.get_collection(
+          [compat.as_str_any(x) for x in graph.get_collection(
             constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS)])
 
 

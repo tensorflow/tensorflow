@@ -195,7 +195,10 @@ def func_dump(func):
   Returns:
       A tuple `(code, defaults, closure)`.
   """
-  code = marshal.dumps(func.__code__).replace(b'\\',b'/').decode('raw_unicode_escape')
+  if os.name == 'nt':
+    code = marshal.dumps(func.__code__).replace(b'\\',b'/').decode('raw_unicode_escape')
+  else:
+    code = marshal.dumps(func.__code__).decode('raw_unicode_escape')
   defaults = func.__defaults__
   if func.__closure__:
     closure = tuple(c.cell_contents for c in func.__closure__)

@@ -63,26 +63,26 @@ class ExportTest(test.TestCase):
       signatures_any[0].Unpack(signatures)
       default_signature = signatures.default_signature
       return default_signature
-  
+
   def _assert_export(self, export_monitor, export_dir, expected_signature):
     self.assertTrue(gfile.Exists(export_dir))
     # Only the written checkpoints are exported.
     self.assertTrue(
-        saver.checkpoint_exists(os.path.join( export_dir, '00000001', 'export')),
+        saver.checkpoint_exists(os.path.join(export_dir, '00000001', 'export')),
         'Exported checkpoint expected but not found: %s' %
-        os.path.join( export_dir, '00000001', 'export'))
+        os.path.join(export_dir, '00000001', 'export'))
     self.assertTrue(
-        saver.checkpoint_exists(os.path.join( export_dir, '00000010', 'export')),
+        saver.checkpoint_exists(os.path.join(export_dir, '00000010', 'export')),
         'Exported checkpoint expected but not found: %s' %
-        os.path.join( export_dir, '00000010', 'export'))
+        os.path.join(export_dir, '00000010', 'export'))
     self.assertEquals(
         six.b(os.path.join(export_dir, '00000010')),
         export_monitor.last_export_dir)
     # Validate the signature
     signature = self._get_default_signature(
-      os.path.join( export_dir, '00000010', 'export.meta'))
+      os.path.join(export_dir, '00000010', 'export.meta'))
     self.assertTrue(signature.HasField(expected_signature))
-  
+
   def testExportMonitor_EstimatorProvidesSignature(self):
     random.seed(42)
     x = np.random.rand(1000)
@@ -222,7 +222,7 @@ class ExportTest(test.TestCase):
     regressor = learn.LinearRegressor(feature_columns=[_X_COLUMN])
     regressor.fit(input_fn=_training_input_fn, steps=10, monitors=[monitor])
     self._assert_export(monitor, export_dir, 'generic_signature')
-  
+
   def testExportMonitorRegressionSignature(self):
 
     def _regression_signature(examples, unused_features, predictions):
@@ -245,18 +245,15 @@ class ExportTest(test.TestCase):
     regressor.fit(x, y, steps=10, monitors=[export_monitor])
 
     self.assertTrue(gfile.Exists(export_dir))
-    # Catch exception for non-existing path
-    # with self.assertRaises(errors.NotFoundError): 
     with self.assertRaises(errors.NotFoundError):
-      saver.checkpoint_exists(os.path.join( export_dir, '00000000', 'export'))
+      saver.checkpoint_exists(os.path.join(export_dir, '00000000', 'export'))
     self.assertTrue(
-      saver.checkpoint_exists(os.path.join( export_dir, '00000010', 'export')))
+      saver.checkpoint_exists(os.path.join(export_dir, '00000010', 'export')))
     # Validate the signature
     signature = self._get_default_signature(
-      os.path.join( export_dir, '00000010', 'export.meta'))
+      os.path.join(export_dir, '00000010', 'export.meta'))
     self.assertTrue(signature.HasField('regression_signature'))
 
 
 if __name__ == '__main__':
   test.main()
-  
