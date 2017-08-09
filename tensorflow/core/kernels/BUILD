@@ -3270,6 +3270,20 @@ tf_kernel_library(
     deps = PARSING_DEPS,
 )
 
+tf_cc_test(
+    name = "parse_tensor_test",
+    srcs = ["parse_tensor_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+	":parse_tensor_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "string_to_number_op",
     prefix = "string_to_number_op",
