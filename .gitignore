@@ -13,3 +13,4 @@ node_modules
 __pycache__
 *.swp
 .vscode/
+.idea/**
