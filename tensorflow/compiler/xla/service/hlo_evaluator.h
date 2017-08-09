@@ -119,8 +119,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-
   Status HandleTranspose(HloInstruction* transpose) override;
 
   Status HandleIsFinite(HloInstruction* is_finite,

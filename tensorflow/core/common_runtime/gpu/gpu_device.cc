@@ -630,8 +630,18 @@ int64 MinSystemMemory(int64 available_memory) {
 
 static string GetShortDeviceDescription(int device_id,
                                         const gpu::DeviceDescription& desc) {
+  int cc_major;
+  int cc_minor;
+  if (!desc.cuda_compute_capability(&cc_major, &cc_minor)) {
+    cc_major = 0;
+    cc_minor = 0;
+  }
+  // LINT.IfChange
   return strings::StrCat("device: ", device_id, ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id());
+                         ", pci bus id: ", desc.pci_bus_id(),
+                         ", compute capability: ", cc_major, ".", cc_minor);
+  // LINT.ThenChange(//tensorflow/python/platform/\
+  //                 test.py)
 }
 
 Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
@@ -949,16 +959,15 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << "\nmajor: " << cc_major
-              << " minor: " << cc_minor << " memoryClockRate (GHz) "
-              << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id() << "\nTotal memory: "
+              << "\nname: " << description.name() << " major: " << cc_major
+              << " minor: " << cc_minor
+              << " memoryClockRate(GHz): " << description.clock_rate_ghz()
+              << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
               << strings::HumanReadableNumBytes(total_bytes)
-              << "\nFree memory: "
-              << strings::HumanReadableNumBytes(free_bytes);
+              << " freeMemory: " << strings::HumanReadableNumBytes(free_bytes);
   }
-
-  if (new_gpu_found) {
+  // Checking peering and shows matrix if more than one gpu found.
+  if (new_gpu_found && visible_gpu_order.size() > 1) {
     // Enable peer access
     TF_RETURN_IF_ERROR(EnablePeerAccess(gpu_manager, visible_gpu_order));
 

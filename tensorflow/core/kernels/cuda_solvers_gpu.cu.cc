@@ -33,11 +33,11 @@ typedef Eigen::GpuDevice GPUDevice;
 // SwapDimension1And2InTensor3 in tensorflow/core/kernels/conv_ops_gpu_3.cu.cc
 template <typename Scalar>
 struct AdjointBatchFunctor<GPUDevice, Scalar> {
-  void operator()(const GPUDevice& d,
+  void operator()(const GPUDevice& device,
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output) {
     const Eigen::array<int, 3> perm({0, 2, 1});
-    To32Bit(output).device(d) = To32Bit(input).shuffle(perm).conjugate();
+    To32Bit(output).device(device) = To32Bit(input).shuffle(perm).conjugate();
   }
 };
 
@@ -49,7 +49,7 @@ template struct AdjointBatchFunctor<GPUDevice, std::complex<double>>;
 
 namespace {
 
-// Hack around missing support for complex arithmetic in nvcc.
+// Hacks around missing support for complex arithmetic in nvcc.
 template <typename Scalar>
 __host__ __device__ inline Scalar Multiply(Scalar x, Scalar y) {
   return x * y;
@@ -95,6 +95,31 @@ template <>
 __host__ __device__ inline bool IsFinite(cuDoubleComplex x) {
   return isfinite(cuCreal(x)) && isfinite(cuCimag(x));
 }
+
+template <typename Scalar>
+struct Const {
+  template <typename RealScalar>
+  __host__ __device__ static inline Scalar make_const(const RealScalar x) {
+    return Scalar(x);
+  }
+};
+
+template <>
+struct Const<cuComplex> {
+  template <typename RealScalar>
+  __host__ __device__ static inline cuComplex make_const(const RealScalar x) {
+    return make_cuComplex(x, 0.0f);
+  }
+};
+
+template <>
+struct Const<cuDoubleComplex> {
+  template <typename RealScalar>
+  __host__ __device__ static inline cuDoubleComplex make_const(
+      const RealScalar x) {
+    return make_cuDoubleComplex(x, 0.0f);
+  }
+};
 
 }  // namespace
 
@@ -146,21 +171,21 @@ __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
 
 template <typename Scalar>
 struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
-  void operator()(const GPUDevice& d,
+  void operator()(const GPUDevice& device,
                   typename TTypes<Scalar, 3>::Tensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
                   int* info) {
     using CudaType = typename CUDAComplexT<Scalar>::type;
     const int64 num_matrices = output.size();
-    const int ndims = lu_factor.rank();
-    const int64 n = lu_factor.dimension(ndims - 1);
+    const int64 n = lu_factor.dimension(2);
     const CudaType* lu_factor_ptr =
         reinterpret_cast<const CudaType*>(lu_factor.data());
     CudaType* output_ptr = reinterpret_cast<CudaType*>(output.data());
-    CudaLaunchConfig cfg = GetCudaLaunchConfig(num_matrices, d);
-    DeterminantFromPivotedLUKernel<<<cfg.block_count, cfg.thread_per_block, 0,
-                                     d.stream()>>>(
-        cfg.virtual_thread_count, n, lu_factor_ptr, pivots, output_ptr, info);
+    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
+    DeterminantFromPivotedLUKernel<<<
+        config.block_count, config.thread_per_block, 0, device.stream()>>>(
+        config.virtual_thread_count, n, lu_factor_ptr, pivots, output_ptr,
+        info);
   }
 };
 
@@ -170,6 +195,54 @@ template struct DeterminantFromPivotedLUFunctor<GPUDevice, double>;
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, std::complex<float>>;
 template struct DeterminantFromPivotedLUFunctor<GPUDevice,
                                                 std::complex<double>>;
+
+template <typename Scalar>
+__global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
+                          int n, Scalar* matrix_batch_ptr) {
+  const int matrix_size = m * n;
+  const Scalar one = Const<Scalar>::make_const(1.0);
+  const Scalar zero = Const<Scalar>::make_const(0.0);
+  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
+    if (batch >= batch_size) {
+      break;
+    }
+    CUDA_AXIS_KERNEL_LOOP(row, config.virtual_thread_count, y) {
+      if (row >= m) {
+        break;
+      }
+      const int row_start = batch * matrix_size + row * n;
+      CUDA_AXIS_KERNEL_LOOP(col, config.virtual_thread_count, z) {
+        if (col >= n) {
+          break;
+        }
+        matrix_batch_ptr[row_start + col] = row == col ? one : zero;
+      }
+    }
+  }
+}
+
+template <typename Scalar>
+struct EyeFunctor<GPUDevice, Scalar> {
+  void operator()(const GPUDevice& device,
+                  typename TTypes<Scalar, 3>::Tensor matrix_batch) {
+    using CudaType = typename CUDAComplexT<Scalar>::type;
+    const int batch_size = matrix_batch.dimension(0);
+    const int m = matrix_batch.dimension(1);
+    const int n = matrix_batch.dimension(2);
+    CudaType* matrix_batch_ptr =
+        reinterpret_cast<CudaType*>(matrix_batch.data());
+    Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(batch_size, m, n, device,
+                                                      EyeKernel<Scalar>, 0, 0);
+    EyeKernel<<<config.block_count, config.thread_per_block, 0,
+                device.stream()>>>(config, batch_size, m, n, matrix_batch_ptr);
+  }
+};
+
+// Instantiate implementations for the 4 numeric types.
+template struct EyeFunctor<GPUDevice, float>;
+template struct EyeFunctor<GPUDevice, double>;
+template struct EyeFunctor<GPUDevice, std::complex<float>>;
+template struct EyeFunctor<GPUDevice, std::complex<double>>;
 
 }  // namespace functor
 }  // namespace tensorflow
