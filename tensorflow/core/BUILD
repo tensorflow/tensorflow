@@ -1245,72 +1245,36 @@ tf_proto_library_cc(
     ],
 )
 
-LIB_INTERNAL_WINDOWS_DEPS = glob(
-    [
-        "lib/**/*.h",
-        "lib/**/*.cc",
-        "platform/*.h",
-        "platform/*.cc",
-        "platform/profile_utils/**/*.h",
-        "platform/profile_utils/**/*.cc",
-    ] + [
-        "framework/resource_handle.h",
-        "framework/resource_handle.cc",
-        "framework/variant_tensor_data.h",
-        "framework/variant_tensor_data.cc",
-    ],
-    exclude = [
-        "**/*test*",
-        "lib/hash/crc32c_accelerate.cc",
-        "lib/gif/**/*",
-        "lib/jpeg/**/*",
-        "platform/gif.h",
-        "platform/jpeg.h",
-        "platform/**/env_time.cc",
-        "platform/**/cuda.h",
-        "platform/**/cuda_libdevice_path.cc",
-        "platform/**/stream_executor.h",
-        "platform/load_library.cc",
-        "platform/variant_coding.cc",
-        "platform/**/variant_cord_coding.cc",
-    ],
-)
-
 cc_library(
     name = "lib_internal",
-    srcs = select({
-        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_DEPS,
-        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_DEPS,
-        "//conditions:default": glob(
-            [
-                "lib/**/*.h",
-                "lib/**/*.cc",
-                "platform/*.h",
-                "platform/*.cc",
-                "platform/profile_utils/**/*.h",
-                "platform/profile_utils/**/*.cc",
-                "framework/resource_handle.h",
-                "framework/resource_handle.cc",
-            ],
-            exclude = [
-                "**/*test*",
-                "framework/variant.cc",
-                "platform/variant_coding.cc",
-                "lib/hash/crc32c_accelerate.cc",
-                "lib/gif/**/*",
-                "lib/jpeg/**/*",
-                "platform/gif.h",
-                "platform/jpeg.h",
-                "platform/**/env_time.cc",
-                "platform/**/cuda.h",
-                "platform/**/cuda_libdevice_path.cc",
-                "platform/**/stream_executor.h",
-                "platform/**/gpu_tracer.cc",
-                "platform/variant_coding.cc",
-                "platform/**/variant_cord_coding.cc",
-            ],
-        ),
-    }) + tf_additional_lib_srcs(
+    srcs = glob(
+        [
+            "lib/**/*.h",
+            "lib/**/*.cc",
+            "platform/*.h",
+            "platform/*.cc",
+            "platform/profile_utils/**/*.h",
+            "platform/profile_utils/**/*.cc",
+            "framework/resource_handle.h",
+            "framework/resource_handle.cc",
+        ],
+        exclude = [
+            "**/*test*",
+            "framework/variant.cc",
+            "lib/hash/crc32c_accelerate.cc",
+            "lib/gif/**/*",
+            "lib/jpeg/**/*",
+            "platform/gif.h",
+            "platform/jpeg.h",
+            "platform/**/env_time.cc",
+            "platform/**/cuda.h",
+            "platform/**/cuda_libdevice_path.cc",
+            "platform/**/stream_executor.h",
+            "platform/**/gpu_tracer.cc",
+            "platform/variant_coding.cc",
+            "platform/**/variant_cord_coding.cc",
+        ],
+    ) + tf_additional_lib_srcs(
         exclude = [
             "**/*test*",
             "platform/**/cuda.h",
@@ -1373,6 +1337,8 @@ cc_library(
               tf_additional_mpi_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",
@@ -1407,6 +1373,8 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -1430,6 +1398,8 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -1605,6 +1575,8 @@ tf_cuda_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }) + [
         "-lm",
