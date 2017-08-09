@@ -372,7 +372,10 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
 
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0})),
-      UnorderedElementsAre(GetValueDefinedAt(constant1)));
+      UnorderedElementsAre(GetValueDefinedAt(xla_while, /*index=*/{0}),
+                           GetValueDefinedAt(body_param, /*index=*/{0}),
+                           GetValueDefinedAt(cond_param, /*index=*/{0}),
+                           GetValueDefinedAt(constant1)));
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1})),
       UnorderedElementsAre(GetValueDefinedAt(constant2),
