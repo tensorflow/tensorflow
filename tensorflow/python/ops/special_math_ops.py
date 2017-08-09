@@ -156,7 +156,7 @@ def einsum(equation, *inputs, **kwargs):
   if kwargs:
     raise TypeError("invalid keyword arguments for this function: " +
                     ", ".join([format(key)
-                               for key in reversed(list(kwargs.keys()))]))
+                               for key in sorted(list(kwargs.keys()))]))
   with ops.name_scope(name, "einsum", [equation, inputs]) as name:
     if '...' in equation:
       raise ValueError('Subscripts with ellipses are not yet supported.')
