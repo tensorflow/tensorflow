@@ -1280,7 +1280,12 @@ class Estimator(BaseEstimator):
 
     export_dir = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    builder = saved_model_builder.SavedModelBuilder(export_dir)
+    # We'll write the SavedModel to a temporary directory and then atomically
+    # rename it at the end.  This helps to avoid corrupt / incomplete outputs,
+    # which could otherwise occur if the job is preempted or otherwise fails
+    # in the middle of SavedModel creation.
+    temp_export_dir = saved_model_export_utils.get_temp_export_dir(export_dir)
+    builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
 
     # Build the base graph
     with ops.Graph().as_default() as g:
@@ -1375,7 +1380,7 @@ class Estimator(BaseEstimator):
 
     # Add the extra assets
     if assets_extra:
-      assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+      assets_extra_path = os.path.join(compat.as_bytes(temp_export_dir),
                                        compat.as_bytes('assets.extra'))
       for dest_relative, source in assets_extra.items():
         dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
@@ -1385,6 +1390,7 @@ class Estimator(BaseEstimator):
         gfile.Copy(source, dest_absolute)
 
     builder.save(as_text)
+    gfile.Rename(temp_export_dir, export_dir)
     return export_dir
 
 
