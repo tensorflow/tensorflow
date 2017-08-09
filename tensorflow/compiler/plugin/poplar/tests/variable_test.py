@@ -106,6 +106,43 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       self.assertAllClose(np.array([1.9, 2.9], dtype=np.float32), vb, rtol=1e-4)
 
+  def testRepeatedGradientDescent(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.variable_scope("vs", use_resource=True):
+
+        w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
+                            initializer=tf.constant_initializer(
+                              np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)))
+        b = tf.get_variable("b", shape=[2], dtype=tf.float32,
+                            initializer=tf.constant_initializer(
+                              np.array([2, 3], dtype=np.float32)))
+
+      x = tf.placeholder(tf.float32, shape=[1, 4])
+      y = tf.matmul(x, w) + b
+
+      loss = tf.reduce_sum(y)
+      optimizer = tf.train.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+    with tf.Session() as sess:
+
+      sess.run(tf.global_variables_initializer())
+      sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run(train, {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
+      sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run(train, {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
+      sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+
+      vw, vb = sess.run([w, b])
+
+      self.assertAllClose(
+        np.array([[-1.3, -0.3], [1.7, 2.7], [2.9, 3.9], [3.5, 4.5]],
+                 dtype=np.float32),
+        vw, rtol=1e-4)
+
+      self.assertAllClose(np.array([1.5, 2.5], dtype=np.float32), vb, rtol=1e-4)
+
+
   def testMultipleUpdate(self):
     with tf.device("/device:XLA_IPU:0"):
       with tf.Session() as sess:
