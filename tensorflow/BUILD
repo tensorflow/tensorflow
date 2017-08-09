@@ -64,6 +64,24 @@ config_setting(
 )
 
 config_setting(
+    name = "android_mips",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_mips64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -165,6 +183,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_gdr_support",
+    values = {"define": "with_gdr_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
@@ -244,6 +268,7 @@ filegroup(
         "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/boosted_trees:all_files",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:all_files",
         "//tensorflow/contrib/boosted_trees/lib:all_files",
         "//tensorflow/contrib/boosted_trees/proto:all_files",
         "//tensorflow/contrib/boosted_trees/resources:all_files",
@@ -266,6 +291,7 @@ filegroup(
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
+        "//tensorflow/contrib/fused_conv:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/hooks:all_files",
@@ -286,6 +312,7 @@ filegroup(
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
+        "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nn:all_files",
@@ -338,6 +365,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
         "//tensorflow/core/ops/compat:all_files",
@@ -351,6 +379,7 @@ filegroup(
         "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
         "//tensorflow/examples/benchmark:all_files",
+        "//tensorflow/examples/get_started/regression:all_files",
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
         "//tensorflow/examples/label_image:all_files",

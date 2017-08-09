@@ -29,20 +29,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.profiler import option_builder
 
 # pylint: disable=g-bad-import-order
 # XXX: this depends on pywrap_tensorflow and must come later
 from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.profiler.internal import model_analyzer_testlib as lib
+
 SIZE = 1300
+builder = option_builder.ProfileOptionBuilder
 
 
-def _extract_node(run_meta, node_name):
+def _extract_node(run_meta, node_names):
+  if not isinstance(node_names, list):
+    node_names = [node_names]
   ret = defaultdict(list)
   for dev_stat in run_meta.step_stats.dev_stats:
     dev = dev_stat.device
     for node_stat in dev_stat.node_stats:
-      if node_stat.node_name == node_name:
+      if node_stat.node_name in node_names:
         ret[dev].append(node_stat)
   return ret
 
@@ -54,7 +59,7 @@ def _run_model():
 
   with session.Session() as sess:
     run_metadata = config_pb2.RunMetadata()
-    opts = model_analyzer.PRINT_ALL_TIMING_MEMORY
+    opts = builder.time_and_memory()
     opts['min_micros'] = 0
     opts['min_bytes'] = 0
     _ = sess.run(y,
@@ -82,7 +87,7 @@ def _run_loop_model():
 
     tfprof_node = model_analyzer.profile(
         sess.graph, run_meta,
-        options=model_analyzer.PRINT_ALL_TIMING_MEMORY)
+        options=builder.time_and_memory())
     return tfprof_node, run_meta
 
 
@@ -98,12 +103,11 @@ class RunMetadataTest(test.TestCase):
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
       self.assertGreater(tfprof_node.children[0].exec_micros, 10)
 
-    ret = _extract_node(run_meta, 'MatMul')
-    self.assertEqual(len(ret), 1)
+    ret = _extract_node(run_meta, ['MatMul', 'MatMul:MatMul'])
+    self.assertEqual(len(ret), 3)
     self.assertTrue('/job:localhost/replica:0/task:0/gpu:0' in ret)
+    del ret['/job:localhost/replica:0/task:0/gpu:0']
 
-    ret = _extract_node(run_meta, 'MatMul:MatMul')
-    self.assertEqual(len(ret), 2)
     has_all_stream = False
     for k, _ in six.iteritems(ret):
       self.assertTrue('gpu:0/stream' in k)

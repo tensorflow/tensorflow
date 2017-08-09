@@ -47,6 +47,7 @@ HloComputation* HloModule::AddComputationInternal(
   computation->UniquifyName(&computation_name_uniquer_);
   for (auto& instruction : computation->instructions()) {
     instruction->UniquifyName(&instruction_name_uniquer_);
+    instruction->SetUniqueId(NewUniqueInstructionId());
   }
   computation->set_parent(this);
   computations_.push_back(std::move(computation));

@@ -93,7 +93,7 @@ curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.t
 tar xzf /tmp/inceptionv3.tgz -C /tmp/
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
-  --in_graph=/tmp/classify_image_graph_def.pb \
+  --inputs="Mul" --in_graph=/tmp/classify_image_graph_def.pb \
   --outputs="softmax" --out_graph=/tmp/quantized_graph.pb \
   --transforms='add_default_attributes strip_unused_nodes(type=float, shape="1,299,299,3")
     remove_nodes(op=Identity, op=CheckNumerics) fold_constants(ignore_errors=true)
@@ -108,12 +108,6 @@ versus 91MB). You can still run this model using exactly the same inputs and
 outputs though, and you should get equivalent results. Here's an example:
 
 ```sh
-# Note: You need to add the dependencies of the quantization operation to the
-#       cc_binary in the BUILD file of the label_image program:
-#
-#     //tensorflow/contrib/quantization:cc_ops
-#     //tensorflow/contrib/quantization/kernels:quantized_ops
-
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
 --image=<input-image> \

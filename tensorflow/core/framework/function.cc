@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -729,11 +730,11 @@ namespace {
 // Returns the name -> attr mapping of fdef's attrs that have a value set. In
 // Python, it's possible to access unset attrs, which returns a default value
 // and adds an unset attr to the map.
-std::map<StringPiece, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
-  std::map<StringPiece, AttrValue> set_attrs;
-  for (auto iter : fdef.attr()) {
-    if (iter.second.value_case() != AttrValue::VALUE_NOT_SET) {
-      set_attrs[iter.first] = iter.second;
+std::map<string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
+  std::map<string, AttrValue> set_attrs;
+  for (auto pair : fdef.attr()) {
+    if (pair.second.value_case() != AttrValue::VALUE_NOT_SET) {
+      set_attrs[pair.first] = pair.second;
     }
   }
   return set_attrs;
@@ -753,8 +754,8 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   f2.signature().SerializeToString(&sig2);
   if (sig1 != sig2) return false;
 
-  std::map<StringPiece, AttrValue> f1_attrs = GetSetAttrs(f1);
-  std::map<StringPiece, AttrValue> f2_attrs = GetSetAttrs(f2);
+  std::map<string, AttrValue> f1_attrs = GetSetAttrs(f1);
+  std::map<string, AttrValue> f2_attrs = GetSetAttrs(f2);
   if (f1_attrs.size() != f2_attrs.size()) return false;
   for (auto iter1 : f1_attrs) {
     auto iter2 = f2_attrs.find(iter1.first);
@@ -866,6 +867,11 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   }
   return Status::OK();
 }
+
+FunctionLibraryDefinition::FunctionDefAndOpRegistration::
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+    : fdef(fdef_in),
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)

@@ -19,13 +19,14 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/DiagnosticInfo.h"
-#include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -81,7 +83,7 @@ const char* kTargetTriple = "nvptx64-nvidia-cuda";
 
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
-const char* kDataLayout = "e-i64:64-v16:16-v32:32-n16:32:64";
+const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
@@ -123,9 +125,18 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
+    ReducePrecisionInsertion::AddPasses(
+        &pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::BEFORE_OP_FUSION);
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+      // TODO(b/62764704): Do not rewrite on GPU, use cuDNN's BatchNorm APIs
+      // instead.
+      pass.AddPass<BatchNormRewriter>(
+          /*rewrite_training_op=*/true,
+          /*rewrite_grad_op=*/true,
+          /*use_fusion=*/false);
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
@@ -149,8 +160,22 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
-    return fusion.Run(hlo_module).status();
+    TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    HloPassPipeline reduce_pipeline("reduce-precision");
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::AFTER_OP_FUSION);
+    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
+    TF_RETURN_IF_ERROR(reduce_result.status());
+
+    if (reduce_result.ValueOrDie()) {
+      // Do another fusion pass, with the expectation that we may be able to
+      // fuse the new ReducePrecision operations.
+      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+    }
   }
+  return tensorflow::Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.

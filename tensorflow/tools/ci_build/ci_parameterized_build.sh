@@ -95,6 +95,10 @@
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
+# TODO(jhseu): Temporary for the gRPC pull request due to the
+# protobuf -> protobuf_archive rename. Remove later.
+TF_BUILD_BAZEL_CLEAN=1
+
 # Helper function: Convert to lower case
 to_lower () {
   echo "$1" | tr '[:upper:]' '[:lower:]'
@@ -358,7 +362,7 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-benchmark-test"
+  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi

@@ -5,10 +5,6 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 package_group(
@@ -38,6 +34,7 @@ cc_library(
         ":conv_canonicalization",
         ":cpu_executable",
         ":cpu_instruction_fusion",
+        ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
         ":ir_emission_utils",
@@ -53,6 +50,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:batchnorm_rewriter",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:compiler",
@@ -72,6 +70,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:inliner",
+        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
@@ -113,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@llvm//:core",
+        "@llvm//:execution_engine",
         "@llvm//:mc",  # fixdeps: keep
         "@llvm//:orc_jit",
         "@llvm//:support",
@@ -184,6 +184,7 @@ cc_library(
         "ir_emitter.h",
     ],
     deps = [
+        ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
         ":elemental_ir_emitter",
@@ -211,6 +212,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
+        "@llvm//:target",
     ],
 )
 
@@ -227,6 +229,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -283,6 +286,7 @@ cc_library(
         ":cpu_runtime_avx",
         ":cpu_runtime_sse4_1",
         ":disassembler",
+        ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -290,6 +294,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:analysis",
         "@llvm//:core",
+        "@llvm//:execution_engine",
         "@llvm//:ipo",
         "@llvm//:mc",
         "@llvm//:object",
@@ -326,16 +331,35 @@ cc_library(
     name = "cpu_runtime",
     srcs = [
         "cpu_runtime.cc",
-        "infeed_manager.cc",
+        "xfeed_manager.cc",
     ],
     hdrs = [
         "cpu_runtime.h",
-        "infeed_manager.h",
+        "xfeed_manager.h",
     ],
     copts = runtime_copts(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "llvm_ir_runtime",
+    srcs = [
+        "llvm_ir_runtime.cc",
+    ],
+    hdrs = [
+        "llvm_ir_runtime.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+        "@llvm//:transform_utils",
     ],
 )
 
@@ -416,11 +440,12 @@ cc_test(
 )
 
 cc_test(
-    name = "infeed_manager_test",
+    name = "xfeed_manager_test",
     size = "small",
-    srcs = ["infeed_manager_test.cc"],
+    srcs = ["xfeed_manager_test.cc"],
     deps = [
         ":cpu_runtime",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -447,6 +472,7 @@ cc_library(
         ":ir_emission_utils",
         ":shape_partition",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -531,7 +557,7 @@ cc_library(
     srcs = ["shape_partition.cc"],
     hdrs = ["shape_partition.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla:shape_util",
     ],
 )
 
@@ -546,6 +572,16 @@ cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "cpu_options",
+    srcs = ["cpu_options.cc"],
+    hdrs = ["cpu_options.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(

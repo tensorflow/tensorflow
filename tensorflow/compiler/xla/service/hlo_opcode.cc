@@ -33,6 +33,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "add";
     case HloOpcode::kBatchNormTraining:
       return "batch-norm-training";
+    case HloOpcode::kBatchNormGrad:
+      return "batch-norm-grad";
     case HloOpcode::kBitcast:
       return "bitcast";
     case HloOpcode::kBroadcast:
@@ -143,6 +145,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "send";
     case HloOpcode::kSign:
       return "sign";
+    case HloOpcode::kSin:
+      return "sine";
     case HloOpcode::kSlice:
       return "slice";
     case HloOpcode::kSort:

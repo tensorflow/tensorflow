@@ -19,8 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -142,36 +141,19 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
         ValidateResultShapeWithLayout(*result_layout, program_shape->result()));
   }
 
-  // Construct computation layout from the argument layouts.
-  auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
-  module_config->set_has_hybrid_result(has_hybrid_result);
-  module_config->set_replica_count(options_.number_of_replicas());
-  module_config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-  if (execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
-    module_config->set_intra_op_parallelism_threads(
-        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
-  }
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
-    module_config->enable_hlo_profiling(true);
-  }
-  auto* computation_layout = module_config->mutable_entry_computation_layout();
-  for (int i = 0; i < argument_layouts.size(); ++i) {
-    const Shape& shape = *argument_layouts[i];
-    if (ShapeUtil::IsTuple(shape)) {
-      return Unimplemented("tuple arguments not supported yet");
-    }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            shape));
-  }
+  ExecutionOptions execution_options = CreateDefaultExecutionOptions();
   if (result_layout != nullptr) {
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            *result_layout));
+    *execution_options.mutable_shape_with_output_layout() = *result_layout;
   } else {
-    computation_layout->mutable_result_layout()->SetToDefaultLayout();
+    *execution_options.mutable_shape_with_output_layout() =
+        program_shape->result();
+    LayoutUtil::SetToDefaultLayout(
+        execution_options.mutable_shape_with_output_layout());
   }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
+                         has_hybrid_result));
 
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));

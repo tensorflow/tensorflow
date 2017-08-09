@@ -64,8 +64,8 @@ class HloInstruction {
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
 
-    kCustom,              // Custom category for backend-specific fusions that
-                          // do not match any of the more specific ones.
+    kCustom,  // Custom category for backend-specific fusions that
+              // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
@@ -223,6 +223,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
       HloInstruction* offset, float epsilon, int64 feature_index);
+
+  // Creates a batch-norm-grad instruction.
+  static std::unique_ptr<HloInstruction> CreateBatchNormGrad(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* mean, HloInstruction* variance,
+      HloInstruction* grad_output, float epsilon, int64 feature_index);
 
   // Creates a scatter computation that scatters the `source` array to the
   // selected indices of each window.
@@ -621,6 +627,11 @@ class HloInstruction {
     return fusion_kind_;
   }
 
+  void set_fusion_kind(FusionKind kind) {
+    CHECK_EQ(HloOpcode::kFusion, opcode_);
+    fusion_kind_ = kind;
+  }
+
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
@@ -664,7 +675,7 @@ class HloInstruction {
   // Returns the stride in the given dimension for a slice node.
   //
   // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_stride(int64 dimension) const {
+  int64 slice_strides(int64 dimension) const {
     CHECK_EQ(HloOpcode::kSlice, opcode_);
     return slice_strides_[dimension];
   }
@@ -804,6 +815,17 @@ class HloInstruction {
   // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Set the unique id for this instruction to "id"
+  void SetUniqueId(int id) {
+    CHECK_EQ(unique_id_, -1);  // Should not be assigned already
+    CHECK_GE(id, 0);
+    unique_id_ = id;
+  }
+
+  // Return the unique ID assigned to this node via SetUniqueId (or -1
+  // if no id has been assigned yet).
+  int unique_id() const { return unique_id_; }
+
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
   const OpMetadata& metadata() const { return metadata_; }
@@ -887,6 +909,8 @@ class HloInstruction {
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
 
+  int unique_id_;  // Unique to this HloInstruction within a HloModule
+
   // Shape of outfeed request.
   Shape outfeed_shape_;
 
@@ -928,10 +952,6 @@ class HloInstruction {
   // The padding configuration that describes the edge padding and interior
   // padding of this pad instruction. Only set for pad instructions.
   std::unique_ptr<PaddingConfig> padding_config_;
-
-  // The computation that stores of instructions fused into this fusion
-  // instruction. Only set for fusion instructions.
-  std::unique_ptr<HloComputation> fused_instructions_computation_;
 
   // If this instruction is fused into a fusion instruction, this field points
   // to the fusion instruction.

@@ -696,9 +696,10 @@ class InputStatisticsFromMiniBatch(object):
     # Create/retrieve variables representing input statistics, initialized
     # without data to avoid deadlocking if variables are initialized before
     # queue runners are started.
-    with variable_scope.variable_scope("input_statistics"):
+    with variable_scope.variable_scope("input_statistics", use_resource=True):
       statistics = self._create_variable_statistics_object()
-    with variable_scope.variable_scope("input_statistics_auxiliary"):
+    with variable_scope.variable_scope(
+        "input_statistics_auxiliary", use_resource=True):
       # Secondary statistics, necessary for the incremental computation of the
       # primary statistics (e.g. counts and sums for computing a mean
       # incrementally).

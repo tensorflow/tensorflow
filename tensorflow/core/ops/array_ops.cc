@@ -1148,7 +1148,8 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 ```
 
 tensor: Up to 8-D.
-axis: 1-D. The indices of the dimensions to reverse.
+axis: 1-D. The indices of the dimensions to reverse. Must be in the range
+  `[-rank(tensor), rank(tensor))`.
 output: The same shape as `tensor`.
 )Doc");
 
@@ -1398,6 +1399,105 @@ raising an error.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("GatherV2")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Input("axis: Taxis")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle params_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &params_shape));
+
+      ShapeHandle indices_shape = c->input(1);
+      ShapeHandle unused_axis_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_axis_shape));
+      const Tensor* axis_t = c->input_tensor(2);
+
+      // If axis is unknown, we can only infer that the result is params_rank +
+      // indices_rank - 1.
+      if (axis_t == nullptr) {
+        if (c->RankKnown(params_shape) && c->RankKnown(indices_shape)) {
+          c->set_output(0, c->UnknownShapeOfRank(c->Rank(params_shape) +
+                                                 c->Rank(indices_shape) - 1));
+        } else {
+          c->set_output(0, c->UnknownShape());
+        }
+        return Status::OK();
+      }
+
+      // Note, axis can be negative.
+      int64 axis = 0;
+      if (axis_t->dtype() == DT_INT32) {
+        axis = axis_t->scalar<int32>()();
+      } else {
+        axis = axis_t->scalar<int64>()();
+      }
+
+      // Check that params has rank of at least axis + 1.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, axis < 0 ? -axis : axis + 1, &unused));
+
+      ShapeHandle params_outer_subshape;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(params_shape, 0, axis, &params_outer_subshape));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(params_outer_subshape, indices_shape, &out));
+
+      // Slice from axis + 1 to the end of params_shape to collect the inner
+      // dimensions of the result. Special case -1 here since -1 + 1 wraps, and
+      // we slice from 0 to the end of shape. Subshape() handles all other
+      // out-of-bounds checking.
+      if (axis != -1) {
+        ShapeHandle params_inner_subshape;
+        TF_RETURN_IF_ERROR(
+            c->Subshape(params_shape, axis + 1, &params_inner_subshape));
+        TF_RETURN_IF_ERROR(c->Concatenate(out, params_inner_subshape, &out));
+      }
+
+      c->set_output(0, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Gather slices from `params` axis `axis` according to `indices`.
+
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `params.shape[:axis] + indices.shape +
+params.shape[axis + 1:]` where:
+
+```python
+    # Scalar indices (output is rank(params) - 1).
+    output[a_0, ..., a_n, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices, b_0, ..., b_n]
+
+    # Vector indices (output is rank(params)).
+    output[a_0, ..., a_n, i, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
+
+    # Higher rank indices (output is rank(params) + rank(indices) - 1).
+    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+
+params: The tensor from which to gather values. Must be at least rank
+  `axis + 1`.
+indices: Index tensor. Must be in range `[0, params.shape[axis])`.
+axis: The axis in `params` to gather `indices` from. Defaults to the first
+  dimension. Supports negative indexes.
+output: Values from `params` gathered from indices given by `indices`, with
+  shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("GatherNd")
     .Input("params: Tparams")
     .Input("indices: Tindices")
@@ -1576,6 +1676,35 @@ REGISTER_OP("_MklIdentity")
 )Doc");
 #endif
 
+REGISTER_OP("IdentityN")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type)")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<ShapeHandle> input;
+      TF_RETURN_IF_ERROR(c->input("input", &input));
+      TF_RETURN_IF_ERROR(c->set_output("output", input));
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Returns a list of tensors with the same shapes and contents as the input
+tensors.
+
+This op can be used to override the gradient for complicated functions. For
+example, suppose y = f(x) and we wish to apply a custom function g for backprop
+such that dx = g(dy). In Python,
+
+```python
+with tf.get_default_graph().gradient_override_map(
+    {'IdentityN': 'OverrideGradientWithG'}):
+  y, _ = identity_n([f(x), x])
+
+@tf.RegisterGradient('OverrideGradientWithG')
+def ApplyG(op, dy, _):
+  return [None, g(dy)]  # Do not backprop to f(x).
+```
+)Doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("RefIdentity")
     .Input("input: Ref(T)")
@@ -1585,6 +1714,20 @@ REGISTER_OP("RefIdentity")
     .SetAllowsUninitializedInput()
     .Doc(R"Doc(
 Return the same ref tensor as the input ref tensor.
+)Doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DebugGradientIdentity")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetAllowsUninitializedInput()
+    .Doc(R"Doc(
+Identity op for gradient debugging.
+
+This op is hidden from public in Python. It is used by TensorFlow Debugger to
+register gradient tensors for gradient debugging.
 )Doc");
 
 // --------------------------------------------------------------------------
@@ -2720,6 +2863,45 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("PadV2")
+    .Input("input: T")
+    .Input("paddings: Tpaddings")
+    .Input("constant_values: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    .SetShapeFn(PadShapeFn)
+    .Doc(R"doc(
+Pads a tensor.
+
+This operation pads `input` according to the `paddings` and `constant_values`
+you specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many padding values to add before the contents of `input` in that dimension,
+and `paddings[D, 1]` indicates how many padding values to add after the contents
+of `input` in that dimension. `constant_values` is a scalar tensor of the same
+type as `input` that indicates the value to use for padding `input`.
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 1], [2, 2]]
+# 'paddings' is [[1, 1], [2, 2]]
+# 'constant_values' is 0
+# rank of 't' is 2
+pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
+                      [0, 0, 1, 1, 0, 0]
+                      [0, 0, 2, 2, 0, 0]
+                      [0, 0, 0, 0, 0, 0]]
+```
+
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("MirrorPad")
     .Input("input: T")
     .Input("paddings: Tpaddings")
@@ -3034,7 +3216,8 @@ This operation is related to `squeeze()`, which removes dimensions of
 size 1.
 
 dim: 0-D (scalar). Specifies the dimension index at which to
-  expand the shape of `input`.
+  expand the shape of `input`. Must be in the range
+  `[-rank(input) - 1, rank(input)]`.
 output: Contains the same data as `input`, but its shape has an additional
   dimension of size 1 added.
 )doc");
@@ -3130,7 +3313,8 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
 input: The `input` to squeeze.
 squeeze_dims: If specified, only squeezes the dimensions listed. The dimension
-  index starts at 0. It is an error to squeeze a dimension that is not 1.
+  index starts at 0. It is an error to squeeze a dimension that is not 1. Must
+  be in the range `[-rank(input), rank(input))`.
 output: Contains the same data as `input`, but has one or more dimensions of
   size 1 removed.
 )doc");
@@ -4216,8 +4400,15 @@ We specify the size-related attributes as:
 REGISTER_OP("Bitcast")
     .Input("input: T")
     .Output("output: type")
-    .Attr("T: numbertype")
-    .Attr("type: numbertype")
+    // All supported dtypes are listed here to include qint16 and quint16.
+    .Attr(
+        "T: {float, double, int64, int32, uint8, uint16, int8, int16,"
+        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
+        " half}")
+    .Attr(
+        "type: {float, double, int64, int32, uint8, uint16, int8, int16,"
+        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
+        " half}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {

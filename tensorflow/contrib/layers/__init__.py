@@ -32,6 +32,8 @@ See the @{$python/contrib.layers} guide.
 @@embedding_lookup_unique
 @@flatten
 @@fully_connected
+@@GDN
+@@gdn
 @@layer_norm
 @@linear
 @@max_pool2d

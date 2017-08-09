@@ -36,6 +36,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -63,7 +64,6 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 class SessionTest(test_util.TensorFlowTestCase):
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -73,7 +73,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = c.eval()
       self.assertAllEqual(result, [[42.0]])
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseDefaultGraph(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -342,7 +341,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(a_val)
       b = control_flow_ops.no_op()  # An op, not a tensor.
       c = constant_op.constant(c_val)
-      # List of lists, tuples, namedtuple, and  dict
+      # List of lists, tuples, namedtuple, and dict
       res = sess.run([[a, b, c], (a, b, c), ABC(a=a, b=b, c=c),
                       {'a': a.name, 'c': c, 'b': b}])
       self.assertTrue(isinstance(res, list))
@@ -366,7 +365,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
-      # Tuple of lists, tuples, namedtuple, and  dict
+      # Tuple of lists, tuples, namedtuple, and dict
       res = sess.run(([a, b, c], (a.name, b, c), ABC(a=a, b=b, c=c),
                       {'a': a, 'c': c, 'b': b}))
       self.assertTrue(isinstance(res, tuple))
@@ -878,7 +877,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       v_val = v.eval()
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testExtendWithGroupBy(self):
     with session.Session() as s:
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1090,7 +1088,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)
@@ -1106,7 +1103,6 @@ class SessionTest(test_util.TensorFlowTestCase):
           ValueError, lambda e: 'No default session is registered.' in str(e)):
         c_2.eval()
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractive(self):
     with ops.device('/cpu:0'):
       sess = session.InteractiveSession()
@@ -1119,7 +1115,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1141,7 +1136,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       a.eval()
     sess.close()
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDefaultSessionPlacePrunedGraph(self):
     sess = session.Session()
 
@@ -1163,7 +1157,6 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     sess.close()
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testSharedGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1422,7 +1415,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testPerStepTrace(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1443,7 +1435,6 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertTrue(run_metadata.HasField('step_stats'))
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1479,7 +1470,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'may not be fed'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInferShapesFalse(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant([[1, 2]])
@@ -1488,7 +1478,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInferShapesTrue(self):
     config = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(infer_shapes=True))
@@ -1499,7 +1488,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testBuildCostModel(self):
     run_options = config_pb2.RunOptions()
     config = config_pb2.ConfigProto(
@@ -1519,6 +1507,22 @@ class SessionTest(test_util.TensorFlowTestCase):
           self.assertTrue(run_metadata.HasField('cost_graph'))
         else:
           self.assertFalse(run_metadata.HasField('cost_graph'))
+
+  def runTestOutputPartitionGraphs(self, sess):
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    a = constant_op.constant(1)
+    run_metadata = config_pb2.RunMetadata()
+    sess.run(a, options=run_options, run_metadata=run_metadata)
+    self.assertGreater(len(run_metadata.partition_graphs), 0)
+    sess.run(a, run_metadata=run_metadata)
+    self.assertEqual(len(run_metadata.partition_graphs), 0)
+
+  def testOutputPartitionGraphsDirect(self):
+    self.runTestOutputPartitionGraphs(session.Session())
+
+  def testOutputPartitionGraphsDistributed(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestOutputPartitionGraphs(session.Session(server.target))
 
   def testNonInteractiveSessionNesting(self):
     sess1 = session.Session()
@@ -1751,6 +1755,28 @@ class SessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('TYPE', attrs.device_type)
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
+
+  def runTestAddFunctionToSession(self, target=''):
+    """Add a function to a session after the graph has already been run."""
+    @function.Defun(dtypes.float32)
+    def foo(x):
+      return x + 1
+
+    x = constant_op.constant(1.0)
+    with session.Session(target=target) as sess:
+      sess.run(x)
+      f = foo(x)
+      result = sess.run(f)
+      self.assertEqual(result, 2.0)
+
+  @test_util.disable_c_api  # functions don't work with C API
+  def testAddFunctionToSession(self):
+    self.runTestAddFunctionToSession()
+
+  @test_util.disable_c_api  # functions don't work with C API
+  def testAddFunctionToGrpcSession(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestAddFunctionToSession(server.target)
 
 
 if __name__ == '__main__':

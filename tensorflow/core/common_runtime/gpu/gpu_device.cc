@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -113,14 +114,14 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
             << num_bytes << ". See error logs for more detailed info.";
       }
     }
-    if (LogMemory::IsEnabled()) {
+    if (LogMemory::IsEnabled() && ret != nullptr) {
       LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
                                      allocator_);
     }
     return ret;
   }
   void deallocate(void* buffer) const override {
-    if (LogMemory::IsEnabled()) {
+    if (LogMemory::IsEnabled() && buffer != nullptr) {
       LogMemory::RecordRawDeallocation(operation_, step_id_, buffer, allocator_,
                                        true);
     }
@@ -604,20 +605,44 @@ int64 MinSystemMemory(int64 available_memory) {
   // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
+  int64 min_system_memory;
   if (available_memory < (1LL << 31)) {
     // 225MiB
-    return 225 * 1024 * 1024;
+    min_system_memory = 225 * 1024 * 1024;
   } else {
     // max(300 MiB, 0.05 * available_memory)
-    return std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
+    min_system_memory =
+        std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
   }
+#if defined(__GNUC__) && defined(__OPTIMIZE__)
+// Do nothing
+#elif !defined(__GNUC__) && defined(NDEBUG)
+// Do nothing
+#else
+  // Double the amount of available GPU memory in non-opt builds (debug
+  // builds in windows); because in non-opt builds more system memory
+  // is necessary.
+  min_system_memory *= 2;
+#endif
+  return min_system_memory;
 }
+
 }  // namespace
 
 static string GetShortDeviceDescription(int device_id,
                                         const gpu::DeviceDescription& desc) {
+  int cc_major;
+  int cc_minor;
+  if (!desc.cuda_compute_capability(&cc_major, &cc_minor)) {
+    cc_major = 0;
+    cc_minor = 0;
+  }
+  // LINT.IfChange
   return strings::StrCat("device: ", device_id, ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id());
+                         ", pci bus id: ", desc.pci_bus_id(),
+                         ", compute capability: ", cc_major, ".", cc_minor);
+  // LINT.ThenChange(//tensorflow/python/platform/\
+  //                 test.py)
 }
 
 Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
@@ -828,9 +853,6 @@ Status EnablePeerAccess(gpu::Platform* platform,
         } else {
           ++enabled_peer_count;
         }
-      } else {
-        LOG(INFO) << "Peer access not supported between device ordinals "
-                  << i_gpu_id << " and " << j_gpu_id;
       }
     }
   }
@@ -938,21 +960,21 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << "\nmajor: " << cc_major
-              << " minor: " << cc_minor << " memoryClockRate (GHz) "
-              << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id() << "\nTotal memory: "
+              << "\nname: " << description.name() << " major: " << cc_major
+              << " minor: " << cc_minor
+              << " memoryClockRate(GHz): " << description.clock_rate_ghz()
+              << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
               << strings::HumanReadableNumBytes(total_bytes)
-              << "\nFree memory: "
-              << strings::HumanReadableNumBytes(free_bytes);
+              << " freeMemory: " << strings::HumanReadableNumBytes(free_bytes);
   }
-
-  if (new_gpu_found) {
+  // Checking peering and shows matrix if more than one gpu found.
+  if (new_gpu_found && visible_gpu_order.size() > 1) {
     // Enable peer access
     TF_RETURN_IF_ERROR(EnablePeerAccess(gpu_manager, visible_gpu_order));
 
     // Print out a matrix showing which devices can DMA to one
     // another.
+    LOG(INFO) << "Device peer to peer matrix";
     auto access_map = GetPeerAccessMap(gpu_manager, visible_gpu_order);
     string line_buf = "DMA: ";
     for (int i = 0; i < visible_gpu_order.size(); ++i) {

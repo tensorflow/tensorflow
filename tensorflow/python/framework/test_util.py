@@ -42,6 +42,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
@@ -228,6 +229,19 @@ def NCHWToNHWC(input_tensor):
 
 
 # TODO(skyewm): remove this eventually
+# pylint: disable=protected-access
+def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
+  prev_value = ops._USE_C_API
+  ops._USE_C_API = use_c_api
+  try:
+    with ops.Graph().as_default():
+      fn(*args, **kwargs)
+  finally:
+    ops._USE_C_API = prev_value
+# pylint: disable=protected-access
+
+
+# TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
 
@@ -240,16 +254,23 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
-  # pylint: disable=protected-access
-  def disable_c_api_wrapper(*args, **kwargs):
-    prev_value = ops._USE_C_API
-    ops._USE_C_API = False
-    try:
-      fn(*args, **kwargs)
-    finally:
-      ops._USE_C_API = prev_value
-  # pylint: disable=protected-access
-  return disable_c_api_wrapper
+  return lambda *args, **kwargs: _use_c_api_wrapper(fn, False, *args, **kwargs)
+
+
+# TODO(skyewm): remove this eventually
+def enable_c_api(fn):
+  """Decorator for enabling the C API on a test.
+
+  Note this enables the C API after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+  return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
 
 
 class TensorFlowTestCase(googletest.TestCase):
@@ -434,6 +455,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:

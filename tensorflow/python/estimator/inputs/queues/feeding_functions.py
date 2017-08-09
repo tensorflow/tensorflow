@@ -258,7 +258,7 @@ class _GeneratorFeedFn(object):
         data_row = next(self._iterator)
       for index, key in enumerate(self._keys):
         if key not in data_row.keys():
-          raise KeyError("key mismatch between dicts emitted by GenFun"
+          raise KeyError("key mismatch between dicts emitted by GenFun "
                          "Expected {} keys; got {}".format(
                              self._keys, data_row.keys()))
         list_dict.setdefault(self._col_placeholders[index],
@@ -286,7 +286,7 @@ def _enqueue_data(data,
 
   Args:
     data: a numpy `ndarray`, `OrderedDict` of numpy arrays, or a generator
-       yielding `dict`s of numpy arrays  or pandas `DataFrame` that will be read
+       yielding `dict`s of numpy arrays or pandas `DataFrame` that will be read
        into the queue.
     capacity: the capacity of the queue.
     shuffle: whether or not to shuffle the rows of the array.

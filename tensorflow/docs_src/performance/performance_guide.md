@@ -104,7 +104,7 @@ with tf.device('/cpu:0'):
 Under some circumstances, both the CPU and GPU can be starved for data by the
 I/O system. If you are using many small files to form your input data set, you
 may be limited by the speed of your filesystem. If your training loop runs
-faster when using SSDs vs HDDs for storing your input data, you could could be
+faster when using SSDs vs HDDs for storing your input data, you could be
 I/O bottlenecked.
 
 If this is the case, you should pre-process your input data, creating a few
@@ -121,7 +121,7 @@ cuDNN can operate on both formats, it is faster to operate in its default
 format.
 
 The best practice is to build models that work with both `NCHW` and `NHWC` as it
-is common to train using `NCHW` on GPU, and then do inference with NHWC on CPU.
+is common to train using `NCHW` on GPU, and then do inference with `NHWC` on CPU.
 
 There are edge cases where `NCHW` can be slower on GPU than `NHWC`. One
 [case](https://github.com/tensorflow/tensorflow/issues/7551#issuecomment-280421351)

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -56,6 +57,9 @@ Status MakeXlaCompilerArgumentsFromInputs(
         case XlaResource::kTensorArray:
           arg.kind = XlaCompiler::Argument::kTensorArray;
           break;
+        case XlaResource::kStack:
+          arg.kind = XlaCompiler::Argument::kStack;
+          break;
         case XlaResource::kInvalid:
           CHECK(false);
       }
@@ -63,8 +67,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
       if (arg.initialized) {
         auto shape = ctx->builder()->GetShape(resource->value);
         TF_RETURN_IF_ERROR(shape.status());
-        TF_RETURN_IF_ERROR(
-            XLAShapeToTensorShape(*shape.ValueOrDie(), &arg.shape));
+        arg.shape = *shape.ValueOrDie();
       } else {
         *has_uninitialized_vars = true;
       }
@@ -79,7 +82,8 @@ Status MakeXlaCompilerArgumentsFromInputs(
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = ctx->input_type(i);
-      arg.shape = ctx->InputShape(i);
+      TF_RETURN_IF_ERROR(
+          TensorShapeToXLAShape(arg.type, ctx->InputShape(i), &arg.shape));
     }
   }
   return Status::OK();
@@ -143,6 +147,8 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       const XlaCompiler::ResourceUpdate& update = body.resource_updates[i];
       XlaCompiler::Argument& arg = arguments[update.input_index];
       if (!arg.initialized) {
+        VLOG(2) << "Update shape for argument " << update.input_index << " "
+                << xla::ShapeUtil::HumanString(update.shape);
         arg.initialized = true;
         arg.shape = update.shape;
 
@@ -150,11 +156,13 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
         OP_REQUIRES_OK(ctx,
                        ctx->GetResourceInput(update.input_index, &resource));
 
-        xla::ComputationDataHandle zero = XlaHelpers::Zero(builder, arg.type);
-        resource->value = builder->Broadcast(zero, update.shape.dim_sizes());
+        std::unique_ptr<xla::Literal> zero =
+            xla::Literal::CreateFromShape(update.shape);
+        resource->value = builder->ConstantLiteral(*zero);
       }
     }
     // Recompile the body with the "correct" shapes.
+    VLOG(1) << "Recompiling body with non-placeholder shapes";
     body = {};
     OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                   arguments, &body));
@@ -176,7 +184,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   } else {
     CHECK(!body.xla_input_shapes.empty());
     body_input_shape = body.xla_input_shapes[0];
-    CHECK(!body.xla_input_shapes.empty());
+    CHECK(!cond.xla_input_shapes.empty());
     cond_input_shape = cond.xla_input_shapes[0];
   }
 

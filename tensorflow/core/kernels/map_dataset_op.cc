@@ -113,6 +113,14 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         // MasterSession generates 56-bit random step IDs whose MSB is
         // always 0, so a negative random step ID should suffice.
         opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        ScopedStepContainer step_container(
+            opts.step_id, [this, ctx](const string& name) {
+              dataset()
+                  ->captured_func_->resource_manager()
+                  ->Cleanup(name)
+                  .IgnoreError();
+            });
+        opts.step_container = &step_container;
         opts.runner = ctx->runner();
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.

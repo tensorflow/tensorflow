@@ -35,14 +35,13 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
-class BiasOp;
-
-template <typename T>
-class BiasOp<CPUDevice, T> : public BinaryOp<T> {
+class BiasOp : public BinaryOp<T> {
  public:
-  typedef CPUDevice Device;
   explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
@@ -51,8 +50,8 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("CPU BiasOp only supports NHWC."));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC, errors::InvalidArgument(
+      DeviceName<Device>::value + " BiasOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -122,6 +121,19 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(type)                                          \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("BiasAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
+      BiasOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      BiasOp<SYCLDevice, type>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
@@ -165,12 +177,8 @@ struct AccumulatorType<Eigen::half> {
 }  // namespace
 
 template <typename Device, typename T>
-class BiasGradOp;
-
-template <typename T>
-class BiasGradOp<CPUDevice, T> : public OpKernel {
+class BiasGradOp : public OpKernel {
  public:
-  typedef CPUDevice Device;
   explicit BiasGradOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
@@ -179,8 +187,8 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("CPU BiasGradOp only supports NHWC."));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC, errors::InvalidArgument(
+      DeviceName<Device>::value + " BiasGradOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -215,7 +223,7 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
 #else
       Eigen::array<int, 1> reduction_axis = {0};
 #endif
-      output->template flat<T>().device(context->eigen_device<CPUDevice>()) =
+      output->template flat<T>().device(context->eigen_device<Device>()) =
           output_backprop.flat<T>()
               .template cast<typename AccumulatorType<T>::type>()
               .reshape(two_dims)
@@ -236,6 +244,16 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(type)                                            \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("BiasAddGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      BiasGradOp<SYCLDevice, type>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 template <typename T>

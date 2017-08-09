@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import copy
 import os
 import tempfile
@@ -34,7 +35,6 @@ from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -49,6 +49,7 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedE
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.contrib.meta_graph_transform import meta_graph_transform
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -69,6 +70,7 @@ from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import summary_io
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -346,17 +348,22 @@ def _write_dict_to_summary(output_dir,
       value.simple_value = int(dictionary[key])
     else:
       logging.warn(
-          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          'Skipping summary for %s, must be a float, np.float32, '
+          'np.int64, np.int32 or int.',
           key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
+
+
+GraphRewriteSpec = collections.namedtuple('GraphRewriteSpec',
+                                          ['tags', 'transforms'])
 
 
 class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Users should not instantiate or subclass this class. Instead, use `Estimator`.
+  Users should not instantiate or subclass this class. Instead, use an `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -838,6 +845,10 @@ class BaseEstimator(
       hooks = hooks[:] if hooks else []
       if feed_fn:
         hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
+      if steps == 0:
+        logging.warning('evaluation steps are 0. If `input_fn` does not raise'
+                        'OutOfRangeError`, the evaluation will never stop.'
+                        'Use steps=None if intended.')
       if steps:
         hooks.append(
             evaluation.StopAfterNEvalsHook(
@@ -1225,7 +1236,8 @@ class Estimator(BaseEstimator):
       default_output_alternative_key=None,
       assets_extra=None,
       as_text=False,
-      checkpoint_path=None):
+      checkpoint_path=None,
+      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),)):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1245,6 +1257,10 @@ class Estimator(BaseEstimator):
       as_text: whether to write the SavedModel proto in text format.
       checkpoint_path: The checkpoint path to export.  If None (the default),
         the most recent checkpoint found within the model directory is chosen.
+      graph_rewrite_specs: an iterable of `GraphRewriteSpec`.  Each element will
+        produce a separate MetaGraphDef within the exported SavedModel, tagged
+        and rewritten as specified.  Defaults to a single entry using the
+        default serving tag ("serve") and no rewriting.
 
     Returns:
       The string path to the exported directory.
@@ -1255,8 +1271,20 @@ class Estimator(BaseEstimator):
     if serving_input_fn is None:
       raise ValueError('serving_input_fn must be defined.')
 
+    if not checkpoint_path:
+      # Locate the latest checkpoint
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % self._model_dir)
+
+    export_dir = saved_model_export_utils.get_timestamped_export_dir(
+        export_dir_base)
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Build the base graph
     with ops.Graph().as_default() as g:
-      contrib_variables.create_global_step(g)
+      training_util.create_global_step(g)
 
       # Call the serving_input_fn and collect the input alternatives.
       input_ops = serving_input_fn()
@@ -1277,55 +1305,87 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
+      init_op = control_flow_ops.group(
+          variables.local_variables_initializer(),
+          resources.initialize_resources(resources.shared_resources()),
+          lookup_ops.tables_initializer())
+
       # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
 
-      if not checkpoint_path:
-        # Locate the latest checkpoint
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
-      if not checkpoint_path:
-        raise NotFittedError("Couldn't find trained model at %s."
-                             % self._model_dir)
-
-      export_dir = saved_model_export_utils.get_timestamped_export_dir(
-          export_dir_base)
-
-      if (model_fn_ops.scaffold is not None and
-          model_fn_ops.scaffold.saver is not None):
-        saver_for_restore = model_fn_ops.scaffold.saver
-      else:
-        saver_for_restore = saver.Saver(sharded=True)
+      # Export the first MetaGraphDef with variables, assets etc.
       with tf_session.Session('') as session:
+
+        # pylint: disable=protected-access
+        saveables = variables._all_saveable_objects()
+        # pylint: enable=protected-access
+
+        if (model_fn_ops.scaffold is not None and
+            model_fn_ops.scaffold.saver is not None):
+          saver_for_restore = model_fn_ops.scaffold.saver
+        elif saveables:
+          saver_for_restore = saver.Saver(saveables, sharded=True)
+
         saver_for_restore.restore(session, checkpoint_path)
-        init_op = control_flow_ops.group(
-            variables.local_variables_initializer(),
-            resources.initialize_resources(resources.shared_resources()),
-            lookup_ops.tables_initializer())
 
         # Perform the export
-        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        if not graph_rewrite_specs or graph_rewrite_specs[0].transforms:
+          raise ValueError('The first element of graph_rewrite_specs '
+                           'must specify no transforms.')
+        untransformed_tags = graph_rewrite_specs[0].tags
+
+        # TODO(soergel): switch to main_op or otherwise update when dust settles
         builder.add_meta_graph_and_variables(
-            session, [tag_constants.SERVING],
+            session, untransformed_tags,
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             legacy_init_op=init_op)
-        builder.save(as_text)
 
-      # Add the extra assets
-      if assets_extra:
-        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
-                                         compat.as_bytes('assets.extra'))
-        for dest_relative, source in assets_extra.items():
-          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
-                                       compat.as_bytes(dest_relative))
-          dest_path = os.path.dirname(dest_absolute)
-          gfile.MakeDirs(dest_path)
-          gfile.Copy(source, dest_absolute)
+    # pylint: disable=protected-access
+    base_meta_graph_def = builder._saved_model.meta_graphs[0]
+    # pylint: enable=protected-access
 
-      return export_dir
+    if graph_rewrite_specs[1:]:
+      # Prepare the input_names and output_names needed for the
+      # meta_graph_transform call below.
+      input_names = [tensor.name
+                     for input_dict in input_alternatives.values()
+                     for tensor in input_dict.values()]
+      output_names = [tensor.name
+                      for output_alternative in output_alternatives.values()
+                      for tensor in output_alternative[1].values()]
+
+    # Write the additional MetaGraphDefs
+    for graph_rewrite_spec in graph_rewrite_specs[1:]:
+
+      # TODO(soergel) consider moving most of this to saved_model.builder_impl
+      # as e.g. builder.add_rewritten_meta_graph(rewritten_graph_def, tags)
+
+      transformed_meta_graph_def = meta_graph_transform.meta_graph_transform(
+          base_meta_graph_def, input_names, output_names,
+          graph_rewrite_spec.transforms, graph_rewrite_spec.tags)
+
+      # pylint: disable=protected-access
+      meta_graph_def = builder._saved_model.meta_graphs.add()
+      # pylint: enable=protected-access
+      meta_graph_def.CopyFrom(transformed_meta_graph_def)
+
+    # Add the extra assets
+    if assets_extra:
+      assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+                                       compat.as_bytes('assets.extra'))
+      for dest_relative, source in assets_extra.items():
+        dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                     compat.as_bytes(dest_relative))
+        dest_path = os.path.dirname(dest_absolute)
+        gfile.MakeDirs(dest_path)
+        gfile.Copy(source, dest_absolute)
+
+    builder.save(as_text)
+    return export_dir
 
 
 # For time of deprecation x,y from Estimator allow direct access.

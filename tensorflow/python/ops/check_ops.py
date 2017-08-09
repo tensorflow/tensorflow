@@ -29,6 +29,7 @@ See the @{$python/check_ops} guide.
 @@assert_greater_equal
 @@assert_rank
 @@assert_rank_at_least
+@@assert_rank_in
 @@assert_type
 @@assert_integer
 @@assert_proper_iterable
