@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
-#include <regex>
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -75,7 +74,6 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::set<string> nodes_to_preserve_;
-  std::regex ops_to_preserve_;
 };
 
 }  // end namespace grappler

@@ -326,10 +326,12 @@ class SummaryWriterTestCase(test.TestCase):
     # We add 2 summaries with the same tags. They both have metadata. The writer
     # should strip the metadata from the second one.
     value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
-    value.metadata.plugin_data.add(plugin_name="bar", content="... content ...")
+    value.metadata.plugin_data.plugin_name = "bar"
+    value.metadata.plugin_data.content = "... content ..."
     sw.add_summary(summary_pb2.Summary(value=[value]), 10)
     value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
-    value.metadata.plugin_data.add(plugin_name="bar", content="... content ...")
+    value.metadata.plugin_data.plugin_name = "bar"
+    value.metadata.plugin_data.content = "... content ..."
     sw.add_summary(summary_pb2.Summary(value=[value]), 10)
 
     sw.close()

@@ -621,6 +621,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:io_ops_gen",
     ],
 )

@@ -138,27 +138,48 @@ class DeterminantOpGpu : public AsyncOpKernel {
     // without the ugly casting.
     ScratchSpace<uint8> input_copy_ptrs(context, sizeof(Scalar*) * batch_size,
                                         /* on_host */ true);
-    const Scalar** input_copy_ptrs_base =
-        reinterpret_cast<const Scalar**>(input_copy_ptrs.mutable_data());
     auto output_reshaped = out->template flat_inner_dims<Scalar, 1>();
-    for (int64 i = 0; i < batch_size; ++i) {
-      input_copy_ptrs_base[i] = input_copy_reshaped.data() + i * n * n;
-    }
 
     // Compute the partially pivoted LU factorization(s) of the matrix/matrices.
     CudaSolver solver(context);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "getrf");
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.GetrfBatched(n, input_copy_ptrs_base, n, pivots.mutable_data(),
-                            &dev_info.back(), batch_size),
-        done);
+    if (n / batch_size <= 128) {
+      // For small matrices or large batch sizes, we use the batched interface
+      // from cuBlas.
+      const Scalar** input_copy_ptrs_base =
+          reinterpret_cast<const Scalar**>(input_copy_ptrs.mutable_data());
+      for (int batch = 0; batch < batch_size; ++batch) {
+        input_copy_ptrs_base[batch] =
+            input_copy_reshaped.data() + batch * n * n;
+      }
+      dev_info.emplace_back(context, batch_size, "getrfBatched");
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          solver.GetrfBatched(n, input_copy_ptrs_base, n, pivots.mutable_data(),
+                              &dev_info.back(), batch_size),
+          done);
+    } else {
+      // For small batch sizes we use the non-batched interface from cuSolver,
+      // which is much faster for large matrices.
+      dev_info.emplace_back(context, batch_size, "getrf");
+      int* dev_info_ptr = dev_info.back().mutable_data();
+      Scalar* input_copy_ptr = input_copy.flat<Scalar>().data();
+      int* pivots_ptr = pivots.mutable_data();
+      for (int batch = 0; batch < batch_size; ++batch) {
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            solver.Getrf(n, n, input_copy_ptr, n, pivots_ptr, dev_info_ptr),
+            done);
+        input_copy_ptr += n * n;
+        pivots_ptr += n;
+        ++dev_info_ptr;
+      }
+    }
 
     // Compute the determinant for each batch as (-1)^s * prod(diag(U)),
     // where s is the order of the permutation encoded in pivots and U is the
     // upper triangular factor of the LU factorization, which is written to
-    // input_copy by the GetrfBatched kernel.
+    // input_copy by the Getrf{Batched} kernel.
     functor::DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> functor;
     functor(d, input_copy_reshaped, pivots.data(), output_reshaped,
             dev_info.back().mutable_data());
