@@ -305,7 +305,9 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
 std::tuple<se::DeviceMemoryBase,int64>
 PoplarExecutor::RemapArgs(const xla::Shape& shape,
                           const int64 n,
+                          const OutputMap& map,
                           const Args& args) {
+  // TODO - should use the map to assure right inputs are mapped to the output
   if (shape.element_type() != xla::TUPLE) {
     return std::make_tuple(args[n], n+1);
   } else {
@@ -316,7 +318,7 @@ PoplarExecutor::RemapArgs(const xla::Shape& shape,
     int64 new_n = n;
     for (int64 i = 0; i < xla::ShapeUtil::TupleElementCount(shape); i++) {
       se::DeviceMemoryBase out;
-      std::tie(out, new_n) = RemapArgs(shape.tuple_shapes(i), new_n, args);
+      std::tie(out, new_n) = RemapArgs(shape.tuple_shapes(i), new_n, map, args);
       *buf++ = out.opaque();
     }
 
@@ -358,7 +360,8 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
     if (engine == NULL) {
       // An empty engine is a graph that just passes its inputs through
       // to its outputs.  A variable reading graph is such a thing.
-      std::tie(retbuf, tensor_count) = RemapArgs(output_shape, 0, args);
+      std::tie(retbuf, tensor_count) =
+              RemapArgs(output_shape, 0, output_map, args);
     } else {
       // Pull previous execution output back from device if:
       // a) the engine is changing
