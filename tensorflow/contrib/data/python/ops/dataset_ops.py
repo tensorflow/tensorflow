@@ -272,7 +272,7 @@ class Iterator(object):
       TypeError: If `dataset` and this iterator do not have a compatible
         element structure.
     """
-    with ops.name_scope(name, "make_initializer", [dataset]) as name:
+    with ops.name_scope(name, "make_initializer") as name:
       nest.assert_same_structure(self._output_types, dataset.output_types)
       nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
       for iterator_dtype, dataset_dtype in zip(
