@@ -36,6 +36,7 @@ SYCLAllocator::~SYCLAllocator() {
 string SYCLAllocator::Name() { return "device:SYCL"; }
 
 void* SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
+  mutex_lock lock(mu_);
   assert(sycl_device_);
   if (num_bytes == 0) {
     // Cannot allocate no bytes in SYCL, so instead allocate a single byte
@@ -45,7 +46,6 @@ void* SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   const auto& allocated_buffer = sycl_device_->get_sycl_buffer(p);
   const std::size_t bytes_allocated = allocated_buffer.get_range().size();
 
-  mutex_lock lock(mu_);
   ++stats_.num_allocs;
   stats_.bytes_in_use += bytes_allocated;
   stats_.max_bytes_in_use =
@@ -57,10 +57,10 @@ void* SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 }
 
 void SYCLAllocator::DeallocateRaw(void* ptr) {
+  mutex_lock lock(mu_);
   if (sycl_device_) {
     const auto& buffer_to_delete = sycl_device_->get_sycl_buffer(ptr);
     const std::size_t dealloc_size = buffer_to_delete.get_range().size();
-    mutex_lock lock(mu_);
     stats_.bytes_in_use -= dealloc_size;
     sycl_device_->deallocate(ptr);
   }
@@ -72,6 +72,7 @@ void SYCLAllocator::GetStats(AllocatorStats* stats) {
 }
 
 size_t SYCLAllocator::RequestedSize(void* ptr) {
+  mutex_lock lock(mu_);
   if(!sycl_device_) {
     return 0;
   }
