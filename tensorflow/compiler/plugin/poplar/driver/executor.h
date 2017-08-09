@@ -207,11 +207,21 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   struct TensorControl {
     size_t size = 0;
     bool on_device = false;
-    int64 input_handle = -1;
+    std::string input_handle;
     std::string output_handle;
     ConversionFn output_convertor;
     char data[0];
   };
+  using InputPair = std::pair<TensorControl*, ConversionFn>;
+  using InputPairList = std::vector<InputPair>;
+  using ArgsHandleMap = std::map<std::string, InputPair>;
+
+  static void
+  FlattenedDeviceMemoryList(InputPairList&, const xla::Shape&, void*);
+
+  static void
+  CreateArgsHandleMap(ArgsHandleMap&, const Args&,
+                      const std::vector<xla::Shape>&);
 
   std::tuple<DeviceMemoryBase,int64>
   AllocateSingleOutput(const xla::Shape& shape,

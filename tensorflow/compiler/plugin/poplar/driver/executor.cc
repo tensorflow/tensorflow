@@ -59,20 +59,20 @@ limitations under the License.
  *       argument when an engine is executed then it must be copied to the
  *       device.
  *
- *     on_device=true, input_handle!=-1, output_handle is empty :
+ *     on_device=true, input_handle not empty, output_handle is empty :
  *       During the previous engine execution, the data was copied to the
  *       device as one of the arguments.  On the next execution, if the engine
  *       does not change, and the argument index is the same, then the data
  *       does not need to be recopied to the device.  I suspect that this case
  *       is rare.
  *
- *     on_device=true, input_handle==-1, output_handle not empty :
+ *     on_device=true, input_handle is empty, output_handle not empty :
  *       During the last execution, the buffer was allocated to represent one
  *       of the outputs of the engine.  If the host wants to read the data back
  *       then it will have to be retrieved from the device.  If the next
  *       execution changes the engine, then the data will have to be read back.
  *
- *     on_device=true, input_handle!=-1, output_handle not empty :
+ *     on_device=true, input_handle not empty, output_handle not empty :
  *       During the last execution, the buffer was an argument to the execution
  *       and was also one of the output parameters.  This typically indicates
  *       that it is a variable (weights/biases) that has been updated in place.
@@ -88,21 +88,6 @@ namespace se = ::perftools::gputools;
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
-
-void
-FlattenedDeviceMemoryList(std::vector<void*>& list,
-                          const xla::Shape& shape,
-                          void* base) {
-  if (xla::ShapeUtil::IsTuple(shape)) {
-    void** ptrs = static_cast<void**>(base);
-    for (unsigned int t=0; t<xla::ShapeUtil::TupleElementCount(shape); t++) {
-      void* ptr = ptrs[t];
-      FlattenedDeviceMemoryList(list, xla::ShapeUtil::GetTupleElementShape(shape, t), ptr);
-    }
-  } else {
-    list.push_back(base);
-  }
-}
 
 std::string
 GetInputCopyHandle(int64 parameter, int64 index) {
@@ -131,7 +116,7 @@ void *PoplarExecutor::Allocate(uint64 size) {
   TensorControl* allocated = reinterpret_cast<TensorControl*>(raw_buf);
   allocated->size = size;
   allocated->on_device = false;
-  allocated->input_handle = -1;
+  allocated->input_handle.clear();
   allocated->output_handle.clear();
   allocated->output_convertor = nullptr;
   {
@@ -182,7 +167,7 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
   {
     std::lock_guard <std::recursive_mutex> g(mutex_);
     tc->on_device = false;
-    tc->input_handle = -1;
+    tc->input_handle.clear();
   }
   return port::Status::OK();
 }
@@ -247,6 +232,37 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
 
   auto built = builder.Build();
   return built.release();
+}
+
+void
+PoplarExecutor::FlattenedDeviceMemoryList(InputPairList& list,
+                                          const xla::Shape& shape,
+                                          void* base) {
+  TensorControl *tc = static_cast<TensorControl *>(base);
+  if (xla::ShapeUtil::IsTuple(shape)) {
+    void** ptrs = reinterpret_cast<void**>(tc->data);
+    for (unsigned int t=0; t<xla::ShapeUtil::TupleElementCount(shape); t++) {
+      void* ptr = ptrs[t];
+      FlattenedDeviceMemoryList(list,
+                                xla::ShapeUtil::GetTupleElementShape(shape, t),
+                                ptr);
+    }
+  } else {
+    list.push_back(std::make_pair(tc, GetInputConversionFunction(shape)));
+  }
+}
+
+void
+PoplarExecutor::CreateArgsHandleMap(ArgsHandleMap& arg_map, const Args& args,
+                                    const std::vector<xla::Shape>& shapes) {
+  for (unsigned int a=0; a<args.size(); a++) {
+    InputPairList bufs;
+    FlattenedDeviceMemoryList(bufs, shapes[a],
+                              const_cast<void*>(args[a].opaque()));
+    for (unsigned i=0; i<bufs.size(); i++) {
+      arg_map[GetInputCopyHandle(a, i)] = bufs[i];
+    }
+  }
 }
 
 std::tuple<se::DeviceMemoryBase,int64>
@@ -339,7 +355,7 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   }
   tc->on_device = false;
   tc->output_handle.clear();
-  tc->input_handle = -1;
+  tc->input_handle.clear();
   return port::Status::OK();
 }
 
@@ -363,6 +379,9 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
       std::tie(retbuf, tensor_count) =
               RemapArgs(output_shape, 0, output_map, args);
     } else {
+      ArgsHandleMap arg_map;
+      CreateArgsHandleMap(arg_map, args, parameter_shapes);
+
       // Pull previous execution output back from device if:
       // a) the engine is changing
       // b) output buffer isn't an input to the current engine
@@ -372,9 +391,10 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
         if (tc->on_device == true && !tc->output_handle.empty()) {
           if (engine_changed) {
             TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-          } else if (tc->input_handle == -1) {
+          } else if (tc->input_handle.empty()) {
             TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-          } else if ((void *) tc != args[tc->input_handle].opaque()) {
+          } else if (arg_map.count(tc->input_handle) > 0 &&
+                     tc != arg_map[tc->input_handle].first) {
             TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
           }
         }
@@ -386,25 +406,21 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
       // a) the engine has changed
       // b) it is not on the device
       // c) it is on the device, but in the wrong place
-      // TODO work with deep inputs
-      for (size_t a = 0; a < args.size(); a++) {
-        auto mem = args[a];
-
-        std::string handle = GetInputCopyHandle(a, 0);
-        TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
+      for (auto mem : arg_map) {
+        TensorControl *tc = mem.second.first;
         if (tc->on_device == false ||
-            tc->input_handle != (int64)a ||
+            tc->input_handle != mem.first ||
             engine_changed) {
           void *buf(static_cast<void *>(tc->data));
-          ConversionFn fn = GetInputConversionFunction(parameter_shapes[a]);
+          ConversionFn fn = mem.second.second;
           if (fn != nullptr) {
             std::vector<char> converted = fn(buf, tc->size, 0);
-            current_engine_->writeTensor(handle, converted.data());
+            current_engine_->writeTensor(mem.first, converted.data());
           } else {
-            current_engine_->writeTensor(handle, buf);
+            current_engine_->writeTensor(mem.first, buf);
           }
           tc->on_device = true;
-          tc->input_handle = a;
+          tc->input_handle = mem.first;
         }
       }
 
