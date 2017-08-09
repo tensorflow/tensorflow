@@ -940,6 +940,8 @@ def main():
                 'with_hdfs_support', False)
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False)
+  set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
+                False)
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False)
 
