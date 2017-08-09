@@ -177,6 +177,29 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
     std::vector<int64> broadcast_indices(
         ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
+
+    // Special case for broadcasting scalars: ignore broadcast dimension and
+    // broadcast to whatever the output dimension is.
+    // TODO(b/64533549): Remove the need of this once this bug is resolved.
+    if (ShapeUtil::IsScalar(operand_to_broadcast.shape())) {
+      return output->Populate<ReturnT>(
+          [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+            return operand_to_broadcast.Get<ReturnT>({});
+          });
+    }
+
+    TF_RET_CHECK(broadcast->dimensions().size() ==
+                 ShapeUtil::Rank(operand_to_broadcast.shape()))
+        << "broadcast dimensions is of size: " << broadcast->dimensions().size()
+        << " and rank of operand_to_broadcast is: "
+        << ShapeUtil::Rank(operand_to_broadcast.shape());
+    // Checks that operand's dimensions are the same as the broadcast's
+    // dimensions along the dimensions to be broadcasted.
+    for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
+      TF_RET_CHECK(broadcast->shape().dimensions(broadcast->dimensions(i)) ==
+                   operand_to_broadcast.shape().dimensions(i));
+    }
+
     return output->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
@@ -184,7 +207,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           }
           return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
         });
-  }
+  };
 
   Status HandleCeil(HloInstruction* ceil, HloInstruction* operand) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[ceil],
