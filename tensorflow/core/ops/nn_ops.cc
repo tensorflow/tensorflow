@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/tie_strategy.h"
 
 namespace tensorflow {
 
@@ -1942,6 +1943,7 @@ REGISTER_OP("InTopK")
     .Input("targets: T")
     .Output("precision: bool")
     .Attr("k: int")
+    .Attr(GetTieStrategyAttrString())
     .Attr("T: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle predictions;
@@ -1960,9 +1962,12 @@ Says whether the targets are in the top `K` predictions.
 This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
 prediction for the target class is among the top `k` predictions among
 all predictions for example `i`. Note that the behavior of `InTopK` differs
-from the `TopK` op in its handling of ties; if multiple classes have the
-same prediction value and straddle the top-`k` boundary, all of those
-classes are considered to be in the top `k`.
+from the `TopK` op in its handling of ties; there are some strategies to deal
+with ties. If multiple classes have the same prediction value and straddle
+the top-`k` boundary,  default mode 'SAMPLE' means that random sample the ties
+to make sure enforce a constant 'k' size, 'INCLUDE' mode means all of those
+classes are considered to be in the top `k`, 'EXCLUDE' mode means all of those
+classes are exclude the top 'k'.
 
 More formally, let
 
@@ -1975,6 +1980,9 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 predictions: A `batch_size` x `classes` tensor.
 targets: A `batch_size` vector of class ids.
 k: Number of top elements to look at for computing precision.
+handle_ties: one of 'SAMPLE', 'INCLUDE' and 'EXCLUDE', the strategy to deal with ties
+  in which if multiple classes have the same prediction value and straddle
+  the top-k boundary.
 precision: Computed Precision at `k` as a `bool Tensor`.
 
 )doc");
@@ -1985,6 +1993,7 @@ REGISTER_OP("InTopKV2")
     .Input("targets: T")
     .Input("k: T")
     .Output("precision: bool")
+    .Attr(GetTieStrategyAttrString())
     .Attr("T: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle predictions;
@@ -2003,9 +2012,12 @@ Says whether the targets are in the top `K` predictions.
 This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
 prediction for the target class is among the top `k` predictions among
 all predictions for example `i`. Note that the behavior of `InTopK` differs
-from the `TopK` op in its handling of ties; if multiple classes have the
-same prediction value and straddle the top-`k` boundary, all of those
-classes are considered to be in the top `k`.
+from the `TopK` op in its handling of ties; there are some strategies to deal
+with ties. If multiple classes have the same prediction value and straddle
+the top-`k` boundary,  default mode 'SAMPLE' means that random sample the ties
+to make sure enforce a constant 'k' size, 'INCLUDE' mode means all of those
+classes are considered to be in the top `k`, 'EXCLUDE' mode means all of those
+classes are exclude the top 'k'.
 
 More formally, let
 
@@ -2018,6 +2030,9 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 predictions: A `batch_size` x `classes` tensor.
 targets: A `batch_size` vector of class ids.
 k: Number of top elements to look at for computing precision.
+handle_ties: one of 'SAMPLE', 'INCLUDE' and 'EXCLUDE', the strategy to deal with ties
+  in which if multiple classes have the same prediction value and straddle
+  the top-k boundary.
 precision: Computed precision at `k` as a `bool Tensor`.
 
 )doc");
