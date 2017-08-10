@@ -52,6 +52,7 @@ ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
 
 ParamsTest.ConstantR1U8Param      POPLAR // U8
 ScalarComputationsTest.AddTwoScalarsU8      POPLAR // U8
+ReverseTest.Reverse4DU8ArrayOnDim23 POPLAR // U8
 
 ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
 
@@ -60,3 +61,7 @@ ConvolutionTest.Convolve1D_Valid  POPLAR // 1d conv
 
 DotOperationTest POPLAR // Test hangs
 
+ReducePrecisionInsertionTest POPLAR // Don't support this
+ReducePrecisionAccuracyTest POPLAR // Don't support this
+
+CustomCallTest POPLAR // Don't support this
