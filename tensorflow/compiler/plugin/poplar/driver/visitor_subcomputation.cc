@@ -38,21 +38,30 @@ SubComputationVisitor::SubComputationVisitor(poplar::Graph* graph,
                                              CompilerResources& res,
                                              int64 num_parameters)
         : FullVisitor(graph, res) {
-  inputs_.resize(num_parameters);
+  temp_inputs_.resize(num_parameters);
 }
 
 Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out,
-                      AddTensor(*graph_, inst, inst->shape(), resources_));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  inputs_[inst->parameter_number()] = out;
+  std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
+  for (unsigned int i=0; i<shapes.size(); i++) {
+    poplar::Tensor out;
+    TF_ASSIGN_OR_RETURN(out,
+                        AddTensor(*graph_, inst, shapes[i], resources_));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+    temp_inputs_[inst->parameter_number()].push_back(out);
+  }
   return Status::OK();
 }
 
 Status SubComputationVisitor::FinishVisit(HloInstruction* inst) {
   outputs_ = FindInstructionOutputs(tensor_map, inst);
+
+  for (auto i : temp_inputs_) {
+    inputs_.insert(inputs_.end(), i.begin(), i.end());
+  }
+
   tensor_map.clear();
+  temp_inputs_.clear();
   return Status::OK();
 }
 

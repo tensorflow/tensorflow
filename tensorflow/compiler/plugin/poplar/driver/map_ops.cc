@@ -169,59 +169,74 @@ CreateWhileOp(poplar::Graph &graph,
               const xla::Shape& output,
               TensorMap& tensor_map) {
 
-  if (ShapeUtil::IsTuple(inst->operand(0)->shape())) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Poplar doesn't support tuple arguments to 'while' "
-                        "operations");
-  }
-  if (ShapeUtil::IsTuple(inst->shape())) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Poplar doesn't support tuple return from 'while' "
-                                "operations");
-  }
-
-  auto body_visitor(res.computation_map.find(inst->while_body()));
-  if (body_visitor == res.computation_map.end()) {
+  auto body(res.computation_map.find(inst->while_body()));
+  if (body == res.computation_map.end()) {
     return port::Status(port::error::FAILED_PRECONDITION,
                         "Couldn't find body sub-computation for while op");
   }
 
-  auto condition_visitor(res.computation_map.find(inst->while_condition()));
-  if (condition_visitor == res.computation_map.end()) {
+  auto condition(res.computation_map.find(inst->while_condition()));
+  if (condition == res.computation_map.end()) {
     return port::Status(port::error::FAILED_PRECONDITION,
                         "Couldn't find condition sub-computation for while op");
   }
 
-  poplar::Tensor body_input = body_visitor->second.inputs()[0];
-  poplar::Tensor body_output = body_visitor->second.outputs()[0];
-  poplar::Tensor cond_input = condition_visitor->second.inputs()[0];
-  poplar::Tensor cond_output = condition_visitor->second.outputs()[0];
+  const std::vector<poplar::Tensor>& inits =
+          FindInstructionInputs(tensor_map, inst, 0);
 
-  poplar::Tensor init;
-  TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0));
+  unsigned int param_count = inits.size();
+
+  const std::vector<poplar::Tensor>& body_inputs = body->second.inputs();
+  const std::vector<poplar::Tensor>& body_outputs = body->second.outputs();
+  const std::vector<poplar::Tensor>& cond_inputs = condition->second.inputs();
+  const std::vector<poplar::Tensor>& cond_outputs = condition->second.outputs();
+
+  if (body_inputs.size() != param_count) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Invalid number of body inputs");
+  }
+  if (body_outputs.size() != param_count) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Invalid number of body outputs");
+  }
+  if (cond_inputs.size() != param_count) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Invalid number of condition inputs");
+  }
+  if (cond_outputs.size() != 1) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Invalid number of condition outputs");
+  }
+
 
   poplar::program::Sequence main_seq;
-  main_seq.add(poplar::program::Copy(init, body_input));
+  for (unsigned int i=0; i<param_count; i++) {
+    main_seq.add(poplar::program::Copy(inits[i], body_outputs[i]));
+  }
 
   // Body
   poplar::program::Sequence body_seq;
-  body_seq.add(body_visitor->second.sequence);
-  body_seq.add(poplar::program::Copy(body_output, body_input));
-  body_seq.add(poplar::program::Copy(body_output, cond_input));
+  for (unsigned int i=0; i<param_count; i++) {
+    body_seq.add(poplar::program::Copy(body_outputs[i], body_inputs[i]));
+  }
+  body_seq.add(body->second.sequence);
 
   // Condition
   poplar::program::Sequence cond_seq;
-  cond_seq.add(condition_visitor->second.sequence);
+  for (unsigned int i=0; i<param_count; i++) {
+    cond_seq.add(poplar::program::Copy(body_outputs[i], cond_inputs[i]));
+  }
+  cond_seq.add(condition->second.sequence);
+  popstd::allTrue(graph, cond_outputs[0], cond_seq);
 
-  popstd::allTrue(graph, cond_output, cond_seq);
+  // Main
+  main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, body_seq));
 
-  poplar::program::RepeatWhileTrue repeat_while_true(cond_seq, body_seq);
-
-  main_seq.add(repeat_while_true);
-
-  poplar::Tensor o = graph.clone(body_output);
-  main_seq.add(poplar::program::Copy(body_output, o));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, o));
+  for (unsigned int i=0; i<param_count; i++) {
+    poplar::Tensor o = graph.clone(body_outputs[i]);
+    main_seq.add(poplar::program::Copy(body_outputs[i], o));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+  }
 
   return main_seq;
 }

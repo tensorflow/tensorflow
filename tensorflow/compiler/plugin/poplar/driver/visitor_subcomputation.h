@@ -47,6 +47,7 @@ public:
   }
 
 private:
+  std::vector<std::vector<poplar::Tensor>> temp_inputs_;
   std::vector<poplar::Tensor> inputs_;
   std::vector<poplar::Tensor> outputs_;
 };
