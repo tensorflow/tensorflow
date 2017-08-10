@@ -1291,7 +1291,7 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         h1 = array_ops.zeros([1, 2])
         state1 = rnn_cell_impl.LSTMStateTuple(c1, h1)
         cell = rnn_cell_impl.MultiRNNCell(
-          [rnn_cell_impl.LSTMCell(2,
+          [contrib_rnn_cell.LayerNormLSTMCell(2,
                                        state_is_tuple=True,
                                        layer_norm=True,
                                        norm_gain=1.0,
