@@ -15598,6 +15598,36 @@ op {
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
 }
 op {
+  name: "PrefetchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The maximum number of elements to buffer in an iterator over\nthis dataset."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that asynchronously prefetches elements from `input_dataset`."
+  is_stateful: true
+}
+op {
   name: "PreventGradient"
   input_arg {
     name: "input"

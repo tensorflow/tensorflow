@@ -2956,7 +2956,6 @@ StatusOr<std::unique_ptr<HloComputation>> UserComputation::BuildHloComputation(
           session_computation_, version, std::move(hlo_resolver), debug_options,
           include_unreachable_instructions));
 
-  XLA_VLOG_LINES(2, hlo_computation->ToString());
   return std::move(hlo_computation);
 }
 

@@ -203,6 +203,45 @@ class FeatureColumnTest(test.TestCase):
     for i in range(len(d1_value)):
       self.assertAllClose(d1_value[i], e1_value[i])
 
+  def testSharedEmbeddingColumnWithWeightedSparseColumn(self):
+    # Tests creation of shared embeddings containing weighted sparse columns.
+    sparse_col = fc.sparse_column_with_keys("a1", ["marlo", "omar", "stringer"])
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_sparse_col = fc.weighted_sparse_column(ids, "weights")
+    self.assertEqual(weighted_sparse_col.name, "ids_weighted_by_weights")
+
+    b = fc.shared_embedding_columns([sparse_col, weighted_sparse_col],
+                                    dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+
+    # Tries reversing order to check compatibility condition.
+    b = fc.shared_embedding_columns([weighted_sparse_col, sparse_col],
+                                    dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+
+    # Tries adding two weighted columns to check compatibility between them.
+    weighted_sparse_col_2 = fc.weighted_sparse_column(ids, "weights_2")
+    b = fc.shared_embedding_columns([weighted_sparse_col,
+                                     weighted_sparse_col_2],
+                                    dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(
+        b[0].shared_embedding_name,
+        "ids_weighted_by_weights_ids_weighted_by_weights_2_shared_embedding"
+    )
+    self.assertEqual(
+        b[1].shared_embedding_name,
+        "ids_weighted_by_weights_ids_weighted_by_weights_2_shared_embedding"
+    )
+
   def testSharedEmbeddingColumnDeterminism(self):
     # Tests determinism in auto-generated shared_embedding_name.
     sparse_id_columns = tuple([

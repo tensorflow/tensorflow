@@ -44,7 +44,6 @@ import six
 
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
@@ -52,6 +51,7 @@ from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
