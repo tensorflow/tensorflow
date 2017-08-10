@@ -599,9 +599,7 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   HloComputation* fused_instructions_computation() const;
 
-  // Returns the vector of fused instructions inside this fusion
-  // instruction. The order is a reverse postorder of the fused expression (root
-  // is first in the order).
+  // Returns the list of fused instructions inside this fusioninstruction.
   //
   // Note: although the list itself is const, the instructions contained in the
   // list returned here are mutable.
