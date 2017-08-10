@@ -440,14 +440,14 @@ TEST(DeviceNameUtilsTest, MergeDevNamesAllowSoftPlacement) {
   // Incompatible components with allow_soft_placement.
   MergeDevNamesHelperAllowSoftPlacement("/gpu:*", "/cpu:1", "");
   MergeDevNamesHelperAllowSoftPlacement("/cpu:*", "/device:GPU:1", "");
-  MergeDevNamesHelperAllowSoftPlacement("/device:GPU:1", "/device:GPU:2", "/gpu:*");
+  MergeDevNamesHelperAllowSoftPlacement("/device:GPU:1", "/device:GPU:2", "/device:GPU:*");
 }
 
 TEST(DeviceNameUtilsTest, GetNamesForDeviceMappings) {
   DeviceNameUtils::ParsedName p = Name("/job:foo/replica:10/task:0/device:GPU:1");
   EXPECT_EQ(str_util::Join(DeviceNameUtils::GetNamesForDeviceMappings(p), ","),
             "/job:foo/replica:10/task:0/device:GPU:1,"
-            "/job:foo/replica:10/task:0/device:GPU:1");
+            "/job:foo/replica:10/task:0/gpu:1");
   p.has_task = false;
   EXPECT_EQ(str_util::Join(DeviceNameUtils::GetNamesForDeviceMappings(p), ","),
             "");
