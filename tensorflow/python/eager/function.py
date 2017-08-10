@@ -28,7 +28,6 @@ import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
-from tensorflow.python.eager import core
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
@@ -39,7 +38,6 @@ from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import nest
-
 
 # Thread-local storage for tfe Tensors which are referenced while evaluating a
 # graph-mode function.
@@ -86,9 +84,8 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
         "To build a graph use tfe.defun or tfe.func_to_object.")
   captured_value = tensor_map.get(tape.tensor_id(value), None)
   if captured_value is None:
-    captured_value = graph_placeholder(dtype=dtype or value.dtype,
-                                       shape=value.shape,
-                                       name=name)
+    captured_value = graph_placeholder(
+        dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes.resource:
       captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
     tensor_map[tape.tensor_id(value)] = (value, captured_value)
@@ -98,8 +95,10 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
 
 
 # TODO(apassos): it'd be really nice if we could scope this registration.
-ops.register_tensor_conversion_function(tensor.Tensor,
-                                        _convert_to_graph_constant)
+# Note that we register this at a higher priority than ops.Tensor since we want
+# to handle subclass specific conversion before a superclass conversion.
+ops.register_tensor_conversion_function(
+    tensor.Tensor, _convert_to_graph_constant, priority=-1)
 
 
 class _CapturingContext(object):
@@ -133,17 +132,17 @@ class _CapturingContext(object):
 
 def _forward_name(n):
   """The name of a generated forward defun named n."""
-  return "__forward_%s_%s" % (n, core.uid())
+  return "__forward_%s_%s" % (n, ops.uid())
 
 
 def _backward_name(n):
   """The name of a generated backward defun named n."""
-  return "__backward_%s_%s" % (n, core.uid())
+  return "__backward_%s_%s" % (n, ops.uid())
 
 
 def _inference_name(n):
   """The name of a forward-but-no-gradient defun named n."""
-  return "__inference_%s_%s" % (n, core.uid())
+  return "__inference_%s_%s" % (n, ops.uid())
 
 
 class _DefinedFunction(object):
@@ -184,15 +183,8 @@ class _GraphModeFunction(object):
       internal function.
   """
 
-  def __init__(self,
-               input_placeholders,
-               extra_inputs,
-               fdef,
-               graph,
-               operations,
-               func_outputs,
-               func_outputs_to_fdef_outputs,
-               output_shapes):
+  def __init__(self, input_placeholders, extra_inputs, fdef, graph, operations,
+               func_outputs, func_outputs_to_fdef_outputs, output_shapes):
     assert len(input_placeholders) == len(fdef.signature.input_arg), "%s %s" % (
         len(input_placeholders), len(fdef.signature.input_arg))
     self._input_placeholders = input_placeholders
@@ -204,8 +196,8 @@ class _GraphModeFunction(object):
     self._num_outputs = len(fdef.signature.output_arg)
     self._ops = operations
     self._func_outputs = func_outputs
-    if (isinstance(func_outputs, (ops.Tensor, type(None)))
-        or ag_core.isnode(func_outputs)):
+    if (isinstance(func_outputs, (ops.Tensor, type(None))) or
+        ag_core.isnode(func_outputs)):
       self._returns = [func_outputs]
     else:
       self._returns = list(func_outputs)
@@ -218,11 +210,11 @@ class _GraphModeFunction(object):
     with self._graph.as_default(), context.graph_mode():
       c = _CapturingContext()
       with c:
-        filtered_outputs = [ag_core.getval(x)
-                            for x in self._returns if x is not None]
+        filtered_outputs = [
+            ag_core.getval(x) for x in self._returns if x is not None
+        ]
         self._out_grad_placeholders = [
-            graph_placeholder(x.dtype, x.shape)
-            for x in filtered_outputs
+            graph_placeholder(x.dtype, x.shape) for x in filtered_outputs
         ]
         in_gradients = gradients_impl.gradients(
             filtered_outputs,
@@ -231,20 +223,16 @@ class _GraphModeFunction(object):
         shapes = [x.shape for x in in_gradients if x is not None]
     captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
     forward_function_def = graph_to_function_def.graph_to_function_def(
-        self._graph, self._ops,
-        self._input_placeholders,
+        self._graph, self._ops, self._input_placeholders,
         filtered_outputs + captures)
     self._forward_fdef = _DefinedFunction(forward_function_def)
-    _register_with_name(_forward_name(self._func_name),
-                        forward_function_def)
+    _register_with_name(_forward_name(self._func_name), forward_function_def)
     backward_outputs = [x for x in in_gradients if x is not None]
     all_inputs = self._out_grad_placeholders + captures
     backward_function_def = graph_to_function_def.graph_to_function_def(
-        self._graph,
-        [x.op for x in self._out_grad_placeholders] +
-        list(sorted(c.known_ops, key=lambda x: x.name)),
-        all_inputs,
-        backward_outputs)
+        self._graph, [x.op for x in self._out_grad_placeholders
+                     ] + list(sorted(c.known_ops, key=lambda x: x.name)),
+        all_inputs, backward_outputs)
     _register_with_name(_backward_name(self._func_name), backward_function_def)
     self._backward_function = _GraphModeFunction(
         all_inputs, [], backward_function_def, self._graph, c.known_ops,
@@ -258,12 +246,12 @@ class _GraphModeFunction(object):
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
       unwrapped_args = [ag_core.getval(x) for x in all_args]
-      op = g.create_op(signature.name,
-                       [ops.convert_to_tensor(x) for x in unwrapped_args],
-                       [dtypes.DType(x.type) for x in signature.output_arg],
-                       op_def=signature,
-                       name="FunctionCall",
-                       compute_shapes=False)
+      op = g.create_op(
+          signature.name, [ops.convert_to_tensor(x) for x in unwrapped_args],
+          [dtypes.DType(x.type) for x in signature.output_arg],
+          op_def=signature,
+          name="FunctionCall",
+          compute_shapes=False)
       outputs = op.outputs
       outputs = [outputs] if isinstance(
           outputs, (tensor.Tensor, ops.Tensor, type(None))) else list(outputs)
@@ -288,17 +276,17 @@ class _GraphModeFunction(object):
         watched_extra_inputs.append(t)
     real_outputs = tape.record_operation(real_outputs,
                                          (args + watched_extra_inputs),
-                                         side_outputs,
-                                         self._backward_function)
+                                         side_outputs, self._backward_function)
 
     return self._build_call_outputs(self._returns, real_outputs)
 
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
-    tensor_inputs = [x for x in nest.flatten(args)
-                     if isinstance(x, (tensor.Tensor, ops.Tensor,
-                                       tensor.LazyZero))
-                     or ag_core.isnode(x)]
+    tensor_inputs = [
+        x for x in nest.flatten(args)
+        if isinstance(x, (tensor.Tensor, ops.Tensor,
+                          tensor.LazyZero)) or ag_core.isnode(x)
+    ]
     if tape.should_record(tensor_inputs) or any(
         tape.any_tape_has(t) for t in self._extra_inputs):
       if not self._has_backprop:
@@ -310,18 +298,20 @@ class _GraphModeFunction(object):
       g._add_function(self._fdef)  # pylint: disable=protected-access
       signature = self._fdef.definition.signature
       args = list(tensor_inputs) + self._extra_inputs
-      op = g.create_op(signature.name,
-                       [ops.convert_to_tensor(x) for x in args],
-                       [dtypes.DType(x.type) for x in signature.output_arg],
-                       op_def=signature,
-                       name="FunctionCall",
-                       compute_shapes=False)
+      op = g.create_op(
+          signature.name, [ops.convert_to_tensor(x) for x in args],
+          [dtypes.DType(x.type) for x in signature.output_arg],
+          op_def=signature,
+          name="FunctionCall",
+          compute_shapes=False)
       result = op.outputs
       for i, s in enumerate(self._output_shapes):
         result[i].set_shape(s)
     else:
-      tensor_inputs = [x.tensor() if isinstance(x, tensor.LazyZero) else x
-                       for x in tensor_inputs]
+      tensor_inputs = [
+          x.tensor() if isinstance(x, tensor.LazyZero) else x
+          for x in tensor_inputs
+      ]
       result = execute.execute(
           self._func_name,
           num_outputs=self._num_outputs,
@@ -383,22 +373,21 @@ def _defun_internal(name, func, args, kwds):
         func_outputs = func(*func_inputs, **kwds)
       ids = list(sorted(captures.keys()))
       if ids:
-        extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])
+        extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
       else:
         extra_inputs = []
         extra_placeholders = []
       outputs_list = nest.flatten(func_outputs)
       output_shapes = [x.shape for x in outputs_list if x is not None]
 
-  flat_inputs = [x for x in nest.flatten(func_inputs)
-                 if isinstance(x, ops.Tensor)]
+  flat_inputs = [
+      x for x in nest.flatten(func_inputs) if isinstance(x, ops.Tensor)
+  ]
   all_inputs = flat_inputs + list(extra_placeholders)
 
   func_def_outputs = [ag_core.getval(x) for x in outputs_list if x is not None]
   inference_function_def = graph_to_function_def.graph_to_function_def(
-      tmp_graph, tmp_graph.get_operations(),
-      all_inputs,
-      func_def_outputs)
+      tmp_graph, tmp_graph.get_operations(), all_inputs, func_def_outputs)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
@@ -407,14 +396,9 @@ def _defun_internal(name, func, args, kwds):
   _register_with_name(_inference_name(name), inference_function_def)
 
   return _GraphModeFunction(
-      all_inputs,
-      extra_inputs,
-      inference_function_def,
-      tmp_graph,
-      tmp_graph.get_operations(),
-      func_outputs,
-      _map_sequence_obj_to_idx(func_def_outputs),
-      output_shapes)
+      all_inputs, extra_inputs, inference_function_def, tmp_graph,
+      tmp_graph.get_operations(), func_outputs,
+      _map_sequence_obj_to_idx(func_def_outputs), output_shapes)
 
 
 # Defun uses this instead of Tensor as a cache key. Using dtype because

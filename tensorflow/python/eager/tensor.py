@@ -27,11 +27,13 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.framework import tensor_shape
 
 
-class Tensor(object):
-  """A TensorFlow Tensor."""
+# TODO(agarwal): rename to TensorHandle.
+class Tensor(tf_ops.Tensor):
+  """A TensorFlow Eager Tensor."""
 
   def __init__(self, value, dtype=None):
     """Creates a Tensor object from a Python object or numpy array.
@@ -48,7 +50,7 @@ class Tensor(object):
     # TODO(ashankar): Evaluate if we can and perhaps share code with
     # tf.constant defined in
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
-    self._id = core.uid()
+    self._id = tf_ops.uid()
     if not isinstance(value, np.ndarray):
       npt = None if dtype is None else dtype.as_numpy_dtype
       value = np.array(value, dtype=npt)
@@ -111,7 +113,7 @@ class Tensor(object):
     if core.active_trace() is not None:
       core.active_trace().record_tensor("MANUAL",
                                         tape.tensor_id(self),
-                                        self._device_name(),
+                                        self.device,
                                         self.shape.num_elements())
 
   def __del__(self):
@@ -184,12 +186,13 @@ class Tensor(object):
     if core.active_trace() is not None:
       core.active_trace().record_tensor("COPY",
                                         tape.tensor_id(new_tensor),
-                                        new_tensor._device_name(),
+                                        new_tensor.device,
                                         new_tensor.shape.num_elements())
     return new_tensor
     # pylint: enable=protected-access
 
-  def _device_name(self):
+  @property
+  def device(self):
     return pywrap_tensorflow.TFE_TensorHandleDeviceName(self._handle)
 
   @property
@@ -237,6 +240,10 @@ class Tensor(object):
         pywrap_tensorflow.TFE_TensorHandleDim(self._handle, x)
         for x in range(n))
 
+  def _shape_as_list(self):
+    """The shape of the tensor as a list."""
+    return list(self._shape_tuple())
+
   def as_cpu_tensor(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.get_default_context(), "CPU:0")
@@ -265,6 +272,42 @@ class Tensor(object):
 
   def __nonzero__(self):
     return self.__bool__()
+
+  # Methods not supported / implemented for Eager Tensors.
+  @property
+  def op(self):
+    raise NotImplementedError("op not supported for Eager Tensors.")
+
+  @property
+  def graph(self):
+    raise NotImplementedError("graph not supported for Eager Tensors.")
+
+  @property
+  def name(self):
+    raise NotImplementedError("name not supported for Eager Tensors.")
+
+  def set_shape(self, shape):
+    raise NotImplementedError("set_shape not supported for Eager Tensors.")
+
+  @property
+  def value_index(self):
+    raise NotImplementedError("value_index not supported for Eager Tensors.")
+
+  def consumers(self):
+    raise NotImplementedError("consumers not supported for Eager Tensors.")
+
+  def _add_consumer(self, consumer):
+    raise NotImplementedError("_add_consumer not supported for Eager Tensors.")
+
+  def _as_node_def_input(self):
+    raise NotImplementedError(
+        "_as_node_def_input not supported for Eager Tensors.")
+
+  def _as_tf_output(self):
+    raise NotImplementedError("_as_tf_output not supported for Eager Tensors.")
+
+  def eval(self, feed_dict=None, session=None):
+    raise NotImplementedError("eval not supported for Eager Tensors.")
 
 
 class IndexedSlices(object):
@@ -374,7 +417,7 @@ def _tensor_from_handle(handle):
   """
   # pylint: disable=protected-access
   t = Tensor.__new__(Tensor)
-  t._id = core.uid()
+  t._id = tf_ops.uid()
   t._handle = handle
   t._dtype = dtypes.as_dtype(pywrap_tensorflow.TFE_TensorHandleDataType(handle))
   t._handle_data = None

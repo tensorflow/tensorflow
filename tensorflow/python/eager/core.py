@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
-
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import memory_trace
@@ -27,17 +25,6 @@ from tensorflow.python.framework import errors
 
 # Trace of execution and memory usage.
 _active_trace = None
-
-_uid_counter = 0
-_uid_lock = threading.Lock()
-
-
-def uid():
-  """A unique (within this program execution) integer."""
-  with _uid_lock:
-    global _uid_counter
-    _uid_counter += 1
-    return _uid_counter
 
 
 def _status_to_exception(code, message):
