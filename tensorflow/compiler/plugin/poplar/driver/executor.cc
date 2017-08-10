@@ -113,7 +113,7 @@ PoplarExecutor::~PoplarExecutor() {}
 
 void *PoplarExecutor::Allocate(uint64 size) {
   void* raw_buf = new char[size + sizeof(TensorControl)];
-  TensorControl* allocated = reinterpret_cast<TensorControl*>(raw_buf);
+  TensorControl* allocated = new (raw_buf) TensorControl();
   allocated->size = size;
   allocated->on_device = false;
   allocated->input_handle.clear();
@@ -139,6 +139,7 @@ void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
       std::lock_guard <std::recursive_mutex> g(mutex_);
       allocations_.remove(tc);
     }
+    tc->~TensorControl();
     delete[] static_cast<char *>(mem->opaque());
   }
 }
