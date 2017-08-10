@@ -1431,6 +1431,7 @@ cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
     deps = [
+        ":flatten_call_graph",
         ":hlo",
         ":hlo_alias_analysis",
         ":hlo_matchers",
