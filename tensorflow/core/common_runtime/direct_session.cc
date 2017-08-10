@@ -471,7 +471,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   args.step_id = step_id_counter_.fetch_add(1);
 
   TF_RETURN_IF_ERROR(
-      GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
+      GetOrCreateExecutors(input_tensor_names, output_names, target_nodes,
                            &executors_and_keys, &run_state_args));
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
@@ -711,7 +711,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   DebugOptions debug_options;
   RunStateArgs run_state_args(debug_options);
   run_state_args.is_partial_run = true;
-  TF_RETURN_IF_ERROR(GetOrCreateExecutors(pool, input_names, output_names,
+  TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_names, output_names,
                                           target_nodes, &executors_and_keys,
                                           &run_state_args));
 
@@ -1042,9 +1042,9 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
 }
 
 Status DirectSession::GetOrCreateExecutors(
-    thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
-    gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
-    ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
+    gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
+    gtl::ArraySlice<string> target_nodes, ExecutorsAndKeys** executors_and_keys,
+    RunStateArgs* run_state_args) {
   int64 handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);
