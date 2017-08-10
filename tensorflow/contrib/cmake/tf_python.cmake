@@ -561,6 +561,12 @@ add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
 add_python_module("tensorflow/contrib/util")
+add_python_module("tensorflow/contrib/reduce_slice_ops")
+add_python_module("tensorflow/contrib/reduce_slice_ops/kernels")
+add_python_module("tensorflow/contrib/reduce_slice_ops/ops")
+add_python_module("tensorflow/contrib/reduce_slice_ops/python")
+add_python_module("tensorflow/contrib/reduce_slice_ops/python/kernel_tests")
+add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
 
 
 ########################################################
