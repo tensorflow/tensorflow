@@ -21,14 +21,14 @@ py_library(
     deps = [
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:ops",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:dtypes"
+        "//tensorflow/python:dtypes",
         
     ],
 )
@@ -44,7 +44,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables"
+        "//tensorflow/python:variables",
     ],
 )
 
