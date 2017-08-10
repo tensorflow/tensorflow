@@ -48,6 +48,16 @@ except ImportError:
 
 
 def _fill_array(arr, seq, fillvalue=0):
+  """ 
+  Recursively fills padded arr with elements from seq. 
+  If lenght of seq is less then arr padded length, fillvalue used.
+
+  Args:
+    arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
+    seq: Non-padded list of data sampels of shape 
+      [batch_size, ..., padded_dim(None)]
+    fillvalue: Defaulf fillvalue to use.
+  """
   if arr.ndim == 1:
     try:
       len_ = len(seq)
@@ -61,6 +71,19 @@ def _fill_array(arr, seq, fillvalue=0):
 
 
 def _pad_if_needed(batch_key_item):
+  """ Returns padded batch.
+
+  Args:
+    batch_key_item: List of data samples of any type with shape 
+      [batch_size, ..., padded_dim(None)].
+
+  Returns:
+    Padded with zeros tensor of same type and shape 
+      [batch_size, ..., max_padded_dim_len].
+
+  Raises:
+    ValueError if data samples have different shapes (except last padded dim).
+  """
   shapes = [seq.shape[:-1] if len(seq.shape) > 0 else -1
             for seq in batch_key_item]
   if not all(shapes[0] == x for x in shapes):
