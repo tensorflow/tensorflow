@@ -686,7 +686,12 @@ class Estimator(object):
           log_step_count_steps=self._config.log_step_count_steps) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
-          _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
+          _, loss, global_step = mon_sess.run(
+            [estimator_spec.train_op, estimator_spec.loss, global_step_tensor])
+          _write_dict_to_summary(
+            output_dir=self._model_dir,
+            dictionary={ops.GraphKeys.LOSSES: loss},
+            current_global_step=global_step)
       return loss
 
   def _evaluate_model(self,
