@@ -594,6 +594,15 @@ cc_library(
 )
 
 cc_library(
+    name = "llvm_compiler",
+    hdrs = ["llvm_compiler.h"],
+    deps = [
+        ":compiler",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
     name = "transfer_manager",
     srcs = ["transfer_manager.cc"],
     hdrs = ["transfer_manager.h"],
