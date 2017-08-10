@@ -2714,9 +2714,7 @@ py_test(
 py_test(
     name = "events_writer_test",
     size = "small",
-    srcs = [
-        "client/events_writer_test.py",
-    ],
+    srcs = ["client/events_writer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":errors",
