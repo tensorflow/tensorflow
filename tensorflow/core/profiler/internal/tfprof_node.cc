@@ -25,7 +25,7 @@ bool CountAsAcceleratorTime(const string& device) {
 }
 
 bool CountAsCPUTime(const string& device) {
-  return RE2::FullMatch(device, ".*/(device:gpu|cpu|device:sycl):\\d+");
+  return RE2::FullMatch(device, ".*/(device:gpu|gpu|cpu|device:sycl):\\d+");
 }
 
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
@@ -158,7 +158,7 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
       if (dev.find("sycl") != dev.npos) {
         host_device_ = StringReplace(dev, "device:sycl:\\d+", "cpu:0");
       } else {
-        host_device_ = StringReplace(dev, "device:gpu:\\d+", "cpu:0");
+        host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
       }
       AddOpType(canonical_device_);
     }
