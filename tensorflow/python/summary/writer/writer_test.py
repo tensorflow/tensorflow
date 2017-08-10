@@ -267,6 +267,13 @@ class SummaryWriterTestCase(test.TestCase):
     sw.close()
     self._assertRecent(time_before_close)
 
+  def testWithStatement(self):
+    test_dir = self._CleanTestDir("with_statement")
+    with writer.FileWriter(test_dir) as sw:
+      sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
+    event_paths = sorted(glob.glob(os.path.join(test_dir, "event*")))
+    self.assertEquals(1, len(event_paths))
+
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
