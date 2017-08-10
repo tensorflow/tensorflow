@@ -25,6 +25,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.framework import dtypes
 
 
 class DynamicStitchTest(test.TestCase):
@@ -158,6 +159,44 @@ class DynamicStitchTest(test.TestCase):
     ]
     with self.assertRaises(ValueError):
       data_flow_ops.dynamic_stitch(indices, data)
+
+  # GPU version unit tests
+  def testScalarGPU(self):
+    with self.test_session():
+      indices = [constant_op.constant(0), constant_op.constant(1)]
+      data = [constant_op.constant(40.0), constant_op.constant(60.0)]
+      for step in -1, 1:
+        stitched_t = data_flow_ops.dynamic_stitch(indices[::step], data)
+        stitched_val = stitched_t.eval()
+        self.assertAllEqual([40.0, 60.0][::step], stitched_val)
+        # Dimension 0 is determined by the max index in indices, so we
+        # can only infer that the output is a vector of some unknown
+        # length.
+        self.assertEqual([None], stitched_t.get_shape().as_list())
+
+  def testHigherRankGPU(self):
+    with self.test_session() as sess:
+      indices = [
+          constant_op.constant(6), constant_op.constant([4, 1]),
+          constant_op.constant([[5, 2], [0, 3]])
+      ]
+      data = [
+          constant_op.constant([61, 62], dtype=dtypes.float32),
+          constant_op.constant([[41, 42], [11, 12]], dtype=dtypes.float32),
+          constant_op.constant([[[51, 52], [21, 22]], [[1, 2], [31, 32]]], dtype=dtypes.float32)
+      ]
+      stitched_t = data_flow_ops.dynamic_stitch(indices, data)
+      stitched_val = stitched_t.eval()
+      correct = 10 * np.arange(7)[:, None] + [1.0, 2.0]
+      self.assertAllEqual(correct, stitched_val)
+      self.assertEqual([None, 2], stitched_t.get_shape().as_list())
+      # Test gradients
+      stitched_grad = 7 * stitched_val
+      grads = gradients_impl.gradients(stitched_t, indices + data,
+                                       stitched_grad)
+      self.assertEqual(grads[:3], [None] * 3)  # Indices have no gradients
+      for datum, grad in zip(data, sess.run(grads[3:])):
+        self.assertAllEqual(7.0 * datum.eval(), grad)
 
 
 if __name__ == "__main__":
