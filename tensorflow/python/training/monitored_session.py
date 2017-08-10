@@ -317,7 +317,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       `close()` has been called.
     log_step_count_steps: The frequency, in number of global steps, that the
       global step/sec is logged.
-    recovery_wait_secs: Number of seconds between checks that the model is ready.
+    recovery_wait_secs: Number of seconds that this is used by worker jobs to 
+      check whether chief initialized/restored session or not.
 
   Returns:
     A `MonitoredSession` object.
