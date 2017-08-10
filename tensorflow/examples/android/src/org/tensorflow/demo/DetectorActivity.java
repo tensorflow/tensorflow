@@ -298,17 +298,15 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
       ImageUtils.convertYUV420ToARGB8888(
-              yuvBytes[0],
-              yuvBytes[1],
-              yuvBytes[2],
-              rgbBytes,
-              previewWidth,
-              previewHeight,
-              yRowStride,
-              uvRowStride,
-              uvPixelStride,
-              false);
-
+          yuvBytes[0],
+          yuvBytes[1],
+          yuvBytes[2],
+          previewWidth,
+          previewHeight,
+          yRowStride,
+          uvRowStride,
+          uvPixelStride,
+          rgbBytes);
 
       image.close();
     } catch (final Exception e) {
