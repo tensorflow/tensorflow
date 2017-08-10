@@ -36,7 +36,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
@@ -636,10 +635,7 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    # Uses the deprecated API to set the tag explicitly.
-    # Without it, training and eval losses will show up in different graphs.
-    logging_ops.scalar_summary(
-        _summary_key(head_name, mkey.LOSS), weighted_average_loss)
+    summary.scalar(mkey.LOSS, weighted_average_loss, family=head_name)
 
     if mode == model_fn.ModeKeys.TRAIN:
       if train_op_fn is None:
@@ -1488,8 +1484,7 @@ class _LossOnlyHead(Head):
         loss = self._loss_fn()
         if isinstance(loss, list):
           loss = math_ops.add_n(loss)
-        logging_ops.scalar_summary(
-            _summary_key(self.head_name, mkey.LOSS), loss)
+        summary.scalar(mkey.LOSS, loss, family=self.head_name)
         if mode == model_fn.ModeKeys.TRAIN:
           if train_op_fn is None:
             raise ValueError("train_op_fn can not be None in TRAIN mode")
