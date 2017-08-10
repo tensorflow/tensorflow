@@ -34,6 +34,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -282,6 +283,11 @@ class Tensor(_TensorLike):
     if not self._op.name:
       raise ValueError("Operation was not named: %s" % self._op)
     return "%s:%d" % (self._op.name, self._value_index)
+
+  @property
+  def _id(self):
+    """An alias for the string name of this tensor."""
+    return self.name
 
   @property
   def device(self):
@@ -1232,7 +1238,7 @@ class Operation(object):
   def _create_c_op(self, graph, node_def, inputs, control_inputs):
     """Creates a TF_Operation.
 
-    Arguments:
+    Args:
       graph: a `Graph`.
       node_def: `node_def_pb2.NodeDef` for the operation to create.
       inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
@@ -1276,7 +1282,7 @@ class Operation(object):
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.
 
-    Arguments:
+    Args:
       op_def: The `op_def_pb2.OpDef` (for knowing the input types)
       inputs: a list of input `Tensor`s to the op.
       attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
@@ -1372,7 +1378,7 @@ class Operation(object):
     """
     if self._graph._c_graph:  # pylint: disable=protected-access
       # TODO(iga): Remove this assert after converting to C API by default.
-      # Just being a bit paranoid here.
+      # Just being a bit paranoid here
       assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
       return c_api.TF_OperationDevice(self._c_op)
     else:
@@ -1426,8 +1432,10 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
-    assert not self._graph._c_graph, (  # pylint: disable=protected-access
-        "Operation._set_device doesn't work with C API")
+    if _USE_C_API:
+      c_api.SetRequestedDevice(
+          self._graph._c_graph, self._c_op, _device_string(device))  # pylint: disable=protected-access
+    # TODO(nolivia): remove this line when switch to C api
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
@@ -1697,7 +1705,7 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor"]
+    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
     if name not in self._node_def.attr:
       raise ValueError("No attr named '" + name + "' in " +
                        str(self._node_def))
@@ -2076,18 +2084,6 @@ def _name_from_scope_name(name):
   return name[:-1] if name[-1] == "/" else name
 
 
-class _ScopedTF_Graph(object):
-
-  def __init__(self):
-    self.graph = c_api.TF_NewGraph()
-
-  def __del__(self):
-    # Note: when we're destructing the global context (i.e when the process is
-    # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteGraph is not None:
-      c_api.TF_DeleteGraph(self.graph)
-
-
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -2204,7 +2200,7 @@ class Graph(object):
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
     if _USE_C_API:
-      self._scoped_c_graph = _ScopedTF_Graph()
+      self._scoped_c_graph = c_api_util.ScopedTFGraph()
     else:
       self._scoped_c_graph = None
 
@@ -2642,7 +2638,9 @@ class Graph(object):
           # Make this device match the device of the colocated op, to
           # provide consistency between the device and the colocation
           # property.
-          if ret.device and ret.device != colocation_op.device:
+          if (ret.device and
+              pydev.canonical_name(ret.device) !=
+              pydev.canonical_name(colocation_op.device)):
             logging.warning("Tried to colocate %s with an op %s that had "
                             "a different device: %s vs %s. "
                             "Ignoring colocation property.",
@@ -3476,7 +3474,7 @@ class Graph(object):
       additional mechanism to add control dependencies.
 
       Args:
-        graph: The graph that this controller is  managing.
+        graph: The graph that this controller is managing.
         control_inputs: List of ops to use as control inputs in addition
           to the current control dependencies.  None to indicate that
           the dependencies should be cleared.
@@ -3660,6 +3658,8 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     for c in control_inputs:
+      if isinstance(c, IndexedSlices):
+        c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, Tensor):
         c = c.op

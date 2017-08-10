@@ -257,7 +257,7 @@ ComputationDataHandle ComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
     tensorflow::gtl::ArraySlice<int64> limit_indices,
-    tensorflow::gtl::ArraySlice<int64> stride) {
+    tensorflow::gtl::ArraySlice<int64> strides) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
@@ -270,8 +270,8 @@ ComputationDataHandle ComputationBuilder::Slice(
   for (int64 index : limit_indices) {
     request.add_limit_indices(index);
   }
-  for (int64 index : stride) {
-    request.add_stride(index);
+  for (int64 index : strides) {
+    request.add_strides(index);
   }
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
@@ -282,6 +282,25 @@ ComputationDataHandle ComputationBuilder::Slice(
   VLOG(2) << "making slice request";
   Status s = client_->stub()->Op(&op_request, &response);
   return ParseOpResponse(s, &response);
+}
+
+ComputationDataHandle ComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
+  if (!shape_status.ok()) {
+    NoteError(shape_status.status());
+    return ComputationDataHandle{};
+  }
+  const Shape& shape = *shape_status.ValueOrDie();
+  std::vector<int64> starts(ShapeUtil::Rank(shape), 0);
+  std::vector<int64> limits(shape.dimensions().begin(),
+                            shape.dimensions().end());
+  std::vector<int64> strides(ShapeUtil::Rank(shape), 1);
+  starts[dimno] = start_index;
+  limits[dimno] = limit_index;
+  strides[dimno] = stride;
+  return Slice(operand, starts, limits, strides);
 }
 
 ComputationDataHandle ComputationBuilder::DynamicSlice(
@@ -974,6 +993,11 @@ ComputationDataHandle ComputationBuilder::Sign(
 ComputationDataHandle ComputationBuilder::Cos(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_COS, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Sin(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_SIN, operand);
 }
 
 ComputationDataHandle ComputationBuilder::Tanh(

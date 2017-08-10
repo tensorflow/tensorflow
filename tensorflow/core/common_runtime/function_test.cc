@@ -43,7 +43,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-typedef FunctionDefHelper FDH;
+using FDH = FunctionDefHelper;
 
 Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
@@ -163,9 +163,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    lib_.reset(NewFunctionLibraryRuntime(nullptr, Env::Default(), device_.get(),
-                                         TF_GRAPH_DEF_VERSION, lib_def_.get(),
-                                         opts));
+    lib_ =
+        NewFunctionLibraryRuntime(nullptr, Env::Default(), device_.get(),
+                                  TF_GRAPH_DEF_VERSION, lib_def_.get(), opts);
     fdef_lib_ = lib_def_->ToProto();
   }
 
@@ -1264,5 +1264,5 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
   TF_EXPECT_GRAPH_EQ(expected, Optimize(remove_listarray_and_identity, func));
 }
 
-}  // end namespace
-}  // end namespace tensorflow
+}  // namespace
+}  // namespace tensorflow

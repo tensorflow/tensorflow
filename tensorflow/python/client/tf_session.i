@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
 %}
@@ -99,21 +100,29 @@ tensorflow::ImportNumpy();
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
 
-// The wrapper also takes a list of fetch and target names.  In Python this is
-// represented as a list of strings.
+// Converts a python list of strings to NameVector.
+// Has multiple users including feeds/fetches names and function output names
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
     tensorflow::Safe_PyObjectPtr temp_string_list(
         tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
-    SWIG_fail;
+    SWIG_exception_fail(
+        SWIG_TypeError,
+        tensorflow::strings::Printf(
+            "Expected a python list for conversion "
+            "to tensorflow::NameVector but got %s",
+            Py_TYPE($input)->tp_name).c_str());
   }
 
   Py_ssize_t len = PyList_Size($input);
 
   temp_string_list = tensorflow::make_safe(PyList_New(len));
   if (!temp_string_list) {
-    SWIG_fail;
+    SWIG_exception_fail(
+        SWIG_MemoryError,
+        tensorflow::strings::Printf("Failed to create a list of size %zd",
+                                    len).c_str());
   }
 
   for (Py_ssize_t i = 0; i < len; ++i) {
@@ -126,15 +135,17 @@ tensorflow::ImportNumpy();
     PyList_SET_ITEM(temp_string_list.get(), i, elem);
     Py_INCREF(elem);
 
-    char* fetch_name = PyBytes_AsString(elem);
-    if (!fetch_name) {
-      PyErr_SetString(PyExc_TypeError,
-                      "a fetch or target name was not a string");
-      SWIG_fail;
+    char* string_elem = PyBytes_AsString(elem);
+    if (!string_elem) {
+      SWIG_exception_fail(
+          SWIG_TypeError,
+          tensorflow::strings::Printf(
+              "Element %zd was of type %s instead of a string",
+              i, Py_TYPE(elem)->tp_name).c_str());
     }
 
     // TODO(mrry): Avoid copying the fetch name in, if this impacts performance.
-    temp.push_back(fetch_name);
+    temp.push_back(string_elem);
   }
   $1 = &temp;
 }
@@ -160,7 +171,10 @@ tensorflow::ImportNumpy();
 
   $result = PyList_New($1->size());
   if (!$result) {
-    SWIG_fail;
+    SWIG_exception_fail(
+        SWIG_MemoryError,
+        tensorflow::strings::Printf("Failed to create a list of size %zd",
+                                    $1->size()).c_str());
   }
 
   for (size_t i = 0; i < $1->size(); ++i) {
@@ -183,6 +197,34 @@ tensorflow::ImportNumpy();
 ////////////////////////////////////////////////////////////////////////////////
 // END TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
+
+// Typemap for TF_Status* inputs that automatically unwraps a ScopedTFStatus.
+// This can also handle a wrapped TF_Status* input.
+%typemap(in) (TF_Status*) {
+  PyObject* wrapped_tf_status;
+  if (strcmp(Py_TYPE($input)->tp_name, "ScopedTFStatus") == 0) {
+    DCHECK(PyObject_HasAttrString($input, "status"))
+        << "ScopedTFStatus.status not found! Do you need to modify "
+           "tf_session.i?";
+    wrapped_tf_status = PyObject_GetAttrString($input, "status");
+  } else {
+    // Assume wrapped TF_Status*
+    wrapped_tf_status = $input;
+  }
+  DCHECK_EQ(strcmp(Py_TYPE(wrapped_tf_status)->tp_name, "SwigPyObject"), 0)
+      << Py_TYPE(wrapped_tf_status)->tp_name;
+
+  // The following is the default SWIG code generated for TF_Status*
+  void* tf_status = nullptr;
+  int r = SWIG_ConvertPtr(wrapped_tf_status, &tf_status,
+                          $descriptor(TF_Status*), 0 | 0);
+  if (!SWIG_IsOK(r)) {
+    SWIG_exception_fail(
+        SWIG_ArgError(r),
+        "in method '_TF_DeleteStatus', argument 1 of type 'TF_Status *'");
+  }
+  $1 = reinterpret_cast<TF_Status*>(tf_status);
+}
 
 // Typemap for functions that return a TF_Buffer struct. This typemap creates a
 // Python string from the TF_Buffer and returns it. The TF_Buffer.data string
@@ -271,6 +313,7 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 
 %include "tensorflow/c/c_api.h"
 %include "tensorflow/c/python_api.h"
+
 
 %ignoreall
 %insert("python") %{

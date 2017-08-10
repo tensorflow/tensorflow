@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A tf.learn implementation of tensor_forest (extremely random forests)."""
+"""A tf.learn implementation of online extremely random forests."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib import layers
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -25,45 +26,26 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_f
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-from tensorflow.contrib.tensor_forest.python import tensor_forest_v4
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 
 
 KEYS_NAME = 'keys'
 LOSS_NAME = 'rf_training_loss'
+TREE_PATHS_PREDICTION_KEY = 'tree_paths'
+VARIANCE_PREDICTION_KEY = 'regression_variance'
 
-VERSION_BUILDERS = {'v2': tensor_forest.RandomForestGraphs,
-                    'v4': tensor_forest_v4.RandomForestGraphsV4}
 EPSILON = 0.000001
-
-
-def _assert_float32(tensors):
-  """Assert all tensors are float32.
-
-  Args:
-    tensors: `Tensor` or `dict` of `Tensor` objects.
-
-  Raises:
-    TypeError: if any tensor is not float32.
-  """
-  if not isinstance(tensors, dict):
-    tensors = [tensors]
-  else:
-    tensors = tensors.values()
-  for tensor in tensors:
-    if tensor.dtype.base_dtype != dtypes.float32:
-      raise TypeError('Expected dtype=float32, %s.' % tensor)
 
 
 class TensorForestRunOpAtEndHook(session_run_hook.SessionRunHook):
@@ -73,8 +55,8 @@ class TensorForestRunOpAtEndHook(session_run_hook.SessionRunHook):
     self._ops = op_dict
 
   def end(self, session):
-    for name, op in self._ops.iteritems():
-      logging.info('{0}: {1}'.format(name, session.run(op)))
+    for name in sorted(self._ops.keys()):
+      logging.info('{0}: {1}'.format(name, session.run(self._ops[name])))
 
 
 class TensorForestLossHook(session_run_hook.SessionRunHook):
@@ -124,22 +106,6 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
       run_context.request_stop()
 
 
-class EveryCheckpointPreSaveListener(
-    basic_session_run_hooks.CheckpointSaverListener):
-  """Runs a given op before each checkpoint save."""
-
-  def __init__(self, op):
-    """Initializes the object.
-
-    Args:
-      op: An op to run before each checkpoint save.
-    """
-    self._op = op
-
-  def before_save(self, session, global_step_value):
-    session.run(self._op)
-
-
 def get_default_head(params, weights_name, name=None):
   if params.regression:
     return head_lib.regression_head(
@@ -158,11 +124,12 @@ def get_default_head(params, weights_name, name=None):
 def get_model_fn(params,
                  graph_builder_class,
                  device_assigner,
+                 feature_columns=None,
                  weights_name=None,
                  model_head=None,
                  keys_name=None,
                  early_stopping_rounds=100,
-                 early_stopping_loss_threshold=0.01,
+                 early_stopping_loss_threshold=0.001,
                  num_trainers=1,
                  trainer_id=0,
                  report_feature_importances=False,
@@ -177,6 +144,10 @@ def get_model_fn(params,
     if (isinstance(features, ops.Tensor) or
         isinstance(features, sparse_tensor.SparseTensor)):
       features = {'features': features}
+    if feature_columns:
+      features = features.copy()
+      features.update(layers.transform_features(features, feature_columns))
+
     weights = None
     if weights_name and weights_name in features:
       weights = features.pop(weights_name)
@@ -195,7 +166,10 @@ def get_model_fn(params,
     graph_builder = graph_builder_class(params,
                                         device_assigner=dev_assn)
 
-    logits = graph_builder.inference_graph(features)
+    logits, tree_paths, regression_variance = graph_builder.inference_graph(
+        features)
+
+    summary.scalar('average_tree_size', graph_builder.average_size())
     # For binary classification problems, convert probabilities to logits.
     # Includes hack to get around the fact that a probability might be 0 or 1.
     if not params.regression and params.num_classes == 2:
@@ -234,9 +208,19 @@ def get_model_fn(params,
         logits=logits,
         scope=head_scope)
 
+    # Ops are run in lexigraphical order of their keys. Run the resource
+    # clean-up op last.
+    all_handles = graph_builder.get_all_resource_handles()
+    ops_at_end = {
+        '9: clean up resources': control_flow_ops.group(
+            *[resource_variable_ops.destroy_resource_op(handle)
+              for handle in all_handles])}
+
     if report_feature_importances:
-      training_hooks.append(TensorForestRunOpAtEndHook(
-          {'feature_importances': graph_builder.feature_importances()}))
+      ops_at_end['1: feature_importances'] = (
+          graph_builder.feature_importances())
+
+    training_hooks.append(TensorForestRunOpAtEndHook(ops_at_end))
 
     if early_stopping_rounds:
       training_hooks.append(
@@ -249,6 +233,12 @@ def get_model_fn(params,
 
     if keys is not None:
       model_ops.predictions[keys_name] = keys
+
+    if params.inference_tree_paths:
+      model_ops.predictions[TREE_PATHS_PREDICTION_KEY] = tree_paths
+
+    if params.regression:
+      model_ops.predictions[VARIANCE_PREDICTION_KEY] = regression_variance
 
     return model_ops
 
@@ -291,13 +281,14 @@ class TensorForestEstimator(estimator.Estimator):
                params,
                device_assigner=None,
                model_dir=None,
+               feature_columns=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
                config=None,
-               weights_name=None,
-               keys_name=None,
+               weight_column=None,
+               keys_column=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               early_stopping_loss_threshold=0.01,
+               early_stopping_loss_threshold=0.001,
                num_trainers=1,
                trainer_id=0,
                report_feature_importances=False,
@@ -315,15 +306,18 @@ class TensorForestEstimator(estimator.Estimator):
       model_dir: Directory to save model parameters, graph, etc. To continue
         training a previously saved model, load checkpoints saved to this
         directory into an estimator.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `_FeatureColumn`.
       graph_builder_class: An `object` instance that defines how TF graphs for
         random forest training and inference are built. By default will use
         `tensor_forest.RandomForestGraphs`. Can be overridden by version
         kwarg.
       config: `RunConfig` object to configure the runtime settings.
-      weights_name: A string defining feature column name representing
+      weight_column: A string defining feature column name representing
         weights. Will be multiplied by the loss of the example. Used to
         downweight or boost examples during training.
-      keys_name: A string naming one of the features to strip out and
+      keys_column: A string naming one of the features to strip out and
         pass through into the inference/eval results dict.  Useful for
         associating specific examples with their prediction.
       feature_engineering_fn: Feature engineering function. Takes features and
@@ -343,30 +337,22 @@ class TensorForestEstimator(estimator.Estimator):
       local_eval: If True, don't use a device assigner for eval. This is to
         support some common setups where eval is done on a single machine, even
         though training might be distributed.
-      version: String indicating TensorForest version to use, for backward
-        compatibility. Either 'v2', 'v4', or None to let system pick.
-        Overrides graph_builder_class.
+      version: Unused.
       head: A heads_lib.Head object that calculates losses and such. If None,
         one will be automatically created based on params.
 
     Returns:
       A `TensorForestEstimator` instance.
     """
-    if version:
-      if version not in VERSION_BUILDERS:
-        logging.error('Unknown version %s. Specify either v2 or v4', version)
-      else:
-        logging.info('Setting graph_builder_class to %s', version)
-        graph_builder_class = VERSION_BUILDERS[version]
-
     super(TensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
             params.fill(),
             graph_builder_class,
             device_assigner,
+            feature_columns=feature_columns,
             model_head=head,
-            weights_name=weights_name,
-            keys_name=keys_name,
+            weights_name=weight_column,
+            keys_name=keys_column,
             early_stopping_rounds=early_stopping_rounds,
             early_stopping_loss_threshold=early_stopping_loss_threshold,
             num_trainers=num_trainers,
@@ -457,53 +443,22 @@ class MultiForestMultiHeadEstimator(estimator.Estimator):
   be used to train separate forests for each output.
   """
 
-  def __init__(self, params_list, device_assigner=None, model_dir=None,
+  def __init__(self,
+               params_list,
+               device_assigner=None,
+               model_dir=None,
+               feature_columns=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
-               config=None, weights_name=None, keys_name=None,
+               config=None,
+               weight_column=None,
+               keys_column=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               num_trainers=1, trainer_id=0,
+               num_trainers=1,
+               trainer_id=0,
                report_feature_importances=False,
                local_eval=False):
-    """Initializes a TensorForestEstimator instance.
-
-    Args:
-      params_list: A list of ForestHParams objects for each head, given in order
-        of outputs in the label tensor to be trained on.
-      device_assigner: An `object` instance that controls how trees get
-        assigned to devices. If `None`, will use
-        `tensor_forest.RandomForestDeviceAssigner`.
-      model_dir: Directory to save model parameters, graph, etc. To continue
-        training a previously saved model, load checkpoints saved to this
-        directory into an estimator.
-      graph_builder_class: An `object` instance that defines how TF graphs for
-        random forest training and inference are built. By default will use
-        `tensor_forest.RandomForestGraphs`.
-      config: `RunConfig` object to configure the runtime settings.
-      weights_name: A string defining feature column name representing
-        weights. Will be multiplied by the loss of the example. Used to
-        downweight or boost examples during training.
-      keys_name: A string naming one of the features to strip out and
-        pass through into the inference/eval results dict.  Useful for
-        associating specific examples with their prediction.
-      feature_engineering_fn: Feature engineering function. Takes features and
-        labels which are the output of `input_fn` and returns features and
-        labels which will be fed into the model.
-      early_stopping_rounds: Allows training to terminate early if the forest is
-        no longer growing. 100 by default.  Set to a Falsy value to disable
-        the default training hook.
-      num_trainers: Number of training jobs, which will partition trees
-        among them.
-      trainer_id: Which trainer this instance is.
-      report_feature_importances: If True, print out feature importances
-        during evaluation.
-      local_eval: If True, don't use a device assigner for eval. This is to
-        support some common setups where eval is done on a single machine, even
-        though training might be distributed.
-
-    Returns:
-      A `TensorForestEstimator` instance.
-    """
+    """See TensorForestEstimator.__init__."""
     model_fns = []
     for i in range(len(params_list)):
       params = params_list[i].fill()
@@ -513,9 +468,9 @@ class MultiForestMultiHeadEstimator(estimator.Estimator):
               graph_builder_class,
               device_assigner,
               model_head=get_default_head(
-                  params, weights_name, name='head{0}'.format(i)),
-              weights_name=weights_name,
-              keys_name=keys_name,
+                  params, weight_column, name='head{0}'.format(i)),
+              weights_name=weight_column,
+              keys_name=keys_column,
               early_stopping_rounds=early_stopping_rounds,
               num_trainers=num_trainers,
               trainer_id=trainer_id,

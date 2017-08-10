@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/Triple.h"
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -55,12 +55,14 @@ class SimpleOrcJIT {
   // can be reassociated, etc.).
   // The |opt_level| parameter controls the optimization level of the code
   // generator.
+  // The |optimize_for_size| parameter specifies that the code generator should
+  // optimize to reduce code size, potentially at the cost of performance.
   // The |pre_optimization_hook| is invoked on the module before any IR
   // level optimizations are applied.
   // The |post_optimization_hook| is invoked on the module after all IR
   // level optimizations are applied.
   SimpleOrcJIT(const llvm::TargetOptions& target_options,
-               llvm::CodeGenOpt::Level opt_level,
+               llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
                CompilerFunctor::ModuleHook pre_optimization_hook,
                CompilerFunctor::ModuleHook post_optimization_hook);
 
@@ -82,6 +84,8 @@ class SimpleOrcJIT {
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
   llvm::JITSymbol FindSymbol(const std::string& name);
+
+  llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
  private:
   std::vector<ModuleHandleT> module_handles_;

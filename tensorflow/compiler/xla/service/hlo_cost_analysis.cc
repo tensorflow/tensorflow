@@ -65,7 +65,8 @@ Status HloCostAnalysis::Postprocess(HloInstruction* hlo) {
       if (property.first != kSecondsKey) {
         max_seconds = std::max(
             max_seconds,
-            property.second / GetProperty(property.first, per_second_rates_));
+            property.second /
+                GetProperty(property.first, per_second_rates_, INFINITY));
       }
     }
     current_properties_[kSecondsKey] = max_seconds;
@@ -85,8 +86,11 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   // number of elements in the output shape.
   auto computation_count = ShapeUtil::ElementsIn(shape);
   auto opcode = hlo_instruction->opcode();
-  // We treat the two opcodes (kExp, kPower) as transcendental operations.
-  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower) {
+  // We treat transcendental operations separately since one transcendental
+  // operation can correspond to several floating point ops.
+  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower ||
+      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
+      opcode == HloOpcode::kCos) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -97,9 +101,10 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
 }
 
 /*static*/ float HloCostAnalysis::GetProperty(const string& key,
-                                              const Properties& properties) {
+                                              const Properties& properties,
+                                              const float default_value) {
   auto key_value = properties.find(key);
-  return key_value == properties.end() ? 0.0f : key_value->second;
+  return key_value == properties.end() ? default_value : key_value->second;
 }
 
 /*static*/ float HloCostAnalysis::GetPropertyForHlo(
@@ -521,6 +526,10 @@ int64 HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
 
 int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
+}
+
+float HloCostAnalysis::seconds(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kSecondsKey, hlo_properties_);
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

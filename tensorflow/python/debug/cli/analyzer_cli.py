@@ -32,6 +32,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import evaluator
 from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import source_utils
@@ -138,6 +139,7 @@ class DebugAnalyzer(object):
     """
 
     self._debug_dump = debug_dump
+    self._evaluator = evaluator.ExpressionEvaluator(self._debug_dump)
 
     # Initialize tensor filters state.
     self._tensor_filters = {}
@@ -279,45 +281,9 @@ class DebugAnalyzer(object):
     self._arg_parsers["list_outputs"] = ap
 
     # Parser for print_tensor.
-    ap = argparse.ArgumentParser(
-        description="Print the value of a dumped tensor.",
-        usage=argparse.SUPPRESS)
-    ap.add_argument(
-        "tensor_name",
-        type=str,
-        help="Name of the tensor, followed by any slicing indices, "
-        "e.g., hidden1/Wx_plus_b/MatMul:0, "
-        "hidden1/Wx_plus_b/MatMul:0[1, :]")
-    ap.add_argument(
-        "-n",
-        "--number",
-        dest="number",
-        type=int,
-        default=-1,
-        help="0-based dump number for the specified tensor. "
-        "Required for tensor with multiple dumps.")
-    ap.add_argument(
-        "-r",
-        "--ranges",
-        dest="ranges",
-        type=str,
-        default="",
-        help="Numerical ranges to highlight tensor elements in. "
-        "Examples: -r 0,1e-8, -r [-0.1,0.1], "
-        "-r \"[[-inf, -0.1], [0.1, inf]]\"")
-    ap.add_argument(
-        "-a",
-        "--all",
-        dest="print_all",
-        action="store_true",
-        help="Print the tensor in its entirety, i.e., do not use ellipses.")
-    ap.add_argument(
-        "-s",
-        "--numeric_summary",
-        action="store_true",
-        help="Include summary for non-empty tensors of numeric (int*, float*, "
-        "complex*) and Boolean types.")
-    self._arg_parsers["print_tensor"] = ap
+    self._arg_parsers["print_tensor"] = (
+        command_parser.get_print_tensor_argparser(
+            "Print the value of a dumped tensor."))
 
     # Parser for print_source.
     ap = argparse.ArgumentParser(
@@ -368,6 +334,48 @@ class DebugAnalyzer(object):
         default="",
         help="Regular expression filter for node name.")
     self._arg_parsers["list_source"] = ap
+
+    # Parser for eval.
+    ap = argparse.ArgumentParser(
+        description="""Evaluate an arbitrary expression. Can use tensor values
+        from the current debug dump. The debug tensor names should be enclosed
+        in pairs of backticks. Expressions with spaces should be enclosed in
+        a pair of double quotes or a pair of single quotes. By default, numpy
+        is imported as np and can be used in the expressions. E.g.,
+          1) eval np.argmax(`Softmax:0`),
+          2) eval 'np.sum(`Softmax:0`, axis=1)',
+          3) eval "np.matmul((`output/Identity:0`/`Softmax:0`).T, `Softmax:0`)".
+        """,
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "expression",
+        type=str,
+        help="""Expression to be evaluated.
+        1) in the simplest case, use <node_name>:<output_slot>, e.g.,
+          hidden_0/MatMul:0.
+
+        2) if the default debug op "DebugIdentity" is to be overridden, use
+          <node_name>:<output_slot>:<debug_op>, e.g.,
+          hidden_0/MatMul:0:DebugNumericSummary.
+
+        3) if the tensor of the same name exists on more than one device, use
+          <device_name>:<node_name>:<output_slot>[:<debug_op>], e.g.,
+          /job:worker/replica:0/task:0/gpu:0:hidden_0/MatMul:0
+          /job:worker/replica:0/task:2/cpu:0:hidden_0/MatMul:0:DebugNanCount.
+
+        4) if the tensor is executed multiple times in a given `Session.run`
+        call, specify the execution index with a 0-based integer enclose in a
+        pair of brackets at the end, e.g.,
+          RNN/tanh:0[0]
+          /job:worker/replica:0/task:0/gpu:0:RNN/tanh:0[0].""")
+    ap.add_argument(
+        "-a",
+        "--all",
+        dest="print_all",
+        action="store_true",
+        help="Print the tensor in its entirety, i.e., do not use ellipses "
+        "(may be slow for large results).")
+    self._arg_parsers["eval"] = ap
 
     # TODO(cais): Implement list_nodes.
 
@@ -843,10 +851,8 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["print_tensor"].parse_args(args)
 
-    if screen_info and "cols" in screen_info:
-      np_printoptions = {"linewidth": screen_info["cols"]}
-    else:
-      np_printoptions = {}
+    np_printoptions = cli_shared.numpy_printoptions_from_screen_info(
+        screen_info)
 
     # Determine if any range-highlighting is required.
     highlight_options = cli_shared.parse_ranges_highlight(parsed.ranges)
@@ -1003,6 +1009,20 @@ class DebugAnalyzer(object):
     _add_main_menu(output, node_name=node_name, enable_list_outputs=False)
 
     return output
+
+  def evaluate_expression(self, args, screen_info=None):
+    parsed = self._arg_parsers["eval"].parse_args(args)
+
+    eval_res = self._evaluator.evaluate(parsed.expression)
+
+    np_printoptions = cli_shared.numpy_printoptions_from_screen_info(
+        screen_info)
+    return cli_shared.format_tensor(
+        eval_res,
+        "from eval of expression '%s'" % parsed.expression,
+        np_printoptions,
+        print_all=parsed.print_all,
+        include_numeric_summary=True)
 
   def _reconstruct_print_source_command(self,
                                         parsed,
@@ -1538,6 +1558,11 @@ def create_analyzer_ui(debug_dump,
       analyzer.list_source,
       analyzer.get_help("list_source"),
       prefix_aliases=["ls"])
+  cli.register_command_handler(
+      "eval",
+      analyzer.evaluate_expression,
+      analyzer.get_help("eval"),
+      prefix_aliases=["ev"])
 
   dumped_tensor_names = []
   for datum in debug_dump.dumped_tensor_data:

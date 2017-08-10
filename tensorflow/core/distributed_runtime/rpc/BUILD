@@ -49,11 +49,12 @@ package(default_visibility = [
 
 cc_library(
     name = "grpc_util",
-    srcs = [],
+    srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
         "//tensorflow/core:lib",
         "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc_unsecure",
     ],
 )
 
@@ -140,6 +141,7 @@ cc_library(
         ":grpc_channel",
         ":grpc_client_cq_tag",
         ":grpc_remote_worker",
+        ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
@@ -439,6 +441,20 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core:worker_proto_cc",
         "@grpc//:grpc++_unsecure",
+    ],
+)
+
+tf_cc_test(
+    name = "grpc_util_test",
+    size = "small",
+    srcs = ["grpc_util_test.cc"],
+    deps = [
+        ":grpc_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:worker_proto_cc",
+        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc_unsecure",
     ],
 )
 

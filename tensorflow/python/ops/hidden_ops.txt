@@ -6,6 +6,7 @@ ConcatOffset
 Concat
 ConcatV2
 Const
+DebugGradientIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -157,13 +158,15 @@ TensorArrayWriteV3
 SymbolicGradient
 
 # image_ops
+AdjustContrastv2
+NonMaxSuppression
+NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
 ResizeNearestNeighborGrad
-AdjustContrastv2
-ScaleImageGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2
+ScaleImageGrad
 
 # io_ops
 FixedLengthRecordReader
@@ -289,6 +292,7 @@ MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
+SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK
@@ -302,6 +306,8 @@ Softmax
 LogSoftmax
 FractionalAvgPoolGrad
 FractionalMaxPoolGrad
+InTopK
+InTopKV2
 
 # parsing_ops
 ParseExample

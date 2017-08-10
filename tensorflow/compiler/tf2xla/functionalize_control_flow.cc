@@ -323,12 +323,26 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
   for (Arg& arg : frame->args) {
     if (!arg.is_loop_invariant) {
       // Follow the edge from the Enter to Merge.
-      if (arg.enter->out_edges().size() != 1) {
-        return errors::Internal("Enter node for loop-varying argument ",
-                                arg.enter->name(),
-                                " does not have exactly one successor");
+      const Edge* enter_merge = nullptr;
+      for (const Edge* e : arg.enter->out_edges()) {
+        // Ignore control-edges to the sink node. These are allowed by the
+        // graph invariants, although probably they should have been stripped
+        // off earlier.
+        if (e->IsControlEdge() && e->dst()->IsSink()) {
+          continue;
+        }
+        if (enter_merge != nullptr) {
+          return errors::Internal(
+              "Enter node for loop-varying argument ", arg.enter->name(),
+              " has multiple successors: ", enter_merge->dst()->name(), " and ",
+              e->dst()->name());
+        }
+        enter_merge = e;
       }
-      const Edge* enter_merge = *arg.enter->out_edges().begin();
+      if (enter_merge == nullptr) {
+        return errors::Internal("Enter node for loop-varying argument ",
+                                arg.enter->name(), " has zero successors");
+      }
       arg.merge = enter_merge->dst();
       if (!IsMerge(arg.merge)) {
         return errors::InvalidArgument(

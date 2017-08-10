@@ -129,7 +129,8 @@ class Variable(object):
                variable_def=None,
                dtype=None,
                expected_shape=None,
-               import_scope=None):
+               import_scope=None,
+               constraint=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -174,6 +175,13 @@ class Variable(object):
         to have this shape.
       import_scope: Optional `string`. Name scope to add to the
         `Variable.` Only used when initializing from protocol buffer.
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -196,11 +204,13 @@ class Variable(object):
           caching_device=caching_device,
           name=name,
           dtype=dtype,
-          expected_shape=expected_shape)
+          expected_shape=expected_shape,
+          constraint=constraint)
 
   def __repr__(self):
-    return "<tf.Variable '%s' shape=%s dtype=%s>" % (
-            self.name, self.get_shape(), self.dtype.name)
+    return "<tf.Variable '%s' shape=%s dtype=%s>" % (self.name,
+                                                     self.get_shape(),
+                                                     self.dtype.name)
 
   def _init_from_args(self,
                       initial_value=None,
@@ -210,7 +220,8 @@ class Variable(object):
                       caching_device=None,
                       name=None,
                       dtype=None,
-                      expected_shape=None):
+                      expected_shape=None,
+                      constraint=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -218,7 +229,7 @@ class Variable(object):
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called.
-        (Note that initializer functions  from init_ops.py must first be bound
+        (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
@@ -240,6 +251,13 @@ class Variable(object):
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
       expected_shape: Deprecated. Ignored.
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -256,6 +274,9 @@ class Variable(object):
       raise ValueError(
           "collections argument to Variable constructor must be a list, tuple, "
           "or set. Got %s of type %s" % (collections, type(collections)))
+    if constraint is not None and not callable(constraint):
+      raise ValueError("The `constraint` argument must be a callable.")
+
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
@@ -266,13 +287,13 @@ class Variable(object):
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          true_name = ops._name_from_scope_name(name)
+          true_name = ops._name_from_scope_name(name)  # pylint: disable=protected-access
           attr = attr_value_pb2.AttrValue(
               list=attr_value_pb2.AttrValue.ListValue(
                   s=[compat.as_bytes("loc:@%s" % true_name)]))
           # pylint: disable=protected-access
           with ops.get_default_graph()._attr_scope({"_class": attr}):
-            with ops.name_scope("Initializer"),  ops.device(None):
+            with ops.name_scope("Initializer"), ops.device(None):
               self._initial_value = ops.convert_to_tensor(
                   initial_value(), name="initial_value", dtype=dtype)
               shape = (self._initial_value.get_shape()
@@ -332,6 +353,7 @@ class Variable(object):
     ops.add_to_collections(collections, self)
     self._caching_device = caching_device
     self._save_slice_info = None
+    self._constraint = constraint
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Recreates the Variable object from a `VariableDef` protocol buffer.
@@ -359,6 +381,7 @@ class Variable(object):
     else:
       self._save_slice_info = None
     self._caching_device = None
+    self._constraint = None
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -511,6 +534,16 @@ class Variable(object):
     """
     return self._initial_value
 
+  @property
+  def constraint(self):
+    """Returns the constraint function associated with this variable.
+
+    Returns:
+      The constraint function that was passed to the variable constructor.
+      Can be `None` if no constraint was passed.
+    """
+    return self._constraint
+
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
 
@@ -627,7 +660,7 @@ class Variable(object):
     return state_ops.count_up_to(self._variable, limit=limit)
 
   def load(self, value, session=None):
-    """Load new value into this variable
+    """Load new value into this variable.
 
     Writes new value to variable's memory. Doesn't add ops to the graph.
 
@@ -1154,7 +1187,7 @@ class PartitionedVariable(object):
         "assign() has not been implemented for PartitionedVariable.")
 
 
-def global_variables():
+def global_variables(scope=None):
   """Returns global variables.
 
   Global variables are variables that are shared across machines in a
@@ -1166,10 +1199,17 @@ def global_variables():
   An alternative to global variables are local variables. See
   @{tf.local_variables}
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, scope)
 
 
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
@@ -1178,18 +1218,25 @@ def all_variables():
   return global_variables()
 
 
-def _all_saveable_objects():
+def _all_saveable_objects(scope=None):
   """Returns all variables and `SaveableObject`s that must be checkpointed.
+
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
 
   Returns:
     A list of `Variable` and `SaveableObject` to be checkpointed
   """
   # TODO(andreasst): make this function public once things are settled.
-  return (ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
-          ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
+  return (ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, scope) +
+          ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS, scope))
 
 
-def local_variables():
+def local_variables(scope=None):
   """Returns local variables.
 
   Local variables - per process variables, usually not saved/restored to
@@ -1203,22 +1250,36 @@ def local_variables():
   An alternative to local variables are global variables. See
   @{tf.global_variables}
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of local `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES, scope)
 
 
-def model_variables():
+def model_variables(scope=None):
   """Returns all variables in the MODEL_VARIABLES collection.
+
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
 
   Returns:
     A list of local Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES, scope)
 
 
-def trainable_variables():
+def trainable_variables(scope=None):
   """Returns all variables created with `trainable=True`.
 
   When passed `trainable=True`, the `Variable()` constructor automatically
@@ -1226,13 +1287,20 @@ def trainable_variables():
   `GraphKeys.TRAINABLE_VARIABLES`. This convenience function returns the
   contents of that collection.
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES, scope)
 
 
-def moving_average_variables():
+def moving_average_variables(scope=None):
   """Returns all variables that maintain their moving averages.
 
   If an `ExponentialMovingAverage` object is created and the `apply()`
@@ -1240,10 +1308,17 @@ def moving_average_variables():
   be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
   This convenience function returns the contents of that collection.
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, scope)
 
 
 def variables_initializer(var_list, name="init"):

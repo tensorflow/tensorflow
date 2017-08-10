@@ -137,7 +137,8 @@ class Experiment(object):
       self._core_estimator_used = True
       if eval_metrics is not None:
         raise ValueError(
-            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`. "
+            "Use `eval_metric_ops` in `tf.estimator.EstimatorSpec` instead.")
     else:
       self._core_estimator_used = False
       if not isinstance(estimator, evaluable.Evaluable):

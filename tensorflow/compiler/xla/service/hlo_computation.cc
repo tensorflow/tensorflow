@@ -100,6 +100,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   if (parent() != nullptr) {
     instruction->UniquifyName(&parent()->instruction_name_uniquer());
+    instruction->SetUniqueId(parent()->NewUniqueInstructionId());
   }
   Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
@@ -175,10 +176,26 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
       !instruction->control_successors().empty()) {
     return false;
   }
-  const HloOpcode opcode = instruction->opcode();
-  return !((opcode == HloOpcode::kParameter && !is_fusion_computation_) ||
-           opcode == HloOpcode::kRecv || opcode == HloOpcode::kSend ||
-           opcode == HloOpcode::kTrace || opcode == HloOpcode::kOutfeed);
+
+  if (instruction->opcode() == HloOpcode::kParameter &&
+      !is_fusion_computation_) {
+    return false;
+  }
+
+  if (instruction->HasSideEffect()) {
+    return false;
+  }
+
+  return true;
+}
+
+bool HloComputation::HasSideEffect() const {
+  for (auto& instruction : instructions()) {
+    if (instruction->HasSideEffect()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(

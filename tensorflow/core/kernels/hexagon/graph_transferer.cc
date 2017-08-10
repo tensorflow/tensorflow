@@ -81,7 +81,7 @@ static Node* FindMutableNodeByName(const string& name, Graph* graph) {
  * of node to transfer the graph to SOC.
  */
 Status GraphTransferer::LoadGraphFromProto(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const GraphDef& graph_def,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names,
@@ -177,9 +177,6 @@ Status GraphTransferer::LoadGraphFromProto(
     }
   }
 
-  graph_transfer_info_.set_destination(
-      ops_definitions.GetTransferDestination());
-
   ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
@@ -191,7 +188,7 @@ Status GraphTransferer::LoadGraphFromProto(
 }
 
 Status GraphTransferer::LoadGraphFromProtoFile(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const string& graph_def_path,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names, const bool is_text_proto,
@@ -379,7 +376,7 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
     std::vector<DataType> data_types;
     std::vector<TensorShape> shapes;
     Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-        original_input_node->def(), &data_types, &shapes);
+        original_input_node->attrs(), &data_types, &shapes);
     if (status.ok()) {
       created_node->AddAttr(
           RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES, data_types);
@@ -415,7 +412,7 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
 }
 
 Status GraphTransferer::RegisterNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names) {
@@ -438,7 +435,7 @@ Status GraphTransferer::RegisterNode(
   } else if (IsNodeFlattenReshape(node, shape_refiner)) {
     RegisterFlattenNode(ops_definitions, shape_refiner, node);
   } else if (ops_definitions.GetOpIdFor(node.type_string(), {}) !=
-             IGraphTransferOpsDefinitions::INVALID_OP_ID) {
+             IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID) {
     // TODO(satok): Set correct data type if it's given.
     RegisterGenericNode(ops_definitions, shape_refiner, node);
   } else {
@@ -582,7 +579,7 @@ bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
 }
 
 bool GraphTransferer::NeedsToAddRank(const Node& node) {
-  const string& op_type = node.def().op();
+  const StringPiece op_type(node.type_string());
   if (op_type == "Transpose" || op_type == "ExpandDims") {
     return true;
   }
@@ -590,7 +587,7 @@ bool GraphTransferer::NeedsToAddRank(const Node& node) {
 }
 
 bool GraphTransferer::IsPadNode(const Node& node) {
-  const string& op_type = node.def().op();
+  const StringPiece op_type(node.type_string());
   if (op_type == "Pad") {
     return true;
   }
@@ -637,7 +634,7 @@ bool GraphTransferer::IsNodeFlattenReshape(const Node& node,
 }
 
 void GraphTransferer::RegisterNodeWithPaddingAndStrides(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node) {
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
@@ -671,7 +668,7 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
 }
 
 void GraphTransferer::RegisterNodeWithRank(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node) {
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
@@ -681,7 +678,7 @@ void GraphTransferer::RegisterNodeWithRank(
   CHECK_NOTNULL(input0_node);
   std::vector<TensorShape> shapes;
   Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-      input0_node->def(), nullptr, &shapes);
+      input0_node->attrs(), nullptr, &shapes);
   CHECK_EQ(1, shapes.size()) << "Output size should be 1.";
   const int const_val_id =
       RegisterConstScalar(DT_INT32, shapes.at(0).dims(), id, node.num_inputs());
@@ -704,7 +701,7 @@ void GraphTransferer::RegisterNodeWithRank(
 }
 
 void GraphTransferer::RegisterPadNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node) {
   static constexpr int PAD_WIDTH = 4;
   static constexpr int PAD_HEIGHT = 2;
@@ -731,7 +728,7 @@ void GraphTransferer::RegisterPadNode(
   CHECK(input_node->IsConstant());
 
   const TensorProto* tensor_proto = nullptr;
-  TF_CHECK_OK(GetNodeAttr(input_node->def(), "value", &tensor_proto));
+  TF_CHECK_OK(GetNodeAttr(input_node->attrs(), "value", &tensor_proto));
   CHECK_NOTNULL(tensor_proto);
   Tensor const_tensor;
   TF_CHECK_OK(MakeTensorFromProto(*tensor_proto, &const_tensor));
@@ -742,7 +739,7 @@ void GraphTransferer::RegisterPadNode(
   } else if (const_tensor.shape().dim_size(0) < PAD_WIDTH) {
     const int width = const_tensor.shape().dim_size(0);
     const TensorProto* proto = nullptr;
-    TF_CHECK_OK(GetNodeAttr(input_node->def(), "value", &proto));
+    TF_CHECK_OK(GetNodeAttr(input_node->attrs(), "value", &proto));
     Tensor const_tensor;
     TF_CHECK_OK(MakeTensorFromProto(*proto, &const_tensor));
     CHECK_EQ(DT_INT32, const_tensor.dtype());
@@ -779,7 +776,7 @@ void GraphTransferer::RegisterPadNode(
 }
 
 void GraphTransferer::RegisterInputNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node) {
   const string op_type = node.type_string();
   VLOG(1) << "Register input node: " << node.name() << ", " << op_type;
@@ -797,12 +794,13 @@ void GraphTransferer::RegisterInputNode(
 }
 
 void GraphTransferer::RegisterFlattenNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node) {
   VLOG(1) << "Register flatten node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string op_type = IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
+  // TODO(satok): Remove dependency to specific type
+  const string op_type = "FLATTEN";
   // TODO(satok): Set correct data type if it's given.
   const int op_type_id = ops_definitions.GetOpIdFor(op_type, {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
@@ -814,7 +812,7 @@ void GraphTransferer::RegisterFlattenNode(
 }
 
 void GraphTransferer::RegisterGenericNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node) {
   VLOG(1) << "Register generic node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
@@ -832,7 +830,7 @@ void GraphTransferer::RegisterGenericNode(
 // TODO(satok): Remove this function.
 // TODO(satok): Remove only_register_const_node.
 Status GraphTransferer::RegisterNodeIfAllInputsAreCached(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
     const bool only_register_const_node,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,

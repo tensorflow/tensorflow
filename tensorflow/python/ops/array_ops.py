@@ -130,14 +130,14 @@ def expand_dims(input, axis=None, name=None, dim=None):
 
   ```python
   # 't' is a tensor of shape [2]
-  shape(expand_dims(t, 0)) ==> [1, 2]
-  shape(expand_dims(t, 1)) ==> [2, 1]
-  shape(expand_dims(t, -1)) ==> [2, 1]
+  tf.shape(tf.expand_dims(t, 0))  # [1, 2]
+  tf.shape(tf.expand_dims(t, 1))  # [2, 1]
+  tf.shape(tf.expand_dims(t, -1))  # [2, 1]
 
   # 't2' is a tensor of shape [2, 3, 5]
-  shape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]
-  shape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]
-  shape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]
+  tf.shape(tf.expand_dims(t2, 0))  # [1, 2, 3, 5]
+  tf.shape(tf.expand_dims(t2, 2))  # [2, 3, 1, 5]
+  tf.shape(tf.expand_dims(t2, 3))  # [2, 3, 5, 1]
   ```
 
   This operation requires that:
@@ -150,7 +150,8 @@ def expand_dims(input, axis=None, name=None, dim=None):
   Args:
     input: A `Tensor`.
     axis: 0-D (scalar). Specifies the dimension index at which to
-      expand the shape of `input`.
+      expand the shape of `input`. Must be in the range
+      `[-rank(input) - 1, rank(input)]`.
     name: The name of the output `Tensor`.
     dim: 0-D (scalar). Equivalent to `axis`, to be deprecated.
 
@@ -229,8 +230,8 @@ def shape(input, name=None, out_type=dtypes.int32):
   For example:
 
   ```python
-  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
-  shape(t) ==> [2, 2, 3]
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  tf.shape(t)  # [2, 2, 3]
   ```
 
   Args:
@@ -282,8 +283,8 @@ def size(input, name=None, out_type=dtypes.int32):
   For example:
 
   ```python
-  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
-  size(t) ==> 12
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  tf.size(t)  # 12
   ```
 
   Args:
@@ -329,14 +330,14 @@ def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
 
-  This operation returns an integer representing the rank of `input`.
+  Returns a 0-D `int32` `Tensor` representing the rank of `input`.
 
   For example:
 
   ```python
-  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
   # shape of tensor 't' is [2, 2, 3]
-  rank(t) ==> 3
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  tf.rank(t)  # 3
   ```
 
   **Note**: The rank of a tensor is not the same as the rank of a matrix. The
@@ -401,23 +402,23 @@ def _SliceHelper(tensor, slice_spec, var=None):
   ```python
   # strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval()) # => [3,4]
+  print(foo[2:-2].eval())  # [3,4]
 
   # skip every row and reverse every column
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval()) # => [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1].eval())  # [[3,2,1], [9,8,7]]
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[:, tf.newaxis, :].eval()) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
-  print(foo[:, :, tf.newaxis].eval()) # => [[[1],[2],[3]], [[4],[5],[6]], [[7],[8],[9]]]
+  print(foo[tf.newaxis, :, :].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[:, tf.newaxis, :].eval())  # [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
+  print(foo[:, :, tf.newaxis].eval())  # [[[1],[2],[3]], [[4],[5],[6]], [[7],[8],[9]]]
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
   ```
 
   Notes:
@@ -539,14 +540,14 @@ def slice(input_, begin, size, name=None):
   For example:
 
   ```python
-  # 'input' is [[[1, 1, 1], [2, 2, 2]],
-  #             [[3, 3, 3], [4, 4, 4]],
-  #             [[5, 5, 5], [6, 6, 6]]]
-  tf.slice(input, [1, 0, 0], [1, 1, 3]) ==> [[[3, 3, 3]]]
-  tf.slice(input, [1, 0, 0], [1, 2, 3]) ==> [[[3, 3, 3],
-                                              [4, 4, 4]]]
-  tf.slice(input, [1, 0, 0], [2, 1, 3]) ==> [[[3, 3, 3]],
-                                             [[5, 5, 5]]]
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]],
+                   [[3, 3, 3], [4, 4, 4]],
+                   [[5, 5, 5], [6, 6, 6]]])
+  tf.slice(t, [1, 0, 0], [1, 1, 3])  # [[[3, 3, 3]]]
+  tf.slice(t, [1, 0, 0], [1, 2, 3])  # [[[3, 3, 3],
+                                     #   [4, 4, 4]]]
+  tf.slice(t, [1, 0, 0], [2, 1, 3])  # [[[3, 3, 3]],
+                                     #  [[5, 5, 5]]]
   ```
 
   Args:
@@ -634,14 +635,14 @@ def strided_slice(input_,
 
 
   ```python
-  # 'input' is [[[1, 1, 1], [2, 2, 2]],
-  #             [[3, 3, 3], [4, 4, 4]],
-  #             [[5, 5, 5], [6, 6, 6]]]
-  tf.strided_slice(input, [1, 0, 0], [2, 1, 3], [1, 1, 1]) ==> [[[3, 3, 3]]]
-  tf.strided_slice(input, [1, 0, 0], [2, 2, 3], [1, 1, 1]) ==> [[[3, 3, 3],
-                                                                 [4, 4, 4]]]
-  tf.strided_slice(input, [1, -1, 0], [2, -3, 3], [1, -1, 1]) ==>[[[4, 4, 4],
-                                                                   [3, 3, 3]]]
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]],
+                   [[3, 3, 3], [4, 4, 4]],
+                   [[5, 5, 5], [6, 6, 6]]])
+  tf.strided_slice(t, [1, 0, 0], [2, 1, 3], [1, 1, 1])  # [[[3, 3, 3]]]
+  tf.strided_slice(t, [1, 0, 0], [2, 2, 3], [1, 1, 1])  # [[[3, 3, 3],
+                                                        #   [4, 4, 4]]]
+  tf.strided_slice(t, [1, -1, 0], [2, -3, 3], [1, -1, 1])  # [[[4, 4, 4],
+                                                           #   [3, 3, 3]]]
   ```
 
   Args:
@@ -763,10 +764,10 @@ def parallel_stack(values, name="parallel_stack"):
   For example:
 
   ```python
-  # 'x' is [1, 4]
-  # 'y' is [2, 5]
-  # 'z' is [3, 6]
-  parallel_stack([x, y, z])  # => [[1, 4], [2, 5], [3, 6]]
+  x = tf.constant([1, 4])
+  y = tf.constant([2, 5])
+  z = tf.constant([3, 6])
+  tf.parallel_stack([x, y, z])  # [[1, 4], [2, 5], [3, 6]]
   ```
 
   The difference between `stack` and `parallel_stack` is that `stack` requires
@@ -814,11 +815,11 @@ def stack(values, axis=0, name="stack"):
   For example:
 
   ```python
-  # 'x' is [1, 4]
-  # 'y' is [2, 5]
-  # 'z' is [3, 6]
-  stack([x, y, z])  # => [[1, 4], [2, 5], [3, 6]] (Pack along first dim.)
-  stack([x, y, z], axis=1)  # => [[1, 2, 3], [4, 5, 6]]
+  x = tf.constant([1, 4])
+  y = tf.constant([2, 5])
+  z = tf.constant([3, 6])
+  tf.stack([x, y, z])  # [[1, 4], [2, 5], [3, 6]] (Pack along first dim.)
+  tf.stack([x, y, z], axis=1)  # [[1, 2, 3], [4, 5, 6]]
   ```
 
   This is the opposite of unstack.  The numpy equivalent is
@@ -830,7 +831,7 @@ def stack(values, axis=0, name="stack"):
   Args:
     values: A list of `Tensor` objects with the same shape and type.
     axis: An `int`. The axis to stack along. Defaults to the first dimension.
-      Supports negative indexes.
+      Negative values wrap around, so the valid range is `[-(R+1), R+1)`.
     name: A name for this operation (optional).
 
   Returns:
@@ -970,7 +971,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
     num: An `int`. The length of the dimension `axis`. Automatically inferred
       if `None` (the default).
     axis: An `int`. The axis to unstack along. Defaults to the first
-      dimension. Supports negative indexes.
+      dimension. Negative values wrap around, so the valid range is `[-R, R)`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1017,13 +1018,13 @@ def concat(values, axis, name="concat"):
   ```python
   t1 = [[1, 2, 3], [4, 5, 6]]
   t2 = [[7, 8, 9], [10, 11, 12]]
-  tf.concat([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-  tf.concat([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+  tf.concat([t1, t2], 0)  # [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+  tf.concat([t1, t2], 1)  # [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
 
   # tensor t3 with shape [2, 3]
   # tensor t4 with shape [2, 3]
-  tf.shape(tf.concat([t3, t4], 0)) ==> [4, 3]
-  tf.shape(tf.concat([t3, t4], 1)) ==> [2, 6]
+  tf.shape(tf.concat([t3, t4], 0))  # [4, 3]
+  tf.shape(tf.concat([t3, t4], 1))  # [2, 6]
   ```
 
   Note: If you are concatenating along a new axis consider using stack.
@@ -1041,7 +1042,8 @@ def concat(values, axis, name="concat"):
 
   Args:
     values: A list of `Tensor` objects or a single `Tensor`.
-    axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
+    axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate. Must be
+      in the range `[-rank(values), rank(values))`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1073,7 +1075,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   # 1-D example
   tensor = [0, 1, 2, 3]
   mask = np.array([True, False, True, False])
-  boolean_mask(tensor, mask) ==> [0, 2]
+  boolean_mask(tensor, mask)  # [0, 2]
   ```
 
   In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
@@ -1099,7 +1101,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   # 2-D example
   tensor = [[1, 2], [3, 4], [5, 6]]
   mask = np.array([True, False, True])
-  boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
+  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
   ```
   """
   def _apply_mask_1d(reshaped_tensor, mask):
@@ -1150,17 +1152,16 @@ def sparse_mask(a, mask_indices, name=None):
   ```python
   # `a` contains slices at indices [12, 26, 37, 45] from a large tensor
   # with shape [1000, 10]
-  a.indices => [12, 26, 37, 45]
-  tf.shape(a.values) => [4, 10]
+  a.indices  # [12, 26, 37, 45]
+  tf.shape(a.values)  # [4, 10]
 
   # `b` will be the subset of `a` slices at its second and third indices, so
   # we want to mask its first and last indices (which are at absolute
   # indices 12, 45)
   b = tf.sparse_mask(a, [12, 45])
 
-  b.indices => [26, 37]
-  tf.shape(b.values) => [2, 10]
-
+  b.indices  # [26, 37]
+  tf.shape(b.values)  # [2, 10]
   ```
 
   Args:
@@ -1196,12 +1197,12 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   # 'value' is a tensor with shape [5, 30]
   # Split 'value' into 3 tensors with sizes [4, 15, 11] along dimension 1
   split0, split1, split2 = tf.split(value, [4, 15, 11], 1)
-  tf.shape(split0) ==> [5, 4]
-  tf.shape(split1) ==> [5, 15]
-  tf.shape(split2) ==> [5, 11]
+  tf.shape(split0)  # [5, 4]
+  tf.shape(split1)  # [5, 15]
+  tf.shape(split2)  # [5, 11]
   # Split 'value' into 3 tensors along dimension 1
   split0, split1, split2 = tf.split(value, num_or_size_splits=3, axis=1)
-  tf.shape(split0) ==> [5, 10]
+  tf.shape(split0)  # [5, 10]
   ```
 
   Args:
@@ -1255,30 +1256,29 @@ def transpose(a, perm=None, name="transpose"):
   For example:
 
   ```python
-  # 'x' is [[1 2 3]
-  #         [4 5 6]]
-  tf.transpose(x) ==> [[1 4]
-                       [2 5]
-                       [3 6]]
+  x = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.transpose(x)  # [[1, 4]
+                   #  [2, 5]
+                   #  [3, 6]]
 
   # Equivalently
-  tf.transpose(x, perm=[1, 0]) ==> [[1 4]
-                                    [2 5]
-                                    [3 6]]
+  tf.transpose(x, perm=[1, 0])  # [[1, 4]
+                                #  [2, 5]
+                                #  [3, 6]]
 
   # 'perm' is more useful for n-dimensional tensors, for n > 2
-  # 'x' is   [[[1  2  3]
-  #            [4  5  6]]
-  #           [[7  8  9]
-  #            [10 11 12]]]
-  # Take the transpose of the matrices in dimension-0
-  tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
-                                        [2  5]
-                                        [3  6]]
+  x = tf.constant([[[ 1,  2,  3],
+                    [ 4,  5,  6]],
+                   [[ 7,  8,  9],
+                    [10, 11, 12]]])
 
-                                       [[7 10]
-                                        [8 11]
-                                        [9 12]]]
+  # Take the transpose of the matrices in dimension-0
+  tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
+                                   #   [2,  5],
+                                   #   [3,  6]],
+                                   #  [[7, 10],
+                                   #   [8, 11],
+                                   #   [9, 12]]]
   ```
 
   Args:
@@ -1311,12 +1311,10 @@ def matrix_transpose(a, name="matrix_transpose"):
   For example:
 
   ```python
-  # Matrix with no batch dimension.
-  # 'x' is [[1 2 3]
-  #         [4 5 6]]
-  tf.matrix_transpose(x) ==> [[1 4]
-                                   [2 5]
-                                   [3 6]]
+  x = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.matrix_transpose(x)  # [[1, 4],
+                          #  [2, 5],
+                          #  [3, 6]]
 
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
@@ -1326,7 +1324,7 @@ def matrix_transpose(a, name="matrix_transpose"):
   Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
   This is done with minimal cost, and is preferable to using this function. E.g.
 
-  ```
+  ```python
   # Good!  Transpose is taken at minimal additional cost.
   tf.matmul(matrix, b, transpose_b=True)
 
@@ -1377,7 +1375,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   For example:
 
   ```python
-  tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+  tf.zeros([3, 4], tf.int32)  # [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
   ```
 
   Args:
@@ -1416,8 +1414,8 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   For example:
 
   ```python
-  # 'tensor' is [[1, 2, 3], [4, 5, 6]]
-  tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
+  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.zeros_like(tensor)  # [[0, 0, 0], [0, 0, 0]]
   ```
 
   Args:
@@ -1456,8 +1454,8 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   For example:
 
   ```python
-  # 'tensor' is [[1, 2, 3], [4, 5, 6]]
-  tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
+  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.ones_like(tensor)  # [[1, 1, 1], [1, 1, 1]]
   ```
 
   Args:
@@ -1491,7 +1489,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   For example:
 
   ```python
-  tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
+  tf.ones([2, 3], tf.int32)  # [[1, 1, 1], [1, 1, 1]]
   ```
 
   Args:
@@ -1550,13 +1548,12 @@ def placeholder(dtype, shape=None, name=None):
 
 # pylint: disable=redefined-outer-name
 def _normalize_sparse_shape(shape, name):
-  """Takes numpy array or Tensor or None and returns either None or Tensor."""
-  if shape is None: return None
-  if not isinstance(shape, ops.Tensor):
-    for el in shape:
-      if el is None:
-        return None
-  return ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name)
+  """Returns a tuple of (Tensor or None, rank or None)."""
+  if shape is None: return (None, None)
+  rank = shape.get_shape()[0] if isinstance(shape, ops.Tensor) else len(shape)
+  if not isinstance(shape, ops.Tensor) and None in shape:
+    return (None, rank)
+  return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
 def sparse_placeholder(dtype, shape=None, name=None):
@@ -1599,9 +1596,9 @@ def sparse_placeholder(dtype, shape=None, name=None):
     evaluated directly.
   """
   shape_name = (name + "/shape") if name is not None else None
-  shape = _normalize_sparse_shape(shape, shape_name)
+  shape, rank = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
-    shape = placeholder(dtypes.int64, shape=[None], name=shape_name)
+    shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
   return sparse_tensor.SparseTensor(
       values=placeholder(
           dtype, shape=[None],
@@ -1633,24 +1630,24 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   For example:
 
   ```python
-  # 't' is [[1, 2, 3], [4, 5, 6]].
-  # 'paddings' is [[1, 1,], [2, 2]].
+  t = tf.constant([[1, 2, 3], [4, 5, 6]])
+  paddings = tf.constant([[1, 1,], [2, 2]])
   # 'constant_values' is 0.
   # rank of 't' is 2.
-  pad(t, paddings, "CONSTANT") ==> [[0, 0, 0, 0, 0, 0, 0],
-                                    [0, 0, 1, 2, 3, 0, 0],
-                                    [0, 0, 4, 5, 6, 0, 0],
-                                    [0, 0, 0, 0, 0, 0, 0]]
+  tf.pad(t, paddings, "CONSTANT")  # [[0, 0, 0, 0, 0, 0, 0],
+                                   #  [0, 0, 1, 2, 3, 0, 0],
+                                   #  [0, 0, 4, 5, 6, 0, 0],
+                                   #  [0, 0, 0, 0, 0, 0, 0]]
 
-  pad(t, paddings, "REFLECT") ==> [[6, 5, 4, 5, 6, 5, 4],
-                                   [3, 2, 1, 2, 3, 2, 1],
-                                   [6, 5, 4, 5, 6, 5, 4],
-                                   [3, 2, 1, 2, 3, 2, 1]]
+  tf.pad(t, paddings, "REFLECT")  # [[6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1],
+                                  #  [6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1]]
 
-  pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
-                                     [2, 1, 1, 2, 3, 3, 2],
-                                     [5, 4, 4, 5, 6, 6, 5],
-                                     [5, 4, 4, 5, 6, 6, 5]]
+  tf.pad(t, paddings, "SYMMETRIC")  # [[2, 1, 1, 2, 3, 3, 2],
+                                    #  [2, 1, 1, 2, 3, 3, 2],
+                                    #  [5, 4, 4, 5, 6, 6, 5],
+                                    #  [5, 4, 4, 5, 6, 6, 5]]
   ```
 
   Args:
@@ -1675,20 +1672,34 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
     if constant_values != 0:
-      return gen_array_ops._pad_v2(tensor, paddings, constant_values, name=name)
+      result = gen_array_ops._pad_v2(
+          tensor, paddings, constant_values, name=name)
     else:
-      return gen_array_ops._pad(tensor, paddings, name=name)
-  if mode == "REFLECT":
-    return gen_array_ops._mirror_pad(tensor,
-                                     paddings,
-                                     mode="REFLECT",
-                                     name=name)
-  if mode == "SYMMETRIC":
-    return gen_array_ops._mirror_pad(tensor,
-                                     paddings,
-                                     mode="SYMMETRIC",
-                                     name=name)
-  raise ValueError("Unknown padding mode: %s" % mode)
+      result = gen_array_ops._pad(tensor, paddings, name=name)
+  elif mode == "REFLECT":
+    result = gen_array_ops._mirror_pad(
+        tensor, paddings, mode="REFLECT", name=name)
+  elif mode == "SYMMETRIC":
+    result = gen_array_ops._mirror_pad(
+        tensor, paddings, mode="SYMMETRIC", name=name)
+  else:
+    raise ValueError("Unknown padding mode: %s" % mode)
+
+  # Restore shape information where possible.
+  paddings_constant = tensor_util.constant_value(
+      result.op.inputs[1], partial=True)
+  input_shape = result.op.inputs[0].shape
+  if (input_shape.ndims is not None and not result.shape.is_fully_defined() and
+      paddings_constant is not None):
+    new_shape = []
+    for padding, dim in zip(paddings_constant, input_shape.as_list()):
+      if padding is None or dim is None or not all(padding):
+        new_shape.append(None)
+      else:
+        new_shape.append(sum(padding) + dim)
+    result.set_shape(new_shape)
+
+  return result
 
 
 def meshgrid(*args, **kwargs):
@@ -1708,19 +1719,15 @@ def meshgrid(*args, **kwargs):
   Calling `X, Y = meshgrid(x, y)` with the tensors
 
   ```python
-    x = [1, 2, 3]
-    y = [4, 5, 6]
-  ```
-
-  results in
-
-  ```python
-    X = [[1, 2, 3],
-         [1, 2, 3],
-         [1, 2, 3]]
-    Y = [[4, 4, 4],
-         [5, 5, 5],
-         [6, 6, 6]]
+  x = [1, 2, 3]
+  y = [4, 5, 6]
+  X, Y = tf.meshgrid(x, y)
+  # X = [[1, 2, 3],
+  #      [1, 2, 3],
+  #      [1, 2, 3]]
+  # Y = [[4, 4, 4],
+  #      [5, 5, 5],
+  #      [6, 6, 6]]
   ```
 
   Args:
@@ -2096,66 +2103,35 @@ def one_hot(indices, depth, on_value=None, off_value=None,
   Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
   etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
 
-  Examples
-  =========
-
-  Suppose that
+  For example:
 
   ```python
-    indices = [0, 2, -1, 1]
-    depth = 3
-    on_value = 5.0
-    off_value = 0.0
-    axis = -1
-  ```
+  indices = [0, 1, 2]
+  depth = 3
+  tf.one_hot(indices, depth)  # output: [3 x 3]
+  # [[1., 0., 0.],
+  #  [0., 1., 0.],
+  #  [0., 0., 1.]]
 
-  Then output is `[4 x 3]`:
+  indices = [0, 2, -1, 1]
+  depth = 3
+  tf.one_hot(indices, depth,
+             on_value=5.0, off_value=0.0,
+             axis=-1)  # output: [4 x 3]
+  # [[5.0, 0.0, 0.0],  # one_hot(0)
+  #  [0.0, 0.0, 5.0],  # one_hot(2)
+  #  [0.0, 0.0, 0.0],  # one_hot(-1)
+  #  [0.0, 5.0, 0.0]]  # one_hot(1)
 
-  ```python
-    output =
-    [5.0 0.0 0.0]  // one_hot(0)
-    [0.0 0.0 5.0]  // one_hot(2)
-    [0.0 0.0 0.0]  // one_hot(-1)
-    [0.0 5.0 0.0]  // one_hot(1)
-  ```
-
-  Suppose that
-
-  ```python
-    indices = [[0, 2], [1, -1]]
-    depth = 3
-    on_value = 1.0
-    off_value = 0.0
-    axis = -1
-  ```
-
-  Then output is `[2 x 2 x 3]`:
-
-  ```python
-    output =
-    [
-      [1.0, 0.0, 0.0]  // one_hot(0)
-      [0.0, 0.0, 1.0]  // one_hot(2)
-    ][
-      [0.0, 1.0, 0.0]  // one_hot(1)
-      [0.0, 0.0, 0.0]  // one_hot(-1)
-    ]
-  ```
-
-  Using default values for `on_value` and `off_value`:
-
-  ```python
-    indices = [0, 1, 2]
-    depth = 3
-  ```
-
-  The output will be
-
-  ```python
-    output =
-    [[1., 0., 0.],
-     [0., 1., 0.],
-     [0., 0., 1.]]
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  tf.one_hot(indices, depth,
+             on_value=1.0, off_value=0.0,
+             axis=-1)  # output: [2 x 2 x 3]
+  # [[[1.0, 0.0, 0.0],   # one_hot(0)
+  #   [0.0, 0.0, 1.0]],  # one_hot(2)
+  #  [[0.0, 1.0, 0.0],   # one_hot(1)
+  #   [0.0, 0.0, 0.0]]]  # one_hot(-1)
   ```
 
   Args:
@@ -2224,10 +2200,9 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   Example:
 
   ```python
-  tf.sequence_mask([1, 3, 2], 5) =
-    [[True, False, False, False, False],
-     [True, True, True, False, False],
-     [True, True, False, False, False]]
+  tf.sequence_mask([1, 3, 2], 5)  # [[True, False, False, False, False],
+                                  #  [True, True, True, False, False],
+                                  #  [True, True, False, False, False]]
   ```
 
   Args:
@@ -2286,14 +2261,14 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
   ```python
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  shape(squeeze(t))  # => [2, 3]
+  tf.shape(tf.squeeze(t))  # [2, 3]
   ```
 
   Or, to remove specific size 1 dimensions:
 
   ```python
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  shape(squeeze(t, [2, 4]))  # => [1, 2, 3, 1]
+  tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
 
   Args:
@@ -2301,6 +2276,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
     axis: An optional list of `ints`. Defaults to `[]`.
       If specified, only squeezes the dimensions listed. The dimension
       index starts at 0. It is an error to squeeze a dimension that is not 1.
+      Must be in the range `[-rank(input), rank(input))`.
     name: A name for the operation (optional).
     squeeze_dims: Deprecated keyword argument that is now axis.
 

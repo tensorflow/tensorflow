@@ -71,6 +71,9 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# Namespaces
+from tensorflow.python.ops import initializers_ns as initializers
+
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
@@ -114,6 +117,7 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
+from tensorflow.python.framework import subscribe
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
@@ -208,6 +212,7 @@ _allowed_symbols.extend([
     'uint16',
     'uint8',
     'resource',
+    'variant',
 ])
 
 # Export modules and constants.
@@ -240,6 +245,7 @@ _allowed_symbols.extend([
     'user_ops',
     'layers',
     'profiler',
+    'initializers',
 ])
 
 # Variables framework.versions:

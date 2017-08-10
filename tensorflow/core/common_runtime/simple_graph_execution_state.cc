@@ -290,6 +290,10 @@ Status SimpleGraphExecutionState::InitBaseGraph(
 Status SimpleGraphExecutionState::OptimizeGraph(
     const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph) {
 #ifndef IS_MOBILE_PLATFORM
+  if (session_options_->config.graph_options().place_pruned_graph()) {
+    return errors::InvalidArgument("Can't optimize a pruned graph");
+  }
+
   const RewriterConfig& rewrite_options =
       session_options_->config.graph_options().rewrite_options();
 

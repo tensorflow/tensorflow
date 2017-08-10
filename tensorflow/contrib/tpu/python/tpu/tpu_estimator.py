@@ -26,6 +26,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
 
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -54,9 +55,12 @@ def _tpu_job(run_config):
   return None if run_config.master in ['', 'local'] else 'tpu_worker'
 
 
-def _per_shard_batch_size(global_batch_size, run_config):
+def _per_shard_batch_size(global_batch_size, run_config, use_tpu):
   """Returns the batch size for each shard."""
-  return global_batch_size // run_config.tpu_config.num_shards
+  if use_tpu:
+    return global_batch_size // run_config.tpu_config.num_shards
+  else:
+    return global_batch_size
 
 
 class _SIGNAL(object):
@@ -470,7 +474,10 @@ class _ModelFnWrapper(object):
     self._train_batch_size = train_batch_size
 
   def call_without_tpu(self, features, labels):
-    return self._call_model_fn(features, labels)
+    # Let CrossShardOptimizer be called without TPU in model_fn, since it's
+    # common to set the train_op even when running evaluate() or predict().
+    with tpu_function.tpu_shard_context(1):
+      return self._call_model_fn(features, labels, False)
 
   def convert_to_single_tpu_train_step(self, dequeue_fn):
     """Converts the `model_fn` as a single train step on TPU."""
@@ -481,8 +488,8 @@ class _ModelFnWrapper(object):
       features, labels = dequeue_fn()
 
       # Makes deep copy with `config` and params` in case user mutates them.
-      estimator_spec = self._verify_estimator_spec(self._call_model_fn(
-          features, labels, add_batch_size_in_params=True))
+      estimator_spec = self._verify_estimator_spec(
+          self._call_model_fn(features, labels, True))
       loss, train_op = estimator_spec.loss, estimator_spec.train_op
       with ops.control_dependencies([train_op]):
         return array_ops.identity(loss)
@@ -492,7 +499,7 @@ class _ModelFnWrapper(object):
   def config(self):
     return self._config
 
-  def _call_model_fn(self, features, labels, add_batch_size_in_params=False):
+  def _call_model_fn(self, features, labels, use_tpu):
     """Calls the model_fn with required parameters."""
     model_fn_args = util.fn_args(self._model_fn)
     kwargs = {}
@@ -513,16 +520,15 @@ class _ModelFnWrapper(object):
     if 'params' in model_fn_args:
       kwargs['params'] = params
 
-    if add_batch_size_in_params:
-      if 'params' not in model_fn_args:
-        raise ValueError(
-            'model_fn ({}) does not include params argument, '
-            'required by TPUEstimator to pass batch size as '
-            'params[\'batch_size\']'.format(self._model_fn))
-      if self._mode == model_fn_lib.ModeKeys.TRAIN:
-        # For TPU training. `params` is never `None`.
-        params[_BATCH_SIZE_KEY] = _per_shard_batch_size(self._train_batch_size,
-                                                        config)
+    if 'params' not in model_fn_args:
+      raise ValueError(
+          'model_fn ({}) does not include params argument, '
+          'required by TPUEstimator to pass batch size as '
+          'params[\'batch_size\']'.format(self._model_fn))
+    if self._mode == model_fn_lib.ModeKeys.TRAIN:
+      # For TPU training. `params` is never `None`.
+      params[_BATCH_SIZE_KEY] = _per_shard_batch_size(
+          self._train_batch_size, config, use_tpu)
 
     return self._model_fn(features=features, **kwargs)
 
@@ -609,16 +615,12 @@ class TPUEstimator(estimator_lib.Estimator):
             'batch size {} must be divisible by number of shards {}'
             .format(train_batch_size, config.tpu_config.num_shards))
 
-    if use_tpu:
-      # Verifies the model_fn signature according to Estimator framework.
-      estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
-      # We cannot store config and params in this constructor as parent
-      # constructor might change them, such as assigning a temp dir for
-      # config.model_dir.
-      model_function = augment_model_fn_with_tpu_support(
-          model_fn, train_batch_size)
-    else:
-      model_function = model_fn
+    # Verifies the model_fn signature according to Estimator framework.
+    estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
+    # We cannot store config and params in this constructor as parent
+    # constructor might change them, such as assigning a temp dir for
+    # config.model_dir.
+    model_function = _augment_model_fn(model_fn, train_batch_size, use_tpu)
 
     super(TPUEstimator, self).__init__(
         model_fn=model_function,
@@ -670,9 +672,6 @@ class TPUEstimator(estimator_lib.Estimator):
     Raises:
       ValueError: if input_fn takes invalid arguments or does not have `params`.
     """
-    if not self._use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
-      return super(TPUEstimator, self)._call_input_fn(input_fn, mode)
-
     input_fn_args = util.fn_args(input_fn)
     config = self.config  # a deep copy.
     kwargs = {}
@@ -686,8 +685,13 @@ class TPUEstimator(estimator_lib.Estimator):
       kwargs['config'] = config
 
     # Now for TPU training.
-    per_shard_batch_size = _per_shard_batch_size(self._train_batch_size, config)
-    kwargs['params'][_BATCH_SIZE_KEY] = per_shard_batch_size
+    if mode == model_fn_lib.ModeKeys.TRAIN:
+      kwargs['params'][_BATCH_SIZE_KEY] = (
+          _per_shard_batch_size(self._train_batch_size, config, self._use_tpu))
+
+    if not self._use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
+      with ops.device('/cpu:0'):
+        return input_fn(**kwargs)
 
     job = _tpu_job(config)
     def placement_function(index):
@@ -746,7 +750,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder):
   return (dequeue_fn, enqueue_fn)
 
 
-def augment_model_fn_with_tpu_support(model_fn, train_batch_size):
+def _augment_model_fn(model_fn, train_batch_size, use_tpu):
   """Returns a new model_fn, which wraps the TPU support."""
 
   def _model_fn(features, labels, mode, config, params):
@@ -755,7 +759,7 @@ def augment_model_fn_with_tpu_support(model_fn, train_batch_size):
                                        train_batch_size)
 
     # TODO(jhseu): Move to EVAL and PREDICT to TPU.
-    if mode != model_fn_lib.ModeKeys.TRAIN:
+    if not use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
       return model_fn_wrapper.call_without_tpu(features, labels)
 
     inputs = _InputsHolder(sharded_features=features, sharded_labels=labels)

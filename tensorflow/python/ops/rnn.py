@@ -462,22 +462,18 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   Args:
     cell: An instance of RNNCell.
     inputs: The RNN inputs.
-
       If `time_major == False` (default), this must be a `Tensor` of shape:
         `[batch_size, max_time, ...]`, or a nested tuple of such
         elements.
-
       If `time_major == True`, this must be a `Tensor` of shape:
         `[max_time, batch_size, ...]`, or a nested tuple of such
         elements.
-
       This may also be a (possibly nested) tuple of Tensors satisfying
       this property.  The first two dimensions must match across all the inputs,
       but otherwise the ranks and other shape components may differ.
       In this case, input to `cell` at each time-step will replicate the
       structure of these tuples, except for the time dimension (from which the
       time is taken).
-
       The input to `cell` at each time step will be a `Tensor` or (possibly
       nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
@@ -890,7 +886,7 @@ def raw_rnn(cell, loop_fn,
       appropriate type and shape `[batch_size] + cell.state_size`.
       If `cell.state_size` is a (possibly nested) tuple of ints or
       `TensorShape`, this will be a tuple having the corresponding shapes.
-      The `emit_output` value may be  either `None` or a (possibly nested)
+      The `emit_output` value may be either `None` or a (possibly nested)
       tuple structure of tensors, e.g.,
       `(tf.zeros(shape_0, dtype=dtype_0), tf.zeros(shape_1, dtype=dtype_1))`.
       If this first `emit_output` return value is `None`,

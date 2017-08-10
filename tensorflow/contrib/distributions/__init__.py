@@ -30,10 +30,12 @@ from tensorflow.contrib.distributions.python.ops.conditional_transformed_distrib
 from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
+from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
+from tensorflow.contrib.distributions.python.ops.moving_stats import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
 from tensorflow.contrib.distributions.python.ops.mvn_full_covariance import *
@@ -42,6 +44,7 @@ from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.poisson import *
+from tensorflow.contrib.distributions.python.ops.poisson_lognormal import *
 from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
@@ -115,6 +118,7 @@ _allowed_symbols = [
     'Normal',
     'NormalWithSoftplusScale',
     'Poisson',
+    'PoissonLogNormalQuadratureCompound',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',
@@ -126,6 +130,7 @@ _allowed_symbols = [
     'Dirichlet',
     'DirichletMultinomial',
     'Multinomial',
+    'VectorDiffeomixture',
     'VectorLaplaceDiag',
     'WishartCholesky',
     'WishartFull',
@@ -142,7 +147,10 @@ _allowed_symbols = [
     'normal_conjugates_known_scale_posterior',
     'normal_conjugates_known_scale_predictive',
     'softplus_inverse',
-    'percentile'
+    'percentile',
+    'assign_exponential_moving_mean_variance',
+    'exponential_moving_mean_variance',
+    'estimator_head_distribution_regression',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

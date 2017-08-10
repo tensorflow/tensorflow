@@ -369,7 +369,7 @@ message SliceRequest {
   ComputationDataHandle operand = 2;
   repeated int64 start_indices = 3;
   repeated int64 limit_indices = 4;
-  repeated int64 stride = 5;
+  repeated int64 strides = 5;
 }
 
 message DynamicSliceRequest {
@@ -637,6 +637,9 @@ enum UnaryOperation {
 
   // Elementwise, computes the cosine of x.
   UNOP_COS = 12;
+
+  // Elementwise, computes the sine of x.
+  UNOP_SIN = 13;
 }
 
 message UnaryOpRequest {

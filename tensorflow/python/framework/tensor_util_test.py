@@ -793,6 +793,13 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
+  def testPack_Partial(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+    c_val = tensor_util.constant_value(tf_val, partial=True)
+    self.assertAllClose(input_, c_val[0])
+    self.assertIsNone(c_val[1])
+
 
 class ConstantValueAsShapeTest(test.TestCase):
 

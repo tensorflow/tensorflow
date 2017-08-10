@@ -110,9 +110,12 @@ Status HeapSimulator::RunComputation(
   FlatSet<const LogicalBuffer*> output_source_buffers =
       points_to_analysis.GetPointsToSet(root).CreateFlattenedSet();
 
+  std::vector<const LogicalBuffer*> dead_buffers_to_free;
+  std::vector<const LogicalBuffer*> operand_buffers_to_free;
   for (const HloInstruction* instruction : instruction_sequence) {
-    const std::vector<const LogicalBuffer*>& buffers_defined_by_instruction =
-        points_to_analysis.GetBuffersDefinedByInstruction(instruction);
+    const TuplePointsToAnalysis::BufferDefinitionVector&
+        buffers_defined_by_instruction =
+            points_to_analysis.GetBuffersDefinedByInstruction(instruction);
 
     // Initialize live_buffers for each buffer that we're going to assign.  The
     // set of instructions that need to be visited contains all users of all
@@ -124,17 +127,21 @@ Status HeapSimulator::RunComputation(
     // dependencies have already been accounted for in the ordering of the given
     // 'instruction_sequence', and should not otherwise artificially extend the
     // lifetime of buffers that aren't already connected by a data dependency.
-    std::vector<const LogicalBuffer*> dead_buffers_to_free;
+    dead_buffers_to_free.clear();
     for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
       }
+      FlatSet<const HloInstruction*>* live_set = nullptr;
       for (const BufferAlias& alias :
            points_to_analysis.GetBufferAliases(*buffer)) {
         const std::vector<HloInstruction*>& users =
             alias.instruction()->users();
         if (!users.empty()) {
-          live_buffers[buffer].insert(users.begin(), users.end());
+          if (live_set == nullptr) {
+            live_set = &live_buffers[buffer];
+          }
+          live_set->insert(users.begin(), users.end());
         }
       }
 
@@ -160,15 +167,17 @@ Status HeapSimulator::RunComputation(
     // all source buffers of all operands of this instruction.  Buffers that
     // have no instructions left to visit are moved from live_buffers to
     // operand_buffers_to_free.
-    std::vector<const LogicalBuffer*> operand_buffers_to_free;
+    operand_buffers_to_free.clear();
     for (const LogicalBuffer* operand_buffer :
          UniqueOperandSourceBuffers(instruction, points_to_analysis)) {
       if (IgnoreBuffer(operand_buffer)) {
         continue;
       }
-      live_buffers[operand_buffer].erase(instruction);
-      if (live_buffers[operand_buffer].empty()) {
-        live_buffers.erase(operand_buffer);
+      auto it = live_buffers.find(operand_buffer);
+      FlatSet<const HloInstruction*>* live_set = &it->second;
+      live_set->erase(instruction);
+      if (live_set->empty()) {
+        live_buffers.erase(it);
         operand_buffers_to_free.push_back(operand_buffer);
       }
     }

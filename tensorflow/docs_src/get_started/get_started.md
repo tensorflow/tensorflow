@@ -32,8 +32,8 @@ tensor's **rank** is its number of dimensions. Here are some examples of
 tensors:
 
 ```python
-3 # a rank 0 tensor; this is a scalar with shape []
-[1., 2., 3.] # a rank 1 tensor; this is a vector with shape [3]
+3 # a rank 0 tensor; a scalar with shape []
+[1., 2., 3.] # a rank 1 tensor; a vector with shape [3]
 [[1., 2., 3.], [4., 5., 6.]] # a rank 2 tensor; a matrix with shape [2, 3]
 [[[1., 2., 3.]], [[7., 8., 9.]]] # a rank 3 tensor with shape [2, 1, 3]
 ```
@@ -181,7 +181,7 @@ initial value:
 W = tf.Variable([.3], dtype=tf.float32)
 b = tf.Variable([-.3], dtype=tf.float32)
 x = tf.placeholder(tf.float32)
-linear_model = W * x + b
+linear_model = W*x + b
 ```
 
 Constants are initialized when you call `tf.constant`, and their value can never
@@ -302,7 +302,7 @@ W = tf.Variable([.3], dtype=tf.float32)
 b = tf.Variable([-.3], dtype=tf.float32)
 # Model input and output
 x = tf.placeholder(tf.float32)
-linear_model = W * x + b
+linear_model = W*x + b
 y = tf.placeholder(tf.float32)
 
 # loss
@@ -330,9 +330,9 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
-Notice that the loss is a very small number (very close to zero). If you run this
-program, your loss may not be the exact same because the model is initialized
-with pseudorandom values.
+Notice that the loss is a very small number (very close to zero). If you run 
+this program, your loss may not be exactly the same as the aforementioned loss 
+because the model is initialized with pseudorandom values.
 
 This more complicated program can still be visualized in TensorBoard
 ![TensorBoard final model visualization](https://www.tensorflow.org/images/getting_started_final.png)
@@ -426,7 +426,7 @@ def model_fn(features, labels, mode):
   # Build a linear model and predict values
   W = tf.get_variable("W", [1], dtype=tf.float64)
   b = tf.get_variable("b", [1], dtype=tf.float64)
-  y = W * features['x'] + b
+  y = W*features['x'] + b
   # Loss sub-graph
   loss = tf.reduce_sum(tf.square(y - labels))
   # Training sub-graph

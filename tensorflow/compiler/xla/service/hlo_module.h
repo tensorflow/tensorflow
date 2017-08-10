@@ -127,6 +127,17 @@ class HloModule {
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
 
+  // Assign a new unique dense id for an instruction
+  int NewUniqueInstructionId() {
+    int result = next_unique_id_;
+    next_unique_id_++;
+    return result;
+  }
+
+  // Returns the number of unique intruction ids given out.  All ids up to
+  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
+  int NumUniqueInstructionIds() const { return next_unique_id_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation);
@@ -151,6 +162,7 @@ class HloModule {
   // unique per module.
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
+  int next_unique_id_ = 0;
 };
 
 }  // namespace xla

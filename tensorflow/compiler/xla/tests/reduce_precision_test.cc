@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -39,8 +39,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ReducePrecisionTest : public ClientLibraryTestBase,
-                            public ::testing::WithParamInterface<int> {};
+// Tests to confirm that the ReducePrecision operation produces the expected
+// numerical values.
+class ReducePrecisionAccuracyTest : public ClientLibraryTestBase,
+                                    public ::testing::WithParamInterface<int> {
+};
 
 // For reduction to IEEE-f16, we want to test the following cases, in both
 // positive and negative variants.  (Note: IEEE-f16 is 5 exponent bits and 10
@@ -201,7 +204,7 @@ static const uint32_t test_values[][4] = {
         FPVAL(11111111, 1111111111, 1111111111111)   // NaN
     }};
 
-XLA_TEST_P(ReducePrecisionTest, ReducePrecisionF32) {
+XLA_TEST_P(ReducePrecisionAccuracyTest, ReducePrecisionF32) {
   int index = GetParam();
   int exponent_bits = exponent_sizes[index];
   int mantissa_bits = mantissa_sizes[index];
@@ -238,25 +241,86 @@ XLA_TEST_P(ReducePrecisionTest, ReducePrecisionF32) {
   ComputeAndCompareR1<float>(&builder, expected_values, {a_data.get()});
 }
 
-INSTANTIATE_TEST_CASE_P(ReducePrecisionTest, ReducePrecisionTest,
+INSTANTIATE_TEST_CASE_P(ReducePrecisionAccuracyTest,
+                        ReducePrecisionAccuracyTest,
                         ::testing::Values(0, 1, 2, 3), TestDataToString);
+
+// Tests to confirm that the compiler optimization functions add the expected
+// ReducePrecisionInsertion passes.
+class ReducePrecisionInsertionTest : public ClientLibraryTestBase {};
+
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionBeforeFusion) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // Abs doesn't affect resolution.
+  auto abs = builder.Abs(a);
+
+  // Near 1.0, Log(x) approximates x - 1; this lets us confirm that the
+  // reduce-precision operation showed up in the correct place in the
+  // graph.
+  auto log = builder.Log(abs);
+
+  // Insert precision-reduction after the Abs(x) operation, rounding that
+  // result to exactly 1.0f.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::BEFORE_OP_FUSION, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
+
+  ComputeAndCompareR1<float>(&builder, {0.0f}, {a_data.get()});
+}
+
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedAfterFusion) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // These two operations should be fused by any reasonable backend.
+  auto abs = builder.Abs(a);
+  auto neg = builder.Neg(abs);
+
+  // Add a pass after operation fusion, suffixing kAbs operations.  This
+  // should not see into the fusion nodes and thus should not affect the
+  // result.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::AFTER_OP_FUSION, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
+
+  ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
+}
+
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedAfterFusion) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // These two operations should be fused by any reasonable backend.
+  auto abs = builder.Abs(a);
+  auto neg = builder.Neg(abs);
+
+  // Add a pass after operation fusion, suffixing kFusion operations.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::AFTER_OP_FUSION, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kFusion; });
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+}
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

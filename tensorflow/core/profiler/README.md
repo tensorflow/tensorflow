@@ -106,7 +106,7 @@ _TFProfRoot (--/930.58k params)
 ### Show the most expensive operation types.
 ```
 tfprof> op -select micros,bytes,occurrence -order_by micros
-node name | output bytes | total execution time | accelerator execution time | cpu execution time | op occurrence (run|defined)
+node name | requested bytes | total execution time | accelerator execution time | cpu execution time | op occurrence (run|defined)
 SoftmaxCrossEntropyWithLogits      36.58MB (100.00%, 0.05%),      1.37sec (100.00%, 26.68%),           0us (100.00%, 0.00%),      1.37sec (100.00%, 30.75%),      30|30
 MatMul                        2720.57MB (99.95%, 3.66%),      708.14ms (73.32%, 13.83%),     280.76ms (100.00%, 41.42%),       427.39ms (69.25%, 9.62%),  2694|3450
 ConcatV2                       741.37MB (96.29%, 1.00%),       389.63ms (59.49%, 7.61%),        31.80ms (58.58%, 4.69%),       357.83ms (59.63%, 8.05%),  4801|6098
@@ -181,6 +181,7 @@ seq2seq_attention_model.py:363:build_graph:self._add_train_o..., cpu: 1.28sec, a
 
 ### Visualize time and memory.
 ```
+# The following example generates a timeline.
 tfprof> graph -step 0 -max_depth 100000 -output timeline:outfile=<filename>
 
 generating trace file.
@@ -191,9 +192,29 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
 <left>
-[CodeTimeline](g3doc/graph_timeline.png)
+![Timeline](g3doc/graph_timeline.png)
 </left>
 
+```
+# The following example generates a pprof graph (only supported by code view).
+# Since TensorFlow runs the graph instead of Python code, the pprof graph
+# doesn't profile the statistics of Python, but the TensorFlow graph
+# nodes created by the Python call stack.
+# Nevertheless, it pops critical Python code path for us.
+#
+# `-trim_name_regexes` trims the python call stack, which are always the same
+# for the leaves.
+# `-select accelerator_micros` pick accelerator time for pprof graph. User
+# can also generate memory profile using `-select bytes`
+tfprof> code -max_depth 100 -trim_name_regexes '^ops.py.*' -select accelerator_micros -output pprof:outfile=<filename>
+
+# Use pprof to visualize the generated file.
+pprof -png --nodecount=20 --sample_index=1 <filename>
+```
+
+<left>
+![PprofGraph](g3doc/pprof.jpg)
+</left>
 
 ### Feature Request and Bug Report
 

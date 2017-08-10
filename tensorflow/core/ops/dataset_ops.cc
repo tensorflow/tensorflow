@@ -177,6 +177,20 @@ output_buffer_size: The maximum number of output elements to buffer in an
   iterator over this dataset.
 )doc");
 
+REGISTER_OP("PrefetchDataset")
+    .Input("input_dataset: resource")
+    .Input("buffer_size: int64")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that asynchronously prefetches elements from `input_dataset`.
+
+buffer_size: The maximum number of elements to buffer in an iterator over
+  this dataset.
+)doc");
+
 REGISTER_OP("FlatMapDataset")
     .Input("input_dataset: resource")
     .Input("other_arguments: Targuments")
@@ -550,12 +564,18 @@ string_handle: A string representation of the given handle.
 REGISTER_OP("IteratorFromStringHandle")
     .Input("string_handle: string")
     .Output("resource_handle: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Converts the given string representing a handle to an iterator to a resource.
 
 string_handle: A string representation of the given handle.
 resource_handle: A handle to an iterator resource.
+output_types: If specified, defines the type of each tuple component in an
+  element produced by the resulting iterator.
+output_shapes: If specified, defines the shape of each tuple component in an
+  element produced by the resulting iterator.
 )doc");
 
 }  // namespace tensorflow

@@ -210,9 +210,9 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
     for (int i = 0; i < intValues.length; ++i) {
-      floatValues[i * 3 + 0] = ((intValues[i] & 0xFF) - imageMean) / imageStd;
+      floatValues[i * 3 + 0] = (((intValues[i] >> 16) & 0xFF) - imageMean) / imageStd;
       floatValues[i * 3 + 1] = (((intValues[i] >> 8) & 0xFF) - imageMean) / imageStd;
-      floatValues[i * 3 + 2] = (((intValues[i] >> 16) & 0xFF) - imageMean) / imageStd;
+      floatValues[i * 3 + 2] = ((intValues[i] & 0xFF) - imageMean) / imageStd;
     }
     Trace.endSection(); // preprocessBitmap
 

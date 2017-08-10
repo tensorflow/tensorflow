@@ -372,7 +372,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
         DeviceNameUtils::ParsedName name = d->parsed_name();
         if (name.job == *worker_cache_factory_options.job_name &&
             name.task == worker_cache_factory_options.task_index &&
-            name.type == "CPU") {
+            name.type == "CPU" && name.id == 0) {
           device_set->set_client_device(d.get());
         }
       }
@@ -399,7 +399,8 @@ void Master::CreateSession(const CreateSessionRequest* req,
       }
     }
 
-    CHECK(device_set->client_device());
+    CHECK(device_set->client_device()) << "No client device found. Missing "
+                                       << "CPU:0 device?";
 
     SessionOptions options;
     options.config = req->config();

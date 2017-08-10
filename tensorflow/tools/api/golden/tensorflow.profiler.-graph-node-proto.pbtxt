@@ -47,11 +47,23 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "OUTPUT_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "PARAMETERS_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
+    name: "PEAK_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "REQUESTED_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "RESIDUAL_BYTES_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
@@ -87,11 +99,23 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "TOTAL_OUTPUT_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "TOTAL_PARAMETERS_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
+    name: "TOTAL_PEAK_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "TOTAL_REQUESTED_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "TOTAL_RESIDUAL_BYTES_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {

@@ -369,9 +369,12 @@ class OperationTest(test_util.TensorFlowTestCase):
             attrs={
                 "value": attr_value_pb2.AttrValue(i=32),
                 "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
-                "list": attr_value_pb2.AttrValue(list=list_value)
+                "list": attr_value_pb2.AttrValue(list=list_value),
+                "func": attr_value_pb2.AttrValue(
+                    func=attr_value_pb2.NameAttrList())
             }), ops.Graph(), [], [dtypes.int32])
     self.assertEqual(32, op.get_attr("value"))
+    self.assertEqual("", op.get_attr("func").name)
 
     d = op.get_attr("dtype")
     # First check that d is a DType, because the assertEquals will
@@ -1561,6 +1564,21 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
         b = constant_op.constant(3.0)
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
     self.assertEqual(a.op.device, b.op.device)
+
+  def testColocationCanonicalization(self):
+    with ops.device("/gpu:0"):
+      _ = constant_op.constant(2.0)
+    with ops.device(lambda op: "/gpu:0"):
+      b = constant_op.constant(3.0)
+    with ops.get_default_graph().colocate_with(b):
+      with ops.device("/gpu:0"):
+        c = constant_op.constant(4.0)
+
+    # A's device will be /gpu:0
+    # B's device will be /device:GPU:0
+    # C's device will be /device:GPU:0 because it
+    # inherits B's device name, after canonicalizing the names.
+    self.assertEqual(b.op.device, c.op.device)
 
   def testLocationOverrides(self):
     with ops.device("/cpu:0"):
