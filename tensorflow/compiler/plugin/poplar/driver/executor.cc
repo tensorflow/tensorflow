@@ -386,7 +386,6 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
       // a) the engine is changing
       // b) output buffer isn't an input to the current engine
       // c) output buffer isn't currently in the right place for the new input
-      // TODO work with deep inputs
       for (const auto &tc : allocations_) {
         if (tc->on_device == true && !tc->output_handle.empty()) {
           if (engine_changed) {
