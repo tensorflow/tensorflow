@@ -103,7 +103,6 @@ tf_kernel_library(
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
         "strided_slice_op_gpu.cu.cc",
-        "slice_op_gpu.cu.cc",
     ],
     deps = [
         ":bounds_check",
@@ -566,6 +565,7 @@ cc_library(
         ":extract_image_patches_op",
         ":gather_nd_op",
         ":gather_op",
+        ":identity_n_op",
         ":identity_op",
         ":inplace_ops",
         ":listdiff_op",
@@ -644,6 +644,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_op",
     prefix = "identity_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "identity_n_op",
+    prefix = "identity_n_op",
     deps = ARRAY_DEPS,
 )
 
@@ -1130,6 +1136,24 @@ tf_cc_test(
     srcs = ["identity_op_test.cc"],
     deps = [
         ":identity_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "identity_n_op_test",
+    size = "small",
+    srcs = ["identity_n_op_test.cc"],
+    deps = [
+        ":identity_n_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -2192,7 +2216,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":fill_functor",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -3007,7 +3034,7 @@ tf_kernel_library(
         "maxpooling_op.h",
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
-    ],
+    ] + if_sycl(["pooling_ops_3d_sycl.h"]),
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",
@@ -4148,6 +4175,8 @@ filegroup(
         "function_ops.cc",
         "gather_functor.h",
         "gather_op.cc",
+        "identity_n_op.cc",
+        "identity_n_op.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",

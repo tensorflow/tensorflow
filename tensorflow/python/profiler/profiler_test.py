@@ -118,7 +118,7 @@ class ProfilerTest(test.TestCase):
 
   def testMultiStepProfile(self):
     ops.reset_default_graph()
-    opts = builder.time_and_memory()
+    opts = builder.time_and_memory(min_bytes=0)
 
     with session.Session() as sess:
       r1, r2, r3 = lib.BuildSplitableModel()

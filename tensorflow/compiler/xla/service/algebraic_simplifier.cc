@@ -239,6 +239,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction) {
+    VLOG(4) << "Replacing instruction:";
+    VLOG(4) << "  old: " << old_instruction->ToString();
+    VLOG(4) << "  new: " << new_instruction->ToString();
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         old_instruction, std::move(new_instruction)));
     changed_ = true;
@@ -250,6 +253,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Returns the Status representing the result of the replace operation.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction) {
+    VLOG(4) << "Replacing instruction:";
+    VLOG(4) << "  old: " << old_instruction->ToString();
+    VLOG(4) << "  new: " << new_instruction->ToString();
     TF_RETURN_IF_ERROR(
         computation_->ReplaceInstruction(old_instruction, new_instruction));
     changed_ = true;
@@ -1090,6 +1096,9 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     if (scalar_count != user->operand_count() - 1) {
       continue;
     }
+    VLOG(4) << "Sinking reshape or broadcast after user:";
+    VLOG(4) << "  old reshape/broadcast: " << reshape_or_broadcast->ToString();
+    VLOG(4) << "  old user: " << user->ToString();
     CHECK_EQ(user->operand(reshape_or_broadcast_operand_index),
              reshape_or_broadcast);
     std::vector<HloInstruction*> new_user_operands = user->operands();
@@ -1098,6 +1107,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
         ShapeUtil::MakeShape(user->shape().element_type(),
                              AsInt64Slice(operand->shape().dimensions())),
         new_user_operands));
+    VLOG(4) << "  new user: " << new_user->ToString();
     HloInstruction* new_reshape_or_broadcast = nullptr;
     if (reshape_or_broadcast->opcode() == HloOpcode::kReshape) {
       new_reshape_or_broadcast =
@@ -1115,6 +1125,8 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
                   AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
               new_user, reshape_or_broadcast->dimensions()));
     }
+    VLOG(4) << "  new reshape/broadcast: "
+            << new_reshape_or_broadcast->ToString();
     TF_RETURN_IF_ERROR(
         computation_->ReplaceUsesOfInstruction(user, new_reshape_or_broadcast));
     changed = true;

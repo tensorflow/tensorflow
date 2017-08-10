@@ -134,6 +134,11 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
         self.assertAllClose(y_tf_np, y_np)
 
+  def testInfinity(self):
+    with self.test_session(use_gpu=True):
+      res = math_ops.reduce_logsumexp(-np.inf).eval()
+      self.assertEqual(-np.inf, res)
+
 
 class RoundTest(test_util.TensorFlowTestCase):
 

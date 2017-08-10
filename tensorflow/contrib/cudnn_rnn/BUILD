@@ -3,7 +3,6 @@
 #   APIs are meant to change over time.
 package(
     default_visibility = ["//visibility:private"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -31,6 +30,7 @@ tf_custom_op_library(
 tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["kernels/cudnn_rnn_ops.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

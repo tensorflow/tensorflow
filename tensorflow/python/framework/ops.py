@@ -285,6 +285,11 @@ class Tensor(_TensorLike):
     return "%s:%d" % (self._op.name, self._value_index)
 
   @property
+  def _id(self):
+    """An alias for the string name of this tensor."""
+    return self.name
+
+  @property
   def device(self):
     """The name of the device on which this tensor will be produced, or None."""
     return self._op.device
@@ -1233,7 +1238,7 @@ class Operation(object):
   def _create_c_op(self, graph, node_def, inputs, control_inputs):
     """Creates a TF_Operation.
 
-    Arguments:
+    Args:
       graph: a `Graph`.
       node_def: `node_def_pb2.NodeDef` for the operation to create.
       inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
@@ -1277,7 +1282,7 @@ class Operation(object):
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.
 
-    Arguments:
+    Args:
       op_def: The `op_def_pb2.OpDef` (for knowing the input types)
       inputs: a list of input `Tensor`s to the op.
       attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
@@ -1700,7 +1705,7 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor"]
+    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
     if name not in self._node_def.attr:
       raise ValueError("No attr named '" + name + "' in " +
                        str(self._node_def))
@@ -3469,7 +3474,7 @@ class Graph(object):
       additional mechanism to add control dependencies.
 
       Args:
-        graph: The graph that this controller is  managing.
+        graph: The graph that this controller is managing.
         control_inputs: List of ops to use as control inputs in addition
           to the current control dependencies.  None to indicate that
           the dependencies should be cleared.
@@ -3653,6 +3658,8 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     for c in control_inputs:
+      if isinstance(c, IndexedSlices):
+        c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, Tensor):
         c = c.op

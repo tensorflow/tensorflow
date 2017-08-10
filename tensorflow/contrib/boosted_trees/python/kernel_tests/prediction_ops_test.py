@@ -662,7 +662,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               apply_averaging=False,
               center_bias=False,
               reduce_dim=False))
-      # The first example will get bias class 1 -0.2  and -2 for class 2 from
+      # The first example will get bias class 1 -0.2 and -2 for class 2 from
       # first tree and leaf 2 payload (sparse feature missing) of 0.5 hence
       # 0.5, -0.2], the second example will get the same bias and leaf 3 payload
       # of class 1 1.2 and class 2-0.7 hence [0.0, 1.0, -2.7].

@@ -57,9 +57,7 @@ class HloInstruction;
 // instruction that is accessible from the instruction object itself.
 class DfsHloVisitor {
  public:
-  DfsHloVisitor()
-      : visit_state_(32)  // Start the hash table a bit larger to avoid resizes
-  {}
+  DfsHloVisitor() {}
   virtual ~DfsHloVisitor() {}
 
   // These routines are self-descriptive, see class comment for usage
@@ -239,17 +237,16 @@ class DfsHloVisitor {
   // 3 possible visitation states of HLO instructions. Each instruction's
   // state only flows one way: kNotVisited -> kVisiting -> kVisited.
   enum VisitState {
-    kNotVisited,
-    kVisiting,
-    kVisited,
+    kNotVisited = 0,
+    kVisiting = 1,
+    kVisited = 2,
   };
 
-  VisitState GetVisitState(const HloInstruction& instruction) {
-    auto it = visit_state_.find(&instruction);
-    if (it == visit_state_.end()) {
-      return kNotVisited;
-    }
-    return it->second;
+  VisitState GetVisitState(int id) { return visit_state_.GetState(id); }
+  VisitState GetVisitState(const HloInstruction& instruction);
+
+  void SetVisitState(int id, VisitState state) {
+    visit_state_.SetState(id, state);
   }
 
   // Sets the visitation state of the given instruction as kVisiting.
@@ -299,9 +296,43 @@ class DfsHloVisitor {
   virtual Status Postprocess(HloInstruction* visited);
 
  private:
-  // Tracks the visitation state of each instruction. Any instructions that are
-  // not found in the map are considered as VisitState::kNotVisited.
-  tensorflow::gtl::FlatMap<const HloInstruction*, VisitState> visit_state_;
+  class DFSVisitStates {
+   public:
+    DFSVisitStates() {
+      // Avoid frequent resizes of the visited bits array
+      states_.reserve(512);
+    }
+    VisitState GetState(int id) {
+      int word_index = id / kStatesPerWord;
+      if (word_index >= states_.size()) {
+        return VisitState::kNotVisited;
+      }
+      static_assert(static_cast<int>(VisitState::kVisited) < 3,
+                    "VisitState must fit in two bits");
+      uint64 w = states_[word_index];
+      int shift = 2 * (id % kStatesPerWord);  // 2 bits per state
+      return static_cast<VisitState>((w >> shift) & 0x3);
+    }
+    void SetState(int id, VisitState state) {
+      int word_index = id / kStatesPerWord;
+      if (word_index >= states_.size()) {
+        states_.resize(word_index + 1, 0);
+      }
+      uint64* w = &states_[word_index];
+      int shift = 2 * (id % kStatesPerWord);  // 2 bits per state
+      uint64 mask = 0x3ull << shift;
+      *w = (*w & ~mask) | (static_cast<uint64>(state) << shift);
+      DCHECK_EQ(GetState(id), state);
+    }
+
+   private:
+    static const int kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;
+    // Map from id to two-bit states.  We store 32 such states per 64-bit
+    // value
+    std::vector<uint64> states_;
+  };
+
+  DFSVisitStates visit_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitor);
 };

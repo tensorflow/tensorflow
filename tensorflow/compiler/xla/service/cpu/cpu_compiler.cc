@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_parallelization_preparation.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
@@ -153,8 +155,6 @@ CpuCompiler::CpuCompiler() {
 
 namespace {
 
-const char* kXlaParallelCpuOption = "xla_cpu_parallel";
-
 // LLVM makes certain options configurable only through its command-line
 // options; it provide the ParseCommandLineOptions function that lets us set
 // flags at runtime. However, since these flags are global we want to avoid
@@ -187,14 +187,6 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     }
     llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
   }
-}
-
-// Helps determine whether the parallel CPU backend was requested in the options
-// of this module configuration.
-bool CpuParallelBackendRequested(const HloModuleConfig& config) {
-  const auto& extra_options_map =
-      config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kXlaParallelCpuOption) > 0;
 }
 
 // This visitor records which HLO instructions should have profiling information
@@ -266,6 +258,10 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+    pass.AddPass<BatchNormRewriter>(
+        /*rewrite_training_op=*/true,
+        /*rewrite_grad_op=*/true,
+        /*use_fusion=*/false);
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
@@ -302,7 +298,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
       module->config().intra_op_parallelism_threads() > 0
           ? module->config().intra_op_parallelism_threads()
           : tensorflow::port::NumSchedulableCPUs();
-  if (CpuParallelBackendRequested(module->config())) {
+  if (options::CpuParallelBackendRequested(module->config())) {
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
                                                  ShapeSizeBytesFunction());
   }
@@ -314,7 +310,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<CopyInsertion>();
-  if (CpuParallelBackendRequested(module->config())) {
+  if (options::CpuParallelBackendRequested(module->config())) {
     // Re-run the outlining, in case any copies were inserted into the entry
     // computation.
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
@@ -425,10 +421,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
-  auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(module->config()),
-                                      CodeGenOptLevel(module->config()),
-                                      pre_optimization_ir_dump_hook,
-                                      post_optimization_ir_dump_hook);
+  auto jit = MakeUnique<SimpleOrcJIT>(
+      CompilerTargetOptions(module->config()),
+      CodeGenOptLevel(module->config()),
+      options::OptimizeForSizeRequested(module->config()),
+      pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
@@ -451,7 +448,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
 
-  if (CpuParallelBackendRequested(module->config())) {
+  if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
@@ -701,11 +698,10 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   llvm::StringRef cpu_name = llvm_ir::AsStringRef(options.cpu_name());
   llvm::StringRef features = llvm_ir::AsStringRef(options.features());
   llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
-  std::unique_ptr<llvm::TargetMachine> target_machine =
-      WrapUnique(target->createTargetMachine(
-          triple.getTriple(), cpu_name, features,
-          CompilerTargetOptions(modules[0]->config()), reloc_model,
-          llvm::CodeModel::Default, opt_level));
+  std::unique_ptr<llvm::TargetMachine> target_machine = WrapUnique(
+      target->createTargetMachine(triple.getTriple(), cpu_name, features,
+                                  CompilerTargetOptions(modules[0]->config()),
+                                  reloc_model, llvm::None, opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   llvm::LLVMContext llvm_context;
@@ -780,6 +776,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     Disassembler disassembler(*target_machine);
     CompilerFunctor compiler_functor(
         target_machine.get(), &disassembler, opt_level,
+        options::OptimizeForSizeRequested(module->config()),
         CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
         post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =

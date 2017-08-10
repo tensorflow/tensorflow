@@ -39,13 +39,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
 using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -561,7 +559,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(instruction_to_fuse->IsFusable());
   if (GetModule()) {
-    XLA_VLOG_LINES(1, GetModule()->ToString());
+    XLA_VLOG_LINES(3, GetModule()->ToString());
   }
   HloInstruction* clone = nullptr;
   if (called_computations_.empty()) {
@@ -659,6 +657,26 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
 RandomDistribution HloInstruction::random_distribution() const {
   CHECK_EQ(opcode_, HloOpcode::kRng);
   return distribution_;
+}
+
+bool HloInstruction::HasSideEffect() const {
+  switch (opcode_) {
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kTrace:
+      return true;
+    default: {
+      // Check if any of the called computations has a side effect.
+      for (const auto& computation : called_computations()) {
+        if (computation->HasSideEffect()) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
 }
 
 void HloInstruction::CheckFusionInstruction() const {
@@ -1543,7 +1561,7 @@ string HloInstruction::ToString(bool compact_operands,
       operands = "{...}";
     }
   } else if (opcode() == HloOpcode::kParameter) {
-    operands = Printf("%lld", parameter_number_);
+    StrAppend(&operands, parameter_number_);
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
     const int64 kMaxOperandsToShowIfCompact = 4;
@@ -1608,19 +1626,17 @@ string HloInstruction::ToString(bool compact_operands,
     StrAppend(&extra, " # metadata=", metadata_.ShortDebugString());
   }
 
-  return Printf("%s = %s %s(%s)%s", name().c_str(),
-                ShapeUtil::HumanStringWithLayout(shape()).c_str(),
-                ExtendedOpcodeStr().c_str(), operands.c_str(), extra.c_str());
+  return StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
+                ExtendedOpcodeStr(), "(", operands, ")", extra);
 }
 
 string HloInstruction::ToShortString() const {
-  return Printf("%s = %s(%s)", name().c_str(),
-                HloOpcodeString(opcode()).c_str(),
+  return StrCat(name(), " = ", HloOpcodeString(opcode()), "(",
                 Join(operands_, ", ",
                      [](string* out, HloInstruction* operand) {
                        StrAppend(out, operand->name());
-                     })
-                    .c_str());
+                     }),
+                ")");
 }
 
 HloInstructionProto HloInstruction::ToProto() const {
@@ -1757,9 +1773,10 @@ bool HloInstruction::IsFusable() const {
     case HloOpcode::kRecv:
       return false;
     // Only fuse Rng if it is used once, otherwise the random numbers generated
-    // will be different in each fusion.
+    // will be different in each fusion. If it is the root (user count = 0)
+    // then it is the equivalent of having one user.
     case HloOpcode::kRng:
-      return users_.size() == 1;
+      return users_.size() <= 1;
     default:
       return true;
   }
@@ -1801,7 +1818,10 @@ HloInstruction::fused_instructions() const {
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
-    : shape_(shape), opcode_(opcode), name_("%" + HloOpcodeString(opcode)) {
+    : unique_id_(-1),
+      shape_(shape),
+      opcode_(opcode),
+      name_("%" + HloOpcodeString(opcode)) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
@@ -1951,38 +1971,51 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
-static Status PushDFSChild(DfsHloVisitor* visitor,
-                           std::vector<HloInstruction*>* dfs_stack,
-                           HloInstruction* parent, HloInstruction* child) {
-  switch (visitor->GetVisitState(*child)) {
+// Push "child" onto the dfs_stack if not already visited.  Returns false if a
+// cycle was detected, and true otherwise.
+inline bool PushDFSChild(
+    DfsHloVisitor* visitor,
+    std::vector<std::pair<int, HloInstruction*>>* dfs_stack,
+    HloInstruction* child) {
+  const int id = child->unique_id();
+  CHECK_GE(id, 0) << "instruction may not have a parent computation";
+  switch (visitor->GetVisitState(id)) {
     case DfsHloVisitor::kVisiting:
-      return FailedPrecondition(
-          "A cycle is detected while visiting instruction %s",
-          parent->ToString().c_str());
+      return false;
 
     case DfsHloVisitor::kVisited:
-      VLOG(3) << "Not visiting HLO " << child->name()
-              << " as it was already visited.";
-      return Status::OK();
+      // Nothing to do
+      return true;
 
     case DfsHloVisitor::kNotVisited:
-      dfs_stack->push_back(child);
-      return Status::OK();
+      dfs_stack->push_back(std::make_pair(id, child));
+      return true;
   }
 }
 
+using InternalCompareFunction =
+    std::function<bool(std::pair<int, const HloInstruction*>,
+                       std::pair<int, const HloInstruction*>)>;
 static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
-                           const HloInstruction::CompareFunction* operand_order,
+                           const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  std::vector<HloInstruction*> dfs_stack;
-  dfs_stack.push_back(root);
+  // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
+  //
+  // We need to keep track of both the id and the instruction because
+  // instructions can get deleted while they are on the stack, so we
+  // can't always use the (potentiall dead) instruction object to grab
+  // its id.
+  std::vector<std::pair<int, HloInstruction*>> dfs_stack;
+  dfs_stack.emplace_back(root->unique_id(), root);
 
   do {
     DCHECK(!dfs_stack.empty());
 
-    HloInstruction* current_node = dfs_stack.back();
-    DfsHloVisitor::VisitState visit_state =
-        visitor->GetVisitState(*current_node);
+    int current_id = dfs_stack.back().first;
+    HloInstruction* current_node = dfs_stack.back().second;
+    CHECK_GE(current_id, 0) << current_id << ": " << current_node
+                            << ": instruction may not have parent computation";
+    DfsHloVisitor::VisitState visit_state = visitor->GetVisitState(current_id);
     if (visit_state == DfsHloVisitor::kVisited) {
       dfs_stack.pop_back();
       VLOG(3) << "Not visiting HLO " << current_node->name()
@@ -1996,24 +2029,30 @@ static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
       TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));
       VLOG(2) << "Visiting HLO " << current_node->name();
       TF_RETURN_IF_ERROR(current_node->Visit(visitor));
-      visitor->SetVisited(*current_node);
+      visitor->SetVisitState(current_id, DfsHloVisitor::kVisited);
       TF_RETURN_IF_ERROR(visitor->Postprocess(current_node));
       continue;
     }
 
-    visitor->SetVisiting(*current_node);
+    visitor->SetVisitState(current_id, DfsHloVisitor::kVisiting);
 
     const size_t old_dfs_stack_size = dfs_stack.size();
 
     for (HloInstruction* child : current_node->operands()) {
-      TF_RETURN_IF_ERROR(
-          PushDFSChild(visitor, &dfs_stack, current_node, child));
+      if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
+        return FailedPrecondition(
+            "A cycle is detected while visiting instruction %s",
+            current_node->ToString().c_str());
+      }
     }
 
     if (!ignore_control_predecessors) {
       for (HloInstruction* child : current_node->control_predecessors()) {
-        TF_RETURN_IF_ERROR(
-            PushDFSChild(visitor, &dfs_stack, current_node, child));
+        if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
+          return FailedPrecondition(
+              "A cycle is detected while visiting instruction %s",
+              current_node->ToString().c_str());
+        }
       }
     }
 
@@ -2045,7 +2084,14 @@ Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
-  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &operand_order,
+  InternalCompareFunction func = [&operand_order](
+                                     std::pair<int, const HloInstruction*> a,
+                                     std::pair<int, const HloInstruction*> b) {
+    // Call the client's comparison function on the actual HloInstruction*
+    // objects (ignoring the internal ids we also have in our stack entries)
+    return operand_order(a.second, b.second);
+  };
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &func,
                                   /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder BEFORE FINISH VISIT";
@@ -2058,8 +2104,8 @@ Status HloInstruction::AcceptWithOperandOrder(
 
 namespace {
 
-// Returns true if the given order is a topological sort of the instructions it
-// contains.
+// Returns true if the given order is a topological sort of the instructions
+// it contains.
 bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
   // Create a map from instruction to its position in 'order'.
   std::unordered_map<const HloInstruction*, int> order_position;
@@ -2070,8 +2116,8 @@ bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
     }
   }
   // Verify that the operand of each instruction in the order is also in the
-  // order *and* the operand's position is earlier (defs are before uses for all
-  // ops).
+  // order *and* the operand's position is earlier (defs are before uses for
+  // all ops).
   for (auto* instruction : order) {
     for (auto* operand : instruction->operands()) {
       if (!ContainsKey(order_position, operand) ||
@@ -2257,6 +2303,7 @@ bool HloInstruction::IsElementwiseOnOperand(int64 operand_idx) const {
     HloInstruction* operand = worklist.front();
     worklist.pop_front();
     for (HloInstruction* user : operand->users()) {
+      CHECK_GE(user->unique_id(), 0);
       if (ContainsKey(visited, user)) {
         continue;
       }
@@ -2279,9 +2326,9 @@ class HloInstruction::FusionReusesParamElements {
   using UseKind = HloInstruction::UseKind;
 
   // We could rather iterate backwards thru fused_instructions_ here, as it is
-  // in reverse postorder, and compute whether each fused instruction reuses the
-  // value of this parameter, which would save stack space but not allow us to
-  // finish early if we find a reuse.
+  // in reverse postorder, and compute whether each fused instruction reuses
+  // the value of this parameter, which would save stack space but not allow
+  // us to finish early if we find a reuse.
   static UseKind Compute(int64 i, const HloInstruction& hlo) {
     tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);

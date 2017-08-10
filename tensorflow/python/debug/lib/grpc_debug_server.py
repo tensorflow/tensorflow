@@ -64,9 +64,7 @@ class EventListenerBaseStreamHandler(object):
   """Per-stream handler of EventListener gRPC streams."""
 
   def __init__(self):
-    """Constructor of EventListenerStreamHandler."""
-    raise NotImplementedError(
-        "__init__() is not implemented in the base stream handler class")
+    """Constructor of EventListenerBaseStreamHandler."""
 
   def on_core_metadata_event(self, event):
     """Callback for core metadata.
@@ -199,8 +197,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     """
 
     value = event.summary.value[0]
-    debugger_plugin_metadata = json.loads(
-        value.metadata.plugin_data[0].content)
+    debugger_plugin_metadata = json.loads(value.metadata.plugin_data.content)
     device_name = debugger_plugin_metadata["device"]
     num_chunks = debugger_plugin_metadata["numChunks"]
     chunk_index = debugger_plugin_metadata["chunkIndex"]

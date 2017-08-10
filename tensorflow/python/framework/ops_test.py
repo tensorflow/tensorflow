@@ -369,9 +369,12 @@ class OperationTest(test_util.TensorFlowTestCase):
             attrs={
                 "value": attr_value_pb2.AttrValue(i=32),
                 "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
-                "list": attr_value_pb2.AttrValue(list=list_value)
+                "list": attr_value_pb2.AttrValue(list=list_value),
+                "func": attr_value_pb2.AttrValue(
+                    func=attr_value_pb2.NameAttrList())
             }), ops.Graph(), [], [dtypes.int32])
     self.assertEqual(32, op.get_attr("value"))
+    self.assertEqual("", op.get_attr("func").name)
 
     d = op.get_attr("dtype")
     # First check that d is a DType, because the assertEquals will

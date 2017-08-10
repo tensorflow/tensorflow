@@ -49,6 +49,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
     nodes = [node.name for node in mg.graph_def.node]
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
         memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
@@ -70,6 +71,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
     graph_size = len(mg.graph_def.node)
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
         memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
@@ -122,6 +124,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
     (original_metagraph, _, _, _) = self._GetMetaGraph()
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
+            disable_model_pruning=True,
             memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS),
         original_metagraph)
     self.assertGreater(
@@ -142,6 +145,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         optimizer_scope_name='optimizer')
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
+            disable_model_pruning=True,
             memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS,
             memory_optimizer_target_node_name_prefix='optimizer/gradients/'),
         original_metagraph)
@@ -159,6 +163,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
 
   def _GetMemoryOptimizerSessionConfig(self):
     rewrite_options = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
         memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewrite_options)
     return config_pb2.ConfigProto(graph_options=graph_options)

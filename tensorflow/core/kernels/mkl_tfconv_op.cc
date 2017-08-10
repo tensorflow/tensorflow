@@ -83,42 +83,16 @@ class MklToTfOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &output_tensor));
 
-    // If data format is NHWC, transform MKL tensor to NCHW format and then
-    // do NCHW -> NHWC.
-    dnnLayout_t lt_trans_input = nullptr;
-    Tensor mkl_tmp_trans_input_buf_tensor;
-    void* buf_trans_input = nullptr;
-    bool input_fmt_nhwc = input_shape.IsTensorInNHWCFormat();
-    if (input_fmt_nhwc && ndims == 4 && has_avx512f_) {
-      size_t strides_nchw[4];
-      GetStridesFromSizes(FORMAT_NCHW, strides_nchw, in_sizes);
-      CHECK_EQ(
-          dnnLayoutCreate_F32(&lt_trans_input, ndims, in_sizes, strides_nchw),
-          E_SUCCESS);
-      AllocTmpBuffer(context, &mkl_tmp_trans_input_buf_tensor, lt_trans_input,
-                     &buf_trans_input);
-    } else {
-      lt_trans_input = static_cast<dnnLayout_t>(input_shape.GetTfLayout());
-      buf_trans_input =
-          static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
-    }
-
+    dnnLayout_t output_layout =
+        static_cast<dnnLayout_t>(input_shape.GetTfLayout());
     // Execute DNNConversion.
     void* input_buffer =
         static_cast<void*>(const_cast<T*>(input_tensor.flat<T>().data()));
-    input_shape.GetConvertedFlatData(lt_trans_input, input_buffer,
-                                     buf_trans_input);
-    // NCHW -> NHWC, if data format is NHWC
-    if (input_fmt_nhwc && ndims == 4 && has_avx512f_) {
-      dnnLayoutDelete_F32(lt_trans_input);
-      TensorShape nhwc_shape = ShapeFromFormat(
-          FORMAT_NHWC, in_sizes[MklDims::N], in_sizes[MklDims::H],
-          in_sizes[MklDims::W], in_sizes[MklDims::C]);
-      MklNCHWToNHWC(mkl_tmp_trans_input_buf_tensor, &output_tensor);
-    }
-
     delete[] in_sizes;
-
+    void* output_buffer =
+        static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
+    input_shape.GetConvertedFlatData(output_layout, input_buffer,
+                                     output_buffer);
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 

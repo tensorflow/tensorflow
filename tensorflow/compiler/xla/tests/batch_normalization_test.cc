@@ -210,8 +210,7 @@ class BatchNormTest : public ClientLibraryTestBase,
                       public ::testing::WithParamInterface<BatchNormTestParam> {
 };
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
+XLA_TEST_P(BatchNormTest, RandomizedTests) {
   float epsilon = 0.001;
   ComputationBuilder builder(client_, TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
@@ -264,15 +263,15 @@ XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
     var[i] = square_mean[i] - mean_square[i];
   }
 
-  Array4D<float> mean_4D =
+  Array4D<float> mean4D =
       *ReferenceUtil::Broadcast1DTo4D(mean, bounds, feature_index);
-  auto var_4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
-  auto scale_4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
-  auto offset_4D =
+  auto var4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
+  auto scale4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
+  auto offset4D =
       *ReferenceUtil::Broadcast1DTo4D(offset, bounds, feature_index);
 
-  auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean_4D, var_4D,
-                                                scale_4D, offset_4D, epsilon);
+  auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean4D, var4D,
+                                                scale4D, offset4D, epsilon);
 
   auto expected_normalized = Literal::CreateR4FromArray4D<float>(normalized);
 
@@ -307,9 +306,7 @@ XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
       ErrorSpec(0.01, 1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_P(BatchNormTest, DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(
-                              DISABLED_ON_GPU(RandomizedGradTests)))) {
+XLA_TEST_P(BatchNormTest, RandomizedGradTests) {
   float epsilon = 0.001;
   ComputationBuilder builder(client_, TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
@@ -365,23 +362,23 @@ XLA_TEST_P(BatchNormTest, DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(
     var[i] = square_mean[i] - mean_square[i];
   }
 
-  Array4D<float> mean_4D =
+  Array4D<float> mean4D =
       *ReferenceUtil::Broadcast1DTo4D(mean, bounds, feature_index);
-  auto var_4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
-  auto scale_4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
+  auto var4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
+  auto scale4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
 
   auto var_add_epsilon = *ReferenceUtil::MapArray4D(
-      var_4D, [epsilon](float a) { return std::sqrt(a + epsilon); });
+      var4D, [epsilon](float a) { return std::sqrt(a + epsilon); });
 
   auto grad_output_times_var =
       *ReferenceUtil::MapArray4D(grad_output_array, var_add_epsilon,
                                  [](float a, float b) { return a * b; });
 
   auto grad_activation = *ReferenceUtil::MapArray4D(
-      grad_output_times_var, scale_4D, [](float a, float b) { return a * b; });
+      grad_output_times_var, scale4D, [](float a, float b) { return a * b; });
 
   auto activation_shifted = *ReferenceUtil::MapArray4D(
-      input_array, mean_4D, [](float a, float b) { return a - b; });
+      input_array, mean4D, [](float a, float b) { return a - b; });
 
   auto grad_scale_before_reduction =
       *ReferenceUtil::MapArray4D(grad_output_times_var, activation_shifted,
@@ -460,8 +457,7 @@ INSTANTIATE_TEST_CASE_P(
                       // is correct after relayout.
                       BatchNormTestParam{{1, 2, 3, 4}, 0, 100, 100}));
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTraining)) {
+XLA_TEST_F(BatchNormTest, BasicTraining) {
   const int kFeatureIndex = 3;
   ComputationBuilder builder(client_, TestName());
 
@@ -485,8 +481,7 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTraining)) {
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTrainingOnSublane)) {
+XLA_TEST_F(BatchNormTest, BasicTrainingOnSublane) {
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());
 
@@ -510,7 +505,6 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTrainingOnSublane)) {
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
 XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(TrainingWithFeatureOnLowDimension)) {
   // Use 0 dimension as feature, tests layout analyzer.
   const int kFeatureIndex = 0;
@@ -543,8 +537,7 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(TrainingWithFeatureOnLowDimension)) {
                          ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(LargeEpsilonTest)) {
+XLA_TEST_F(BatchNormTest, LargeEpsilonTest) {
   // Test the correctness of choosing a large epsilon value.
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());
@@ -577,9 +570,7 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(LargeEpsilonTest)) {
                          ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on CPU and GPU. Disabled on 2017-07-11.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(
-                              DISABLED_ON_GPU(BatchNormGradBasic)))) {
+XLA_TEST_F(BatchNormTest, BatchNormGradBasic) {
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());
 

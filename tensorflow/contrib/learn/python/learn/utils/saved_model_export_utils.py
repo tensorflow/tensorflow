@@ -43,6 +43,7 @@ from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
 from tensorflow.python.estimator import estimator as core_estimator
+from tensorflow.python.estimator.export import export as core_export
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
@@ -268,6 +269,13 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
   return signature_def_map
 
 
+# When we create a timestamped directory, there is a small chance that the
+# directory already exists because another worker is also writing exports.
+# In this case we just wait one second to get a new timestamp and try again.
+# If this fails several times in a row, then something is seriously wrong.
+MAX_DIRECTORY_CREATION_ATTEMPTS = 10
+
+
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -281,13 +289,50 @@ def get_timestamped_export_dir(export_dir_base):
         graph and checkpoints.
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
-  """
-  export_timestamp = int(time.time())
 
-  export_dir = os.path.join(
-      compat.as_bytes(export_dir_base),
-      compat.as_bytes(str(export_timestamp)))
-  return export_dir
+  Raises:
+    RuntimeError: if repeated attempts fail to obtain a unique timestamped
+      directory name.
+  """
+  attempts = 0
+  while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
+    export_timestamp = int(time.time())
+
+    export_dir = os.path.join(
+        compat.as_bytes(export_dir_base),
+        compat.as_bytes(str(export_timestamp)))
+    if not gfile.Exists(export_dir):
+      # Collisions are still possible (though extremely unlikely): this
+      # directory is not actually created yet, but it will be almost
+      # instantly on return from this function.
+      return export_dir
+    time.sleep(1)
+    attempts += 1
+    logging.warn(
+        'Export directory {} already exists; retrying (attempt {}/{})'.format(
+            export_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+  raise RuntimeError('Failed to obtain a unique export directory name after '
+                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
+
+
+def get_temp_export_dir(timestamped_export_dir):
+  """Builds a directory name based on the argument but starting with 'temp-'.
+
+  This relies on the fact that TensorFlow Serving ignores subdirectories of
+  the base directory that can't be parsed as integers.
+
+  Args:
+    timestamped_export_dir: the name of the eventual export directory, e.g.
+      /foo/bar/<timestamp>
+
+  Returns:
+    A sister directory prefixed with 'temp-', e.g. /foo/bar/temp-<timestamp>.
+  """
+  (dirname, basename) = os.path.split(timestamped_export_dir)
+  temp_export_dir = os.path.join(
+      compat.as_bytes(dirname),
+      compat.as_bytes('temp-{}'.format(basename)))
+  return temp_export_dir
 
 
 # create a simple parser that pulls the export_version from the directory.
@@ -421,7 +466,8 @@ def make_parsing_export_strategy(feature_columns,
                                  default_output_alternative_key=None,
                                  assets_extra=None,
                                  as_text=False,
-                                 exports_to_keep=5):
+                                 exports_to_keep=5,
+                                 target_core=False):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -446,12 +492,20 @@ def make_parsing_export_strategy(feature_columns,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
+    target_core: If True, prepare an ExportStrategy for use with
+      tensorflow.python.estimator.*.  If False (default), prepare an
+      ExportStrategy for use with tensorflow.contrib.learn.python.learn.*.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
   feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
-  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  if target_core:
+    serving_input_fn = (
+        core_export.build_parsing_serving_input_receiver_fn(feature_spec))
+  else:
+    serving_input_fn = (
+        input_fn_utils.build_parsing_serving_input_fn(feature_spec))
   return make_export_strategy(
       serving_input_fn,
       default_output_alternative_key=default_output_alternative_key,

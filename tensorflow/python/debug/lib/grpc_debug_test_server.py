@@ -75,6 +75,7 @@ class EventListenerTestStreamHandler(
   """Implementation of EventListenerBaseStreamHandler that dumps to file."""
 
   def __init__(self, dump_dir, event_listener_servicer):
+    super(EventListenerTestStreamHandler, self).__init__()
     self._dump_dir = dump_dir
     self._event_listener_servicer = event_listener_servicer
     if self._dump_dir:
@@ -183,7 +184,7 @@ class EventListenerTestStreamHandler(
     if not summary_metadata.plugin_data:
       raise ValueError("The value lacks plugin data.")
     try:
-      content = json.loads(summary_metadata.plugin_data[0].content)
+      content = json.loads(summary_metadata.plugin_data.content)
     except ValueError as err:
       raise ValueError("Could not parse content into JSON: %r, %r" % (content,
                                                                       err))

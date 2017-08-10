@@ -345,7 +345,7 @@ class GradientsDebugger(object):
   def _get_tensor_name(self, tensor):
     if isinstance(tensor, (ops.Tensor, variables.Variable)):
       return tensor.name
-    elif  isinstance(tensor, six.string_types):
+    elif isinstance(tensor, six.string_types):
       return tensor
     else:
       raise TypeError(

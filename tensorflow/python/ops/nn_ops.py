@@ -1721,9 +1721,9 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
       `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
-    ksize: A list of ints that has length >= 4.
+    ksize: A 1-D int Tensor of 4 elements.
       The size of the window for each dimension of the input tensor.
-    strides: A list of ints that has length >= 4.
+    strides: A 1-D int Tensor of 4 elements
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
@@ -1750,9 +1750,9 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
       type `tf.float32`.
-    ksize: A list of ints that has length >= 4.  The size of the window for
+    ksize: A 1-D int Tensor of 4 elements.  The size of the window for
       each dimension of the input tensor.
-    strides: A list of ints that has length >= 4.  The stride of the sliding
+    strides: A 1-D int Tensor of 4 elements.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
@@ -2117,4 +2117,4 @@ def in_top_k(predictions, targets, k, name=None):
   """
   with ops.name_scope(name, 'in_top_k'):
     # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)
+    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)

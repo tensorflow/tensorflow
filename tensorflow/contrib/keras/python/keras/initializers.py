@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import six
 
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops.init_ops import Constant
-from tensorflow.python.ops.init_ops import Initializer
+from tensorflow.python.ops.init_ops import Identity
+from tensorflow.python.ops.init_ops import Initializer  # pylint: disable=unused-import
 from tensorflow.python.ops.init_ops import Ones
 from tensorflow.python.ops.init_ops import Orthogonal
 from tensorflow.python.ops.init_ops import RandomNormal
@@ -32,29 +32,6 @@ from tensorflow.python.ops.init_ops import RandomUniform
 from tensorflow.python.ops.init_ops import TruncatedNormal
 from tensorflow.python.ops.init_ops import VarianceScaling
 from tensorflow.python.ops.init_ops import Zeros
-
-
-class Identity(Initializer):
-  """Initializer that generates the identity matrix.
-
-  Only use for square 2D matrices.
-
-  Arguments:
-      gain: Multiplicative factor to apply to the identity matrix.
-  """
-
-  def __init__(self, gain=1.):
-    self.gain = gain
-
-  def __call__(self, shape, dtype=None):
-    if len(shape) != 2 or shape[0] != shape[1]:
-      raise ValueError('Identity matrix initializer can only be used '
-                       'for 2D square matrices.')
-    else:
-      return self.gain * np.identity(shape[0])
-
-  def get_config(self):
-    return {'gain': self.gain}
 
 
 def lecun_normal(seed=None):

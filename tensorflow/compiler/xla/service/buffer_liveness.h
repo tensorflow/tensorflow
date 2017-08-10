@@ -73,8 +73,10 @@ class BufferLiveness {
 
   static Colorer DefaultColorer() {
     return [](const BufferLiveness& buffer_liveness) {
-      for (auto& buffer :
-           buffer_liveness.points_to_analysis().logical_buffers()) {
+      for (LogicalBuffer::Id id = 0;
+           id < buffer_liveness.points_to_analysis().num_logical_buffers();
+           id++) {
+        auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
         buffer->set_color(LogicalBuffer::Color(0));
       }
       return Status::OK();

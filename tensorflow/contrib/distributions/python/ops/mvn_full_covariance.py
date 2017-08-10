@@ -183,5 +183,6 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
             loc=loc,
             scale_tril=scale_tril,
             validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats)
+            allow_nan_stats=allow_nan_stats,
+            name=name)
     self._parameters = parameters

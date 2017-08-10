@@ -242,7 +242,7 @@ Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
     }
 
     auto py_string = make_safe(PyBytes_FromStringAndSize(ptr, len));
-    if (py_string.get() == nullptr) {
+    if (py_string == nullptr) {
       return errors::Internal(
           "failed to create a python byte array when converting element #", i,
           " of a TF_STRING tensor to a numpy ndarray");
@@ -319,12 +319,6 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
     *out_ndarray = Py_None;
     return Status::OK();
   }
-  if (TF_TensorData(tensor.get()) == nullptr) {
-    return errors::InvalidArgument(
-        "TF_Tensor must be in host memory (not device memory) in order to "
-        "create a numpy ndarray");
-  }
-
   int64 nelems = -1;
   gtl::InlinedVector<npy_intp, 4> dims =
       GetPyArrayDimensionsForTensor(tensor.get(), &nelems);
