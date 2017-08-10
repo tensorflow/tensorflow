@@ -20,28 +20,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-namespace {
-
-bool CanBeLoweredIntoElementalLoop(const HloInstruction& hlo) {
-  if (hlo.IsElementwise()) {
-    return hlo.operand_count() > 0;
-  }
-
-  // These non-elementwise ops have a lowering that generates the output for a
-  // specified element at a time.
-  return (hlo.opcode() == HloOpcode::kConcatenate ||
-          hlo.opcode() == HloOpcode::kReverse ||
-          hlo.opcode() == HloOpcode::kBroadcast ||
-          hlo.opcode() == HloOpcode::kSlice ||
-          hlo.opcode() == HloOpcode::kDynamicSlice ||
-          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
-          hlo.opcode() == HloOpcode::kReshape ||
-          hlo.opcode() == HloOpcode::kTranspose ||
-          hlo.opcode() == HloOpcode::kPad);
-}
-
-}  // namespace
-
 bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
@@ -51,33 +29,20 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Condition for consumer: must act elementwise on the operand. This permits
-  // only elementwise ops or (potentially) fusion ops to act as consumers.
-  if (!consumer->IsElementwiseOnOperand(operand_index)) {
+  // Condition for consumer: must be elementwise or a fusion op
+  // (which necessarily only contains elementwise operations)
+  if (!(consumer->opcode() == HloOpcode::kFusion ||
+        consumer->IsElementwise())) {
     return false;
   }
 
-  // Producer or consumer cannot be Map. Maps are technically elementwise but of
-  // a slightly different form (call instead of a computation). These are not
+  // Producer or consumer cannot be Map. Maps are technically elementwise but
+  // of a slightly different form (call instead of a computation). These are not
   // yet supported in the CPU backend.
-  if (producer->opcode() == HloOpcode::kMap ||
-      consumer->opcode() == HloOpcode::kMap) {
-    return false;
-  }
-
-  // Avoid dragging something that could otherwise be implemented as a
-  // bitcast into the loop.
-  if (producer->CouldBeBitcast()) {
-    return false;
-  }
-
-  // Check to make sure that the producer can generate output a specified
-  // element at a time.
-  if (!CanBeLoweredIntoElementalLoop(*producer)) {
-    return false;
-  }
-
-  return InstructionFusion::ShouldFuse(consumer, operand_index);
+  return producer->IsElementwise() && producer->operand_count() > 0 &&
+         producer->opcode() != HloOpcode::kMap &&
+         consumer->opcode() != HloOpcode::kMap &&
+         InstructionFusion::ShouldFuse(consumer, operand_index);
 }
 
 }  // namespace cpu

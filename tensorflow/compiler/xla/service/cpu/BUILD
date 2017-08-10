@@ -463,16 +463,6 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "cpu_instruction_fusion_test",
-    size = "small",
-    srcs = ["cpu_instruction_fusion_test.cc"],
-    deps = [
-        ":cpu_instruction_fusion",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-    ],
-)
-
 cc_library(
     name = "cpu_parallelization_preparation",
     srcs = ["cpu_parallelization_preparation.cc"],
