@@ -635,7 +635,7 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    summary.scalar(mkey.LOSS, weighted_average_loss)
+    summary.scalar(mkey.LOSS, weighted_average_loss, family=head_name)
 
     if mode == model_fn.ModeKeys.TRAIN:
       if train_op_fn is None:
@@ -1484,7 +1484,7 @@ class _LossOnlyHead(Head):
         loss = self._loss_fn()
         if isinstance(loss, list):
           loss = math_ops.add_n(loss)
-        summary.scalar(mkey.LOSS, loss)
+        summary.scalar(mkey.LOSS, loss, family=self.head_name)
         if mode == model_fn.ModeKeys.TRAIN:
           if train_op_fn is None:
             raise ValueError("train_op_fn can not be None in TRAIN mode")
