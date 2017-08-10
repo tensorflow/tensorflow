@@ -54,10 +54,10 @@ extern TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h,
 
 // Create a new TFE_TensorHandle with the same contents as 'h' but placed
 // in the memory of the device name 'device_name'.
-//
-// Currently requires at least one of the source or destination devices to
-// be CPU (i.e., for the source or destination tensor to be placed in
-// host memory).
+// If source and destination are the same device, then this creates a new handle
+// that shares the underlying buffer. Otherwise, it currently requires at least
+// one of the source or destination devices to be CPU (i.e., for the source or
+// destination tensor to be placed in host memory).
 extern TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                       TFE_Context* ctx,
                                                       const char* device_name,

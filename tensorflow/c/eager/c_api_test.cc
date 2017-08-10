@@ -170,14 +170,22 @@ TEST(CAPI, TensorHandleCopyBetweenDevices) {
       ADD_FAILURE() << tag << " -- " << TF_Message(status.get());
       continue;
     }
-    // Copy back to CPU
-    TFE_TensorHandle* hcopy =
-        TFE_TensorHandleCopyToDevice(hdevice, ctx, kCPUDevice, status.get());
+    // Copy from device to the same device.
+    TFE_TensorHandle* hdevice2 =
+        TFE_TensorHandleCopyToDevice(hdevice, ctx, name.c_str(), status.get());
     if (TF_GetCode(status.get()) != TF_OK) {
       ADD_FAILURE() << tag << " -- " << TF_Message(status.get());
       continue;
     }
     TFE_DeleteTensorHandle(hdevice);
+    // Copy back to CPU
+    TFE_TensorHandle* hcopy =
+        TFE_TensorHandleCopyToDevice(hdevice2, ctx, kCPUDevice, status.get());
+    if (TF_GetCode(status.get()) != TF_OK) {
+      ADD_FAILURE() << tag << " -- " << TF_Message(status.get());
+      continue;
+    }
+    TFE_DeleteTensorHandle(hdevice2);
 
     // Ensure that the contents are the same!
     TF_Tensor* tcopy = TFE_TensorHandleResolve(hcopy, status.get());

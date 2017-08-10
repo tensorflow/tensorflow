@@ -150,21 +150,15 @@ class TFETest(test_util.TensorFlowTestCase):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
-    cpu = tensor.Tensor([[1., 2.], [3., 4.]])
-    c2g = cpu.as_gpu_tensor()
-    # Exercise a copy from GPU to CPU, even though we ignore the value.
-    _ = c2g.as_cpu_tensor()
-
-    with self.assertRaises(errors.InvalidArgumentError):
-      # c2g is on GPU. Copying between GPU devices fails
-      # (must redirect through CPU for now).
-      # TODO(ashankar): Perhaps the function should not fail and instead
-      # faciliate the copy through host memory?
-      c2g.as_gpu_tensor()
+    x = tensor.Tensor([[1., 2.], [3., 4.]])
+    x = x.as_cpu_tensor()
+    x = x.as_gpu_tensor()
+    x = x.as_gpu_tensor()
+    x = x.as_cpu_tensor()
 
     # Invalid device
     with self.assertRaises(errors.InvalidArgumentError):
-      cpu.as_gpu_tensor(context.context().num_gpus() + 1)
+      x.as_gpu_tensor(context.context().num_gpus() + 1)
 
   def testNumpyForceCPU(self):
     if not context.context().num_gpus():
@@ -274,7 +268,8 @@ class TFETest(test_util.TensorFlowTestCase):
     product = execute.execute(
         'MatMul',
         num_outputs=1,
-        inputs=[tensor.Tensor([[3]]), tensor.Tensor([[5]])],
+        inputs=[tensor.Tensor([[3]]),
+                tensor.Tensor([[5]])],
         attrs=('transpose_a', True, 'transpose_b', False, 'T',
                dtypes.int32.as_datatype_enum))[0]
     self.assertEqual([[15]], product.numpy())
@@ -475,8 +470,8 @@ class TFETest(test_util.TensorFlowTestCase):
     with context.device('gpu:0'):
       y = truncated_normal(shape)
     # Add would fail if x and y were not on the same device.
-    execute.execute('Add', 1, inputs=[x, y],
-                    attrs=('T', x.dtype.as_datatype_enum))
+    execute.execute(
+        'Add', 1, inputs=[x, y], attrs=('T', x.dtype.as_datatype_enum))
 
   def testInvalidDevice(self):
     with self.assertRaises(ValueError):

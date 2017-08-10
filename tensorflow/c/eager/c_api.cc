@@ -201,39 +201,25 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   if (!status->status.ok()) return nullptr;
 
   tensorflow::Device* srcd = h->d == nullptr ? ctx->devices()[0] : h->d;
-  const bool src_cpu = IsCPU(srcd);
+  bool is_same_device =
+      (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
-  if (!src_cpu && !dst_cpu) {
+  if (is_same_device) {
+    return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
+  }
+  const bool src_cpu = IsCPU(srcd);
+  if (src_cpu == dst_cpu) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         tensorflow::strings::StrCat(
             "TFE_TensorHandleCopyToDevice requires either the source "
-            "TFE_TensorHandle be on or the destination device be CPU (they "
-            "are ",
+            "TFE_TensorHandle be on or the destination device be on CPU "
+            "or be the same (they are ",
             DeviceName(srcd), " and ", DeviceName(dstd), " in this call)")
             .c_str());
     return nullptr;
   }
   tensorflow::Tensor* src = &(h->t);
-  if (src_cpu && dst_cpu) {
-    // There must be a better way, but for now redirect through proto to ensure
-    // that the underlying buffers are not shared.
-    tensorflow::TensorProto proto;
-    src->AsProtoTensorContent(&proto);
-    tensorflow::Tensor dst(src->dtype(), src->shape());
-    if (!dst.FromProto(proto)) {
-      TF_SetStatus(
-          status, TF_INTERNAL,
-          tensorflow::strings::StrCat(
-              "error copying between TFE_TensorHandles on CPU. Consider filing "
-              "a bug report at https://github.com/tensorflow/tensorflow/issues "
-              "mentioning version: ",
-              TF_Version(), " and ", __FILE__, ":", __LINE__)
-              .c_str());
-      return nullptr;
-    }
-    return new TFE_TensorHandle(dst, nullptr);
-  }
   if (src_cpu) {
     tensorflow::Tensor dst(
         dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
