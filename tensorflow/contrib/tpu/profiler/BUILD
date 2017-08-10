@@ -20,6 +20,8 @@ cc_binary(
     visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
     deps = [
         ":tpu_profiler_proto_cc",
+        ":trace_events_proto_cc",
+        ":trace_events_to_json",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -34,4 +36,27 @@ tf_proto_library(
     srcs = ["trace_events.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "trace_events_to_json",
+    srcs = ["trace_events_to_json.cc"],
+    hdrs = ["trace_events_to_json.h"],
+    deps = [
+        ":trace_events_proto_cc",
+        "//tensorflow/core:lib",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+cc_test(
+    name = "trace_events_to_json_test",
+    srcs = ["trace_events_to_json_test.cc"],
+    deps = [
+        ":trace_events_to_json",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@jsoncpp_git//:jsoncpp",
+    ],
 )

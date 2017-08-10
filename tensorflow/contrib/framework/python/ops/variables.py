@@ -37,6 +37,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ['add_model_variable',
@@ -82,7 +83,7 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
       resource_loader.get_path_to_datafile("_variable_ops.so"))
   return gen_variable_ops.zero_initializer(ref, name=name)
 
-
+@deprecated(None, "Please switch to tf.train.assert_global_step")
 def assert_global_step(global_step_tensor):
   training_util.assert_global_step(global_step_tensor)
 
@@ -110,11 +111,11 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
     assert_global_step(global_step_tensor)
   return global_step_tensor
 
-
+@deprecated(None, "Please switch to tf.train.get_global_step")
 def get_global_step(graph=None):
   return training_util.get_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.create_global_step")
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
@@ -132,7 +133,7 @@ def create_global_step(graph=None):
   """
   return training_util.create_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.get_or_create_global_step")
 def get_or_create_global_step(graph=None):
   """Returns and create (if necessary) the global step tensor.
 

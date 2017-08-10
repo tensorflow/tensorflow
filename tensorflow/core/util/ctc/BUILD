@@ -2,7 +2,9 @@
 # is a type of seq2seq loss.  The libraries in this directory
 # implement the CTC loss and a number of CTC decoders.
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])  # Apache 2.0
 

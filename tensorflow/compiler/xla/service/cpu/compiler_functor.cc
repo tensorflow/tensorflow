@@ -69,8 +69,23 @@ operator()(llvm::Module& module) const {
     TF_CHECK_OK(pre_optimization_hook_(module));
   }
 
+  // Add the appropriate TargetLibraryInfo and TargetTransformInfo.
+  AddTargetInfoPasses(&module_passes);
+
   // Build up optimization pipeline.
-  AddOptimizationPasses(&module_passes, &function_passes);
+  if (optimize_for_size_) {
+    // Optimizing for size turns on -O2 level optimizations.
+    //
+    // TODO(b/64153864): Although the code generator supports size_level = 2 to
+    // turn on more aggressive code size optimizations than size_level = 1, we
+    // pass size_level = 1 because in many cases a size_level of 2 does
+    // worse. Investigate why.
+    AddOptimizationPasses(&module_passes, &function_passes, /*opt_level=*/2,
+                          /*size_level=*/1);
+  } else {
+    AddOptimizationPasses(&module_passes, &function_passes,
+                          /*opt_level=*/opt_level_, /*size_level=*/0);
+  }
 
   // Run optimization passes on module.
   function_passes.doInitialization();
@@ -115,10 +130,12 @@ operator()(llvm::Module& module) const {
   std::unique_ptr<llvm::object::ObjectFile> object_file =
       std::move(object_file_or_error.get());
   if (VLOG_IS_ON(2)) {
-    StatusOr<string> disassembly_status =
+    StatusOr<DisassemblerResult> disassembly_status =
         disassembler_->DisassembleObjectFile(*object_file);
     if (disassembly_status.ok()) {
-      XLA_VLOG_LINES(2, disassembly_status.ValueOrDie());
+      auto result = disassembly_status.ValueOrDie();
+      XLA_VLOG_LINES(2, result.text);
+      VLOG(2) << "compiled code size: " << result.code_size_bytes << " bytes";
     }
   }
 
@@ -184,9 +201,8 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
 }
 }  // namespace
 
-void CompilerFunctor::AddOptimizationPasses(
-    llvm::legacy::PassManagerBase* module_passes,
-    llvm::legacy::FunctionPassManager* function_passes) const {
+void CompilerFunctor::AddTargetInfoPasses(
+    llvm::legacy::PassManagerBase* passes) const {
   llvm::Triple target_triple(target_machine_->getTargetTriple());
   auto target_library_info_impl =
       MakeUnique<llvm::TargetLibraryInfoImpl>(target_triple);
@@ -194,16 +210,21 @@ void CompilerFunctor::AddOptimizationPasses(
       VectorFunctionsForTargetLibraryInfoImpl(
           target_triple.getArch(), target_machine_->getTargetFeatureString(),
           available_intrinsics_));
-  module_passes->add(
+  passes->add(
       new llvm::TargetLibraryInfoWrapperPass(*target_library_info_impl));
-  module_passes->add(createTargetTransformInfoWrapperPass(
+  passes->add(createTargetTransformInfoWrapperPass(
       target_machine_->getTargetIRAnalysis()));
+}
 
+void CompilerFunctor::AddOptimizationPasses(
+    llvm::legacy::PassManagerBase* module_passes,
+    llvm::legacy::FunctionPassManager* function_passes, unsigned opt_level,
+    unsigned size_level) const {
   llvm::PassManagerBuilder builder;
-  builder.OptLevel = opt_level_;
-  builder.SizeLevel = 0;
+  builder.OptLevel = opt_level;
+  builder.SizeLevel = size_level;
 
-  if (opt_level_ > 1) {
+  if (opt_level > 1) {
     builder.Inliner = llvm::createFunctionInliningPass();
   } else {
     // Only inline functions marked with "alwaysinline".
@@ -211,9 +232,9 @@ void CompilerFunctor::AddOptimizationPasses(
   }
 
   builder.DisableUnitAtATime = false;
-  builder.DisableUnrollLoops = opt_level_ == 0;
-  builder.LoopVectorize = opt_level_ > 0;
-  builder.SLPVectorize = opt_level_ > 1;
+  builder.DisableUnrollLoops = opt_level == 0;
+  builder.LoopVectorize = opt_level > 0 && size_level == 0;
+  builder.SLPVectorize = opt_level > 1 && size_level == 0;
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);

@@ -30,6 +30,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 
 py_library(
     name = "python",
@@ -60,6 +61,7 @@ py_library(
         ":gradient_checker",
         ":histogram_ops",
         ":image_ops",
+        ":initializers_ns",
         ":io_ops",
         ":lib",
         ":math_ops",
@@ -80,6 +82,7 @@ py_library(
         ":training",
         ":ops",
         ":saver_test_utils",
+        ":subscribe",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         ":weights_broadcast_ops",
@@ -404,6 +407,18 @@ py_library(
 )
 
 py_library(
+    name = "subscribe",
+    srcs = ["framework/subscribe.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework_ops",
+        ":platform",
+        ":variables",
+    ],
+)
+
+py_library(
     name = "framework",
     srcs = [
         "framework/framework_lib.py",
@@ -411,7 +426,6 @@ py_library(
         "framework/importer.py",
         "framework/load_library.py",
         "framework/meta_graph.py",
-        "framework/subscribe.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -729,6 +743,7 @@ py_test(
         ":math_ops",
         ":platform_test",
         ":script_ops",
+        ":subscribe",
     ],
 )
 
@@ -948,6 +963,15 @@ py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
+)
+
+py_test(
+    name = "framework_pip_dependencies_test",
+    size = "small",
+    srcs = ["framework/pip_dependencies_test.py"],
+    main = "framework/pip_dependencies_test.py",
+    srcs_version = "PY2AND3",
+    deps = [":client_testlib"],
 )
 
 py_test(
@@ -1546,6 +1570,16 @@ py_library(
 )
 
 py_library(
+    name = "initializers_ns",
+    srcs = ["ops/initializers_ns.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":init_ops",
+        ":variables",
+    ],
+)
+
+py_library(
     name = "io_ops",
     srcs = ["ops/io_ops.py"],
     srcs_version = "PY2AND3",
@@ -2135,6 +2169,7 @@ py_library(
         ":resource_variable_ops",
         ":tensor_shape",
         ":variables",
+        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
@@ -2326,6 +2361,7 @@ cuda_py_test(
         ":math_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2343,6 +2379,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2423,6 +2460,7 @@ cuda_py_test(
         ":special_math_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_library(
@@ -2822,7 +2860,8 @@ tf_py_wrap_cc(
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
-         tf_additional_mpi_deps()),
+         tf_additional_mpi_deps() +
+         tf_additional_gdr_deps()),
 )
 
 py_library(
@@ -3224,7 +3263,7 @@ cuda_py_test(
 
 cuda_py_tests(
     name = "training_tests",
-    size = "small",
+    size = "medium",
     srcs = [
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
@@ -3586,6 +3625,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/estimator:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3700,7 +3740,7 @@ py_test(
 
 cuda_py_test(
     name = "layers_normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/normalization_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3713,6 +3753,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     main = "layers/normalization_test.py",
+    shard_count = 10,
 )
 
 # -----------------------------------------------------------------------------

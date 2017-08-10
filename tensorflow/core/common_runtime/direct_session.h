@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
@@ -111,8 +112,8 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Graph* graph = nullptr;
-    std::unique_ptr<FunctionLibraryRuntime> flib;
+    Graph* graph = nullptr;                  // not owned.
+    FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
   };
 
@@ -125,6 +126,8 @@ class DirectSession : public Session {
   // 'input_keys' are the rendezvous keys for the feeds and 'output_keys'
   // are rendezvous keys for the fetches.
   // 'flib_def' is the function library used by graphs in 'items'.
+  // 'proc_flr' is the collection of FunctionLibraryRuntime objects, one per
+  // device.
   // TODO(phawkins): currently partitions always share the same function
   // library. Consider giving each partition its own function library to enable
   // per-partition rewrites.
@@ -135,6 +138,7 @@ class DirectSession : public Session {
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
+    std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, size_t> input_name_to_index;
     std::unordered_map<string, string> input_name_to_rendezvous_key;

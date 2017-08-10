@@ -179,11 +179,10 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   void CleanupPartitionsAsync(int64 step_id, StatusCallback done);
 
   // Post-processing of any runtime statistics gathered during execution.
-  void ProcessStats(int64 step_id, PerStepState* pss,
-                    ProfileHandler* ph, const RunOptions& options,
-                    RunMetadata* resp);
-  void ProcessDeviceStats(ProfileHandler* ph,
-                          const DeviceStepStats& ds, bool is_rpc);
+  void ProcessStats(int64 step_id, PerStepState* pss, ProfileHandler* ph,
+                    const RunOptions& options, RunMetadata* resp);
+  void ProcessDeviceStats(ProfileHandler* ph, const DeviceStepStats& ds,
+                          bool is_rpc);
   // Checks that the requested fetches can be computed from the provided feeds.
   Status CheckFetches(const RunStepRequestWrapper& req,
                       const RunState* run_state,
@@ -1301,6 +1300,9 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
   // Registers subgraphs if haven't done so.
   PartitionOptions popts;
   popts.node_to_loc = SplitByWorker;
+  // The closures potps.{new_name,get_incarnation} are called synchronously in
+  // RegisterPartitions() below, so do not need a Ref()/Unref() pair to keep
+  // "this" alive during the closure.
   popts.new_name = [this](const string& prefix) {
     mutex_lock l(mu_);
     return strings::StrCat(prefix, "_S", next_node_id_++);
@@ -1438,6 +1440,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     ReffedClientGraph* rcg = run_state->rcg;
     run_state->pss.end_micros = Env::Default()->NowMicros();
     // Schedule post-processing and cleanup to be done asynchronously.
+    Ref();
     rcg->Ref();
     rcg->ProcessStats(run_state->step_id, &run_state->pss, run_state->ph.get(),
                       req.options(), resp->mutable_metadata());
@@ -1449,6 +1452,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
           }
           rcg->Unref();
           MarkRunCompletion();
+          Unref();
         });
     mutex_lock l(mu_);
     partial_runs_.erase(prun_handle);
@@ -1560,6 +1564,7 @@ Status MasterSession::DoRunWithLocalExecution(
       }
     }
   }
+  Ref();
   rcg->Ref();
   cleanup.release();  // MarkRunCompletion called in done closure.
   rcg->CleanupPartitionsAsync(step_id, [this, rcg](const Status& s) {
@@ -1568,6 +1573,7 @@ Status MasterSession::DoRunWithLocalExecution(
     }
     rcg->Unref();
     MarkRunCompletion();
+    Unref();
   });
   return s;
 }

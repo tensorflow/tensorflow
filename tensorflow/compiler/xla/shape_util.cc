@@ -362,6 +362,35 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
 }
 
+namespace {
+
+// Class to memoize the computation of
+//   tensorflow::str_util::Lowercase(PrimitiveType_Name(p))
+// for all PrimitiveType values "p"
+class PrimitiveTypeNameGenerator {
+ public:
+  PrimitiveTypeNameGenerator() {
+    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+      if (PrimitiveType_IsValid(i)) {
+        lowercase_name_[i] = tensorflow::str_util::Lowercase(
+            PrimitiveType_Name(static_cast<PrimitiveType>(i)));
+      }
+    }
+  }
+  const string& LowercaseName(PrimitiveType t) {
+    return lowercase_name_[static_cast<int>(t)];
+  }
+
+ private:
+  string lowercase_name_[PrimitiveType_ARRAYSIZE];
+};
+
+const string& LowercasePrimitiveTypeName(PrimitiveType s) {
+  static PrimitiveTypeNameGenerator* gen = new PrimitiveTypeNameGenerator();
+  return gen->LowercaseName(s);
+}
+}  // namespace
+
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.element_type() == TUPLE) {
     string text = "(";
@@ -374,18 +403,22 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     text += ")";
     return text;
   } else {
-    string layout;
+    string result = tensorflow::strings::StrCat(
+        LowercasePrimitiveTypeName(shape.element_type()), "[");
+    for (int i = 0; i < shape.dimensions().size(); i++) {
+      tensorflow::strings::StrAppend(&result, (i > 0) ? "," : "",
+                                     shape.dimensions(i));
+    }
+    result += "]";
     if (!IsScalar(shape) && !IsOpaque(shape)) {
       if (LayoutUtil::HasLayout(shape)) {
-        layout = LayoutUtil::HumanString(shape.layout());
+        tensorflow::strings::StrAppend(&result,
+                                       LayoutUtil::HumanString(shape.layout()));
       } else {
-        layout = "{no layout}";
+        tensorflow::strings::StrAppend(&result, "{no layout}");
       }
     }
-    return tensorflow::strings::StrCat(
-        tensorflow::str_util::Lowercase(
-            PrimitiveType_Name(shape.element_type())),
-        "[", tensorflow::str_util::Join(shape.dimensions(), ","), "]", layout);
+    return result;
   }
 }
 

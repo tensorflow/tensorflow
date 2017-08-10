@@ -679,9 +679,15 @@ bool RemoveIdentityNodes(Graph* g) {
   bool removed_any = false;
   gtl::InlinedVector<Node*, 8> matches;
   for (Node* n : g->nodes()) {
-    if (n->IsIdentity() && GetTheOnlyDataEdge(n->in_edges())) {
-      matches.push_back(n);
-    }
+    if (!n->IsIdentity()) continue;
+    if (!GetTheOnlyDataEdge(n->in_edges())) continue;
+
+    // Some identity nodes are used as sink nodes to give names to output
+    // tensors. These nodes are not going to be executed unless they are in the
+    // fetch set. But if they are in the fetch set we don't want to remove them.
+    if (n->out_edges().empty()) continue;
+
+    matches.push_back(n);
   }
   if (!matches.empty()) {
     for (Node* n : matches) {

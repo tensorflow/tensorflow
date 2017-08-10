@@ -3227,6 +3227,16 @@ class SeparableConv2dTest(test.TestCase):
           for model_variable in model_variables:
             self.assertEqual(trainable, model_variable in trainable_variables)
 
+  def testConvNCHW(self):
+    for num_filters, correct_output_filters in [(None, 6), (8, 8)]:
+      with self.test_session():
+        height, width = 3, 3
+        images = random_ops.random_uniform((5, 3, height, width), seed=1)
+        output = layers_lib.separable_conv2d(
+            images, num_filters, [3, 3], 2, padding='VALID', data_format='NCHW')
+        self.assertListEqual(
+            output.get_shape().as_list(), [5, correct_output_filters, 1, 1])
+
 
 class ScaleGradientTests(test.TestCase):
   """Simple tests of the scale_gradient function."""

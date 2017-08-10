@@ -120,6 +120,7 @@ class BatchNormalization(base.Layer):
     self.gamma_regularizer = gamma_regularizer
     self.renorm = renorm
     self.fused = fused
+    self._bessels_correction_test_only = True
     if self.fused and renorm:
       raise ValueError(
           'Batch renorm is currently not supported with fused batch norm.')
@@ -272,6 +273,14 @@ class BatchNormalization(base.Layer):
 
     output, mean, variance = utils.smart_cond(
         training, _fused_batch_norm_training, _fused_batch_norm_inference)
+    if not self._bessels_correction_test_only:
+      # Remove Bessel's correction to be consistent with non-fused batch norm.
+      # Note that the variance computed by fused batch norm is
+      # with Bessel's correction.
+      sample_size = math_ops.cast(
+          array_ops.size(inputs) / array_ops.size(variance), variance.dtype)
+      factor = (sample_size - math_ops.cast(1.0, variance.dtype)) / sample_size
+      variance *= factor
 
     training_value = utils.constant_value(training)
     if training_value is not False:

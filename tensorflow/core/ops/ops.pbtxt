@@ -7135,7 +7135,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels (height x width) and the bounding\nbox is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of\nthe bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -9882,6 +9882,25 @@ op {
     type: "type"
   }
   summary: "Return a tensor with the same shape and contents as the input tensor or value."
+}
+op {
+  name: "IdentityN"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Returns a list of tensors with the same shapes and contents as the input"
+  description: "tensors.\n\nThis op can be used to override the gradient for complicated functions. For\nexample, suppose y = f(x) and we wish to apply a custom function g for backprop\nsuch that dx = g(dy). In Python,\n\n```python\nwith tf.get_default_graph().gradient_override_map(\n    {\'IdentityN\': \'OverrideGradientWithG\'}):\n  y, _ = identity_n([f(x), x])\n\n@tf.RegisterGradient(\'OverrideGradientWithG\')\ndef ApplyG(op, dy, _):\n  return [None, g(dy)]  # Do not backprop to f(x).\n```"
 }
 op {
   name: "IdentityReader"
@@ -15577,6 +15596,36 @@ op {
   }
   summary: "Computes the power of one value to another."
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
+}
+op {
+  name: "PrefetchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The maximum number of elements to buffer in an iterator over\nthis dataset."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that asynchronously prefetches elements from `input_dataset`."
+  is_stateful: true
 }
 op {
   name: "PreventGradient"
