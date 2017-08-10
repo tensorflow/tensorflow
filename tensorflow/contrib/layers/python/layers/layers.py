@@ -2548,7 +2548,8 @@ def separable_convolution2d(
       dtype = inputs.dtype.base_dtype
       kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
       stride_h, stride_w = utils.two_element_tuple(stride)
-      num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+      num_filters_in = utils.channel_dimension(
+          inputs.get_shape(), df, min_rank=4)
       weights_collections = utils.get_variable_collections(
           variables_collections, 'weights')
 
