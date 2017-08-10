@@ -2065,7 +2065,7 @@ tf.imag(input) ==> [4.75, 5.75]
 ```
 )doc");
 
-REGISTER_OP("Arg")
+REGISTER_OP("Angle")
     .Input("input: T")
     .Output("output: Tout")
     .Attr("T: {complex64, complex128} = DT_COMPLEX64")
@@ -2085,8 +2085,12 @@ For example:
 
 ```
 # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.arg(input) ==> [2.0132, 1.056]
+tf.angle(input) ==> [2.0132, 1.056]
 ```
+
+@compatibility(numpy)
+Equivalent to np.angle.
+@end_compatibility
 )doc");
 
 REGISTER_OP("Conj")

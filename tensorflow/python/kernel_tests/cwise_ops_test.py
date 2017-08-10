@@ -1935,32 +1935,32 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareRealImag(cplx, use_gpu=False)
     self._compareRealImag(cplx, use_gpu=True)
 
-  def _compareArg(self, cplx, use_gpu):
-    np_arg = np.angle(cplx)
+  def _compareAngle(self, cplx, use_gpu):
+    np_angle = np.angle(cplx)
     with self.test_session(use_gpu=use_gpu) as sess:
       inx = ops.convert_to_tensor(cplx)
-      tf_arg = math_ops.arg(inx)
-      tf_arg_val = sess.run([tf_arg])
-    self.assertAllEqual(np_arg, tf_arg_val)
-    self.assertShapeEqual(np_arg, tf_arg)
+      tf_angle = math_ops.angle(inx)
+      tf_angle_val = sess.run([tf_angle])
+    self.assertAllEqual(np_angle, tf_angle_val)
+    self.assertShapeEqual(np_angle, tf_angle)
 
-  def testArg64(self):
+  def testAngle64(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
     imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
     cplx = real + 1j * imag
-    self._compareArg(cplx, use_gpu=False)
-    # TODO: Enable GPU tests for arg op after resolving
+    self._compareAngle(cplx, use_gpu=False)
+    # TODO: Enable GPU tests for angle op after resolving
     # build failures on GPU (See #10643 for context).
-    # self._compareArg(cplx, use_gpu=True)
+    # self._compareAngle(cplx, use_gpu=True)
 
-  def testArg128(self):
+  def testAngle(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
     imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
     cplx = real + 1j * imag
-    self._compareArg(cplx, use_gpu=False)
-    # TODO: Enable GPU tests for arg op after resolving
+    self._compareAngle(cplx, use_gpu=False)
+    # TODO: Enable GPU tests for angle op after resolving
     # build failures on GPU (See #10643 for context).
-    # self._compareArg(cplx, use_gpu=True)
+    # self._compareAngle(cplx, use_gpu=True)
 
   def testRealReal(self):
     for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32, dtypes_lib.float64:

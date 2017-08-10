@@ -1015,8 +1015,8 @@ def _ImagGrad(_, grad):
   return math_ops.complex(zero, grad)
 
 
-@ops.RegisterGradient("Arg")
-def _ArgGrad(op, grad):
+@ops.RegisterGradient("Angle")
+def _AngleGrad(op, grad):
   """Returns -grad / (Im(x) + iRe(x))"""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):

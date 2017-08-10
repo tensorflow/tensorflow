@@ -17,16 +17,16 @@ limitations under the License.
 
 namespace tensorflow {
 #define REGISTER_COMPLEX(D, R, C)                         \
-  REGISTER_KERNEL_BUILDER(Name("Arg")                     \
+  REGISTER_KERNEL_BUILDER(Name("Angle")                   \
                               .Device(DEVICE_##D)         \
                               .TypeConstraint<C>("T")     \
                               .TypeConstraint<R>("Tout"), \
-                          UnaryOp<D##Device, functor::get_arg<C>>);
+                          UnaryOp<D##Device, functor::get_angle<C>>);
 
 REGISTER_COMPLEX(CPU, float, complex64);
 REGISTER_COMPLEX(CPU, double, complex128);
 
-// TODO: Enable GPU support for arg op after resolving
+// TODO: Enable GPU support for angle op after resolving
 // build failures on GPU (See #10643 for context).
 #if 0 && GOOGLE_CUDA
 REGISTER_COMPLEX(GPU, float, complex64);

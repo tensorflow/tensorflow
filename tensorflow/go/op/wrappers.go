@@ -9836,9 +9836,9 @@ func ArgTout(value tf.DataType) ArgAttr {
 // 
 // ```
 // # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.arg(input) ==> [2.0132, 1.056]
+// tf.angle(input) ==> [2.0132, 1.056]
 // ```
-func Arg(scope *Scope, input tf.Output, optional ...ArgAttr) (output tf.Output) {
+func Angle(scope *Scope, input tf.Output, optional ...ArgAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -9847,7 +9847,7 @@ func Arg(scope *Scope, input tf.Output, optional ...ArgAttr) (output tf.Output) 
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "Arg",
+		Type: "Angle",
 		Input: []tf.Input{
 			input,
 		},

@@ -681,7 +681,7 @@ class CWiseUnaryComplexGradTest : public ::testing::Test {
   CWiseUnaryComplexGradTest()
       : scope_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
 
-  enum UnaryOpType { REAL, IMAG, ARG, CONJ };
+  enum UnaryOpType { REAL, IMAG, ANGLE, CONJ };
 
   void TestCWiseGradComplex(UnaryOpType op_type, const Tensor& x,
                             const Tensor& dy, const Tensor& dx_expected) {
@@ -693,8 +693,8 @@ class CWiseUnaryComplexGradTest : public ::testing::Test {
       case IMAG:
         y = Imag(scope_, x);
         break;
-      case ARG:
-        y = Arg(scope_, x);
+      case ANGLE:
+        y = Angle(scope_, x);
         break;
       case CONJ:
         y = Conj(scope_, x);
@@ -730,7 +730,7 @@ TEST_F(CWiseUnaryComplexGradTest, Imag) {
   TestCWiseGradComplex(IMAG, x, dy, dx_expected);
 }
 
-TEST_F(CWiseUnaryComplexGradTest, Arg) {
+TEST_F(CWiseUnaryComplexGradTest, Angle) {
   Tensor x = test::AsTensor<complex64>(
       {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
   Tensor dy = test::AsTensor<float>({11, -12, 13, -14, 15, -16}, {2, 3});
@@ -738,7 +738,7 @@ TEST_F(CWiseUnaryComplexGradTest, Arg) {
       {{5.5, 5.5}, {3, 3},
        {2.1666666666666665, 2.1666666666666665}, {1.75, 1.75},
        {0.9375, 0.9375}, {0.8888888888888888, 0.8888888888888888}}, {2, 3});
-  TestCWiseGradComplex(ARG, x, dy, dx_expected);
+  TestCWiseGradComplex(ANGLE, x, dy, dx_expected);
 }
 
 TEST_F(CWiseUnaryComplexGradTest, Conj) {

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO: Enable GPU support for arg op after resolving
+// TODO: Enable GPU support for angle op after resolving
 // build failures on GPU (See #10643 for context).
 #if 0 && GOOGLE_CUDA
 
@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-DEFINE_UNARY2(get_arg, complex64, complex128);
+DEFINE_UNARY2(get_angle, complex64, complex128);
 }  // namespace functor
 }  // namespace tensorflow
 

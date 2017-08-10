@@ -831,7 +831,7 @@ struct get_imag
     : base<T, Eigen::internal::scalar_imag_op<T>, typename T::value_type> {};
 
 template <typename T>
-struct get_arg
+struct get_angle
     : base<T, Eigen::internal::scalar_arg_op<T>, typename T::value_type> {};
 
 template <typename T>

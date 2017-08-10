@@ -100,7 +100,7 @@ See the @{$python/math_ops} guide.
 @@complex
 @@conj
 @@imag
-@@arg
+@@angle
 @@real
 @@fft
 @@ifft
@@ -646,7 +646,7 @@ def imag(input, name=None):
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
 
 
-def arg(input, name=None):
+def angle(input, name=None):
   r"""Returns the argument of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -660,7 +660,7 @@ def arg(input, name=None):
 
   ```
   # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-  tf.arg(input) ==> [2.0132, 1.056]
+  tf.angle(input) ==> [2.0132, 1.056]
   ```
 
   Args:
@@ -671,8 +671,8 @@ def arg(input, name=None):
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
-  with ops.name_scope(name, "Arg", [input]) as name:
-    return gen_math_ops.arg(input, Tout=input.dtype.real_dtype, name=name)
+  with ops.name_scope(name, "Angle", [input]) as name:
+    return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin
