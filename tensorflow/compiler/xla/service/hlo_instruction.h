@@ -642,6 +642,16 @@ class HloInstruction {
   // Predondition: 'instruction_to_merge' must be an operand of 'this'.
   void MergeFusionInstruction(HloInstruction* instruction_to_merge);
 
+  // Merges the fused instructions from 'instruction_to_merge' into the
+  // fused instruction set of 'this' and generate multioutput fusion
+  // instructions. All the user of instruction_to_merge will be redirected
+  // to 'this' instruction. `instruction_to_merge' will be removed from its
+  // parent computation.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  void MergeFusionInstructionIntoMultiOutput(
+      HloInstruction* instruction_to_merge);
+
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion
   // instruction. instruction_to_fuse is unchanged. Instruction is cloned rather
@@ -651,7 +661,21 @@ class HloInstruction {
   // and significantly complicate code generation.
   //
   // Precondition: this->opcode() == HloOpcode::kFusion
-  HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);
+  HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse) {
+    return FuseInstructionInternal(instruction_to_fuse);
+  }
+
+  // Fuses the given instruction in this fusion instruction and generate
+  // multioutput fusion instruction. A clone of the instruction_to_fuse will
+  // be part of the output of fusion instructions. The users of
+  // instruction_to_fuse will be redirected to this fusion instructions.
+  // instruction_to_fuse will be removed from its parent computation.
+  //
+  // Precondition: this->opcode() == HloOpcode::kFusion
+  HloInstruction* FuseInstructionIntoMultiOutput(
+      HloInstruction* instruction_to_fuse) {
+    return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
+  }
 
   // Returns the start index in the given dimension for a slice node.
   //
@@ -891,11 +915,28 @@ class HloInstruction {
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
+  // Fuses the given instruction into this fusion instruction. When add_output
+  // is false (which is the default), instruction_to_fuse is cloned and the
+  // clone is placed in the fusion instruction. instruction_to_fuse is
+  // unchanged.
+  //
+  // When add_output is true, a clone of the instruction_to_fuse will be part
+  // of the output of fusion instructions. The users of instruction_to_fuse
+  // will be redirected to this fusion instructions. instruction_to_fuse will
+  // be removed from its parent computation.
+  //
+  // Precondition: this->opcode() == HloOpcode::kFusion
+  HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
+                                          bool add_output = false);
+
   // Clones the given instruction_to_fuse and insert the clone into this fusion
-  // instruction.
+  // instruction. If add_output is true, a clone of instruction_to_fuse will
+  // be in the output of the this fusion instruction (part of the tuple of the
+  // fusion root).
   //
   // Precondition: opcode() == HloOpcode::kFusion
-  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse);
+  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse,
+                                       bool add_output = false);
 
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(

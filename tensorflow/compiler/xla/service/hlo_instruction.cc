@@ -548,19 +548,81 @@ void HloInstruction::MergeFusionInstruction(
   clone->DetachFromOperands();
 }
 
-HloInstruction* HloInstruction::FuseInstruction(
-    HloInstruction* instruction_to_fuse) {
+void HloInstruction::MergeFusionInstructionIntoMultiOutput(
+    HloInstruction* instruction_to_merge) {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
+  CHECK_EQ(instruction_to_merge->opcode(), HloOpcode::kFusion);
+  // Add all non-parameter fused instructions to 'unfused_instructions' to be
+  // merged into 'this'. `old_to_new' maps the instructions in the fused node
+  // to the disaseembled fusion instructions.
+  // Note that we add the unfused instructions to this->parent_ computation.
+  // This is necessary because the unique_id needs for an instruction and
+  // it's only added when inserting to the computation.
+  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> old_to_new;
+  std::vector<HloInstruction*> unfused_instructions;
+  auto computation_to_merge =
+      instruction_to_merge->fused_instructions_computation();
+  auto post_order = computation_to_merge->MakeInstructionPostOrder();
+  for (auto rit = post_order.rbegin(); rit != post_order.rend(); ++rit) {
+    auto fused_instruction = *rit;
+    if (fused_instruction->opcode() == HloOpcode::kParameter) {
+      InsertOrDie(&old_to_new, fused_instruction,
+                  instruction_to_merge->mutable_operand(
+                      fused_instruction->parameter_number()));
+      continue;
+    }
+
+    // Here we clone the insertion and call FuseInstructionIntoMultiOutput()
+    // which clones again. This can be improved.
+    auto cloned_instruction =
+        parent_->AddInstruction(fused_instruction->Clone());
+    unfused_instructions.push_back(cloned_instruction);
+    InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
+  }
+  for (auto unfused_instruction : unfused_instructions) {
+    for (int64 index = 0; index < unfused_instruction->operand_count();
+         index++) {
+      auto new_operand =
+          FindOrDie(old_to_new, unfused_instruction->mutable_operand(index));
+      TF_CHECK_OK(unfused_instruction->ReplaceOperandWith(index, new_operand));
+    }
+  }
+
+  HloInstruction* unfused_root = unfused_instructions.front();
+  TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
+
+  TF_CHECK_OK(
+      instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
+  if (GetModule()) {
+    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
+  }
+
+  // Fuse the root instruction and generate multiple outputs.
+  FuseInstructionIntoMultiOutput(unfused_root);
+  // The rest instructions are of normal fusing.
+  for (int64 i = 1; i < unfused_instructions.size(); i++) {
+    auto instruction = unfused_instructions[i];
+    FuseInstruction(instruction);
+  }
+}
+
+HloInstruction* HloInstruction::FuseInstructionInternal(
+    HloInstruction* instruction_to_fuse, bool add_output) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
 
-  // This fusion instruction must be a user of instruction_to_fuse.
-  CHECK(IsUserOf(instruction_to_fuse));
-  HloInstruction* fused_instruction = CloneAndFuseInternal(instruction_to_fuse);
+  // When add_output is false, this fusion instruction must be a user of
+  // instruction_to_fuse.
+  if (!add_output) {
+    CHECK(IsUserOf(instruction_to_fuse));
+  }
+  HloInstruction* fused_instruction =
+      CloneAndFuseInternal(instruction_to_fuse, add_output);
   CheckFusionInstruction();
   return fused_instruction;
 }
 
 HloInstruction* HloInstruction::CloneAndFuseInternal(
-    HloInstruction* instruction_to_fuse) {
+    HloInstruction* instruction_to_fuse, bool add_output) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(instruction_to_fuse->IsFusable());
   if (GetModule()) {
@@ -568,7 +630,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   }
   HloInstruction* clone = nullptr;
   if (called_computations_.empty()) {
-    // New fusion instruction.
+    // New fusion instruction. It should not be a multioutput instruction.
+    CHECK(!add_output);
     auto builder = HloComputation::Builder("fused_computation", true);
     builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
     called_computations_.push_back(
@@ -579,13 +642,15 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     clone = fused_instructions_computation()->AddInstruction(
         instruction_to_fuse->Clone(/*suffix=*/""));
     clone->parent_fusion_instruction_ = this;
-    // instruction_to_fuse is necessarily an operand of the fusion instruction.
-    // After fusion this will no longer be the case. Remove the operand from the
-    // operand list and remove its corresponding fused parameter
-    // instruction. Renumber parameters as necessary to make parameter numbers
-    // consistent with their index in the fused_parameter_ vector.
-    CHECK(std::find(operands_.begin(), operands_.end(), instruction_to_fuse) !=
-          operands_.end());
+    // When add_output is false, instruction_to_fuse is necessarily an operand
+    // of the fusion instruction. After fusion this will no longer be the case.
+    // Remove the operand from the operand list and remove its corresponding
+    // fused parameter instruction. Renumber parameters as necessary to make
+    // parameter numbers consistent with their index in the
+    // fused_parameter_ vector.
+    bool in_operand_list = std::find(operands_.begin(), operands_.end(),
+                                     instruction_to_fuse) != operands_.end();
+    CHECK(add_output || in_operand_list);
     const std::vector<HloInstruction*>& fused_parameters_ =
         fused_instructions_computation()->parameter_instructions();
     for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -604,7 +669,14 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     }
     // We've cloned instruction_to_fuse into this fusion instruction, so this
     // fusion instruction is no longer a use of instruction_to_fuse.
-    instruction_to_fuse->RemoveUser(this);
+    if (in_operand_list) {
+      instruction_to_fuse->RemoveUser(this);
+      // When the instruction_to_fuse does not have other users, we don't need
+      // to generate a multioutput fusion instruction.
+      if (instruction_to_fuse->user_count() == 0) {
+        add_output = false;
+      }
+    }
   }
 
   // Reread the parameters in the computation.
@@ -647,6 +719,69 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       AppendOperand(operand);
     }
     TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
+  }
+
+  if (add_output) {
+    CHECK_GT(instruction_to_fuse->user_count(), 0);
+    // If this is already a multioutput fusion instruction, expand the root
+    // tuple by 1.
+    HloInstruction* fused_root = fused_expression_root();
+    std::vector<HloInstruction*> tuple_elements;
+    bool newly_created_tuple_instr = false;
+    if (fused_root->opcode() == HloOpcode::kTuple) {
+      tuple_elements = fused_root->operands();
+    } else {
+      tuple_elements.push_back(fused_root);
+      newly_created_tuple_instr = true;
+    }
+    if (clone->opcode() == HloOpcode::kTuple) {
+      const auto& tuple_elements_to_fuse = clone->operands();
+      tuple_elements.insert(tuple_elements.end(),
+                            tuple_elements_to_fuse.begin(),
+                            tuple_elements_to_fuse.end());
+    } else {
+      tuple_elements.push_back(clone);
+    }
+    HloInstruction* new_root = fused_instructions_computation()->AddInstruction(
+        HloInstruction::CreateTuple(tuple_elements));
+    fused_instructions_computation()->set_root_instruction(new_root);
+    shape_ = new_root->shape();
+    new_root->parent_fusion_instruction_ = this;
+    if (fused_root->opcode() == HloOpcode::kTuple) {
+      TF_CHECK_OK(
+          fused_instructions_computation()->RemoveInstruction(fused_root));
+    }
+
+    // If this is a newly created multioutput instruction, we need to update
+    // the use of the original fusion instruction.
+    if (newly_created_tuple_instr) {
+      HloInstruction* new_instr = parent_->AddInstruction(
+          HloInstruction::CreateGetTupleElement(fused_root->shape(), this, 0));
+      TF_CHECK_OK(ReplaceAllUsesWith(new_instr));
+    }
+    int64 index = tuple_elements.size();
+    if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
+      index -= instruction_to_fuse->operand_count();
+      std::vector<HloInstruction*> to_be_removed;
+      for (auto old_gte : instruction_to_fuse->users()) {
+        CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
+        int64 old_tuple_index = old_gte->tuple_index();
+        HloInstruction* new_gte =
+            parent_->AddInstruction(HloInstruction::CreateGetTupleElement(
+                old_gte->shape(), this, index + old_tuple_index));
+        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
+        to_be_removed.push_back(old_gte);
+      }
+      for (auto old_gte : to_be_removed) {
+        TF_CHECK_OK(parent_->RemoveInstruction(old_gte));
+      }
+      TF_CHECK_OK(fused_instructions_computation()->RemoveInstruction(clone));
+    } else {
+      HloInstruction* new_gte =
+          parent_->AddInstruction(HloInstruction::CreateGetTupleElement(
+              clone->shape(), this, index - 1));
+      TF_CHECK_OK(instruction_to_fuse->ReplaceAllUsesWith(new_gte));
+    }
   }
 
   for (HloComputation* computation :
