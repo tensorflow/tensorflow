@@ -1086,8 +1086,9 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         return math_ops.multiply(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
-        scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        scale = dtype.max
         scaled = math_ops.multiply(image, scale)
+        scaled = scaled + 0.5  # avoid rounding problems in the cast
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
         else:
