@@ -49,7 +49,7 @@ limitations under the License.
 #endif  // !defined(RASPBERRY_PI)
 
 #else
-// If no blargle platform specified, use:
+// If no platform specified, use:
 #define PLATFORM_POSIX
 
 #endif
