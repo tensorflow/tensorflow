@@ -52,9 +52,6 @@ public:
   Status HandleReverse(HloInstruction* inst,
                        HloInstruction* operand) override;
 
-  Status HandleGetTupleElement(HloInstruction* inst,
-                               HloInstruction* operand) override;
-
   Status HandleReduce(HloInstruction* inst,
                       HloInstruction* arg,
                       HloInstruction* init_value,
@@ -84,9 +81,6 @@ public:
                                   HloInstruction* operand,
                                   HloInstruction* update,
                                   HloInstruction* start_indices) override;
-
-  Status HandleTuple(HloInstruction* inst,
-                     tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
 
   Status HandleMap(HloInstruction* inst,
                    tensorflow::gtl::ArraySlice<HloInstruction*> operands,

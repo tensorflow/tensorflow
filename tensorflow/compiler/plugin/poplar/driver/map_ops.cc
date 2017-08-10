@@ -34,6 +34,12 @@ public:
       return Status::OK();
     } else if (inst->opcode() == HloOpcode::kParameter) {
       return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kTuple) {
+      return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
+      return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kSelect) {
+      return Status::OK();
     } else if (inst->opcode() == HloOpcode::kFusion) {
       switch (static_cast<int>(inst->fusion_kind())) {
         case FUSED_RELU:
@@ -52,6 +58,7 @@ public:
           return Status::OK();
       }
     } else {
+      LOG(INFO) << "Map didn't have a parallel computation " << inst->name();
       _is_ok = false;
       return Status::OK();
     }

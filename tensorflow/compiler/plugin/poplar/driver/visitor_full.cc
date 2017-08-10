@@ -110,17 +110,6 @@ Status FullVisitor::HandleReverse(
   return Status::OK();
 }
 
-Status FullVisitor::HandleGetTupleElement(
-        HloInstruction* inst,
-        HloInstruction* operand) {
-  std::vector<poplar::Tensor> inputs =
-          FindTupleInInstructionInput(tensor_map, inst, 0, inst->tuple_index());
-  for (unsigned int i=0; i<inputs.size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, inputs[i]));
-  }
-  return Status::OK();
-}
-
 Status FullVisitor::HandleReduce(
         HloInstruction* inst,
         HloInstruction* arg,
@@ -321,22 +310,6 @@ Status FullVisitor::HandleDynamicUpdateSlice(
                                                  GetOutputShape(inst),
                                                  tensor_map));
   sequence.add(prog);
-  return Status::OK();
-}
-
-Status FullVisitor::HandleTuple(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  uint64 operand_count(inst->operand_count());
-  int64 n=0;
-  for (uint64 i=0; i<operand_count; i++) {
-    std::vector<poplar::Tensor> inputs =
-            FindInstructionInputs(tensor_map, inst, i);
-    for(poplar::Tensor t : inputs) {
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, n, t));
-      n++;
-    }
-  }
   return Status::OK();
 }
 
