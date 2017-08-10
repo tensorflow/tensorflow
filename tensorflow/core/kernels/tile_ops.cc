@@ -581,6 +581,12 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                         TileGradientOp<GPUDevice>);
 REGISTER_KERNEL_BUILDER(Name("TileGrad")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tmultiples")
+                            .HostMemory("multiples"),
+                        TileGradientOp<GPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("TileGrad")
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<complex64>("T")
                             .TypeConstraint<int32>("Tmultiples")
                             .HostMemory("multiples"),
