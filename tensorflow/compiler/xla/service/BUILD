@@ -436,6 +436,7 @@ cc_library(
         ":user_computation",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
