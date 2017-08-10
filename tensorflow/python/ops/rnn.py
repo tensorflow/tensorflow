@@ -442,7 +442,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
 
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 dtype=None, parallel_iterations=None, swap_memory=False,
-                time_major=False, scope=None):
+                time_major=False, scope=None, return_all_states=False):
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
   Performs fully dynamic unrolling of `inputs`.
@@ -502,6 +502,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
     scope: VariableScope for the created subgraph; defaults to "rnn".
+    return_all_states: Whether return all states or not
 
   Returns:
     A pair (outputs, state) where:
@@ -519,7 +520,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
         same structure as `cell.output_size`, containing Tensors having shapes
         corresponding to the shape data in `cell.output_size`.
 
-      state: The final state.  If `cell.state_size` is an int, this
+      states: All states generated (return_all_states=True)
+              Or the final state   (return_all_states=False).
+        If `cell.state_size` is an int, this
         will be shaped `[batch_size, cell.state_size]`.  If it is a
         `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
         If it is a (possibly nested) tuple of ints or `TensorShape`, this will
@@ -584,13 +587,14 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
     inputs = nest.pack_sequence_as(structure=inputs, flat_sequence=flat_input)
 
-    (outputs, final_state) = _dynamic_rnn_loop(
+    (outputs, states) = _dynamic_rnn_loop(
         cell,
         inputs,
         state,
         parallel_iterations=parallel_iterations,
         swap_memory=swap_memory,
         sequence_length=sequence_length,
+        return_all_states=return_all_states,
         dtype=dtype)
 
     # Outputs of _dynamic_rnn_loop are always shaped [time, batch, depth].
@@ -599,8 +603,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       outputs = nest.map_structure(_transpose_batch_time, outputs)
+      if return_all_states:
+        states = nest.map_structure(_transpose_batch_time, states)
 
-    return (outputs, final_state)
+    return (outputs, states)
 
 
 def _dynamic_rnn_loop(cell,
@@ -609,6 +615,7 @@ def _dynamic_rnn_loop(cell,
                       parallel_iterations,
                       swap_memory,
                       sequence_length=None,
+                      return_all_states=False,
                       dtype=None):
   """Internal implementation of Dynamic RNN.
 
@@ -624,6 +631,7 @@ def _dynamic_rnn_loop(cell,
     sequence_length: (optional) An `int32` `Tensor` of shape [batch_size].
     dtype: (optional) Expected dtype of output. If not specified, inferred from
       initial_state.
+    return_all_states: Whether return all states or not
 
   Returns:
     Tuple `(final_outputs, final_state)`.
@@ -632,7 +640,9 @@ def _dynamic_rnn_loop(cell,
       `cell.output_size` is a (possibly nested) tuple of ints or `TensorShape`
       objects, then this returns a (possibly nsted) tuple of Tensors matching
       the corresponding shapes.
-    final_state:
+    final_states:
+      All states generated (return_all_states=True)
+      Or the final state   (return_all_states=False).
       A `Tensor`, or possibly nested tuple of Tensors, matching in length
       and shapes to `initial_state`.
 
@@ -701,22 +711,29 @@ def _dynamic_rnn_loop(cell,
   output_ta = tuple(_create_ta("output_%d" % i,
                                _infer_state_dtype(dtype, state))
                     for i in range(len(flat_output_size)))
+  if return_all_states:
+    states_ta = tuple(_create_ta("state_%d" % i,
+                                 _infer_state_dtype(dtype, state))
+                      for i in range(len(flat_output_size)))
+  else:
+    states_ta = None
   input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
                    for i in range(len(flat_input)))
 
   input_ta = tuple(ta.unstack(input_)
                    for ta, input_ in zip(input_ta, flat_input))
 
-  def _time_step(time, output_ta_t, state):
+  def _time_step(time, output_ta_t, state, *args):
     """Take a time step of the dynamic RNN.
 
     Args:
       time: int32 scalar Tensor.
       output_ta_t: List of `TensorArray`s that represent the output.
       state: nested tuple of vector tensors that represent the state.
+      args: may contain states_ta
 
     Returns:
-      The tuple (time + 1, output_ta_t with updated flow, new_state).
+      The tuple (time + 1, output_ta_t with updated flow, new_state, args).
     """
 
     input_t = tuple(ta.read(time) for ta in input_ta)
@@ -746,29 +763,60 @@ def _dynamic_rnn_loop(cell,
 
     output_ta_t = tuple(
         ta.write(time, out) for ta, out in zip(output_ta_t, output))
+    if args:
+        args = tuple(
+            ta.write(time, out) for ta, out in zip(args[0], [new_state]))
 
-    return (time + 1, output_ta_t, new_state)
+    return (time + 1, output_ta_t, new_state, args)
 
-  _, output_final_ta, final_state = control_flow_ops.while_loop(
+  if states_ta is not None:
+    loop_vars = (time, output_ta, state, states_ta)
+  else:
+    loop_vars = (time, output_ta, state)
+
+  _, output_final_ta, *state_info = control_flow_ops.while_loop(
       cond=lambda time, *_: time < time_steps,
       body=_time_step,
-      loop_vars=(time, output_ta, state),
+      loop_vars=loop_vars,
       parallel_iterations=parallel_iterations,
       swap_memory=swap_memory)
 
+  if states_ta is not None:
+    final_state, states_final_ta = state_info
+  else:
+    final_state, states_final_ta = state_info[0], None
+
   # Unpack final output if not using output tuples.
   final_outputs = tuple(ta.stack() for ta in output_final_ta)
+  if states_final_ta is not None:
+    final_states = tuple(ta.stack() for ta in states_final_ta)
+  else:
+    final_states = None
 
   # Restore some shape information
   for output, output_size in zip(final_outputs, flat_output_size):
     shape = _concat(
         [const_time_steps, const_batch_size], output_size, static=True)
     output.set_shape(shape)
+  if final_states is not None:
+    for state, state_size in zip(final_states, flat_output_size):
+      state_shapes = state.get_shape()
+      if len(state_shapes) == 4:
+        for i in range(int(state_shapes[1])):
+          state[:, i, ...].set_shape(shape)
+      else:
+        state.set_shape(shape)
 
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
+  if final_states is not None:
+    final_states = nest.pack_sequence_as(
+        structure=cell.output_size, flat_sequence=final_states)
 
-  return (final_outputs, final_state)
+  if final_states is not None:
+    return (final_outputs, final_states)
+  else:
+    return (final_outputs, final_state)
 
 
 def raw_rnn(cell, loop_fn,
