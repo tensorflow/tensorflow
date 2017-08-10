@@ -170,7 +170,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
 
   def testColocateGradientsWithAggregation(self):
     with ops.Graph().as_default() as g:
-      with g.device("/gpu:1"):
+      with g.device("/device:GPU:1"):
         w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
       y = constant(1.0, shape=[1, 2])
@@ -187,7 +187,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
 
   def testColocateGradientsWithAggregationInMultipleDevices(self):
     with ops.Graph().as_default() as g:
-      with g.device("/gpu:1"):
+      with g.device("/device:GPU:1"):
         w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
       y = constant(1.0, shape=[1, 2])

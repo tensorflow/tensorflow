@@ -42,7 +42,7 @@ message GPUOptions {
   // A comma-separated list of GPU ids that determines the 'visible'
   // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
   // can see 8 GPU devices in the process, and one wanted to map
-  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/gpu:1", then one
+  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1", then one
   // would specify this field as "5,3".  This field is similar in
   // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
   // it applies to the visible GPU devices in the process.
