@@ -538,6 +538,12 @@ REGISTER_KERNEL_BUILDER(Name("Tile")
                         TileOp<GPUDevice>);
 REGISTER_KERNEL_BUILDER(Name("Tile")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tmultiples")
+                            .HostMemory("multiples"),
+                        TileOp<GPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("Tile")
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<complex64>("T")
                             .TypeConstraint<int32>("Tmultiples")
                             .HostMemory("multiples"),
