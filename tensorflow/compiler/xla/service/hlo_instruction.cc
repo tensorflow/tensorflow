@@ -2428,7 +2428,7 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kConvBackwardFilter";
     case HloInstruction::FusionKind::kConvBackwardInput:
       return "kConvBackwardInput";
-    case HloInstruction::FusionKind::kCustom:
+    default:
       return "kCustom";
   }
 }
