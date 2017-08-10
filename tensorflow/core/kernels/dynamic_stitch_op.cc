@@ -19,13 +19,16 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 
 template <class T>
-class DynamicStitchOp : public OpKernel {
+class DynamicStitchOpImplBase : public OpKernel {
  public:
-  explicit DynamicStitchOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit DynamicStitchOpImplBase(OpKernelConstruction* c,
+                                   const string& op_name)
+      : OpKernel(c) {
     // Compute expected input signature
     const DataType dt = DataTypeToEnum<T>::v();
     const int n = c->num_inputs() / 2;
@@ -37,21 +40,38 @@ class DynamicStitchOp : public OpKernel {
       expected.push_back(dt);
     }
     OP_REQUIRES_OK(c, c->MatchSignature(expected, {dt}));
-    OP_REQUIRES(
-        c, c->num_inputs() > 0,
-        errors::InvalidArgument("DynamicStitchOp: Must have some inputs"));
+    OP_REQUIRES(c, c->num_inputs() > 0,
+                errors::InvalidArgument(op_name + ": Must have some inputs"));
     OP_REQUIRES(c, c->num_inputs() % 2 == 0,
                 errors::InvalidArgument(
-                    "DynamicStitchOp: Must have even number of arguments"));
+                    op_name + ": Must have even number of arguments"));
   }
 
-  void Compute(OpKernelContext* c) override {
+ protected:
+  // Check if data0.shape[indices0.dims():] == data1.shape[indices1.dims():]
+  static bool SameExtraShape(const Tensor& data0, const Tensor& indices0,
+                             const Tensor& data1, const Tensor& indices1) {
+    const int extra0 = data0.dims() - indices0.dims();
+    const int extra1 = data1.dims() - indices1.dims();
+    if (extra0 != extra1) return false;
+    for (int i = 0; i < extra0; i++) {
+      if (data0.dim_size(indices0.dims() + i) !=
+          data1.dim_size(indices1.dims() + i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void CheckArgsAndAllocateResult(OpKernelContext* c,
+                                  OpInputList* indices_inputs,
+                                  OpInputList* data_inputs, int* first_dim_size,
+                                  Tensor** result_ptr) {
     // Find maximum index in the indices vectors
-    OpInputList indices_inputs;
-    OP_REQUIRES_OK(c, c->input_list("indices", &indices_inputs));
+    OP_REQUIRES_OK(c, c->input_list("indices", indices_inputs));
 
     int32 max_index = -1;
-    for (const Tensor& indices : indices_inputs) {
+    for (const Tensor& indices : *indices_inputs) {
       if (indices.NumElements() > 0) {
         Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
             indices.flat<int32>().maximum();
@@ -59,16 +79,15 @@ class DynamicStitchOp : public OpKernel {
       }
     }
 
-    const int first_dim_size = max_index + 1;
+    *first_dim_size = max_index + 1;
 
     // Validate that data[i].shape = indices[i].shape + constant
-    OpInputList data_inputs;
-    OP_REQUIRES_OK(c, c->input_list("data", &data_inputs));
-    const Tensor& data0 = data_inputs[0];
-    const Tensor& indices0 = indices_inputs[0];
-    for (int input_num = 0; input_num < indices_inputs.size(); input_num++) {
-      const Tensor& indices = indices_inputs[input_num];
-      const Tensor& data = data_inputs[input_num];
+    OP_REQUIRES_OK(c, c->input_list("data", data_inputs));
+    const Tensor& data0 = (*data_inputs)[0];
+    const Tensor& indices0 = (*indices_inputs)[0];
+    for (int input_num = 0; input_num < indices_inputs->size(); input_num++) {
+      const Tensor& indices = (*indices_inputs)[input_num];
+      const Tensor& data = (*data_inputs)[input_num];
       OP_REQUIRES(
           c, TensorShapeUtils::StartsWith(data.shape(), indices.shape()),
           errors::InvalidArgument("data[", input_num, "].shape = ",
@@ -87,21 +106,43 @@ class DynamicStitchOp : public OpKernel {
     }
 
     // Allocate result tensor of shape
-    //   [first_dim_size] + data.shape[indices.dims:]
+    //   [*first_dim_size] + data.shape[indices.dims:]
     TensorShape result_shape;
-    result_shape.AddDim(first_dim_size);
+    result_shape.AddDim(*first_dim_size);
     for (int d = indices0.dims(); d < data0.dims(); d++) {
       result_shape.AddDim(data0.dim_size(d));
     }
+    OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, result_ptr));
+  }
+};
+
+template <class T, bool Parallel>
+class DynamicStitchOpImpl : public DynamicStitchOpImplBase<T> {
+ public:
+  explicit DynamicStitchOpImpl(OpKernelConstruction* c)
+      : DynamicStitchOpImplBase<T>(
+            c, (Parallel ? "ParallelDynamicStitchOp" : "DynamicStitchOp")) {}
+
+  void Compute(OpKernelContext* c) override {
+    OpInputList indices_inputs;
+    OpInputList data_inputs;
+    int first_dim_size;
     Tensor* merged = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &merged));
+    this->CheckArgsAndAllocateResult(c, &indices_inputs, &data_inputs,
+                                     &first_dim_size, &merged);
+    if (!c->status().ok()) {
+      // Avoid segmentation faults if merged cannot be allocated and an error is
+      // passed back in the context.
+      return;
+    }
 
     // TODO(jeff): Currently we leave uninitialized any portions of
     // merged that aren't covered by an index in indices.  What should we do?
     if (first_dim_size > 0) {
       auto merged_flat = merged->flat_outer_dims<T>();
       const int slice_size = merged_flat.dimension(1);
-      for (int input_num = 0; input_num < indices_inputs.size(); input_num++) {
+      const size_t slice_bytes = slice_size * sizeof(T);
+      auto OnInputNumber = [&](int input_num) {
         const Tensor& indices = indices_inputs[input_num];
         auto indices_vec = indices.flat<int32>();
         const Tensor& data = data_inputs[input_num];
@@ -111,7 +152,6 @@ class DynamicStitchOp : public OpKernel {
         if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
           T* merged_base = &merged_flat(0, 0);
           const T* data_base = &data_flat(0, 0);
-          const size_t slice_bytes = slice_size * sizeof(T);
           for (int i = 0; i < indices_vec.size(); i++) {
             int32 index = internal::SubtleMustCopy(indices_vec(i));
             OP_REQUIRES(
@@ -134,25 +174,46 @@ class DynamicStitchOp : public OpKernel {
                 data_flat.slice(data_indices, sizes);
           }
         }
+      };
+      if (Parallel) {
+        auto thread_pool =
+            c->device()->tensorflow_cpu_worker_threads()->workers;
+        size_t total_indices_size = 0;
+        for (int input_num = 0; input_num < indices_inputs.size();
+             ++input_num) {
+          total_indices_size += indices_inputs[input_num].NumElements();
+        }
+        const double avg_indices_size =
+            static_cast<double>(total_indices_size) / indices_inputs.size();
+        auto bytes_processed = slice_bytes * avg_indices_size;
+        auto LoopBody = [&](int first, int last) {
+          for (int input_num = first; input_num < last; ++input_num) {
+            OnInputNumber(input_num);
+          }
+        };
+        thread_pool->ParallelFor(indices_inputs.size(), bytes_processed,
+                                 LoopBody);
+      } else {
+        for (int input_num = 0; input_num < indices_inputs.size();
+             input_num++) {
+          OnInputNumber(input_num);
+        }
       }
     }
   }
+};
 
- private:
-  // Check if data0.shape[indices0.dims():] == data1.shape[indices1.dims():]
-  static bool SameExtraShape(const Tensor& data0, const Tensor& indices0,
-                             const Tensor& data1, const Tensor& indices1) {
-    const int extra0 = data0.dims() - indices0.dims();
-    const int extra1 = data1.dims() - indices1.dims();
-    if (extra0 != extra1) return false;
-    for (int i = 0; i < extra0; i++) {
-      if (data0.dim_size(indices0.dims() + i) !=
-          data1.dim_size(indices1.dims() + i)) {
-        return false;
-      }
-    }
-    return true;
-  }
+// Using inheritance rather than a typedef so that these classes might have more
+// functionality later.
+
+template <typename T>
+struct DynamicStitchOp : DynamicStitchOpImpl<T, false> {
+  using DynamicStitchOpImpl<T, false>::DynamicStitchOpImpl;
+};
+
+template <typename T>
+struct ParallelDynamicStitchOp : DynamicStitchOpImpl<T, true> {
+  using DynamicStitchOpImpl<T, true>::DynamicStitchOpImpl;
 };
 
 #define REGISTER_DYNAMIC_STITCH(type)                    \
@@ -160,7 +221,12 @@ class DynamicStitchOp : public OpKernel {
                               .Device(DEVICE_CPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("indices"),    \
-                          DynamicStitchOp<type>)
+                          DynamicStitchOp<type>)         \
+  REGISTER_KERNEL_BUILDER(Name("ParallelDynamicStitch")  \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices"),    \
+                          ParallelDynamicStitchOp<type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
@@ -173,7 +239,14 @@ TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          DynamicStitchOp<type>)
+                          DynamicStitchOp<type>)         \
+  REGISTER_KERNEL_BUILDER(Name("ParallelDynamicStitch")  \
+                              .Device(DEVICE_GPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          ParallelDynamicStitchOp<type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
@@ -188,7 +261,14 @@ TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          DynamicStitchOp<type>)
+                          DynamicStitchOp<type>)         \
+  REGISTER_KERNEL_BUILDER(Name("ParallelDynamicStitch")  \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          ParallelDynamicStitchOp<type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
 #undef REGISTER_DYNAMIC_STITCH_SYCL
