@@ -32,7 +32,7 @@ inline void* GetBase(Tensor* dst) { return DMAHelper::base(dst); }
 
 inline void SYCLmemcpy(Eigen::SyclDevice const& device,
                        Tensor const& src_tensor, Tensor* dst_tensor) {
-  size_t size = src_tensor.TotalBytes();
+  const size_t size = src_tensor.TotalBytes();
   void* dst_ptr = GetBase(dst_tensor);
   void const* src_ptr = GetBase(&src_tensor);
 
@@ -67,8 +67,10 @@ inline void SYCLmemcpy(Eigen::SyclDevice const& device,
     case DT_INT8:
     case DT_QINT8:
     case DT_QUINT8:
-    default:
       COPY_WITH_TYPE(cl::sycl::cl_uchar);
+      break;
+    default:
+      LOG(FATAL) << "Unknown data type " << src_tensor.dtype();
       break;
   }
 #undef COPY_WITH_TYPE
