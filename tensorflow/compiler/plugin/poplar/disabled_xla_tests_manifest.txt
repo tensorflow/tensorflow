@@ -44,6 +44,7 @@ ArrayElementwiseOpTest.CompareEqU32s      POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values      POPLAR // U32
 PrngTest.HundredValuesB10p5      POPLAR // U32
 PrngTest.HundredValuesB10p1      POPLAR // U32
+VecOpsSimpleTest.NegateUint32Values POPLAR // U32
 
 ScalarComputationsTest.AddTwoScalarsS64      POPLAR // S64
 
