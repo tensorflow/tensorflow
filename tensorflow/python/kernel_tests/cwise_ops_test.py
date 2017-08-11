@@ -71,15 +71,16 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
       indices=x_indices, values=x_values, dense_shape=x_shape), x_values
 
 def _default_tolerance(dtype):
-    """Returns a sensible default tolerance for comparing results of a given type"""
-    if dtype == np.float16:
-      return 5e-3
-    elif dtype in (np.float32, np.complex64):
-      return 1e-3
-    elif dtype in (np.float64, np.complex128):
-      return 1e-5
-    else:
-      return None # Fail fast for unexpected types
+  """Returns a sensible default tolerance for comparing results of a given
+  type"""
+  if dtype == np.float16:
+    return 5e-3
+  elif dtype in (np.float32, np.complex64):
+    return 1e-3
+  elif dtype in (np.float64, np.complex128):
+    return 1e-5
+  else:
+    return None # Fail fast for unexpected types
 
 class UnaryOpTest(test.TestCase):
 
