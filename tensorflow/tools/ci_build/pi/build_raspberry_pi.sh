@@ -18,7 +18,7 @@ set -e
 # By default this builds packages for the Pi Two and Three only, since the NEON support
 # this allows makes calculations many times faster. To support the Pi One or Zero, pass
 # PI_ONE as the first argument to the script, for example:
-# third_party/toolchains/cpus/arm/build_raspberry_pi.sh PI_ONE
+# tensorflow/tools/ci_build/pi/build_raspberry_pi.sh PI_ONE
 #
 # To install the cross-compilation support for Python this script needs on Ubuntu Trusty, run
 # something like these steps, after backing up your original /etc/apt/sources.list file:
