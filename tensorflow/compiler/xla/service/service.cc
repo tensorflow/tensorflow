@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -1111,8 +1112,10 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = xla::CreateDefaultExecutionOptions();
   execution_options.mutable_debug_options()->set_xla_enable_fast_math(false);
+  execution_options.mutable_debug_options()->set_xla_backend_optimization_level(
+      0);
   *execution_options.mutable_shape_with_output_layout() =
       program_shape.result();
 
