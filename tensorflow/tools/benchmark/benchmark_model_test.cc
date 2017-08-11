@@ -62,7 +62,7 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
   std::unique_ptr<StatSummarizer> stats;
   stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
   int64 time;
-  int64 num_runs;
+  int64 num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(
       0.0, 10, 0.0, {input}, {output_name}, session.get(), stats.get(), &time,
       &num_runs));
