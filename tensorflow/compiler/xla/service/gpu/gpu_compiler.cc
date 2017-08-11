@@ -312,6 +312,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
+  if (user_pre_optimization_hook_) {
+    TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
+  }
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
@@ -343,6 +346,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                          module->config(), libdevice_dir_));
 
+  if (user_post_optimization_hook_) {
+    TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
+  }
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
   VLOG(2) << "PTX:";
