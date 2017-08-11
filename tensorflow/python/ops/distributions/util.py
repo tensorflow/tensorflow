@@ -750,7 +750,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     tril: `Tensor` with lower triangular elements filled from `x`.
 
   Raises:
-    ValueError: if shape if `x` has static shape which cannot be mapped to a
+    ValueError: if shape of `x` has static shape which cannot be mapped to a
       lower triangular matrix.
   """
   # TODO(jvdillon): Replace this code with dedicated op when it exists.
