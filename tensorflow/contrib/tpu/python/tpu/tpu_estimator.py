@@ -174,7 +174,7 @@ class _PerShardOutput(object):
 
 
 class _InputsHolder(object):
-  """A inputs holder holds the `features` and `labels' for all TPU shards.
+  """A inputs holder holds the `features` and `labels' for TPU system.
 
   Model inputs returned by the `input_fn` can have one of the following forms:
   1. features
@@ -192,25 +192,26 @@ class _InputsHolder(object):
   and the structure of them needs to be recorded, in order to restore them after
   infeed dequeue.
 
-  `_InputsHolder` holds the `features` and `labels` tuple for all shards,
-  records the structure details (including presence, dict or single tensor, dict
-  names), validates the structure consistency cross all shards, and encapsulates
-  the flatten/unflatten logic.
+  `_InputsHolder` could hold the `features` and `labels` tuple for all shards
+  (usually multi-host TPU training) or for one host (usually for single-host TPU
+  evaluation), records the structure details (including presence, dict or single
+  tensor, dict names), validates the structure consistency cross all shards, and
+  encapsulates the flatten/unflatten logic.
   """
 
-  def __init__(self, sharded_features=None, sharded_labels=None,
-               num_shards=None):
+  def __init__(self, features=None, labels=None, num_shards=None):
     """Constructor.
 
     Args:
-      sharded_features: A list of features one for each shard. Once provided,
-        the corresponding shared_labels should be set also and this
-        `_InputsHolder` is frozen to prevent from future modification. If
-        `None`, it is expected to add features and labels for each shard by
-        calling `append_shard` later.
-      sharded_labels: A list of labels one for each shard.
+      features: features for one host or a list of features one for each shard
+        (must be type `_PerShardOutput`). Once provided, the corresponding
+        `labels` should be set also and this `_InputsHolder` is frozen to
+        prevent from future modification. If `None`, it is expected to add
+        features and labels for each shard by calling `append_tuple` later.
+      labels: labels for one host or a list of labels one for each shard
+        (must be type `_PerShardOutput`).
       num_shards: Number of shards in the TPU system. Must be provided unless it
-        can be deduced from `sharded_features`.
+        can be deduced from `features`.
 
     Raises:
       ValueError: If both `sharded_features` and `num_shards` are `None`.
@@ -227,14 +228,32 @@ class _InputsHolder(object):
     # Internal state.
     self._initialized = False
     self._frozen = False
+    self._sharded = False
 
-    if sharded_features is None:
+    if features is None:
       if num_shards is None:
         raise ValueError(
-            '`sharded_features` and `num_shards` cannot be both None')
+            '`features` and `num_shards` cannot be both None')
       self._num_shards = num_shards
+    elif isinstance(features, _PerShardOutput):
+      self._from_sharded_inputs(features, labels, num_shards)
     else:
-      self._from_sharded_inputs(sharded_features, sharded_labels, num_shards)
+      if num_shards is None:
+        raise ValueError(
+            '`num_shards` cannot be None for unsharded features.')
+      self._from_unsharded_inputs(features, labels, num_shards)
+
+  def _from_unsharded_inputs(self, features, labels, num_shards):
+    """Initializes the inputs with unsharded features and labels."""
+    self._num_shards = num_shards
+    if labels is not None:
+      self._has_labels = True
+      self.append_tuple((features, labels))
+    else:
+      self.append_tuple(features)
+
+    self._sharded = False
+    self._frozen = True
 
   def _from_sharded_inputs(self, sharded_features, sharded_labels, num_shards):
     """Initializes the inputs with sharded features and labels."""
@@ -262,11 +281,12 @@ class _InputsHolder(object):
 
     if self._has_labels:
       for (f, l) in zip(features, labels):
-        self.append_shard((f, l))
+        self.append_tuple((f, l))
     else:
       for f in features:
-        self.append_shard(f)
+        self.append_tuple(f)
 
+    self._sharded = True
     self._frozen = True
 
   def _extract_key_names(self, tensor_or_dict):
@@ -281,6 +301,7 @@ class _InputsHolder(object):
     label_names = self._extract_key_names(labels)
 
     if self._initialized:
+      self._sharded = True
       # The following should never happen.
       assert feature_names == self._feature_names, 'feature keys mismatched'
       assert label_names == self._label_names, 'label keys mismatched'
@@ -291,7 +312,19 @@ class _InputsHolder(object):
       self._label_names = label_names
       self._has_labels = has_labels
 
-  def append_shard(self, inputs):
+  @property
+  def sharded(self):
+    if not self._frozen:
+      raise RuntimeError('_InputsHolder has not been frozen yet.')
+    return self._sharded
+
+  @property
+  def num_shards(self):
+    if not self._frozen:
+      raise RuntimeError('_InputsHolder has not been frozen yet.')
+    return self._num_shards
+
+  def append_tuple(self, inputs):
     """Appends `inputs` for one shard into holder.
 
     Args:
@@ -325,7 +358,7 @@ class _InputsHolder(object):
     input_fn to model_fn as the parent class `Estimator` does not have the
     concept of shards. So, grouped tuple is required.
 
-    Once called, the internal data is frozen and `append_shard` cannot be
+    Once called, the internal data is frozen and `append_tuple` cannot be
     invoked anymore.
 
     Returns:
@@ -348,7 +381,7 @@ class _InputsHolder(object):
             _PerShardOutput(self._label_list))
 
   def as_sharded_flattened_inputs(self):
-    """Flatten the features and label as tensor list for all shards.
+    """Flatten the features and label as tensor lists for all shards.
 
     Flattened tensor list contains all tensors in `features` (dict) and `labels`
     (dict). Conceptually, it has the predicated structure like:
@@ -363,7 +396,7 @@ class _InputsHolder(object):
 
     This method handles the label is None case and single tensor case nicely.
 
-    Once called, the internal data is frozen and `append_shard` cannot be
+    Once called, the internal data is frozen and `append_tuple` cannot be
     invokded anymore.
 
     Returns:
@@ -371,37 +404,57 @@ class _InputsHolder(object):
 
     Raises:
       RuntimeError: If the internal data has not been initialized.
+      ValueError: If the inputs are sharded.
     """
     self._frozen = True
     if not self._initialized:
       raise RuntimeError('InputsHolder has not been initialized.')
+    if not self._sharded:
+      raise ValueError('Inputs are not sharded.')
 
     sharded_inputs = []
 
     for shard in range(self._num_shards):
-      flattened_inputs = []
-      if self._feature_names:
-        # We need a fixed ordering for enqueueing and dequeueing.
-        flattened_inputs.extend([self._feature_list[shard][name] for name in
-                                 self._feature_names])
-      else:
-        flattened_inputs.append(self._feature_list[shard])
-
-      if self._has_labels:
-        if self._label_names:
-          # We need a fixed ordering for enqueueing and dequeueing.
-          flattened_inputs.extend([self._label_list[shard][name] for name in
-                                   self._label_names])
-        else:
-          flattened_inputs.append(self._label_list[shard])
+      flattened_inputs = self._as_flattened_inputs(
+          self._feature_list[shard],
+          self._label_list[shard] if self._has_labels else None)
       sharded_inputs.append(flattened_inputs)
 
     return sharded_inputs
 
+  def as_flattened_inputs(self):
+    """Flatten the features and label as a single tensor list for one host."""
+    self._frozen = True
+    if not self._initialized:
+      raise RuntimeError('InputsHolder has not been initialized.')
+    if self._sharded:
+      raise ValueError('Inputs are sharded.')
+
+    return self._as_flattened_inputs(
+        self._feature_list[0],
+        self._label_list[0] if self._has_labels else None)
+
+  def _as_flattened_inputs(self, features, labels):
+    """Flattens the `features` and `labels` to a single tensor list."""
+    flattened_inputs = []
+    if self._feature_names:
+      # We need a fixed ordering for enqueueing and dequeueing.
+      flattened_inputs.extend([features[name] for name in self._feature_names])
+    else:
+      flattened_inputs.append(features)
+
+    if labels is not None:
+      if self._label_names:
+        # We need a fixed ordering for enqueueing and dequeueing.
+        flattened_inputs.extend([labels[name] for name in self._label_names])
+      else:
+        flattened_inputs.append(labels)
+    return flattened_inputs
+
   def unflatten_features_and_labels(self, flattened_inputs):
     """Restores the flattened inputs to original features and labels form.
 
-    Once called, the internal data is frozen and `append_shard` cannot be
+    Once called, the internal data is frozen and `append_tuple` cannot be
     invokded anymore.
 
     Args:
@@ -687,7 +740,9 @@ class TPUEstimator(estimator_lib.Estimator):
     # Now for TPU training.
     if mode == model_fn_lib.ModeKeys.TRAIN:
       kwargs['params'][_BATCH_SIZE_KEY] = (
-          _per_shard_batch_size(self._train_batch_size, config, self._use_tpu))
+          _per_shard_batch_size(self._train_batch_size, config, self._use_tpu)
+          if not config.tpu_config.per_host_input_for_training else
+          self._train_batch_size)
 
     if not self._use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
       with ops.device('/cpu:0'):
@@ -700,29 +755,42 @@ class TPUEstimator(estimator_lib.Estimator):
       else:
         return '/job:%s/replica:0/task:%d/device:CPU:0' % (job, index / 8)
 
-    num_shards = config.tpu_config.num_shards
-    inputs = _InputsHolder(num_shards=num_shards)
-    for i in range(config.tpu_config.num_shards):
-      with ops.device(placement_function(i)):
-        inputs.append_shard(input_fn(**kwargs))
+    if not config.tpu_config.per_host_input_for_training:
+      num_shards = config.tpu_config.num_shards
+      inputs = _InputsHolder(num_shards=num_shards)
+      for i in range(config.tpu_config.num_shards):
+        with ops.device(placement_function(i)):
+          inputs.append_tuple(input_fn(**kwargs))
 
-    return inputs.as_features_and_labels_tuple()
+      return inputs.as_features_and_labels_tuple()
+    else:
+      # TODO(xiejw): Extend this to multi-host support.
+      with ops.device(placement_function(0)):
+        return input_fn(**kwargs)
 
 
-def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder):
+def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config):
   """Utility to convert input_fn to enqueue and dequeue fns for TPU.
 
   Args:
     inputs_holder: An `_InputsHolder` holding features and labels.
+    run_config: A `RunConfig` instance.
 
   Returns:
     A tuple of (dequeue_fn, enqueue_fn)
   """
-  sharded_inputs = inputs_holder.as_sharded_flattened_inputs()
+  if inputs_holder.sharded:
+    sharded_inputs = inputs_holder.as_sharded_flattened_inputs()
 
-  infeed_queue = tpu_feed.InfeedQueue(
-      number_of_tuple_elements=len(sharded_inputs[0]))
-  infeed_queue.set_configuration_from_sharded_input_tensors(sharded_inputs)
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(sharded_inputs[0]))
+    infeed_queue.set_configuration_from_sharded_input_tensors(sharded_inputs)
+  else:
+    unsharded_inputs = inputs_holder.as_flattened_inputs()
+    infeed_queue = tpu_feed.InfeedQueue(
+        tuple_types=[t.dtype for t in unsharded_inputs],
+        tuple_shapes=[t.shape for t in unsharded_inputs])
+    infeed_queue.set_number_of_shards(inputs_holder.num_shards)
 
   def dequeue_fn():
     """dequeue_fn is used by the train_step in TPU to retrieve the tensors."""
@@ -744,8 +812,18 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder):
 
   def enqueue_fn():
     """enqueue_fn is used to add ops to the graph to send tensors."""
-    return infeed_queue.generate_enqueue_ops(
-        sharded_inputs, tpu_ordinal_function=tpu_ordinal_function)
+    if inputs_holder.sharded:
+      return infeed_queue.generate_enqueue_ops(
+          sharded_inputs, tpu_ordinal_function=tpu_ordinal_function)
+    else:
+      job = _tpu_job(run_config)
+      def placement_function(index):
+        if job is None:
+          return '/replica:0/task:0/device:CPU:0'
+        else:
+          return '/job:%s/replica:0/task:%d/device:CPU:0' % (job, index / 8)
+      return infeed_queue.split_inputs_and_generate_enqueue_ops(
+          unsharded_inputs, placement_function=placement_function)
 
   return (dequeue_fn, enqueue_fn)
 
@@ -762,9 +840,11 @@ def _augment_model_fn(model_fn, train_batch_size, use_tpu):
     if not use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
       return model_fn_wrapper.call_without_tpu(features, labels)
 
-    inputs = _InputsHolder(sharded_features=features, sharded_labels=labels)
+    inputs = _InputsHolder(features=features, labels=labels,
+                           num_shards=config.tpu_config.num_shards)
 
-    dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(inputs)
+    dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(
+        inputs, config)
 
     loss = _train_on_tpu_system(model_fn_wrapper, dequeue_fn)
 

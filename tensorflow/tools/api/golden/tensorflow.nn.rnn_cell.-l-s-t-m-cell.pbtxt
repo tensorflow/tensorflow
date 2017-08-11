@@ -82,7 +82,7 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "apply"

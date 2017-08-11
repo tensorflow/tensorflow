@@ -962,6 +962,10 @@ class VariableScope(object):
     """Get this scope's global variables."""
     return self.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 
+  def local_variables(self):
+    """Get this scope's local variables."""
+    return self.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
   def get_variable(self,
                    var_store,
                    name,

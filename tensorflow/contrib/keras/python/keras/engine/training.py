@@ -922,8 +922,12 @@ class Model(Container):
       if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
         inputs += [K.learning_phase()]
 
+      constraints = {}
+      for w in self._collected_trainable_weights:
+        if hasattr(w, 'constraint') and w.constraint is not None:
+          constraints[w] = w.constraint
       training_updates = self.optimizer.get_updates(
-          self._collected_trainable_weights, self.constraints, self.total_loss)
+          self._collected_trainable_weights, constraints, self.total_loss)
       updates = self.updates + training_updates
       # Gets loss and metrics. Updates weights at each call.
       self.train_function = K.function(

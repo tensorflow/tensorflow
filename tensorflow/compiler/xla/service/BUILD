@@ -434,6 +434,7 @@ cc_library(
         ":user_computation",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
@@ -588,6 +589,15 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "llvm_compiler",
+    hdrs = ["llvm_compiler.h"],
+    deps = [
+        ":compiler",
+        "@llvm//:core",
     ],
 )
 
@@ -1419,6 +1429,7 @@ cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
     deps = [
+        ":flatten_call_graph",
         ":hlo",
         ":hlo_alias_analysis",
         ":hlo_matchers",
