@@ -1167,7 +1167,6 @@ class Estimator(BaseEstimator):
 
     return model_fn_ops
 
-
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
