@@ -3276,7 +3276,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
-	":parse_tensor_op",
+        ":parse_tensor_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
