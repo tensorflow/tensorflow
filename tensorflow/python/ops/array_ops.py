@@ -2426,6 +2426,11 @@ def reshape(tensor, shape, name=None):
   # pass '[-1]' to flatten 't'
   reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
 
+  # Dimension can be used
+  reshape(t, [3, tf.Dimension(3)]) ==> [[1, 2, 3],
+                                        [4, 5, 6],
+                                        [7, 8, 9]]
+
   # -1 can also be used to infer the shape
 
   # -1 is inferred to be 9:
