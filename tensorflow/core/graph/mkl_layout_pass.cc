@@ -256,7 +256,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
   MklLayoutRewritePass() {
     // NOTE: names are alphabetically sorted.
-    csinfo_.add = "Add";
     csinfo_.avg_pool = "AvgPool";
     csinfo_.avg_pool_grad = "AvgPoolGrad";
     csinfo_.bias_add = "BiasAdd";
@@ -430,7 +429,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure to store all constant strings
   /// NOTE: names are alphabetically sorted.
   typedef struct {
-    string add;
     string avg_pool;
     string avg_pool_grad;
     string bias_add;
@@ -577,7 +575,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static bool AlwaysRewrite(const Node* n, const ContextInfo* c = nullptr) {
     return true;
   }
-  
 
   // Check if we are performing pooling on depth or batch. If it is, then we
   // do not rewrite MaxPool node to Mkl version.
