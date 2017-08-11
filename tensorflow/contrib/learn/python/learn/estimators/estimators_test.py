@@ -30,6 +30,7 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator as estima
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
@@ -87,12 +88,11 @@ class FeatureEngineeringFunctionTest(test.TestCase):
              }
 
     def feature_engineering_fn(features, labels):
-      _, _ = features, labels
-      return {
-               "x": constant_op.constant([9.])
-             }, {
-               "y": constant_op.constant([99.])
-             }
+      # Github #12205: raise a TypeError if called twice.
+      _ = string_ops.string_split(features["x"])
+      features["x"] = constant_op.constant([9.])
+      label["y"] = constant_op.constant([99.])
+      return features, labels
 
     def model_fn(features, labels):
       # dummy variable:
