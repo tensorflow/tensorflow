@@ -22,14 +22,13 @@ py_library(
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:dtypes",
-        
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
