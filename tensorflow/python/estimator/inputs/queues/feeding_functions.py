@@ -69,12 +69,13 @@ def _fill_array(arr, seq, fillvalue=0):
       _fill_array(subarr, subseq, fillvalue)
 
 
-def _pad_if_needed(batch_key_item):
+def _pad_if_needed(batch_key_item, fillvalue=0):
   """ Returns padded batch.
 
   Args:
     batch_key_item: List of data samples of any type with shape 
       [batch_size, ..., padded_dim(None)].
+    fillvalue: Default fillvalue to use.
 
   Returns:
     Padded with zeros tensor of same type and shape 
@@ -98,7 +99,7 @@ def _pad_if_needed(batch_key_item):
   result_batch = np.zeros(
     shape=[batch_size] + list(shapes[0]) + [max_sequence_length],
     dtype=batch_key_item[0].dtype)
-  _fill_array(result_batch, batch_key_item)
+  _fill_array(result_batch, batch_key_item, fillvalue)
   return result_batch
 
 
@@ -285,7 +286,8 @@ class _GeneratorFeedFn(object):
                batch_size,
                random_start=False,
                seed=None,
-               num_epochs=None):
+               num_epochs=None,
+               pad_value=None):
     first_sample = next(generator())
     if len(placeholders) != len(first_sample):
       raise ValueError("Expected {} placeholders; got {}.".format(
@@ -297,6 +299,7 @@ class _GeneratorFeedFn(object):
     self._batch_size = batch_size
     self._num_epochs = num_epochs
     self._epoch = 0
+    self._pad_value = pad_value
     random.seed(seed)
 
   def __call__(self):
@@ -320,7 +323,12 @@ class _GeneratorFeedFn(object):
         list_dict.setdefault(self._col_placeholders[index],
                              list()).append(data_row[key])
         list_dict_size += 1
-    feed_dict = {key: np.asarray(_pad_if_needed(item))
+
+    if self._pad_value is not None:
+      feed_dict = {key: np.asarray(_pad_if_needed(item, self._pad_value))
+                 for key, item in list(list_dict.items())}
+    else:
+      feed_dict = {key: np.asarray(item)
                  for key, item in list(list_dict.items())}
     return feed_dict
 
@@ -334,7 +342,7 @@ def _enqueue_data(data,
                   name="enqueue_input",
                   enqueue_size=1,
                   num_epochs=None,
-                  pad_data=False):
+                  pad_value=None):
   """Creates a queue filled from a numpy array or pandas `DataFrame`.
 
     Returns a queue filled with the rows of the given (`OrderedDict` of) array
@@ -356,6 +364,7 @@ def _enqueue_data(data,
     name: a scope name identifying the data.
     enqueue_size: the number of rows to enqueue per step.
     num_epochs: limit enqueuing to a specified number of epochs, if provided.
+    pad_value: default value for dynamic padding of data samples, if provided.
 
   Returns:
     A queue filled with the rows of the given (`OrderedDict` of) array or
@@ -364,7 +373,8 @@ def _enqueue_data(data,
   Raises:
     TypeError: `data` is not a Pandas `DataFrame`, an `OrderedDict` of numpy
       arrays, a numpy `ndarray`, or a generator producing these.
-  """
+    NotImplementedError: padding and shuffling data at the same time.
+  """ 
   with ops.name_scope(name):
     if isinstance(data, np.ndarray):
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
@@ -394,9 +404,10 @@ def _enqueue_data(data,
           "data must be either a numpy array or pandas DataFrame if pandas is "
           "installed; got {}".format(type(data).__name__))
 
+    pad_data = pad_value is not None
     if shuffle and pad_data:
       raise NotImplementedError(
-        "padding and shuffling at the same time is not implemented")
+        "padding and shuffling data at the same time is not implemented")
 
     # TODO(jamieas): TensorBoard warnings for all warnings below once available.
 
@@ -452,7 +463,9 @@ def _enqueue_data(data,
 
       enqueue_ops.append(queue.enqueue_many(placeholders))
       seed_i = None if seed is None else (i + 1) * seed
-      feed_fns.append(
+      
+      if not pad_data:
+        feed_fns.append(
           get_feed_fn(
               placeholders,
               data,
@@ -460,6 +473,16 @@ def _enqueue_data(data,
               random_start=shuffle,
               seed=seed_i,
               num_epochs=num_epochs))
+      else:
+        feed_fns.append(
+          get_feed_fn(
+              placeholders,
+              data,
+              enqueue_size,
+              random_start=shuffle,
+              seed=seed_i,
+              num_epochs=num_epochs,
+              pad_value=pad_value))
 
     runner = fqr._FeedingQueueRunner(  # pylint: disable=protected-access
         queue=queue, enqueue_ops=enqueue_ops, feed_fns=feed_fns)

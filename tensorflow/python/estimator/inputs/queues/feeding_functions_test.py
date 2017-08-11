@@ -324,7 +324,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
         np.ones(shape=[8, 8, 8, 8, 36], dtype=np.int32).tolist()
     actual = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
     ff._fill_array(actual, a, fill_value)
-    expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
+    expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)l
     expected[:8, ..., 32:] = fill_value
     self.assertEqual(expected, actual)
 
