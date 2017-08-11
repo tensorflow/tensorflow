@@ -2477,6 +2477,79 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
   def output_size(self):
     return self._output_size
 
+
+  def _linear(self,
+              args,
+              output_size,
+              bias,
+              bias_initializer=None,
+              kernel_initializer=None,
+              layer_norm=False):
+    """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+
+    Args:
+      args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+      output_size: int, second dimension of W[i].
+      bias: boolean, whether to add a bias term or not.
+      bias_initializer: starting value to initialize the bias
+        (default is all zeros).
+      kernel_initializer: starting value to initialize the weight.
+      layer_norm: boolean, whether to apply layer normalization.
+
+
+    Returns:
+      A 2D Tensor with shape [batch x output_size] equal to
+      sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+
+    Raises:
+      ValueError: if some of the arguments has unspecified or wrong shape.
+    """
+    if args is None or (nest.is_sequence(args) and not args):
+      raise ValueError("`args` must be specified")
+    if not nest.is_sequence(args):
+      args = [args]
+
+    # Calculate the total size of arguments on dimension 1.
+    total_arg_size = 0
+    shapes = [a.get_shape() for a in args]
+    for shape in shapes:
+      if shape.ndims != 2:
+        raise ValueError("linear is expecting 2D arguments: %s" % shapes)
+      if shape[1].value is None:
+        raise ValueError("linear expects shape[1] to be provided for shape %s, "
+                         "but saw %s" % (shape, shape[1]))
+      else:
+        total_arg_size += shape[1].value
+
+    dtype = [a.dtype for a in args][0]
+
+    # Now the computation.
+    scope = vs.get_variable_scope()
+    with vs.variable_scope(scope) as outer_scope:
+      weights = vs.get_variable(
+        "kernel", [total_arg_size, output_size],
+        dtype=dtype,
+        initializer=kernel_initializer)
+      if len(args) == 1:
+        res = math_ops.matmul(args[0], weights)
+      else:
+        res = math_ops.matmul(array_ops.concat(args, 1), weights)
+      if not bias:
+        return res
+      with vs.variable_scope(outer_scope) as inner_scope:
+        inner_scope.set_partitioner(None)
+        if bias_initializer is None:
+          bias_initializer = init_ops.constant_initializer(0.0, dtype=dtype)
+        biases = vs.get_variable(
+          "bias", [output_size],
+          dtype=dtype,
+          initializer=bias_initializer)
+
+    if not layer_norm:
+      res = nn_ops.bias_add(res, biases)
+
+    return res
+
   def call(self, inputs, state):
     """Run one step of LSTM.
 
@@ -2522,7 +2595,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
           partitioned_variables.fixed_size_partitioner(
             self._num_unit_shards))
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      lstm_matrix = _linear([inputs, m_prev], 4 * self._num_units, bias=True,
+      lstm_matrix = self._linear([inputs, m_prev], 4 * self._num_units, bias=True,
                             bias_initializer=None, layer_norm=self._layer_norm)
       i, j, f, o = array_ops.split(
         value=lstm_matrix, num_or_size_splits=4, axis=1)
@@ -2570,7 +2643,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
             proj_scope.set_partitioner(
               partitioned_variables.fixed_size_partitioner(
                 self._num_proj_shards))
-          m = _linear(m, self._num_proj, bias=False)
+          m = self._linear(m, self._num_proj, bias=False)
 
         if self._proj_clip is not None:
           # pylint: disable=invalid-unary-operand-type
