@@ -46,6 +46,7 @@ class RandomStrategy(object):
   def __call__(self, op):
     """Chooses a ps task index for the given `Operation`."""
     key = "%s_%d" % (op.name, self._seed)
+    key = key.encode("utf-8")
     # Use MD5 instead of Python's built-in hash() to get consistent outputs
     # between runs.
     n = int(hashlib.md5(key).hexdigest(), 16)

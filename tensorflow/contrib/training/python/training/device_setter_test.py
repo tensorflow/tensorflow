@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from tensorflow.contrib.training.python.training import device_setter as device_setter_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,6 +30,8 @@ _CLUSTER_SPEC = server_lib.ClusterSpec({
     "ps": ["ps0:2222", "ps1:2222"],
     "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
 })
+
+MockOperation = collections.namedtuple("MockOperation", "name")
 
 
 class RandomStrategyTest(test.TestCase):
@@ -54,6 +57,12 @@ class RandomStrategyTest(test.TestCase):
       self.assertDeviceEqual("/job:ps/task:1", x.device)
       self.assertDeviceEqual("/job:ps/task:1", x.initializer.device)
       self.assertDeviceEqual("/job:worker", a.device)
+
+  def testHandlesUnicode(self):
+    op = MockOperation(u"A unicode \u018e string \xf1")
+    ps_strategy = device_setter_lib.RandomStrategy(2, seed=0)
+    ps_task = ps_strategy(op)
+    self.assertEqual(ps_task, 1)
 
 
 class GreedyLoadBalancingStrategyTest(test.TestCase):
