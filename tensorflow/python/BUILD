@@ -595,6 +595,8 @@ py_library(
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:core",
         "@six_archive//:six",
     ],
 )

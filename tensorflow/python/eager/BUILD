@@ -57,7 +57,6 @@ py_library(
     deps = [
         "//tensorflow/python:device",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
