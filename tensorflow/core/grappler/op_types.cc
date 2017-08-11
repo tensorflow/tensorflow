@@ -47,7 +47,7 @@ bool IsIdentity(const NodeDef& node) {
 
 bool IsMerge(const NodeDef& node) {
   const auto op = node.op();
-  return op == "Merge";
+  return op == "Merge" || op == "RefMerge";
 }
 
 bool IsNoOp(const NodeDef& node) {
@@ -91,7 +91,7 @@ bool IsStopGradient(const NodeDef& node) {
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch";
+  return op == "Switch" || op == "RefSwitch";
 }
 
 bool IsTranspose(const NodeDef& node) {

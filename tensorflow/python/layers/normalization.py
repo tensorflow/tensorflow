@@ -66,6 +66,14 @@ class BatchNormalization(base.Layer):
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: An optional projection function to be applied to the `beta`
+        weight after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    gamma_constraint: An optional projection function to be applied to the
+        `gamma` weight after being updated by an `Optimizer`.
     renorm: Whether to use Batch Renormalization
       (https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
@@ -98,6 +106,8 @@ class BatchNormalization(base.Layer):
                moving_variance_initializer=init_ops.ones_initializer(),
                beta_regularizer=None,
                gamma_regularizer=None,
+               beta_constraint=None,
+               gamma_constraint=None,
                renorm=False,
                renorm_clipping=None,
                renorm_momentum=0.99,
@@ -118,6 +128,8 @@ class BatchNormalization(base.Layer):
     self.moving_variance_initializer = moving_variance_initializer
     self.beta_regularizer = beta_regularizer
     self.gamma_regularizer = gamma_regularizer
+    self.beta_constraint = beta_constraint
+    self.gamma_constraint = gamma_constraint
     self.renorm = renorm
     self.fused = fused
     self._bessels_correction_test_only = True
@@ -187,6 +199,7 @@ class BatchNormalization(base.Layer):
                                     shape=(param_dim,),
                                     initializer=self.beta_initializer,
                                     regularizer=self.beta_regularizer,
+                                    constraint=self.beta_constraint,
                                     trainable=True)
     else:
       self.beta = None
@@ -197,6 +210,7 @@ class BatchNormalization(base.Layer):
                                      shape=(param_dim,),
                                      initializer=self.gamma_initializer,
                                      regularizer=self.gamma_regularizer,
+                                     constraint=self.gamma_constraint,
                                      trainable=True)
     else:
       self.gamma = None
@@ -439,6 +453,8 @@ def batch_normalization(inputs,
                         moving_variance_initializer=init_ops.ones_initializer(),
                         beta_regularizer=None,
                         gamma_regularizer=None,
+                        beta_constraint=None,
+                        gamma_constraint=None,
                         training=False,
                         trainable=True,
                         name=None,
@@ -484,6 +500,14 @@ def batch_normalization(inputs,
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: An optional projection function to be applied to the `beta`
+        weight after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    gamma_constraint: An optional projection function to be applied to the
+        `gamma` weight after being updated by an `Optimizer`.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
       (normalized with statistics of the current batch) or in inference mode
@@ -526,6 +550,8 @@ def batch_normalization(inputs,
       moving_variance_initializer=moving_variance_initializer,
       beta_regularizer=beta_regularizer,
       gamma_regularizer=gamma_regularizer,
+      beta_constraint=beta_constraint,
+      gamma_constraint=gamma_constraint,
       renorm=renorm,
       renorm_clipping=renorm_clipping,
       renorm_momentum=renorm_momentum,
