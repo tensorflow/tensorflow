@@ -374,6 +374,7 @@ def _enqueue_data(data,
     TypeError: `data` is not a Pandas `DataFrame`, an `OrderedDict` of numpy
       arrays, a numpy `ndarray`, or a generator producing these.
     NotImplementedError: padding and shuffling data at the same time.
+    NotImplementedError: padding usage with non generator data type.
   """ 
   with ops.name_scope(name):
     if isinstance(data, np.ndarray):
@@ -405,6 +406,9 @@ def _enqueue_data(data,
           "installed; got {}".format(type(data).__name__))
 
     pad_data = pad_value is not None
+    if pad_data and get_feed_fn is not _GeneratorFeedFn:
+      raise NotImplementedError(
+        "padding is only available with generator usage")
     if shuffle and pad_data:
       raise NotImplementedError(
         "padding and shuffling data at the same time is not implemented")
@@ -463,7 +467,7 @@ def _enqueue_data(data,
 
       enqueue_ops.append(queue.enqueue_many(placeholders))
       seed_i = None if seed is None else (i + 1) * seed
-      
+
       if not pad_data:
         feed_fns.append(
           get_feed_fn(
