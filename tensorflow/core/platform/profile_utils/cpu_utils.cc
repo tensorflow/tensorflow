@@ -33,6 +33,11 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
      static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
      return cpu_frequency;
 }
+#elif defined(__s390x__)
+   /* static */ uint64 CpuUtils::GetCycleCounterFrequency() {
+     static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
+     return cpu_frequency;
+}
 #else
    /* static */ int64 CpuUtils::GetCycleCounterFrequency() {
      static const int64 cpu_frequency = GetCycleCounterFrequencyImpl();

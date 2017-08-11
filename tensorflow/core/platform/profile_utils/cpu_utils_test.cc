@@ -57,6 +57,10 @@ TEST_F(CpuUtilsTest, CheckCycleCounterFrequency) {
      const uint64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
      CHECK_GT(cpu_frequency, 0);
      CHECK_NE(cpu_frequency, unsigned(CpuUtils::INVALID_FREQUENCY));
+  #elif defined(__s390x__)
+     const uint64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
+     CHECK_GT(cpu_frequency, 0);
+     CHECK_NE(cpu_frequency, unsigned(CpuUtils::INVALID_FREQUENCY));
   #else
      const int64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
      CHECK_GT(cpu_frequency, 0);
