@@ -265,7 +265,7 @@ class MklConv2DOp : public OpKernel {
         sizeof(T));
     AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
                               mkl_output_mkl_shape);
-    // Filter output to be used in the backprob_input
+    // Filter output to be used in the backprop_input
     TensorShape mkl_filter_output_tf_shape;
     MklShape mkl_filter_output_mkl_shape;
     mkl_filter_output_mkl_shape.SetMklTensor(true);
