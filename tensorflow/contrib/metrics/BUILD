@@ -80,8 +80,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "noasan",
-    ],  # times out b/63678675
+        "noasan",  # times out b/63678675
+    ],
     deps = [
         ":metrics_py",
         "//tensorflow/python:array_ops",
