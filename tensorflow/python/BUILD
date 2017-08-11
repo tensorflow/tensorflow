@@ -1134,6 +1134,15 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "audio_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/contrib/framework:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
