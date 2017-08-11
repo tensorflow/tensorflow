@@ -31,6 +31,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #endif // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif
 
 // Dynamic stitch function for CPUDevice.
 template <typename T>
@@ -277,7 +280,7 @@ TF_CALL_int32(REGISTER_DYNAMIC_STITCH_GPU);
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          DynamicStitchOp<type>)
+                          DynamicStitchOp<SYCLDevice, type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
 #undef REGISTER_DYNAMIC_STITCH_SYCL
