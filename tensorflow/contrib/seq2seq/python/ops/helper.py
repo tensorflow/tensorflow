@@ -27,7 +27,6 @@ from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.layers import base as layers_base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -351,7 +350,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
   """
 
   def __init__(self, inputs, sequence_length, sampling_probability,
-               time_major=False, seed=None, next_input_layer=None,
+               time_major=False, seed=None, next_inputs_fn=None,
                auxiliary_inputs=None, name=None):
     """Initializer.
 
@@ -363,9 +362,9 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
       time_major: Python bool.  Whether the tensors in `inputs` are time major.
         If `False` (default), they are assumed to be batch major.
       seed: The sampling seed.
-      next_input_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
-        `tf.layers.Dense`.  Optional layer to apply to the RNN output to create
-        the next input.
+      next_inputs_fn: (Optional) callable to apply to the RNN outputs to create
+        the next input when sampling. If `None` (default), the RNN outputs will
+        be used as the next inputs.
       auxiliary_inputs: An optional (structure of) auxiliary input tensors with
         a shape that matches `inputs` in all but (potentially) the final
         dimension. These tensors will be concatenated to the sampled output or
@@ -403,11 +402,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
 
       self._seed = seed
 
-      if (next_input_layer is not None and not isinstance(next_input_layer,
-                                                          layers_base.Layer)):
-        raise TypeError("next_input_layer must be a Layer, received: %s" %
-                        type(next_input_layer))
-      self._next_input_layer = next_input_layer
+      self._next_inputs_fn = next_inputs_fn
 
       super(ScheduledOutputTrainingHelper, self).__init__(
           inputs=maybe_concatenated_inputs,
@@ -453,7 +448,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
               lambda x, y: array_ops.concat((x, y), -1),
               outputs_, auxiliary_inputs)
 
-        if self._next_input_layer is None:
+        if self._next_inputs_fn is None:
           return array_ops.where(
               sample_ids, maybe_concatenate_auxiliary_inputs(outputs),
               base_next_inputs)
@@ -466,7 +461,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
         inputs_not_sampling = array_ops.gather_nd(base_next_inputs,
                                                   where_not_sampling)
         sampled_next_inputs = maybe_concatenate_auxiliary_inputs(
-            self._next_input_layer(outputs_sampling), where_sampling)
+            self._next_inputs_fn(outputs_sampling), where_sampling)
 
         base_shape = array_ops.shape(base_next_inputs)
         return (array_ops.scatter_nd(indices=where_sampling,

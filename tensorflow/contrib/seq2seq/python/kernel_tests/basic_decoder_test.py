@@ -358,14 +358,12 @@ class BasicDecoderTest(test.TestCase):
           np.squeeze(inputs[batch_where_not_sampling, 1]))
 
   def _testStepWithScheduledOutputTrainingHelper(
-      self, sampling_probability, use_next_input_layer, use_auxiliary_inputs):
+      self, sampling_probability, use_next_inputs_fn, use_auxiliary_inputs):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
     input_depth = 7
     cell_depth = input_depth
-    if use_next_input_layer:
-      cell_depth = 6
     if use_auxiliary_inputs:
       auxiliary_input_depth = 4
       auxiliary_inputs = np.random.randn(
@@ -379,16 +377,20 @@ class BasicDecoderTest(test.TestCase):
       cell = rnn_cell.LSTMCell(cell_depth)
       sampling_probability = constant_op.constant(sampling_probability)
 
-      next_input_layer = None
-      if use_next_input_layer:
-        next_input_layer = layers_core.Dense(input_depth, use_bias=False)
+      if use_next_inputs_fn:
+        def next_inputs_fn(outputs):
+          # Use deterministic function for test.
+          samples = math_ops.argmax(outputs, axis=1)
+          return array_ops.one_hot(samples, cell_depth, dtype=dtypes.float32)
+      else:
+        next_inputs_fn = None
 
       helper = helper_py.ScheduledOutputTrainingHelper(
           inputs=inputs,
           sequence_length=sequence_length,
           sampling_probability=sampling_probability,
           time_major=False,
-          next_input_layer=next_input_layer,
+          next_inputs_fn=next_inputs_fn,
           auxiliary_inputs=auxiliary_inputs)
 
       my_decoder = basic_decoder.BasicDecoder(
@@ -412,9 +414,8 @@ class BasicDecoderTest(test.TestCase):
        step_finished) = my_decoder.step(
            constant_op.constant(0), first_inputs, first_state)
 
-      if use_next_input_layer:
-        output_after_next_input_layer = next_input_layer(
-            step_outputs.rnn_output)
+      if use_next_inputs_fn:
+        output_after_next_inputs_fn = next_inputs_fn(step_outputs.rnn_output)
 
       batch_size_t = my_decoder.batch_size
 
@@ -441,8 +442,8 @@ class BasicDecoderTest(test.TestCase):
           "step_next_inputs": step_next_inputs,
           "step_finished": step_finished
       }
-      if use_next_input_layer:
-        fetches["output_after_next_input_layer"] = output_after_next_input_layer
+      if use_next_inputs_fn:
+        fetches["output_after_next_inputs_fn"] = output_after_next_inputs_fn
 
       sess_results = sess.run(fetches)
 
@@ -461,8 +462,8 @@ class BasicDecoderTest(test.TestCase):
           np.array([]).reshape(batch_size, 0).astype(np.float32))
 
       expected_next_sampling_inputs = np.concatenate(
-          (sess_results["output_after_next_input_layer"][batch_where_sampling]
-           if use_next_input_layer else
+          (sess_results["output_after_next_inputs_fn"][batch_where_sampling]
+           if use_next_inputs_fn else
            sess_results["step_outputs"].rnn_output[batch_where_sampling],
            auxiliary_inputs_to_concat[batch_where_sampling]),
           axis=-1)
@@ -477,32 +478,31 @@ class BasicDecoderTest(test.TestCase):
                auxiliary_inputs_to_concat[batch_where_not_sampling]),
               axis=-1))
 
-  def testStepWithScheduledOutputTrainingHelperWithoutNextInputLayerOrAuxInputs(
+  def testStepWithScheduledOutputTrainingHelperWithoutNextInputsFnOrAuxInputs(
       self):
     self._testStepWithScheduledOutputTrainingHelper(
-        sampling_probability=0.5, use_next_input_layer=False,
+        sampling_probability=0.5, use_next_inputs_fn=False,
         use_auxiliary_inputs=False)
 
-  def testStepWithScheduledOutputTrainingHelperWithNextInputLayer(self):
+  def testStepWithScheduledOutputTrainingHelperWithNextInputsFn(self):
     self._testStepWithScheduledOutputTrainingHelper(
-        sampling_probability=0.5, use_next_input_layer=True,
+        sampling_probability=0.5, use_next_inputs_fn=True,
         use_auxiliary_inputs=False)
 
   def testStepWithScheduledOutputTrainingHelperWithAuxiliaryInputs(self):
     self._testStepWithScheduledOutputTrainingHelper(
-        sampling_probability=0.5, use_next_input_layer=False,
+        sampling_probability=0.5, use_next_inputs_fn=False,
         use_auxiliary_inputs=True)
 
-  def testStepWithScheduledOutputTrainingHelperWithNextInputLayerAndAuxInputs(
+  def testStepWithScheduledOutputTrainingHelperWithNextInputsFnAndAuxInputs(
       self):
     self._testStepWithScheduledOutputTrainingHelper(
-        sampling_probability=0.5, use_next_input_layer=True,
+        sampling_probability=0.5, use_next_inputs_fn=True,
         use_auxiliary_inputs=True)
 
-  def testStepWithScheduledOutputTrainingHelperWithNoSampling(
-      self):
+  def testStepWithScheduledOutputTrainingHelperWithNoSampling(self):
     self._testStepWithScheduledOutputTrainingHelper(
-        sampling_probability=0.0, use_next_input_layer=True,
+        sampling_probability=0.0, use_next_inputs_fn=True,
         use_auxiliary_inputs=True)
 
   def testStepWithInferenceHelperCategorical(self):
