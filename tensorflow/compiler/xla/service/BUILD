@@ -426,6 +426,7 @@ cc_library(
         ":gpu_transfer_manager",
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_evaluator",
         ":hlo_execution_profile",
         ":hlo_module_config",
         ":platform_util",

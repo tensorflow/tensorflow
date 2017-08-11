@@ -100,7 +100,7 @@ operator()(llvm::Module& module) const {
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  runtime::RewriteIRRuntimeFunctions(&module);
+  runtime::RewriteIRRuntimeFunctions(&module, enable_fast_math_);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;

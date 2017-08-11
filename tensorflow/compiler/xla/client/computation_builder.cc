@@ -111,13 +111,12 @@ bool ComputationBuilder::MakeWindow(
       return true;
     } else {
       NoteError(InvalidArgument(
-          "%s",
-          tensorflow::strings::StrCat(
-              "Window has different number of window dimensions than of ",
-              x_name, "\nNumber of window dimensions: ",
-              window_dimensions.size(), "\nNumber of ", x_name, ": ", x,
-              "\n")
-              .c_str()));  //
+          "%s", tensorflow::strings::StrCat(
+                    "Window has different number of window dimensions than of ",
+                    x_name, "\nNumber of window dimensions: ",
+                    window_dimensions.size(), "\nNumber of ", x_name, ": ", x,
+                    "\n")
+                    .c_str()));  //
       return false;
     }
   };
@@ -663,24 +662,26 @@ bool ComputationBuilder::VerifyConvolution(
   }
   int num_spatial_dims = num_dims - 2;
 
-  const auto check_spatial_dimensions = [&](
-      const char* const field_name,
-      const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>&
-          numbers) {
-    if (numbers.size() != num_spatial_dims) {
-      NoteError(InvalidArgument("Expected %d elements for %s, but got %d.",
-                                num_spatial_dims, field_name, numbers.size()));
-      return false;
-    }
-    for (int i = 0; i < numbers.size(); ++i) {
-      if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
-        NoteError(InvalidArgument("Convolution %s[%d] is out of bounds: %lld",
-                                  field_name, i, numbers.Get(i)));
-        return false;
-      }
-    }
-    return true;
-  };
+  const auto check_spatial_dimensions =
+      [&](const char* const field_name,
+          const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>&
+              numbers) {
+        if (numbers.size() != num_spatial_dims) {
+          NoteError(InvalidArgument("Expected %d elements for %s, but got %d.",
+                                    num_spatial_dims, field_name,
+                                    numbers.size()));
+          return false;
+        }
+        for (int i = 0; i < numbers.size(); ++i) {
+          if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
+            NoteError(
+                InvalidArgument("Convolution %s[%d] is out of bounds: %lld",
+                                field_name, i, numbers.Get(i)));
+            return false;
+          }
+        }
+        return true;
+      };
   return check_spatial_dimensions("spatial_dimensions",
                                   dimension_numbers.spatial_dimensions()) &&
          check_spatial_dimensions(
@@ -1268,7 +1269,7 @@ StatusOr<bool> ComputationBuilder::IsConstant(
   return response.is_constant();
 }
 
-StatusOr<std::unique_ptr<GlobalData>> ComputationBuilder::ComputeConstant(
+StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
     const ComputationDataHandle& operand, const Layout* output_layout) {
   if (!first_error_.ok()) {
     return first_error_;
@@ -1291,8 +1292,14 @@ StatusOr<std::unique_ptr<GlobalData>> ComputationBuilder::ComputeConstant(
     return s;
   }
 
-  TF_RET_CHECK(response.output().handle() != 0);
-  return MakeUnique<GlobalData>(client_->stub(), response.output());
+  VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return InternalError(
+        "no computed literal in the provided response in ComputeConstant "
+        "request");
+  }
+  return MakeUnique<Literal>(response.literal());
 }
 
 ComputationDataHandle ComputationBuilder::Map(
