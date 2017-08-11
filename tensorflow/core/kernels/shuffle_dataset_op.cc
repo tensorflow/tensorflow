@@ -107,7 +107,7 @@ class ShuffleDatasetOp : public UnaryDatasetOpKernel {
         while (!end_of_input_sequence_ &&
                buffer_.size() < dataset()->buffer_size_) {
           if (ctx->env()->NowMicros() >
-              (num_log_entries * kLogIntervalMicros) + start_micros) {
+              ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
             num_log_entries++;
             LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
                       << buffer_.size() << " of " << dataset()->buffer_size_;

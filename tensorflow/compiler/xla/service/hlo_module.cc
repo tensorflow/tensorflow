@@ -68,6 +68,17 @@ HloComputation* HloModule::AddEntryComputation(
   return AddComputationInternal(std::move(computation));
 }
 
+Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+  auto it =
+      std::find_if(computations_.begin(), computations_.end(),
+                   [&to_remove](const std::unique_ptr<HloComputation>& comp) {
+                     return comp.get() == to_remove;
+                   });
+  TF_RET_CHECK(it->get() == to_remove);
+  computations_.erase(it);
+  return Status::OK();
+}
+
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
   return AddComputationInternal(std::move(computation));

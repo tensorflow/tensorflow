@@ -127,18 +127,9 @@ class Conv1D(tf_convolutional_layers.Conv1D, Layer):
         kernel_regularizer=regularizers.get(kernel_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-  def build(self, input_shape):
-    super(Conv1D, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.kernel_constraint:
-      self.constraints[self.kernel] = self.kernel_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {
@@ -268,18 +259,9 @@ class Conv2D(tf_convolutional_layers.Conv2D, Layer):
         kernel_regularizer=regularizers.get(kernel_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-  def build(self, input_shape):
-    super(Conv2D, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.kernel_constraint:
-      self.constraints[self.kernel] = self.kernel_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {
@@ -417,18 +399,9 @@ class Conv3D(tf_convolutional_layers.Conv3D, Layer):
         kernel_regularizer=regularizers.get(kernel_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-  def build(self, input_shape):
-    super(Conv3D, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.kernel_constraint:
-      self.constraints[self.kernel] = self.kernel_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {
@@ -564,18 +537,9 @@ class Conv2DTranspose(tf_convolutional_layers.Conv2DTranspose, Layer):
         kernel_regularizer=regularizers.get(kernel_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-  def build(self, input_shape):
-    super(Conv2DTranspose, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.kernel_constraint:
-      self.constraints[self.kernel] = self.kernel_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {
@@ -721,18 +685,9 @@ class Conv3DTranspose(tf_convolutional_layers.Conv3D, Layer):
         kernel_regularizer=regularizers.get(kernel_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-  def build(self, input_shape):
-    super(Conv3DTranspose, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.kernel_constraint:
-      self.constraints[self.kernel] = self.kernel_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {
@@ -869,21 +824,10 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
         pointwise_regularizer=regularizers.get(pointwise_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        depthwise_constraint=constraints.get(depthwise_constraint),
+        pointwise_constraint=constraints.get(pointwise_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.depthwise_constraint = constraints.get(depthwise_constraint)
-    self.pointwise_constraint = constraints.get(pointwise_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-
-  def build(self, input_shape):
-    super(SeparableConv2D, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.depthwise_constraint:
-      self.constraints[self.depthwise_kernel] = self.depthwise_constraint
-    if self.pointwise_constraint:
-      self.constraints[self.pointwise_kernel] = self.pointwise_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {

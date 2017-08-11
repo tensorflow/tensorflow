@@ -1,6 +1,5 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -272,10 +271,7 @@ cc_library(
 cc_library(
     name = "print_model_analysis_hdr",
     hdrs = ["print_model_analysis.h"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core:protos_all_cc",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 cc_library(
@@ -286,6 +282,7 @@ cc_library(
         ":tfprof_options",
         ":tfprof_stats",
         "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:protos_all_cc",

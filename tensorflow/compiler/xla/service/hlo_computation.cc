@@ -261,12 +261,15 @@ Status HloComputation::ReplaceUsesOfInstruction(
 
 void HloComputation::set_root_instruction(
     HloInstruction* new_root_instruction) {
-  // The shape of the root (ignoring layout) is an invariant of the computation.
-  CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
-                              root_instruction_->shape()))
-      << new_root_instruction->shape().ShortDebugString()
-      << " is incompatible with "
-      << root_instruction_->shape().ShortDebugString();
+  // The shape of the root (ignoring layout) is an invariant of the computation
+  // for non-fusion cases.
+  if (!is_fusion_computation_) {
+    CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
+                                root_instruction_->shape()))
+        << new_root_instruction->shape().ShortDebugString()
+        << " is incompatible with "
+        << root_instruction_->shape().ShortDebugString();
+  }
   bool root_found = false;
   for (auto& instruction : instructions_) {
     if (new_root_instruction == instruction.get()) {
