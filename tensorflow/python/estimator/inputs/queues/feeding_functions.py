@@ -66,7 +66,7 @@ def _fill_array(arr, seq, fillvalue=0):
     arr[len_:] = fillvalue
   else:
     for subarr, subseq in six.moves.zip_longest(arr, seq, fillvalue=()):
-      _fill_array(subarr, subseq)
+      _fill_array(subarr, subseq, fillvalue)
 
 
 def _pad_if_needed(batch_key_item):

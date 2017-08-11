@@ -308,6 +308,26 @@ class _FeedingFunctionsTestCase(test.TestCase):
     expected[:8, ..., 32:] = 0
     self.assertEqual(expected, actual)
 
+  def testFillArraySmallWithSpecifiedValue(self):
+    fill_value = 8
+    a = np.ones(shape=[32, 32], dtype=np.int32).tolist() +
+        np.ones(shape=[32, 36], dtype=np.int32).tolist()
+    actual = np.ones(shape=[64, 36], dtype=np.int32)
+    ff._fill_array(actual, a, fill_value)
+    expected = np.ones(shape=[64, 36], dtype=np.int32)
+    expected[:32, 32:] = fill_value
+    self.assertEqual(expected, actual)
+
+  def testFillArrayLargeWithSpecifiedValue(self):
+    fill_value = 8
+    a = np.ones(shape=[8, 8, 8, 8, 32], dtype=np.int32).tolist() +
+        np.ones(shape=[8, 8, 8, 8, 36], dtype=np.int32).tolist()
+    actual = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
+    ff._fill_array(actual, a, fill_value)
+    expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
+    expected[:8, ..., 32:] = fill_value
+    self.assertEqual(expected, actual)
+
   def testPadIfNeededSmall(self):
     a = np.ones(shape=[32, 32], dtype=np.int32).tolist() +
         np.ones(shape=[32, 36], dtype=np.int32).tolist()
