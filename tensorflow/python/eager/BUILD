@@ -98,11 +98,11 @@ cuda_py_test(
         ":context",
         ":core",
         ":execute",
-        "//tensorflow/python:pywrap_tensorflow",
         ":tensor",
         ":test",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -197,6 +197,20 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+cuda_py_test(
+    name = "graph_only_ops_test",
+    srcs = ["graph_only_ops_test.py"],
+    additional_deps = [
+        "graph_only_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -242,6 +256,7 @@ py_library(
         ":context",
         ":core",
         ":execute",
+        ":graph_only_ops",
         ":tensor",
         ":test",
         "//tensorflow/python:pywrap_tensorflow",
