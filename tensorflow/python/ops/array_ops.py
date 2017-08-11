@@ -76,6 +76,7 @@ See the @{$python/array_ops} guide.
 @@fake_quant_with_min_max_vars_gradient
 @@fake_quant_with_min_max_vars_per_channel
 @@fake_quant_with_min_max_vars_per_channel_gradient
+@@reshape
 """
 
 from __future__ import absolute_import
