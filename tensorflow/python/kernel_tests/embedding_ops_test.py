@@ -817,5 +817,44 @@ class DynamicStitchOpTest(test.TestCase):
     self.assertAllEqual(np_values[-1], stitched)
 
 
+class ParallelDynamicStitchOpTest(test.TestCase):
+
+  def testCint32Cpu(self):
+    with self.test_session(use_gpu=False):
+      indices = [
+          ops.convert_to_tensor([0, 1, 4, 6]),
+          ops.convert_to_tensor([2, 3, 5])
+      ]
+      values = [
+          ops.convert_to_tensor([12, 23, 34, 45]),
+          ops.convert_to_tensor([1, 2, 3])
+      ]
+      self.assertAllEqual(
+          data_flow_ops.parallel_dynamic_stitch(indices, values).eval(),
+          [12, 23, 1, 2, 34, 3, 45])
+
+  def testInt32Cpu(self):
+    with self.test_session(use_gpu=False):
+      indices = [
+          ops.convert_to_tensor([0, 1, 5, 6, 7]),
+          ops.convert_to_tensor([2, 4, 3])
+      ]
+      values = [
+          ops.convert_to_tensor([12, 23, 34, 45, 56]),
+          ops.convert_to_tensor([1, 3, 2])
+      ]
+      self.assertAllEqual(
+          data_flow_ops.parallel_dynamic_stitch(indices, values).eval(),
+          [12, 23, 1, 2, 3, 34, 45, 56])
+
+  def testSimple(self):
+    with self.test_session(use_gpu=False):
+      indices = [ops.convert_to_tensor([0, 1]), ops.convert_to_tensor([2, 3])]
+      values = [ops.convert_to_tensor([2, 3]), ops.convert_to_tensor([1, 1])]
+      self.assertAllEqual(
+          data_flow_ops.parallel_dynamic_stitch(indices, values).eval(),
+          [2, 3, 1, 1])
+
+
 if __name__ == "__main__":
   test.main()

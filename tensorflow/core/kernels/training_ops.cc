@@ -2114,7 +2114,8 @@ class SparseApplyFtrlOp : public OpKernel {
                              accum.pow(-lr_power_scalar)) /                    \
                                 lr_scalar * var;                               \
   }                                                                            \
-  auto x = (linear.constant(l1_scalar) * linear.sign() - linear);              \
+  auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
+  auto x = l1_reg_adjust - linear;                                             \
   if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
     auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +                \
              linear.constant(static_cast<T>(2) * l2_scalar);                   \
@@ -2124,8 +2125,6 @@ class SparseApplyFtrlOp : public OpKernel {
              linear.constant(static_cast<T>(2) * l2_scalar);                   \
     var = x / y;                                                               \
   }                                                                            \
-  var = (linear.abs() > linear.constant(l1_scalar))                            \
-            .select(var, var.constant(static_cast<T>(0)));                     \
   accum += grad_to_use.square();
 
           if (has_l2_shrinkage) {

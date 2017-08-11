@@ -784,6 +784,18 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual([v.name
                           for v in scope.global_variables()], ["foo/b:0"])
 
+  def testGetLocalVariables(self):
+    with self.test_session():
+      _ = variable_scope.get_variable(
+          "a", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      with variable_scope.variable_scope("foo") as scope:
+        _ = variable_scope.get_variable(
+            "b", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
+        _ = variable_scope.get_variable(
+            "c", [])
+        self.assertEqual([v.name
+                          for v in scope.local_variables()], ["foo/b:0"])
+
   def testGetVariableWithRefDtype(self):
     v = variable_scope.get_variable("v", shape=[3, 4], dtype=dtypes.float32)
     # Ensure it is possible to do get_variable with a _ref dtype passed in.
