@@ -442,6 +442,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
+      module->config().debug_options().xla_enable_fast_math(),
       pre_optimization_ir_hook, post_optimization_ir_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
@@ -794,6 +795,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     CompilerFunctor compiler_functor(
         target_machine.get(), &disassembler, opt_level,
         options::OptimizeForSizeRequested(module->config()),
+        module->config().debug_options().xla_enable_fast_math(),
         CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
         post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
