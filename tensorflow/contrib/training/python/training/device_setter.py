@@ -48,7 +48,7 @@ class RandomStrategy(object):
     key = "%s_%d" % (op.name, self._seed)
     # Use MD5 instead of Python's built-in hash() to get consistent outputs
     # between runs.
-    n = int(hashlib.md5(key).hexdigest(), 16)
+    n = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16)
     return int(n % self._num_tasks)
 
 
