@@ -350,7 +350,9 @@ message ComputeConstantRequest {
 }
 
 message ComputeConstantResponse {
-  GlobalDataHandle output = 1;
+  // A LiteralProto is returned directly for this request, instead of a
+  // ComputationDataHandle.
+  LiteralProto literal = 1;
 }
 
 message DeconstructTupleRequest {
