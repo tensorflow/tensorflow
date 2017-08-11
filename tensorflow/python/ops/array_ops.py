@@ -2389,7 +2389,7 @@ def where(condition, x=None, y=None, name=None):
 
 # pylint: disable=redefined-builtin,protected-access
 def reshape(tensor, shape, name=None):
-  r"""Reshapes a tensor.
+  """Reshapes a tensor.
 
   Given `tensor`, this operation returns a tensor that has the same values
   as `tensor` with shape `shape`.
