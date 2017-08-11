@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -118,20 +120,95 @@ struct GatherFunctorCPU {
   }
 };
 
+// Helper method to copy using memcpy.
+template <typename T, typename Index, typename SliceIndex,
+        SliceIndex static_slice_elems>
+SliceIndex HandleCopiesMT(OpKernelContext* ctx,
+                          typename TTypes<T, 3>::ConstTensor params,
+                          typename TTypes<Index>::ConstFlat indices,
+                          SliceIndex slice_elems,
+                          typename TTypes<T, 3>::Tensor out) {
+  const SliceIndex indices_size = static_cast<SliceIndex>(indices.dimension(0));
+  const SliceIndex batch_size = static_cast<SliceIndex>(params.dimension(0));
+  const Index limit = static_cast<Index>(params.dimension(1));
+  T* out_base = &out(0, 0, 0);
+  const T* params_base = &params(0, 0, 0);
+  if (static_slice_elems >= 0) {
+    // Give compiler static knowledge of the number of elements/bytes
+    slice_elems = static_slice_elems;
+  }
+  // Compute slice_bytes here so that static knowledge is available
+  const size_t slice_bytes = slice_elems * sizeof(T);
+  auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
+  mutex mu;
+  SliceIndex result = -1 GUARDED_BY(mu);
+  auto work = [&params, params_base, &indices, &out, out_base, &slice_bytes,
+          &indices_size, &limit, &slice_elems, &mu, &result] (int64 start, int64 end) {
+    for(int64 i = start; i < end; ++i) {
+      int64 batch_idx = i / indices_size;
+      int64 indices_idx = i % indices_size;
+      // Grab the index and check its validity.  An earlier version of the
+      // code checked it and then grabbed it from memory a second time, which
+      // was a security risk since it could have changed in between.
+      const Index index = internal::SubtleMustCopy(indices(indices_idx));
+      if (!FastBoundsCheck(index, limit)) {
+        mutex_lock l(mu);
+        result = indices_idx;
+        return;
+      }
+      // Copy using memcpy if possible, otherwise an Eigen loop
+      // TODO(cwhipkey): avoid linking to framework to get Allocator (to improve
+      // ahead-of-time compilation binary size).
+      if (is_simple_type<T>::value) {
+        // Avoid auto-promotion to Index from SliceIndex by casting.
+        memcpy(out_base + (batch_idx * indices_size + indices_idx) * slice_elems,
+               params_base + (batch_idx * static_cast<SliceIndex>(limit) +
+                              static_cast<SliceIndex>(index)) *
+                             slice_elems,
+               slice_bytes);
+      } else {
+        // For non-"simple" types (e.g. strings).
+        out.template chip<1>(indices_idx) = params.template chip<1>(index);
+      }
+    }
+  };
+
+  Shard(worker_threads->num_threads, worker_threads->workers, batch_size*indices_size,
+        slice_elems * sizeof(T), work);
+  return result;
+}
+
 template <typename Device, typename T, typename Index>
 struct GatherFunctor {
-  int64 operator()(const Device& d, typename TTypes<T, 3>::ConstTensor params,
+  int64 operator()(OpKernelContext* ctx, typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 3>::Tensor out);
 };
 
 template <typename T, typename Index>
 struct GatherFunctor<CPUDevice, T, Index> {
-  int64 operator()(const CPUDevice& d,
+  int64 operator()(OpKernelContext* ctx,
                    typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 3>::Tensor out) {
-    return GatherFunctorCPU<T, Index>()(params, indices, out);
+  const int64 slice_size = out.dimension(2);
+  int64 bad_i;
+
+#define CALL(elems)                                                   \
+  do {                                                                \
+    bad_i = HandleCopiesMT<T, Index, int64, elems>(ctx, params, indices,   \
+                                                 slice_size, out);  \
+  } while (0)
+
+    if (slice_size == 10)
+      CALL(10);
+    else if (slice_size == 20)
+      CALL(20);
+    else
+      CALL(-1);
+#undef CALL
+
+    return bad_i;
   }
 };
 

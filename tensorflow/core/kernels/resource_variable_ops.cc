@@ -464,7 +464,7 @@ class ResourceGatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({1, N, out->NumElements() / N});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
+      int64 bad_i = functor(c, params_flat,
                             indices_flat, out_flat);
 
       OP_REQUIRES(
