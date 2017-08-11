@@ -360,14 +360,14 @@ TF_CALL_int32(REGISTER_DYNAMIC_STITCH_GPU);
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          DynamicStitchOp<type>)         \
+                          DynamicStitchOpCPU<type>)      \
   REGISTER_KERNEL_BUILDER(Name("ParallelDynamicStitch")  \
                               .Device(DEVICE_SYCL)       \
                               .TypeConstraint<type>("T") \
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          ParallelDynamicStitchOp<type>)
+                          ParallelDynamicStitchOpCPU<type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
 #undef REGISTER_DYNAMIC_STITCH_SYCL
