@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -144,36 +145,15 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   backend_options.set_platform(platform);
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
   std::unique_ptr<Service> service(
-      new Service(options, std::move(execute_backend),
-                  std::move(compute_constant_backend)));
+      new Service(options, std::move(execute_backend)));
   return std::move(service);
 }
 
-/* static */ StatusOr<std::unique_ptr<Backend>>
-Service::CreateComputeConstantBackend() {
-  TF_ASSIGN_OR_RETURN(std::vector<se::Platform*> platforms,
-                      PlatformUtil::GetSupportedPlatforms());
-  for (auto* platform : platforms) {
-    if (platform->id() == se::host::kHostPlatformId) {
-      BackendOptions backend_options;
-      backend_options.set_platform(platform);
-      return Backend::CreateBackend(backend_options);
-    }
-  }
-  return NotFound("CPU platform not found");
-}
-
 Service::Service(const ServiceOptions& options,
-                 std::unique_ptr<Backend> execute_backend,
-                 std::unique_ptr<Backend> compute_constant_backend)
-    : options_(options),
-      execute_backend_(std::move(execute_backend)),
-      compute_constant_backend_(std::move(compute_constant_backend)) {
+                 std::unique_ptr<Backend> execute_backend)
+    : options_(options), execute_backend_(std::move(execute_backend)) {
   CHECK(options_.number_of_replicas() > 0);
-
   if (execute_backend_) {
     if (execute_backend_->device_count() > 0) {
       CHECK_GE(execute_backend_->device_count(), options_.number_of_replicas())
@@ -418,7 +398,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const VersionedComputationHandle& versioned_handle,
     std::unique_ptr<HloModuleConfig> module_config,
-    bool executable_for_compute_constant,
     const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
         arguments,
     Backend* backend, se::StreamExecutor* executor) {
@@ -431,8 +410,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       module_config->debug_options().xla_dump_computations_to();
   const string& other_directory_path =
       module_config->debug_options().xla_dump_executions_to();
-  if (!executable_for_compute_constant &&
-      (!directory_path.empty() || !other_directory_path.empty())) {
+  if (!directory_path.empty() || !other_directory_path.empty()) {
     TF_ASSIGN_OR_RETURN(
         session_module,
         computation_tracker_.SnapshotComputation(versioned_handle.handle));
@@ -450,7 +428,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       std::unique_ptr<HloModule> module,
       computation_tracker_.BuildHloModule(versioned_handle, *module_config,
                                           /*include_unreachable_instructions=*/
-                                          !executable_for_compute_constant));
+                                          true));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
@@ -490,8 +468,7 @@ StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
   HloModuleConfig original_module_config = *module_config;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable_unique_ptr,
-      BuildExecutable(versioned_handle, std::move(module_config),
-                      /*executable_for_compute_constant=*/false, arguments,
+      BuildExecutable(versioned_handle, std::move(module_config), arguments,
                       backend, executor));
 
   if (profile != nullptr) {
@@ -1098,7 +1075,6 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_ASSIGN_OR_RETURN(bool is_constant,
                       user_computation->IsConstant(arg->operand()));
-
   if (!is_constant) {
     return InvalidArgument("Operand to ComputeConstant depends on parameter.");
   }
@@ -1114,8 +1090,8 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   ExecutionOptions execution_options = xla::CreateDefaultExecutionOptions();
   execution_options.mutable_debug_options()->set_xla_enable_fast_math(false);
-  execution_options.mutable_debug_options()->set_xla_backend_optimization_level(
-      0);
+  execution_options.mutable_debug_options()
+      ->set_xla_eliminate_hlo_implicit_broadcast(true);
   *execution_options.mutable_shape_with_output_layout() =
       program_shape.result();
 
@@ -1130,20 +1106,22 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                       CreateModuleConfig(program_shape, {}, execution_options));
 
+  // Exclude dead parameter instructions for the purpose of computing constants.
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<Executable> executable,
-      BuildExecutable(versioned_handle, std::move(module_config),
-                      /*executable_for_compute_constant=*/true,
-                      /*arguments=*/{}, compute_constant_backend_.get(),
-                      compute_constant_backend_->default_stream_executor()));
+      std::unique_ptr<HloModule> module,
+      computation_tracker_.BuildHloModule(versioned_handle, *module_config,
+                                          /*include_unreachable_instructions=*/
+                                          false));
 
-  TF_ASSIGN_OR_RETURN(
-      *result->mutable_output(),
-      ExecuteAndRegisterResult(
-          executable.get(), /*arguments=*/{}, compute_constant_backend_.get(),
-          compute_constant_backend_->default_stream_executor(),
-          "constant computed from " + user_computation->name(),
-          /*profile=*/nullptr));
+  HloEvaluator evaluator;
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
+  // Since the shape_with_output_layout option in ExecutionOption is
+  // non-effective to the Evaluator results, explicit relayout here.
+  if (arg->has_output_layout()) {
+    result_literal = result_literal->Relayout(arg->output_layout());
+  }
+  *result->mutable_literal() = result_literal->ToProto();
+
   return tensorflow::Status::OK();
 }
 
