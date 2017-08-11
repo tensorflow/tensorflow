@@ -1991,11 +1991,20 @@ bool CudnnSupport::DoConvolveImpl(
           /*filterDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
           /*destDesc=*/output_nd.handle(), /*algo=*/algo,
           /*sizeInBytes=*/&size_in_bytes);
-      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (allocated.ok()) {
-          scratch = allocated.ValueOrDie();
+      int64 size_in_bytes_int64 = size_in_bytes;
+      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes_int64 != 0) {
+        if (size_in_bytes_int64 > 0) {
+          auto allocated =
+              scratch_allocator->AllocateBytes(stream, size_in_bytes);
+          if (allocated.ok()) {
+            scratch = allocated.ValueOrDie();
+          } else {
+            LOG(WARNING) << allocated.status().error_message();
+          }
+        } else {
+          LOG(WARNING)
+              << "cudnnGetConvolutionForwardWorkspaceSize() returned "
+                 "negative sizeInBytes value. This could be a cudnn bug.";
         }
       }
     }
@@ -2023,7 +2032,8 @@ bool CudnnSupport::DoConvolveImpl(
                     "algorithm: "
                  << algorithm_config.algorithm();
     }
-    if (size_in_bytes != 0) {
+    int64 size_in_bytes_int64 = size_in_bytes;
+    if (size_in_bytes_int64 > 0) {
       if (scratch_allocator == nullptr) {
         LOG(FATAL) << "An allocator must be specified when scratch memory is "
                       "needed";
@@ -2035,6 +2045,8 @@ bool CudnnSupport::DoConvolveImpl(
       }
       if (allocated.ok()) {
         scratch = allocated.ValueOrDie();
+      } else {
+        LOG(WARNING) << allocated.status().error_message();
       }
       if (scratch == nullptr) {
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
@@ -2042,6 +2054,9 @@ bool CudnnSupport::DoConvolveImpl(
                "while a secondary algorithm is not provided.";
         algo = ToConvForwardAlgo(algorithm_config.algorithm_no_scratch());
       }
+    } else if (size_in_bytes_int64 < 0) {
+      LOG(WARNING) << "cudnnGetConvolutionForwardWorkspaceSize() returned "
+                      "negative sizeInBytes value. This could be a cudnn bug.";
     }
   }
   const bool has_biases = (biases != nullptr);
@@ -2635,11 +2650,20 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
           /*gradDesc=*/in_back_nd.handle(),
           /*algo=*/algo,
           /*sizeInBytes=*/&size_in_bytes);
-      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (allocated.ok()) {
-          scratch = allocated.ValueOrDie();
+      int64 size_in_bytes_int64 = size_in_bytes;
+      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes_int64 != 0) {
+        if (size_in_bytes_int64 > 0) {
+          auto allocated =
+              scratch_allocator->AllocateBytes(stream, size_in_bytes);
+          if (allocated.ok()) {
+            scratch = allocated.ValueOrDie();
+          } else {
+            LOG(WARNING) << allocated.status().error_message();
+          }
+        } else {
+          LOG(WARNING)
+              << "cudnnGetConvolutionBackwardDataWorkspaceSize() returned "
+                 "negative sizeInBytes value. This could be a cudnn bug.";
         }
       }
     }
@@ -2670,7 +2694,8 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
                     "algorithm: "
                  << algorithm_config.algorithm();
     }
-    if (size_in_bytes != 0) {
+    int64 size_in_bytes_int64 = size_in_bytes;
+    if (size_in_bytes_int64 > 0) {
       if (scratch_allocator == nullptr) {
         LOG(FATAL) << "An allocator must be specified when scratch memory is "
                       "needed";
@@ -2682,6 +2707,8 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       }
       if (allocated.ok()) {
         scratch = allocated.ValueOrDie();
+      } else {
+        LOG(WARNING) << allocated.status().error_message();
       }
       if (scratch == nullptr) {
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
@@ -2689,6 +2716,9 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
                "while a secondary algorithm is not provided.";
         algo = ToConvBackwardDataAlgo(algorithm_config.algorithm_no_scratch());
       }
+    } else if (size_in_bytes_int64 < 0) {
+      LOG(WARNING) << "cudnnGetConvolutionBackwardDataWorkspaceSize() returned "
+                      "negative sizeInBytes value. This could be a cudnn bug.";
     }
   }
 
@@ -2871,11 +2901,20 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
           /*diffDesc=*/out_back_nd.handle(), /*convDesc=*/conv.handle(),
           /*gradDesc=*/filter.handle(), /*algo=*/algo,
           /*sizeInBytes=*/&size_in_bytes);
-      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (allocated.ok()) {
-          scratch = allocated.ValueOrDie();
+      int64 size_in_bytes_int64 = size_in_bytes;
+      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes_int64 != 0) {
+        if (size_in_bytes_int64 > 0) {
+          auto allocated =
+              scratch_allocator->AllocateBytes(stream, size_in_bytes);
+          if (allocated.ok()) {
+            scratch = allocated.ValueOrDie();
+          } else {
+            LOG(WARNING) << allocated.status().error_message();
+          }
+        } else {
+          LOG(WARNING)
+              << "cudnnGetConvolutionBackwardFilterWorkspaceSize() returned "
+                 "negative sizeInBytes value. This could be a cudnn bug.";
         }
       }
     }
@@ -2904,7 +2943,8 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
                     "algorithm: "
                  << algorithm_config.algorithm();
     }
-    if (size_in_bytes != 0) {
+    int64 size_in_bytes_int64 = size_in_bytes;
+    if (size_in_bytes_int64 > 0) {
       if (scratch_allocator == nullptr) {
         LOG(FATAL) << "An allocator must be specified when scratch memory is "
                       "needed";
@@ -2916,6 +2956,8 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
       }
       if (allocated.ok()) {
         scratch = allocated.ValueOrDie();
+      } else {
+        LOG(WARNING) << allocated.status().error_message();
       }
       if (scratch == nullptr) {
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
@@ -2924,6 +2966,10 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
         algo =
             ToConvBackwardFilterAlgo(algorithm_config.algorithm_no_scratch());
       }
+    } else if (size_in_bytes_int64 < 0) {
+      LOG(WARNING)
+          << "cudnnGetConvolutionBackwardFilterWorkspaceSize() returned "
+             "negative sizeInBytes value. This could be a cudnn bug.";
     }
   }
 

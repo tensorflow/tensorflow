@@ -119,22 +119,15 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
 
   // Ask the XLA compiler to evaluate the data handle to a literal.
-  xla::StatusOr<std::unique_ptr<xla::GlobalData>> computed =
+  xla::StatusOr<std::unique_ptr<xla::Literal>> computed =
       builder()->ComputeConstant(handle, &layout);
   if (!computed.ok()) {
     return errors::InvalidArgument(
         "Error evaluating ", context_->op_kernel().name(), " input ", index,
         ": ", computed.status().error_message());
   }
-  // Fetch the literal from the compiler service.
-  xla::StatusOr<std::unique_ptr<xla::Literal>> constant =
-      builder()->client()->Transfer(*computed.ValueOrDie());
-  if (!constant.ok()) {
-    return errors::InvalidArgument(
-        "Error evaluating ", context_->op_kernel().name(), " input ", index,
-        ": ", constant.status().error_message());
-  }
-  constant_literal->Swap(constant.ValueOrDie().get());
+  constant_literal->Swap(computed.ValueOrDie().get());
+
   return Status::OK();
 }
 

@@ -1104,25 +1104,31 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     std::vector<HloInstruction*> new_user_operands = user->operands();
     new_user_operands[reshape_or_broadcast_operand_index] = operand;
     auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
-        ShapeUtil::MakeShape(user->shape().element_type(),
-                             AsInt64Slice(operand->shape().dimensions())),
+        ShapeUtil::MakeShapeWithLayout(
+            user->shape().element_type(),
+            AsInt64Slice(operand->shape().dimensions()),
+            AsInt64Slice(operand->shape().layout().minor_to_major())),
         new_user_operands));
     VLOG(4) << "  new user: " << new_user->ToString();
     HloInstruction* new_reshape_or_broadcast = nullptr;
     if (reshape_or_broadcast->opcode() == HloOpcode::kReshape) {
       new_reshape_or_broadcast =
           computation_->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShape(
+              ShapeUtil::MakeShapeWithLayout(
                   user->shape().element_type(),
-                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
+                  AsInt64Slice(
+                      reshape_or_broadcast->shape().layout().minor_to_major())),
               new_user));
     } else {
       TF_RET_CHECK(reshape_or_broadcast->opcode() == HloOpcode::kBroadcast);
       new_reshape_or_broadcast =
           computation_->AddInstruction(HloInstruction::CreateBroadcast(
-              ShapeUtil::MakeShape(
+              ShapeUtil::MakeShapeWithLayout(
                   user->shape().element_type(),
-                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
+                  AsInt64Slice(
+                      reshape_or_broadcast->shape().layout().minor_to_major())),
               new_user, reshape_or_broadcast->dimensions()));
     }
     VLOG(4) << "  new reshape/broadcast: "

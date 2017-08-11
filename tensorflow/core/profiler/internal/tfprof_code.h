@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Build a tree structure based on the TensorFlow model's python code stacks.
-// Stats are aggregated from descendants from ancestors.
+// Stats are aggregated from descendants to ancestors.
 
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_CODE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_CODE_H_

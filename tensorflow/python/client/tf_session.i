@@ -56,7 +56,7 @@ tensorflow::ImportNumpy();
 // const char*.
 %typemap(in) (const char* target) {
   $1 = PyBytes_AsString($input);
-  if (!$1) {
+   if (!$1) {
     // Python has raised an error.
     SWIG_fail;
   }

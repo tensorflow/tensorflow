@@ -292,6 +292,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
+  // TODO(b/64580527): We can do better here if fast-math is enabled.
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, ir_builder_);
@@ -299,6 +300,7 @@ llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
+  // TODO(b/64580527): We can do better here if fast-math is enabled.
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, ir_builder_);

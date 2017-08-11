@@ -2718,9 +2718,7 @@ py_test(
 py_test(
     name = "events_writer_test",
     size = "small",
-    srcs = [
-        "client/events_writer_test.py",
-    ],
+    srcs = ["client/events_writer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":errors",
@@ -2820,6 +2818,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "pywrap_tfe.i",
         "training/quantize_training.i",
         "training/server_lib.i",
         "util/kernel_registry.i",
@@ -2844,6 +2843,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
@@ -2856,6 +2856,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +

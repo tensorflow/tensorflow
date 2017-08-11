@@ -722,7 +722,7 @@ class VariableScopeTest(test.TestCase):
     def device_func(op):
       if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
         varname_type.append((op.name, op.get_attr("dtype")))
-      return "/gpu:0"
+      return "/device:GPU:0"
 
     with g.as_default():
       with ops.device(device_func):
@@ -783,6 +783,18 @@ class VariableScopeTest(test.TestCase):
         _ = variable_scope.get_variable("b", [])
         self.assertEqual([v.name
                           for v in scope.global_variables()], ["foo/b:0"])
+
+  def testGetLocalVariables(self):
+    with self.test_session():
+      _ = variable_scope.get_variable(
+          "a", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      with variable_scope.variable_scope("foo") as scope:
+        _ = variable_scope.get_variable(
+            "b", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
+        _ = variable_scope.get_variable(
+            "c", [])
+        self.assertEqual([v.name
+                          for v in scope.local_variables()], ["foo/b:0"])
 
   def testGetVariableWithRefDtype(self):
     v = variable_scope.get_variable("v", shape=[3, 4], dtype=dtypes.float32)

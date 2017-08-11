@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Paramterized build and test for TensorFlow Docker images.
+# Parameterized build and test for TensorFlow Docker images.
 #
 # Usage:
 #   parameterized_docker_build.sh

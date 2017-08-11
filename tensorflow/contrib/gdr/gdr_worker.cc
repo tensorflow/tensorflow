@@ -99,8 +99,6 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
               alloc_attrs.set_on_host(true);
               Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
               Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
-              RecvTensorResponse* tmp = new RecvTensorResponse;
-              tmp->set_is_dead(is_dead);
               CHECK(send_dev_context)
                   << "send dev name: " << src_dev->name()
                   << " gpu_info: " << src_dev->tensorflow_gpu_device_info();

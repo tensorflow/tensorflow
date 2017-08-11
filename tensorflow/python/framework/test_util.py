@@ -405,7 +405,7 @@ class TensorFlowTestCase(googletest.TestCase):
     trigger the creation of a new session.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
-    `force_gpu` is True, all ops are pinned to `/gpu:0`. Otherwise, if `use_gpu`
+    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if `use_gpu`
     is True, TensorFlow tries to run as many ops on the GPU as possible. If both
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
@@ -427,7 +427,7 @@ class TensorFlowTestCase(googletest.TestCase):
       config: An optional config_pb2.ConfigProto to use to configure the
         session.
       use_gpu: If True, attempt to run as many ops as possible on GPU.
-      force_gpu: If True, pin all ops to `/gpu:0`.
+      force_gpu: If True, pin all ops to `/device:GPU:0`.
 
     Returns:
       A Session object that should be used as a context manager to surround
@@ -466,11 +466,11 @@ class TensorFlowTestCase(googletest.TestCase):
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
-          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # Use the name of an actual device if one is detected, or '/device:GPU:0'
           # otherwise
           gpu_name = gpu_device_name()
           if not gpu_name:
-            gpu_name = "/gpu:0"
+            gpu_name = "/device:GPU:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -481,11 +481,11 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
         if force_gpu:
-          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # Use the name of an actual device if one is detected, or '/device:GPU:0'
           # otherwise
           gpu_name = gpu_device_name()
           if not gpu_name:
-            gpu_name = "/gpu:0"
+            gpu_name = "/device:GPU:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
