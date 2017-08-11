@@ -47,7 +47,7 @@ class SessionDebugMinusAXTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #if GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
@@ -505,7 +505,7 @@ class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #if GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
@@ -607,7 +607,7 @@ class SessionDebugVariableTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #if GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
@@ -879,7 +879,7 @@ class SessionDebugGPUSwitchTest : public ::testing::Test {
     Graph graph(OpRegistry::Global());
 
 #ifdef GOOGLE_CUDA
-    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:GPU:0";
 #elif TENSORFLOW_USE_SYCL
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #endif
