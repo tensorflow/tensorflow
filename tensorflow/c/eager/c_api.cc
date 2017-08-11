@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -53,6 +55,7 @@ struct TFE_Context {
 
   // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
   TF_Session* session;
+  tensorflow::Rendezvous* rendezvous;
 
   tensorflow::mutex functions_mu;
   tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
@@ -135,6 +138,8 @@ TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
         ret->session->device_mgr, opts->options.env, ret->devices()[i],
         TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {});
   }
+  ret->rendezvous =
+      new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
 
   return ret;
 }
@@ -145,6 +150,7 @@ void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
   TF_Graph* graph = ctx->session->graph;
   TF_DeleteSession(ctx->session, status);
   TF_DeleteGraph(graph);
+  ctx->rendezvous->Unref();
   delete ctx;
 }
 
@@ -470,7 +476,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
       tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
-    kernel = new tensorflow::KernelAndDevice();
+    kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
     if (!op->is_function()) {
       status->status =
           tensorflow::KernelAndDevice::InitOp(device, ndef, kernel);

@@ -70,7 +70,7 @@ TEST(KernelAndDevice, Run) {
                    .NumInputs(inputs.size())
                    .BuildNodeDef());
   std::unique_ptr<Device> device(CPUDevice());
-  KernelAndDevice kernel;
+  KernelAndDevice kernel(nullptr);
   Status s = KernelAndDevice::InitOp(device.get(), ndef, &kernel);
   ASSERT_TRUE(s.ok()) << s;
   std::vector<Tensor> outputs;

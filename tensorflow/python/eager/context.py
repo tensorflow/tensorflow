@@ -54,8 +54,6 @@ class Context(object):
 
   def __init__(self, graph=None):
     self._eager_context = _EagerContext()
-    if not self.in_eager_mode():
-      raise ValueError("Trying to create a Context in GRAPH_MODE")
     # Create a handle
     opts = pywrap_tensorflow.TF_NewSessionOptions(target=compat.as_bytes(""),
                                                   config=None)
