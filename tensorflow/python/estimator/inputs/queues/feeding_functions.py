@@ -23,7 +23,6 @@ import random
 import types as tp
 import numpy as np
 import six
-from six.moves import zip_longest
 
 from tensorflow.python.estimator.inputs.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
@@ -56,7 +55,7 @@ def _fill_array(arr, seq, fillvalue=0):
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
     seq: Non-padded list of data sampels of shape 
       [batch_size, ..., padded_dim(None)]
-    fillvalue: Defaulf fillvalue to use.
+    fillvalue: Default fillvalue to use.
   """
   if arr.ndim == 1:
     try:
@@ -66,7 +65,7 @@ def _fill_array(arr, seq, fillvalue=0):
     arr[:len_] = seq
     arr[len_:] = fillvalue
   else:
-    for subarr, subseq in zip_longest(arr, seq, fillvalue=()):
+    for subarr, subseq in six.moves.zip_longest(arr, seq, fillvalue=()):
       _fill_array(subarr, subseq)
 
 
@@ -397,7 +396,7 @@ def _enqueue_data(data,
 
     if shuffle and pad_data:
       raise NotImplementedError(
-        "for now, there is now way to pad and shuffle data at the same time")
+        "padding and shuffling at the same time is not implemented")
 
     # TODO(jamieas): TensorBoard warnings for all warnings below once available.
 
