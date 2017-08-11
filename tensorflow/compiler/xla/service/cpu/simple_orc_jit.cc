@@ -172,8 +172,8 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
                            bool optimize_for_size,
-                           CompilerFunctor::ModuleHook pre_optimization_hook,
-                           CompilerFunctor::ModuleHook post_optimization_hook)
+                           LLVMCompiler::ModuleHook pre_optimization_hook,
+                           LLVMCompiler::ModuleHook post_optimization_hook)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
