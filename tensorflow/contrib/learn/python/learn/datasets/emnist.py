@@ -34,10 +34,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 
 def enum(*sequential, **named):
-    enums = dict(zip(sequential, range(len(sequential))), **named)
-    reverse = dict((value, key) for key, value in enums.iteritems())
-    enums['name'] = reverse
-    return type('Enum', (), enums)
+  enums = dict(zip(sequential, range(len(sequential))), **named)
+  reverse = dict((value, key) for key, value in enums.iteritems())
+  enums['name'] = reverse
+  return type('Enum', (), enums)
 
 EMNIST = enum('BALANCED', 'BY_CLASS', 'BY_MERGE', 'DIGITS', 'LETTERS', 'MNIST')
 
@@ -79,7 +79,12 @@ def dense_to_one_hot(labels_dense, num_classes):
   num_labels = labels_dense.shape[0]
   index_offset = numpy.arange(num_labels) * num_classes
   labels_one_hot = numpy.zeros((num_labels, num_classes))
-  labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
+
+  indexes = index_offset + labels_dense.ravel()
+  if num_labels * num_classes in indexes:
+    indexes = numpy.delete(indexes, [len(indexes) - 1])
+
+  labels_one_hot.flat[indexes] = 1
   return labels_one_hot
 
 
@@ -224,7 +229,8 @@ class DataSet(object):
       end = self._index_in_epoch
       images_new_part = self._images[start:end]
       labels_new_part = self._labels[start:end]
-      return numpy.concatenate((images_rest_part, images_new_part), axis=0) , numpy.concatenate((labels_rest_part, labels_new_part), axis=0)
+      return numpy.concatenate((images_rest_part, images_new_part), axis=0), \
+             numpy.concatenate((labels_rest_part, labels_new_part), axis=0)
     else:
       self._index_in_epoch += batch_size
       end = self._index_in_epoch
@@ -232,7 +238,7 @@ class DataSet(object):
 
 
 def read_data_sets(train_dir,
-		               emnist_type=EMNIST.BALANCED,
+                   emnist_type=EMNIST.BALANCED,
                    fake_data=False,
                    one_hot=False,
                    dtype=dtypes.float32,
@@ -250,27 +256,32 @@ def read_data_sets(train_dir,
     test = fake()
     return base.Datasets(train=train, validation=validation, test=test)
 
-  # Should be replaced, is only temporary until a better hosting solution is created
-  base.maybe_download('gzip.zip', train_dir, 'http://biometrics.nist.gov/cs_links/EMNIST/gzip.zip')
+  #temporary until a better hosting solution can be achieved
+  base.maybe_download('gzip.zip', train_dir,
+                      'http://biometrics.nist.gov/cs_links/EMNIST/gzip.zip')
 
   with zipfile.ZipFile(train_dir + '/gzip.zip') as zf:
-    
+
     for name in zf.namelist():
       zf.extract(name, train_dir)
 
     emnist_nice_name = EMNIST.name[emnist_type].lower().replace("_", "")
 
-    with open("{}/gzip/emnist-{}-train-images-idx3-ubyte.gz".format(train_dir, emnist_nice_name), 'rb') as f:
+    with open("{}/gzip/emnist-{}-train-images-idx3-ubyte.gz"
+              .format(train_dir, emnist_nice_name), 'rb') as f:
       train_images = extract_images(f)
 
-    with open("{}/gzip/emnist-{}-train-labels-idx1-ubyte.gz".format(train_dir, emnist_nice_name), 'rb') as f:
-      train_labels = extract_labels(f, one_hot=one_hot)
+    with open("{}/gzip/emnist-{}-train-labels-idx1-ubyte.gz"
+              .format(train_dir, emnist_nice_name), 'rb') as f:
+      train_labels = extract_labels(f, emnist_type=emnist_type, one_hot=one_hot)
 
-    with open("{}/gzip/emnist-{}-test-images-idx3-ubyte.gz".format(train_dir, emnist_nice_name), 'rb') as f:
+    with open("{}/gzip/emnist-{}-test-images-idx3-ubyte.gz"
+              .format(train_dir, emnist_nice_name), 'rb') as f:
       test_images = extract_images(f)
 
-    with open("{}/gzip/emnist-{}-test-labels-idx1-ubyte.gz".format(train_dir, emnist_nice_name), 'rb') as f:
-      test_labels = extract_labels(f, one_hot=one_hot)
+    with open("{}/gzip/emnist-{}-test-labels-idx1-ubyte.gz"
+              .format(train_dir, emnist_nice_name), 'rb') as f:
+      test_labels = extract_labels(f, emnist_type=emnist_type, one_hot=one_hot)
 
   if not 0 <= validation_size <= len(train_images):
     raise ValueError(
@@ -282,9 +293,12 @@ def read_data_sets(train_dir,
   train_images = train_images[validation_size:]
   train_labels = train_labels[validation_size:]
 
-  train = DataSet(train_images, train_labels, dtype=dtype, reshape=reshape, seed=seed)
-  validation = DataSet(validation_images, validation_labels, dtype=dtype, reshape=reshape, seed=seed)
-  test = DataSet(test_images, test_labels, dtype=dtype, reshape=reshape, seed=seed)
+  train = DataSet(train_images, train_labels, dtype=dtype, reshape=reshape,
+                  seed=seed)
+  validation = DataSet(validation_images, validation_labels, dtype=dtype,
+                       reshape=reshape, seed=seed)
+  test = DataSet(test_images, test_labels, dtype=dtype, reshape=reshape,
+                 seed=seed)
 
   return base.Datasets(train=train, validation=validation, test=test)
 
