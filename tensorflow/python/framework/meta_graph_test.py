@@ -550,7 +550,7 @@ class ScopedMetaGraphTest(test.TestCase):
         a = variables.Variable(
             constant_op.constant(
                 1.0, shape=[2, 2]), name="a")
-      with ops.device("/job:ps/replica:0/task:0/gpu:0"):
+      with ops.device("/job:ps/replica:0/task:0/device:GPU:0"):
         b = variables.Variable(
             constant_op.constant(
                 2.0, shape=[2, 2]), name="b")

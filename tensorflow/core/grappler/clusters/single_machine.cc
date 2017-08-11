@@ -89,7 +89,7 @@ Status SingleMachine::Provision() {
   VLOG(1) << "Number of GPUs: " << num_gpus_;
   for (int i = 0; i < num_gpus_; ++i) {
     string device_name =
-        strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i);
+        strings::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i);
     VLOG(1) << "Adding GPU device " << device_name;
     devices_[device_name] = GetLocalGPUInfo(i);
   }

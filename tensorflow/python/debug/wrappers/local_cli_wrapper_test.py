@@ -402,7 +402,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
     # Use an impossible device name to cause an error before graph execution.
-    with ops.device("/gpu:1337"):
+    with ops.device("/device:GPU:1337"):
       w = variables.Variable([1.0] * 10, name="w")
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(

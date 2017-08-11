@@ -722,7 +722,7 @@ class VariableScopeTest(test.TestCase):
     def device_func(op):
       if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
         varname_type.append((op.name, op.get_attr("dtype")))
-      return "/gpu:0"
+      return "/device:GPU:0"
 
     with g.as_default():
       with ops.device(device_func):
