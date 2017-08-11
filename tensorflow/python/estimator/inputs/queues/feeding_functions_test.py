@@ -329,7 +329,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     self.assertEqual(expected, actual)
 
   def testPadIfNeededSmall(self):
-    a = (np.ones(shape=[32, 32], dtype=np.int32).tolistё() +
+    a = (np.ones(shape=[32, 32], dtype=np.int32).tolist() +
         np.ones(shape=[32, 36], dtype=np.int32).tolist())
     actual = ff._pad_if_needed(a)
     expected = np.ones(shape=[64, 36], dtype=np.int32)
