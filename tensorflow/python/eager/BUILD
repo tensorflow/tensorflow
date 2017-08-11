@@ -36,7 +36,7 @@ py_library(
     name = "tensor",
     srcs = ["tensor.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//learning/brain/contrib/eager:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":core",
@@ -53,7 +53,7 @@ py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//learning/brain/contrib/eager:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:device",
         "//tensorflow/python:errors",
