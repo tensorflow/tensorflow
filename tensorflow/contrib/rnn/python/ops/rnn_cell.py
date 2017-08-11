@@ -2356,7 +2356,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     return m, new_state
 
 
-class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
+class LayerNormLSTMCell(rnn_cell_impl.LSTMCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -2433,7 +2433,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMCell instead.
     """
-    super(rnn_cell_impl.RNNCell, self).__init__(_reuse=reuse)
+    super(rnn_cell_impl.LSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
