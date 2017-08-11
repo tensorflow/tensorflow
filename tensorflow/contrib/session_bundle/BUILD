@@ -1,10 +1,8 @@
-# Description: TensorFlow Serving session bundle.
+# Description:
+#   TensorFlow Serving session bundle.
 
 package(
     default_visibility = ["//visibility:public"],
-    features = [
-        "-layering_check",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -309,11 +307,14 @@ cc_library(
     hdrs = ["signature.h"],
     deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
-    deps = if_not_mobile([
+    deps = [
+    ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         # mobile not supported yet
     ]),
 )

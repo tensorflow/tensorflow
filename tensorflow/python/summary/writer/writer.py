@@ -336,6 +336,14 @@ class FileWriter(SummaryToEventTransformer):
                                    filename_suffix)
     super(FileWriter, self).__init__(event_writer, graph, graph_def)
 
+  def __enter__(self):
+    """Make usable with "with" statement."""
+    return self
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    """Make usable with "with" statement."""
+    self.close()
+
   def get_logdir(self):
     """Returns the directory where event file will be written."""
     return self.event_writer.get_logdir()

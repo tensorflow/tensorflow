@@ -37,6 +37,7 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
                config=None,
                label_keys=None,
                feature_engineering_fn=None,
+               logits_modifier_function=None,
                center_bias=True):
     """Initializes a GradientBoostedDecisionTreeClassifier estimator instance.
 
@@ -57,6 +58,7 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
       feature_engineering_fn: Feature engineering function. Takes features and
         labels which are the output of `input_fn` and returns features and
         labels which will be fed into the model.
+      logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
     """
@@ -73,7 +75,8 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
             'num_trees': num_trees,
             'weight_column_name': weight_column_name,
             'examples_per_layer': examples_per_layer,
-            'center_bias': center_bias
+            'center_bias': center_bias,
+            'logits_modifier_function': logits_modifier_function,
         },
         model_dir=model_dir,
         config=config,
@@ -94,6 +97,7 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
                model_dir=None,
                config=None,
                feature_engineering_fn=None,
+               logits_modifier_function=None,
                center_bias=True):
     """Initializes a GradientBoostedDecisionTreeRegressor estimator instance.
 
@@ -116,6 +120,7 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
       feature_engineering_fn: Feature engineering function. Takes features and
         labels which are the output of `input_fn` and returns features and
         labels which will be fed into the model.
+      logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
     """
@@ -133,7 +138,8 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
             'num_trees': num_trees,
             'weight_column_name': weight_column_name,
             'examples_per_layer': examples_per_layer,
-            'center_bias': center_bias
+            'logits_modifier_function': logits_modifier_function,
+            'center_bias': center_bias,
         },
         model_dir=model_dir,
         config=config,
@@ -156,6 +162,7 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
                model_dir=None,
                config=None,
                feature_engineering_fn=None,
+               logits_modifier_function=None,
                center_bias=True):
     """Initializes a GradientBoostedDecisionTreeEstimator estimator instance.
 
@@ -174,6 +181,7 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
       feature_engineering_fn: Feature engineering function. Takes features and
         labels which are the output of `input_fn` and returns features and
         labels which will be fed into the model.
+      logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
     """
@@ -186,7 +194,8 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
             'num_trees': num_trees,
             'weight_column_name': weight_column_name,
             'examples_per_layer': examples_per_layer,
-            'center_bias': center_bias
+            'logits_modifier_function': logits_modifier_function,
+            'center_bias': center_bias,
         },
         model_dir=model_dir,
         config=config,

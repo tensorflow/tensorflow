@@ -24,13 +24,13 @@ To try the code for this tutorial:
         # Ubuntu/Linux 64-bit
         $ sudo apt-get install python-pip python-dev
 
-        # Mac OS X
+        # macOS
         $ sudo easy_install pip
         $ sudo easy_install --upgrade six
 
     b. Use `pip` to install pandas:
 
-        $ sudo pip install pandas
+        $ pip install -U pandas
 
     If you have trouble installing pandas, consult the
     [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
@@ -127,7 +127,7 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : individual.                       :
 | income         | Categorical | ">50K" or "<=50K", meaning        |
 :                :             : whether the person makes more     :
-:                :             : than \$50,000 annually.           :
+:                :             : than $50,000 annually.           :
 
 ## Converting Data into Tensors
 

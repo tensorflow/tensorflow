@@ -183,6 +183,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_gdr_support",
+    values = {"define": "with_gdr_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
@@ -312,6 +318,7 @@ filegroup(
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
+        "//tensorflow/contrib/reduce_slice_ops:all_files",
         "//tensorflow/contrib/remote_fused_graph/pylib:all_files",
         "//tensorflow/contrib/resampler:all_files",
         "//tensorflow/contrib/rnn:all_files",

@@ -30,6 +30,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 
 py_library(
     name = "python",
@@ -962,6 +963,15 @@ py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
+)
+
+py_test(
+    name = "framework_pip_dependencies_test",
+    size = "small",
+    srcs = ["framework/pip_dependencies_test.py"],
+    main = "framework/pip_dependencies_test.py",
+    srcs_version = "PY2AND3",
+    deps = [":client_testlib"],
 )
 
 py_test(
@@ -2850,7 +2860,8 @@ tf_py_wrap_cc(
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
-         tf_additional_mpi_deps()),
+         tf_additional_mpi_deps() +
+         tf_additional_gdr_deps()),
 )
 
 py_library(
@@ -3729,7 +3740,7 @@ py_test(
 
 cuda_py_test(
     name = "layers_normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/normalization_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3742,6 +3753,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     main = "layers/normalization_test.py",
+    shard_count = 10,
 )
 
 # -----------------------------------------------------------------------------
