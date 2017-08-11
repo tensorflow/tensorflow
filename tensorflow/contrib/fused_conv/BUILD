@@ -1,9 +1,9 @@
 # Description:
 #   A Fused Conv Bias Activation operator wrapper.
 #   APIs are meant to change over time.
+
 package(
     default_visibility = ["//visibility:private"],
-    features = ["-parse_headers"],
 )
 
 package_group(
@@ -64,6 +64,7 @@ tf_kernel_library(
     prefix = "fused_conv2d_bias_activation_op",
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:conv_2d_hdrs",

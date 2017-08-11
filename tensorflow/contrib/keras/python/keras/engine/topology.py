@@ -155,7 +155,6 @@ class Layer(tf_base_layers.Layer):
 
     # Add properties that are Keras-only for now.
     self.supports_masking = False
-    self._constraints = {}  # dict {tensor: constraint instance}
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -176,14 +175,6 @@ class Layer(tf_base_layers.Layer):
       self._initial_weights = kwargs['weights']
     else:
       self._initial_weights = None
-
-  @property
-  def constraints(self):
-    return self._constraints
-
-  @constraints.setter
-  def constraints(self, constraints):
-    self._constraints = constraints
 
   def add_weight(self,
                  name,
@@ -211,11 +202,12 @@ class Layer(tf_base_layers.Layer):
     """
     if dtype is None:
       dtype = K.floatx()
-    weight = self.add_variable(
-        name, shape, dtype=dtype,
-        initializer=initializer, regularizer=regularizer, trainable=trainable)
-    if constraint is not None:
-      self.constraints[weight] = constraint
+    weight = self.add_variable(name, shape,
+                               dtype=dtype,
+                               initializer=initializer,
+                               regularizer=regularizer,
+                               constraint=constraint,
+                               trainable=trainable)
     return weight
 
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
