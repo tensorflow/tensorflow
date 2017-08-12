@@ -2464,7 +2464,7 @@ def reshape(tensor, shape, name=None):
   """
   if hasattr(shape, "__len__") and len(shape) <= 8:
     shape = [int(dim) if isinstance(dim, tensor_shape.Dimension) else dim
-                 for dim in shape]
+             for dim in shape]
   return gen_array_ops._reshape(tensor, shape, name)
 # pylint: enable=redefined-builtin,protected-access
 
