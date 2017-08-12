@@ -1209,7 +1209,7 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `labels`.
     """
     model_fn_ops = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL)
+        features, labels, model_fn_lib.ModeKeys.EVAL, metrics)
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
