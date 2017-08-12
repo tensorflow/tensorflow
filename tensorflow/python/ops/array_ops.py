@@ -2463,10 +2463,8 @@ def reshape(tensor, shape, name=None):
     A `Tensor`. Has the same type as `tensor`.
   """
   if hasattr(shape, "__len__") and len(shape) <= 8:
-    for i in range(len(shape)):
-      dim = shape[i]
-      shape[i] = int(dim) if isinstance(dim, tensor_shape.Dimension) else dim
-
+    shape = [int(dim) if isinstance(dim, tensor_shape.Dimension) else dim
+                 for dim in shape]
   return gen_array_ops._reshape(tensor, shape, name)
 # pylint: enable=redefined-builtin,protected-access
 
