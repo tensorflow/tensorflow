@@ -22,7 +22,6 @@ import errno
 import os
 import platform
 import re
-import site
 import subprocess
 import sys
 
@@ -131,13 +130,15 @@ def cygpath(path):
   return run_shell('cygpath  -m "%s"' % path)
 
 
-def get_python_path(environ_cp):
+def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
   python_paths = []
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
-    library_paths = site.getsitepackages()
+    check_input = [python_bin_path, '-c',
+                   'import site; print("\\n".join(site.getsitepackages()))']
+    library_paths = subprocess.check_output(check_input).strip().split("\n")
   except AttributeError:
     from distutils.sysconfig import get_python_lib  # pylint: disable=g-import-not-at-top
     library_paths = [get_python_lib()]
@@ -170,10 +171,14 @@ def setup_python(environ_cp, bazel_version):
       print('%s is not executable.  Is it the python binary?' % python_bin_path)
     environ_cp['PYTHON_BIN_PATH'] = ''
 
+  # Convert python path to Windows style before checking lib
+  if is_windows():
+    python_bin_path = cygpath(python_bin_path)
+
   # Get PYTHON_LIB_PATH
   python_lib_path = environ_cp.get('PYTHON_LIB_PATH')
   if not python_lib_path:
-    python_lib_paths = get_python_path(environ_cp)
+    python_lib_paths = get_python_path(environ_cp, python_bin_path)
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
       python_lib_path = python_lib_paths[0]
     else:
@@ -188,9 +193,9 @@ def setup_python(environ_cp, bazel_version):
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
   python_major_version = sys.version_info[0]
+
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows():
-    python_bin_path = cygpath(python_bin_path)
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
