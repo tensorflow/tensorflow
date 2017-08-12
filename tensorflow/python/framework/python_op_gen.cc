@@ -402,7 +402,11 @@ string AttrValueToPython(const string& type, const AttrValue& value,
   } else if (type == "int") {
     return strings::StrCat(value.i());
   } else if (type == "float") {
-    return strings::StrCat(value.f());
+    if (std::isnan(value.f()) || std::isinf(value.f())) {
+      return strings::StrCat("float('", value.f(), "')");
+    } else {
+      return strings::StrCat(value.f());
+    }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
   } else if (type == "type") {
