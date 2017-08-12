@@ -131,7 +131,10 @@ class SvdOpGpu : public AsyncOpKernel {
         context, context->allocate_temp(M.dtype(), input_shape, &input_copy),
         done);
     auto device = context->eigen_device<GPUDevice>();
-    DoTranspose(device, M, perm, &input_copy);
+    OP_REQUIRES_OK_ASYNC(
+        context, 
+        DoTranspose(device, M, perm, &input_copy),
+        done);
 
     // I need to transpose U at the end
     // Not V, because cuSolver work column-major
@@ -172,7 +175,10 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // Transpose U
     if (compute_uv_) {
-      DoTranspose(device, u_copy, perm, U);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          DoTranspose(device, u_copy, perm, U),
+          done);
     }
 
     // now check if the SVD operation succeeded or not
@@ -245,7 +251,10 @@ class SvdOpGpu : public AsyncOpKernel {
     // Transpose V
     if (compute_uv_) {
       auto device = context->eigen_device<GPUDevice>();
-      DoTranspose(device, v_copy, perm, V);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          DoTranspose(device, v_copy, perm, V),
+          done);
     }
 
     // now check if the SVD operation succeeded or not
