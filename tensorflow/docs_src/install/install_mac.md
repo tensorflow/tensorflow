@@ -58,7 +58,7 @@ Take the following steps to install TensorFlow with Virtualenv:
   2. Install pip and virtualenv by issuing the following commands:
 
      <pre> $ <b>sudo easy_install pip</b>
-     $ <b>sudo pip install --upgrade virtualenv</b> </pre>
+     $ <b>pip install --upgrade virtualenv</b> </pre>
 
   3. Create a virtualenv environment by issuing a command of one
      of the following formats:
