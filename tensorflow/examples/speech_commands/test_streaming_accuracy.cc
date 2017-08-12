@@ -86,7 +86,10 @@ using tensorflow::Flag;
 using tensorflow::Status;
 using tensorflow::Tensor;
 using tensorflow::int32;
+using tensorflow::int64;
 using tensorflow::string;
+using tensorflow::uint16;
+using tensorflow::uint32;
 
 namespace {
 
@@ -197,7 +200,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  std::vector<std::pair<string, int64>> ground_truth_list;
+  std::vector<std::pair<string, tensorflow::int64>> ground_truth_list;
   Status read_ground_truth_status =
       tensorflow::ReadGroundTruthFile(ground_truth, &ground_truth_list);
   if (!read_ground_truth_status.ok()) {
