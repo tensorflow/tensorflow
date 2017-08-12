@@ -277,9 +277,7 @@ string GenEagerPythonOp::Code() {
   AddDocStringArgs();
   AddDocStringInputs();
   AddDocStringAttrs();
-  strings::StrAppend(
-      &result_,
-      "    name: A name for the operation (optional, only for graph mode).\n");
+  AddDocStringNameArg();
   AddOutputGlobals();
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
