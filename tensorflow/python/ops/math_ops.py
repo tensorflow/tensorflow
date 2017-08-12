@@ -2027,10 +2027,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   for input_tensor in inputs:
     if isinstance(input_tensor, ops.Tensor):
       shape = shape.merge_with(input_tensor.get_shape())
-  if len(inputs) == 1:
-    return inputs[0]
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
+  if tensor_dtype != inputs[0].dtype:
+    raise TypeError("tensor_dtype is {}, but input is of type {}"
+                     .format(tensor_dtype, inputs[0].dtype))
+  if len(inputs) == 1:
+    return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:
     var = gen_state_ops._temporary_variable(
         shape=tensor_shape.vector(0), dtype=tensor_dtype)
