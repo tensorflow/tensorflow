@@ -1667,6 +1667,25 @@ void TF_DeleteGraph(TF_Graph* g) {
   if (del) delete g;
 }
 
+size_t TF_GraphOperationsCount(TF_Graph* graph) {
+  if (graph == nullptr) return 0;
+
+  mutex_lock l(graph->mu);
+
+  return graph->name_map.size();
+}
+
+void TF_GraphAllOperations(TF_Graph* graph, TF_Operation** operations) {
+  if (graph == nullptr) return;
+
+  mutex_lock l(graph->mu);
+
+  int index = 0;
+  for (auto iter = graph->name_map.begin(); iter != graph->name_map.end(); ++iter) {
+    operations[index++] = ToOperation(iter->second);
+  }
+}
+
 TF_Operation* TF_GraphOperationByName(TF_Graph* graph, const char* oper_name) {
   mutex_lock l(graph->mu);
   auto iter = graph->name_map.find(oper_name);

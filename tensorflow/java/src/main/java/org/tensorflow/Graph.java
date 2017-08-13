@@ -15,6 +15,9 @@ limitations under the License.
 
 package org.tensorflow;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * A data flow graph representing a TensorFlow computation.
  *
@@ -73,6 +76,22 @@ public final class Graph implements AutoCloseable {
         return null;
       }
       return new Operation(this, oph);
+    }
+  }
+
+  /**
+   * Returns all operations that exist in the Graph.
+   */
+  public List<Operation> getOperations() {
+    synchronized (nativeHandleLock) {
+      long[] operationHandles = allOperations(nativeHandle);
+      ArrayList<Operation> rhett = new ArrayList<>();
+
+      for (long operationHandle : operationHandles) {
+        rhett.add(new Operation(this, operationHandle));
+      }
+
+      return rhett;
     }
   }
 
@@ -184,6 +203,8 @@ public final class Graph implements AutoCloseable {
   private static native void delete(long handle);
 
   private static native long operation(long handle, String name);
+
+  private static native long[] allOperations(long handle);
 
   private static native void importGraphDef(long handle, byte[] graphDef, String prefix)
       throws IllegalArgumentException;

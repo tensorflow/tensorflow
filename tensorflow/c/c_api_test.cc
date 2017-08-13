@@ -520,6 +520,42 @@ TEST(CAPI, Graph) {
   EXPECT_TRUE(found_add);
   EXPECT_TRUE(found_neg);
 
+  // Do more or less the same operation but instead by grabbing a collection of the operations and traversing it
+  found_placeholder = false;
+  found_scalar_const = false;
+  found_add = false;
+  found_neg = false;
+  size_t operations_count = TF_GraphOperationsCount(graph);
+  TF_Operation* operations[operations_count];
+  TF_GraphAllOperations(graph, operations);
+  for (int i = 0; i < operations_count; i++) {
+    oper = operations[i];
+
+    if (oper == feed) {
+      EXPECT_FALSE(found_placeholder);
+      found_placeholder = true;
+    } else if (oper == three) {
+      EXPECT_FALSE(found_scalar_const);
+      found_scalar_const = true;
+    } else if (oper == add) {
+      EXPECT_FALSE(found_add);
+      found_add = true;
+    } else if (oper == neg) {
+      EXPECT_FALSE(found_neg);
+      found_neg = true;
+    } else {
+      ASSERT_TRUE(GetNodeDef(oper, &node_def));
+      ADD_FAILURE() << "Unexpected Node: " << ProtoDebugString(node_def);
+    }
+  }
+  EXPECT_TRUE(found_placeholder);
+  EXPECT_TRUE(found_scalar_const);
+  EXPECT_TRUE(found_add);
+  EXPECT_TRUE(found_neg);
+
+  // Expected results on nullptr cases
+  EXPECT_EQ(0, TF_GraphOperationsCount(nullptr));
+
   // Clean up
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);

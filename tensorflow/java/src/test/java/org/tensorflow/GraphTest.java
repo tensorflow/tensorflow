@@ -18,6 +18,8 @@ package org.tensorflow;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import java.util.List;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -68,6 +70,21 @@ public class GraphTest {
     assertEquals("MatMul", op.type());
     assertEquals(1, op.numOutputs());
     assertEquals(op, op.output(0).op());
+  }
+
+  @Test
+  public void getAllOperations() {
+    try (Graph g = new Graph()) {
+      List<Operation> operations = g.getOperations();
+
+      assertEquals(0, operations.size());
+
+      TestUtil.transpose_A_times_X(g, new int[2][2]);
+
+      operations = g.getOperations();
+
+      assertEquals(3, operations.size());
+    }
   }
 
   @Test

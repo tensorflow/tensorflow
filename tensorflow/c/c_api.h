@@ -830,6 +830,14 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrValueProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* output_attr_value,
     TF_Status* status);
 
+// Returns the number of operations contained in the `graph`
+TF_CAPI_EXPORT extern size_t TF_GraphOperationsCount(TF_Graph* graph);
+
+// Populates `operations` with the TF_Operation values which exist in the
+//    name_map associated to the `graph`
+TF_CAPI_EXPORT extern void TF_GraphAllOperations(TF_Graph* graph,
+                                                 TF_Operation** operations);
+
 // Returns the operation in the graph with `oper_name`. Returns nullptr if
 // no operation found.
 TF_CAPI_EXPORT extern TF_Operation* TF_GraphOperationByName(
