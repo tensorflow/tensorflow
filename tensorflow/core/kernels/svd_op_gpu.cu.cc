@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // I need to transpose V afterwards
@@ -48,6 +48,16 @@ static const char kErrMsg[] =
     "valid.";
 
 typedef Eigen::GpuDevice GPUDevice;
+
+namespace {
+  template<class Scalar>
+  __global__ void FillWithOnesKernel(CudaLaunchConfig config, Scalar* mem)
+  {
+    CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
+      mem[i] = (Scalar) 1.0;
+    }
+  }
+}
 
 // Scalar: The input scalar type (can be complex)
 // SScalar: The output type for the singular value,
@@ -93,6 +103,50 @@ class SvdOpGpu : public AsyncOpKernel {
           context, solver.Gesvd(jobu, jobvt, m, n, input, lda, outputS, outputU,
                                 ldu, outputVT, ldvt, dev_info_ptr + i),
           done);
+
+      // This is a bug in cuSolver:
+      // If n is one, then outputVT only contains zeros instead of ones.
+      // Hence, I need to fill outputVT manually
+      if (compute_uv_ && n==1) {
+        int64 count =  n * (full_matrices_ ? n : p);
+        const GPUDevice& d = context->eigen_device<GPUDevice>();
+        CudaLaunchConfig cfg = GetCudaLaunchConfig(count, d);
+        FillWithOnesKernel <<<cfg.block_count, 
+                              cfg.thread_per_block, 0, d.stream()>>>
+            (cfg, outputVT);
+      }
+
+#if 0
+      // debug
+      printf("m=%d, n=%d\n", (int)m, (int)n);
+      printf("M:\n");
+      Scalar* input_cpu = new Scalar[m*n];
+      cudaMemcpy(input_cpu, input, sizeof(Scalar)*m*n, cudaMemcpyDeviceToHost);
+      for (int64 i=0; i<m; ++i) {
+        for (int64 j=0; j<n; ++j) printf(" %5.3f", (float)input_cpu[i+j*m]);
+        printf("\n");
+      }
+      delete[] input_cpu;
+      if (compute_uv_) {
+      printf("U:\n");
+      Scalar* outputU_cpu = new Scalar[m*m];
+      cudaMemcpy(outputU_cpu, outputU, sizeof(Scalar)*m*m, cudaMemcpyDeviceToHost);
+      for (int64 i=0; i<m; ++i) {
+        for (int64 j=0; j<m; ++j) printf(" %5.3f", (float)outputU_cpu[i+j*m]);
+        printf("\n");
+      }
+      delete[] outputU_cpu;
+      printf("VT:\n");
+      Scalar* outputVT_cpu = new Scalar[n*n];
+      cudaMemcpy(outputVT_cpu, outputVT, sizeof(Scalar)*n*n, cudaMemcpyDeviceToHost);
+      for (int64 i=0; i<n; ++i) {
+        for (int64 j=0; j<n; ++j) printf(" %5.3f", (float)outputVT_cpu[i+j*n]);
+        printf("\n");
+      }
+      delete[] outputVT_cpu;
+      }
+#endif
+
     }
   }
 
