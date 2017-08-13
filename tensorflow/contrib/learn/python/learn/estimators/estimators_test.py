@@ -91,7 +91,7 @@ class FeatureEngineeringFunctionTest(test.TestCase):
       # Github #12205: raise a TypeError if called twice.
       _ = string_ops.string_split(features["x"])
       features["x"] = constant_op.constant([9.])
-      label["y"] = constant_op.constant([99.])
+      labels["y"] = constant_op.constant([99.])
       return features, labels
 
     def model_fn(features, labels):
