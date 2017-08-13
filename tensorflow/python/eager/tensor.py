@@ -123,34 +123,22 @@ class Tensor(tf_ops.Tensor):
     if core.active_trace() is not None:
       core.active_trace().delete_tensor(tape.tensor_id(self))
 
+  def _numpy_text(self, is_repr=False):
+    if self.dtype.is_numpy_compatible:
+      numpy_text = repr(self.numpy()) if is_repr else str(self.numpy())
+    else:
+      numpy_text = "<unprintable>"
+    if "\n" in numpy_text:
+      numpy_text = "\n" + numpy_text
+    return numpy_text
+
   def __str__(self):
-    if self.dtype.is_numpy_compatible and self.shape.num_elements() > 0:
-      n = self.numpy().reshape(-1)
-      if self.shape.num_elements() > 5:
-        return "tfe.Tensor(%s..., shape=%s, dtype=%s)" % (n[:5], self.shape,
-                                                          self.dtype.name)
-      else:
-        return "tfe.Tensor(%s, dtype=%s)" % (
-            np.array_str(self.numpy()).replace("\n", ""), self.dtype.name)
-    return "tfe.Tensor(<unprintable>, shape=%s dtype=%s)" % (self.shape,
-                                                             self.dtype.name)
+    return "tfe.Tensor(shape=%s, dtype=%s, numpy=%s)" % (
+        self.shape, self.dtype.name, self._numpy_text())
 
   def __repr__(self):
-    if self.dtype.is_numpy_compatible and self.shape.num_elements() > 0:
-      n = self.numpy()
-      # TODO(apassos): understand why self.numpy() sometimes returns not
-      # an array.
-      if isinstance(n, np.ndarray):
-        n = n.reshape(-1)
-      if self.shape.num_elements() > 5:
-        return "<tfe.Tensor at %s shape=%s dtype=%s>(%s..., min=%s, max=%s)" % (
-            self._id, self.shape, self.dtype.name, n[:5], np.min(n), np.max(n))
-      else:
-        return "<tfe.Tensor at %s shape=%s dtype=%s>(%s)" % (self._id,
-                                                             self.shape,
-                                                             self.dtype.name, n)
-    return "<tfe.Tensor at %s shape=%s dtype=%s>" % (self._id, self.shape,
-                                                     self.dtype.name)
+    return "<tfe.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
+        self._id, self.shape, self.dtype.name, self._numpy_text(is_repr=True))
 
   @staticmethod
   def _override_operator(name, func):

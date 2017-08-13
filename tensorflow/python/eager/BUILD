@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 cc_library(
@@ -35,7 +36,7 @@ py_library(
     name = "tensor",
     srcs = ["tensor.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//learning/brain/contrib/eager:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":core",
@@ -52,7 +53,7 @@ py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//learning/brain/contrib/eager:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:device",
         "//tensorflow/python:errors",
@@ -80,6 +81,17 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "tensor_test",
+    srcs = ["tensor_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor",
+        ":test",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "core_test",
     srcs = ["core_test.py"],
@@ -90,7 +102,6 @@ cuda_py_test(
         "//tensorflow/python:pywrap_tensorflow",
         ":tensor",
         ":test",
-        "//third_party/py/numpy",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
