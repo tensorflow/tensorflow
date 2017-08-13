@@ -16,9 +16,12 @@ limitations under the License.
 package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
-import java.util.List;
+import java.util.HashSet;
+import java.util.Iterator;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -73,17 +76,30 @@ public class GraphTest {
   }
 
   @Test
-  public void getAllOperations() {
+  public void iterateOverOperations() {
     try (Graph g = new Graph()) {
-      List<Operation> operations = g.getOperations();
+      Iterator<Operation> iterator = g.operations();
+      HashSet<Operation> operations;
 
-      assertEquals(0, operations.size());
+      assertFalse(iterator.hasNext());
 
-      TestUtil.transpose_A_times_X(g, new int[2][2]);
+      operations = new HashSet<>();
+      operations.add(TestUtil.constant(g, "Const-A", Float.valueOf(1.0f)).op());
+      operations.add(TestUtil.constant(g, "Const-B", Integer.valueOf(23)).op());
+      operations.add(TestUtil.constant(g, "Const-C", Double.valueOf(1.618)).op());
 
-      operations = g.getOperations();
+      iterator = g.operations();
 
-      assertEquals(3, operations.size());
+      assertTrue(iterator.hasNext());
+      assertTrue(operations.contains(iterator.next()));
+
+      assertTrue(iterator.hasNext());
+      assertTrue(operations.contains(iterator.next()));
+
+      assertTrue(iterator.hasNext());
+      assertTrue(operations.contains(iterator.next()));
+
+      assertFalse(iterator.hasNext());
     }
   }
 

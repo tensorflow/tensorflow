@@ -15,8 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Iterator;
 
 /**
  * A data flow graph representing a TensorFlow computation.
@@ -80,19 +79,12 @@ public final class Graph implements AutoCloseable {
   }
 
   /**
-   * Returns all operations that exist in the Graph.
+   * Returns an iterator which references all {@link Operation} instances held by the graph
+   *  in no guaranteed order.  This iterator is neither fail fast nor fail safe; consumers of the
+   *  iterator will receive no notification should the underlying graph change during iteration.
    */
-  public List<Operation> getOperations() {
-    synchronized (nativeHandleLock) {
-      long[] operationHandles = allOperations(nativeHandle);
-      ArrayList<Operation> rhett = new ArrayList<>();
-
-      for (long operationHandle : operationHandles) {
-        rhett.add(new Operation(this, operationHandle));
-      }
-
-      return rhett;
-    }
+  public Iterator<Operation> operations() {
+    return new OperationIterator(this);
   }
 
   /**
@@ -198,13 +190,72 @@ public final class Graph implements AutoCloseable {
     return new Reference();
   }
 
+
+  private static final class OperationIterator implements Iterator<Operation> {
+
+    OperationIterator(Graph g) {
+      this.graph = g;
+      
+      this.operation = null;
+      this.position = 0;
+
+      this.advance();
+    }
+
+    private final void advance() {
+      Graph.Reference reference = this.graph.ref();
+
+      this.operation = null;
+
+      try {
+        long[] nativeReturn = nextOperation(reference.nativeHandle(), this.position);
+
+        if ((nativeReturn != null) && (nativeReturn[0] != 0)) {
+          this.operation = new Operation(this.graph, nativeReturn[0]);
+          this.position = (int)nativeReturn[1];
+        }
+      }
+      finally {
+        reference.close();
+      }
+    }
+
+
+    @Override
+    public boolean hasNext() {
+      return (this.operation != null);
+    }
+
+    @Override
+    public Operation next() {
+      Operation rhett = this.operation;
+
+      this.advance();
+
+      return rhett;
+    }
+
+    @Override
+    public void remove() {
+      throw new UnsupportedOperationException("remove() is unsupported.");
+    }
+
+
+    private Graph graph;
+    private Operation operation;
+    private int position;
+
+  }
+
+
   private static native long allocate();
 
   private static native void delete(long handle);
 
   private static native long operation(long handle, String name);
 
-  private static native long[] allOperations(long handle);
+  // This method returns the Operation native handle at index 0 and the new value for pos at index 1 (see TF_GraphNextOperation)
+  private static native long[] nextOperation(long handle, int position);
 
   private static native void importGraphDef(long handle, byte[] graphDef, String prefix)
       throws IllegalArgumentException;

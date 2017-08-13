@@ -54,26 +54,26 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv* env,
   return reinterpret_cast<jlong>(op);
 }
 
-JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_allOperations(JNIEnv* env,
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv* env,
                                                                      jclass clazz,
-                                                                     jlong handle) {
+                                                                     jlong handle,
+                                                                     jint position) {
   TF_Graph* g = requireHandle(env, handle);
   jlongArray rhett = nullptr;
 
   if (g == nullptr) return rhett;
 
-  size_t operation_count = TF_GraphOperationsCount(g);
+  size_t* pos = reinterpret_cast<size_t*>(&position);
+  TF_Operation* operation = TF_GraphNextOperation(g, pos);
 
-  TF_Operation* operations[operation_count];
-  TF_GraphAllOperations(g, operations);
+  if (operation == nullptr) return rhett;
 
-  jlong operation_handles[operation_count];
-  for (int i = 0; i < operation_count; i++) {
-    operation_handles[i] = reinterpret_cast<jlong>(operations[i]);
-  }
+  jlong handle_and_position[2];
+  handle_and_position[0] = reinterpret_cast<jlong>(operation);
+  handle_and_position[1] = static_cast<jlong>(*pos);
 
-  rhett = env->NewLongArray(operation_count);
-  env->SetLongArrayRegion(rhett, 0, operation_count, operation_handles);
+  rhett = env->NewLongArray(2);
+  env->SetLongArrayRegion(rhett, 0, 2, handle_and_position);
 
   return rhett;
 }
