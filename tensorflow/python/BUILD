@@ -30,6 +30,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 
 py_library(
     name = "python",
@@ -962,6 +963,15 @@ py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
+)
+
+py_test(
+    name = "framework_pip_dependencies_test",
+    size = "small",
+    srcs = ["framework/pip_dependencies_test.py"],
+    main = "framework/pip_dependencies_test.py",
+    srcs_version = "PY2AND3",
+    deps = [":client_testlib"],
 )
 
 py_test(
@@ -2708,9 +2718,7 @@ py_test(
 py_test(
     name = "events_writer_test",
     size = "small",
-    srcs = [
-        "client/events_writer_test.py",
-    ],
+    srcs = ["client/events_writer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":errors",
@@ -2810,6 +2818,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "pywrap_tfe.i",
         "training/quantize_training.i",
         "training/server_lib.i",
         "util/kernel_registry.i",
@@ -2834,6 +2843,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
@@ -2846,11 +2856,13 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
-         tf_additional_mpi_deps()),
+         tf_additional_mpi_deps() +
+         tf_additional_gdr_deps()),
 )
 
 py_library(
@@ -3729,7 +3741,7 @@ py_test(
 
 cuda_py_test(
     name = "layers_normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/normalization_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3742,6 +3754,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     main = "layers/normalization_test.py",
+    shard_count = 10,
 )
 
 # -----------------------------------------------------------------------------

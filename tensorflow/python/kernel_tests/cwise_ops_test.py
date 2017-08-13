@@ -70,10 +70,25 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   return sparse_tensor.SparseTensor(
       indices=x_indices, values=x_values, dense_shape=x_shape), x_values
 
+def _default_tolerance(dtype):
+  """Returns a sensible default tolerance for comparing results of a given
+  type"""
+  if dtype == np.float16:
+    return 5e-3
+  elif dtype in (np.float32, np.complex64):
+    return 1e-3
+  elif dtype in (np.float64, np.complex128):
+    return 1e-5
+  else:
+    return None # Fail fast for unexpected types
 
 class UnaryOpTest(test.TestCase):
 
-  def _compareCpu(self, x, np_func, tf_func):
+  def _compareCpu(self, x, np_func, tf_func, grad_rtol=None, grad_atol=None):
+    if grad_rtol is None:
+      grad_rtol = _default_tolerance(x.dtype)
+    if grad_atol is None:
+      grad_atol = _default_tolerance(x.dtype)
     np_ans = np_func(x)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
@@ -102,17 +117,17 @@ class UnaryOpTest(test.TestCase):
         _, jacob_n = gradient_checker.compute_gradient(
             inxf, s, yf, s, x_init_value=xf, delta=1e-2)
         jacob_n = jacob_n.astype(np.float16)
-        self.assertAllClose(jacob_t, jacob_n, rtol=5e-3, atol=5e-3)
+        self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
       elif x.dtype in (np.float32, np.complex64):
         s = list(np.shape(x))
         jacob_t, jacob_n = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x, delta=1e-3)
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+        self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
       elif x.dtype in (np.float64, np.complex128):
         s = list(np.shape(x))
         jacob_t, jacob_n = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x, delta=1e-5)
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+        self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
 
   def _check(self, result_tensor, result_np, input_sp_t, tol):
     self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
@@ -407,8 +422,13 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
-    self._compareCpu(y, np.arcsinh, math_ops.asinh)
-    self._compareCpu(y, np.arccosh, math_ops.acosh)
+
+    # Complex64 versions of asinh() and acosh() in libstdc++ only have 6 digits
+    # of precision.
+    # Small gradient values + low precision --> High relative error
+    self._compareCpu(y, np.arcsinh, math_ops.asinh, grad_rtol=1e-2)
+    self._compareCpu(y, np.arccosh, math_ops.acosh, grad_rtol=1e-2)
+
     self._compareCpu(y, np.arctanh, math_ops.atanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
@@ -2061,6 +2081,28 @@ class AccumulateTest(test.TestCase):
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
         tf_val.eval()
+
+  def testWrongShape(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        a = variables.Variable(0.2)
+        b = variables.Variable(0.1)
+        tf_val = math_ops.accumulate_n([a,b], shape=[2,2]) # Should be shape=[]
+
+  def testWrongType(self):
+    with self.test_session():
+      with self.assertRaises(TypeError):
+        a = variables.Variable(0.2, dtype=np.float32)
+        b = variables.Variable(0.1, dtype=np.float32)
+        tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
+
+
+  def testWrongTypeOneInput(self):
+    # Scenario that used to trigger a bug, even when testWrongType() worked
+    with self.test_session():
+      with self.assertRaises(TypeError):
+        a = variables.Variable(0.2, dtype=np.float32)
+        tf_val = math_ops.accumulate_n([a], tensor_dtype=np.int32) 
 
 
 if __name__ == "__main__":

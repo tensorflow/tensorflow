@@ -63,8 +63,9 @@ class SimpleOrcJIT {
   // level optimizations are applied.
   SimpleOrcJIT(const llvm::TargetOptions& target_options,
                llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-               CompilerFunctor::ModuleHook pre_optimization_hook,
-               CompilerFunctor::ModuleHook post_optimization_hook);
+               bool enable_fast_math,
+               LLVMCompiler::ModuleHook pre_optimization_hook,
+               LLVMCompiler::ModuleHook post_optimization_hook);
 
   // Data layout this JIT was created with.
   const llvm::DataLayout& data_layout() const { return data_layout_; }

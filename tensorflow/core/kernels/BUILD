@@ -1572,6 +1572,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "dynamic_stitch_op",
+    gpu_srcs = [
+        "cuda_device_array.h",
+        "cuda_device_array_gpu.h",
+    ],
     prefix = "dynamic_stitch_op",
     deps = DYNAMIC_DEPS,
 )
@@ -5574,6 +5578,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "prefetch_dataset_op",
+    srcs = ["prefetch_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "repeat_dataset_op",
     srcs = ["repeat_dataset_op.cc"],
     deps = [
@@ -5760,6 +5777,7 @@ tf_kernel_library(
         ":map_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_map_dataset_op",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",

@@ -1124,7 +1124,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     # which is why placing this is invalid.  If at some point
     # GPU kernels are added to this test, some other different
     # op / device combo should be chosen.
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
 
     b = constant_op.constant(1.0, shape=[1, 2])
@@ -1145,7 +1145,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     # which is why placing this is invalid.  If at some point
     # GPU kernels are added to this test, some other different
     # op / device combo should be chosen.
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       _ = constant_op.constant(1.0, shape=[1, 2])
 
     b = constant_op.constant(1.0, shape=[1, 2])
@@ -1494,7 +1494,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         allow_soft_placement=True,
         graph_options=config_pb2.GraphOptions(build_cost_model=100))
     with session.Session(config=config) as sess:
-      with ops.device('/gpu:0'):
+      with ops.device('/device:GPU:0'):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
         c = array_ops.identity(b)

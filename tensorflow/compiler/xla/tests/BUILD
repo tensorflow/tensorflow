@@ -1312,6 +1312,25 @@ xla_test(
 )
 
 xla_test(
+    name = "llvm_compiler_test",
+    srcs = ["llvm_compiler_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+        "cpu_parallel",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
     name = "round_trip_packed_literal_test",
     srcs = ["round_trip_packed_literal_test.cc"],
     deps = [

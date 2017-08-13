@@ -311,6 +311,27 @@ TEST_F(HloEvaluatorTest, DoesBroadcast) {
   LiteralTestUtil::ExpectEqual(*result, *output_literal);
 }
 
+TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
+  HloComputation::Builder b(TestName());
+  auto input_literal = Literal::CreateR0<int32>(111);
+  auto output_literal = Literal::CreateR2<int32>(
+      {{111, 111}, {111, 111}, {111, 111}, {111, 111}, {111, 111}, {111, 111}});
+
+  HloInstruction* literal_instruction = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+  // Broadcast dimension is ignored in the case of scalars.
+  b.AddInstruction(HloInstruction::CreateBroadcast(
+      output_literal->shape(), literal_instruction,
+      /*broadcast_dimensions=*/{1}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  LiteralTestUtil::ExpectEqual(*result, *output_literal);
+}
+
 TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {
   HloComputation::Builder b(TestName());
 
@@ -1076,6 +1097,41 @@ TEST_F(HloEvaluatorTest, ReduceAdd) {
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
+TEST_F(HloEvaluatorTest, StridedSlice) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[3,5] {
+  //  { 1, 2, 3, 4, 5 },
+  //  { 9, 10, 11, 12, 13 },
+  //  { 17, 18, 19, 20, 21 },
+  // }
+  auto operand_array = MakeUnique<Array2D<float>>(3, 5);
+  operand_array->FillUnique(1.0f);
+  auto operand_literal = Literal::CreateR2FromArray2D<float>(*operand_array);
+
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1});
+  b.AddInstruction(HloInstruction::CreateSlice(shape, operand,
+                                               /*start_indices=*/{0, 2},
+                                               /*limit_indices=*/{3, 5},
+                                               /*strides=*/{2, 3}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({
+      {3},
+      {19},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
 TEST_F(HloEvaluatorTest, DynamicSlice) {
   HloComputation::Builder b(TestName());
 
@@ -1093,6 +1149,43 @@ TEST_F(HloEvaluatorTest, DynamicSlice) {
 
   auto start_indices = b.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR1<int32>({0, 1})));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
+                                                      start_indices, {2, 3}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({
+      {2, 3, 4},
+      {6, 7, 8},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+// Verifies that the HloEvaluator's implementation goes along with existing
+// backends' behavior, although this is not required by the spec.
+TEST_F(HloEvaluatorTest, DynamicSliceModSlice) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,4] {
+  //  { 1, 2, 3, 4 },
+  //  { 5, 6, 7, 8 },
+  // }
+  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  operand_array->FillUnique(1.0f);
+  auto operand_literal = Literal::CreateR2FromArray2D<float>(*operand_array);
+
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  auto start_indices = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2, 1})));
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,

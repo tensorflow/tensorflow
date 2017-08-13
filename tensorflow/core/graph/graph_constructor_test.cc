@@ -2325,7 +2325,93 @@ TEST_F(GraphConstructorTest, ImportGraphDefProvidedShapeRefinerVersions) {
   ImportGraphDefOptions opts;
   // A valid graph at producer version 20, but one
   // that would not import if the graph_def_version were 21.
-  string gdef_ascii = strings::StrCat(R"EOF(
+  string gdef_ascii;
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "Sum/input"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\001\000\000\000\002"
+      }
+    }
+  }
+}
+node {
+  name: "Sum/reduction_indices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\000\000\000\000\001"
+      }
+    }
+  }
+}
+node {
+  name: "Sum"
+  op: "Sum"
+  input: "Sum/input"
+  input: "Sum/reduction_indices"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 20
+})EOF");
+
+#else
+  gdef_ascii = strings::StrCat(R"EOF(
 node {
   name: "Sum/input"
   op: "Const"
@@ -2407,7 +2493,7 @@ node {
 versions {
   producer: 20
 })EOF");
-
+#endif
   // Create a shape refiner with the latest TF_GRAPH_DEF_VERSION.
   // Importing the graphdef with an existing refiner should
   // make the refiner inherit the graphdef version from the
@@ -2416,6 +2502,40 @@ versions {
   ExpectOK(gdef_ascii, opts, &refiner);
 
   // Add another node with a higher producer
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\001\000\000\000\002"
+      }
+    }
+  }
+}
+versions {
+  producer: 21
+})EOF");
+
+#else
   gdef_ascii = strings::StrCat(R"EOF(
 node {
   name: "RandomConst"
@@ -2447,6 +2567,7 @@ node {
 versions {
   producer: 21
 })EOF");
+#endif
 
   ExpectOK(gdef_ascii, opts, &refiner);
   // Check that the refiner's graph def version is the lowest of
@@ -2454,6 +2575,40 @@ versions {
   EXPECT_EQ(20, refiner.graph_def_version());
 
   // Add another node with a lower producer
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\001\000\000\000\002"
+      }
+    }
+  }
+}
+versions {
+  producer: 17
+})EOF");
+
+#else
   gdef_ascii = strings::StrCat(R"EOF(
 node {
   name: "RandomConst2"
@@ -2485,6 +2640,7 @@ node {
 versions {
   producer: 17
 })EOF");
+#endif
   ExpectOK(gdef_ascii, opts, &refiner);
 
   // Check that the refiner's graph def version is the lowest of
