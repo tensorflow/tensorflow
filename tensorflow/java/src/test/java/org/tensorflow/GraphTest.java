@@ -91,13 +91,13 @@ public class GraphTest {
       iterator = g.operations();
 
       assertTrue(iterator.hasNext());
-      assertTrue(operations.contains(iterator.next()));
+      assertTrue(operations.remove(iterator.next()));
 
       assertTrue(iterator.hasNext());
-      assertTrue(operations.contains(iterator.next()));
+      assertTrue(operations.remove(iterator.next()));
 
       assertTrue(iterator.hasNext());
-      assertTrue(operations.contains(iterator.next()));
+      assertTrue(operations.remove(iterator.next()));
 
       assertFalse(iterator.hasNext());
     }
