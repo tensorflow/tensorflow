@@ -2445,7 +2445,7 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
     Tuple of `predictions`, `labels` and `weights`, possibly with the last
     dimension squeezed.
   """
-  predictions, labels = confusion_matrix.remove_squeezable_dimensions(
+  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
       labels, predictions)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
