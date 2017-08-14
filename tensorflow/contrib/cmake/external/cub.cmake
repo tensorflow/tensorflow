@@ -14,8 +14,8 @@
 # ==============================================================================
 include (ExternalProject)
 
-set(cub_URL https://github.com/NVlabs/cub/archive/1.6.4.zip)
-set(cub_HASH SHA256=4198e9c447a1e2a963b9e0e4d861df48baa47fb02e5e4fc507d1834afc99185a)
+set(cub_URL http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.6.4.zip)
+set(cub_HASH SHA256=966d0c4f41e2bdc81aebf9ccfbf0baffaac5a74f00b826b06f4dee79b2bb8cee)
 set(cub_BUILD ${CMAKE_CURRENT_BINARY_DIR}/cub/src/cub)
 set(cub_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/cub/src/cub)
 set(cub_ARCHIVE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/cub_archive)
