@@ -50,8 +50,9 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv *, jclass,
  * Method:    operations
  * Signature: (JI)[J
  */
-JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv *, jclass,
-																	 jlong, jint);
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv *,
+								     jclass, jlong,
+								     jint);
 
 /*
  * Class:     org_tensorflow_Graph
