@@ -447,17 +447,38 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   Performs fully dynamic unrolling of `inputs`.
 
-  `Inputs` may be a single `Tensor` where the maximum time is either the first
-  or second dimension (see the parameter
-  `time_major`).  Alternatively, it may be a (possibly nested) tuple of
-  Tensors, each of them having matching batch and time dimensions.
-  The corresponding output is either a single `Tensor` having the same number
-  of time steps and batch size, or a (possibly nested) tuple of such tensors,
-  matching the nested structure of `cell.output_size`.
+  Example:
 
-  The parameter `sequence_length` is optional and is used to copy-through state
-  and zero-out outputs when past a batch element's sequence length. So it's more
-  for correctness than performance.
+  ```python
+  # create a BasicRNNCell
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+
+  # 'outputs' is a tensor of shape [batch_size, max_time, cell_state_size]
+
+  # defining initial state
+  initial_state = rnn_cell.zero_state(batch_size, dtype=tf.float32)
+
+  # 'state' is a tensor of shape [batch_size, cell_state_size]
+  outputs, state = tf.nn.dynamic_rnn(rnn_cell, input_data,
+                                     initial_state=initial_state,
+                                     dtype=tf.float32)
+  ```
+
+  ```python
+  # create 2 LSTMCells
+  rnn_layers = [tf.nn.rnn_cell.LSTMCell(size) for size in [128, 256]]
+
+  # create a RNN cell composed sequentially of a number of RNNCells
+  multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
+
+  # 'outputs' is a tensor of shape [batch_size, max_time, 256]
+  # 'state' is a N-tuple where N is the number of LSTMCells containing a
+  # tf.contrib.rnn.LSTMStateTuple for each cell
+  outputs, state = tf.nn.dynamic_rnn(cell=multi_rnn_cell,
+                                     inputs=data,
+                                     dtype=tf.float32)
+  ```
+
 
   Args:
     cell: An instance of RNNCell.
@@ -477,6 +498,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       The input to `cell` at each time step will be a `Tensor` or (possibly
       nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
+      Used to copy-through state and zero-out outputs when past a batch
+      element's sequence length.  So it's more for correctness than performance.
     initial_state: (optional) An initial state for the RNN.
       If `cell.state_size` is an integer, this must be
       a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
@@ -506,24 +529,25 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   Returns:
     A pair (outputs, state) where:
 
-      outputs: The RNN output `Tensor`.
+    outputs: The RNN output `Tensor`.
 
-        If time_major == False (default), this will be a `Tensor` shaped:
-          `[batch_size, max_time, cell.output_size]`.
+      If time_major == False (default), this will be a `Tensor` shaped:
+        `[batch_size, max_time, cell.output_size]`.
 
-        If time_major == True, this will be a `Tensor` shaped:
-          `[max_time, batch_size, cell.output_size]`.
+      If time_major == True, this will be a `Tensor` shaped:
+        `[max_time, batch_size, cell.output_size]`.
 
-        Note, if `cell.output_size` is a (possibly nested) tuple of integers
-        or `TensorShape` objects, then `outputs` will be a tuple having the
-        same structure as `cell.output_size`, containing Tensors having shapes
-        corresponding to the shape data in `cell.output_size`.
+      Note, if `cell.output_size` is a (possibly nested) tuple of integers
+      or `TensorShape` objects, then `outputs` will be a tuple having the
+      same structure as `cell.output_size`, containing Tensors having shapes
+      corresponding to the shape data in `cell.output_size`.
 
-      state: The final state.  If `cell.state_size` is an int, this
-        will be shaped `[batch_size, cell.state_size]`.  If it is a
-        `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
-        If it is a (possibly nested) tuple of ints or `TensorShape`, this will
-        be a tuple having the corresponding shapes.
+    state: The final state.  If `cell.state_size` is an int, this
+      will be shaped `[batch_size, cell.state_size]`.  If it is a
+      `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
+      If it is a (possibly nested) tuple of ints or `TensorShape`, this will
+      be a tuple having the corresponding shapes. If cells are `LSTMCells`
+      `state` will be a tuple containing a `LSTMStateTuple` for each cell.
 
   Raises:
     TypeError: If `cell` is not an instance of RNNCell.
