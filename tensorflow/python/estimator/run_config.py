@@ -25,7 +25,7 @@ import six
 from tensorflow.core.protobuf import config_pb2
 
 
-# A list of the property names in RunConfig user allows to change.
+# A list of the property names in RunConfig that the user is allowed to change.
 _DEFAULT_REPLACEABLE_LIST = [
     'model_dir',
     'tf_random_seed',

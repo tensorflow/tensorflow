@@ -439,6 +439,31 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, height / 2, width, 32])
 
+  def testCreateSeparableConvWithStridesChannelsFirst(self):
+    data_format = 'channels_first'
+    height, width = 6, 8
+    # Test strides tuple
+    images = random_ops.random_uniform((5, 3, height, width), seed=1)
+    layer = conv_layers.SeparableConv2D(
+        32, [3, 3], strides=(2, 2), padding='same', data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width / 2])
+
+    # Test strides integer
+    layer = conv_layers.SeparableConv2D(32, [3, 3], strides=2, padding='same',
+                                        data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width / 2])
+
+    # Test unequal strides
+    layer = conv_layers.SeparableConv2D(
+        32, [3, 3], strides=(2, 1), padding='same', data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width])
+
   def testFunctionalConv2DReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)

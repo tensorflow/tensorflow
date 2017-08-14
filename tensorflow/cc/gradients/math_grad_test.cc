@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -451,7 +452,9 @@ TEST_F(CWiseUnaryGradTest, Asinh_Complex) {
 
 TEST_F(CWiseUnaryGradTest, Acosh) {
   auto x_fn = [this](const int i) { return RV({1, 2, 3, 4, 5, 6, 7}); };
-  auto dy_fn = [this](const float x) { return x + RV({8, 9, 10, 11, 12, 13, 14}); };
+  auto dy_fn = [this](const float x) {
+    return x + RV({8, 9, 10, 11, 12, 13, 14});
+  };
   auto dx_fn = [this](const float x, const float dy) {
     auto y = std::acosh(x);
     return dy / std::sinh(y);
@@ -893,6 +896,32 @@ TEST_F(MathGradTest, BatchMatMulGrad_TransposeY) {
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeX_TransposeY) {
   TestMatMulGrad(true, true, true);
+}
+
+class NaryGradTest : public ::testing::Test {
+ protected:
+  NaryGradTest() : scope_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
+
+  void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
+               const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
+  Scope scope_;
+};
+
+TEST_F(NaryGradTest, AddN) {
+  TensorShape shape({3, 2, 5});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  auto y = AddN(scope_, xs);
+  RunTest(xs, {shape, shape, shape}, {y}, {shape});
 }
 
 }  // namespace
