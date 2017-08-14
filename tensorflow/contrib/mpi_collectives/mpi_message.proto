@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package tensorflow.contrib.mpi_collectives;
+
+// We would like to just use DataType here, but since this
+// is a contrib package, linking directly to TensorFlow protos seems to be
+// impossible. Doing so compiles, but fails with a cryptic error at runtime
+// about a pointer that was passed to free() but not created by malloc().
+//
+// Since using the tensorflow/core protos seems to cause issues, we use our own,
+// which also has the benefit of supporting only the data types we want to support.
+enum MPIDataType {
+    TF_MPI_INVALID_TYPE = 0;
+    TF_MPI_FLOAT32 = 1;
+    TF_MPI_INT32 = 2;
+    TF_MPI_INT64 = 3;
+};
+
+// An MPIRequest is a message sent from a rank greater than zero to the
+// coordinator (rank zero), informing the coordinator of an operation that
+// the rank wants to do and the tensor that it wants to apply the operation to.
+message MPIRequest {
+  enum RequestType {
+    ALLREDUCE = 0;
+    ALLGATHER = 1;
+  }
+
+  // The request rank is necessary to create a consistent ordering of results,
+  // for example in the allgather where the order of outputs should be sorted
+  // by rank.
+  int32 request_rank = 1;
+  RequestType request_type = 2;
+  MPIDataType tensor_type = 3;
+  string tensor_name = 4;
+
+  // We use a repeated integer instead of a TensorShapeProto because linking directly
+  // to TensorFlow protos causes issues. See the comment for MPIDataType.
+  repeated int64 tensor_shape = 5;
+};
+
+// An MPIResponse is a message sent from the coordinator (rank zero) to a rank
+// greater than zero, informing the rank of an operation should be performed
+// now. If the operation requested would result in an error (for example, due
+// to a type or shape mismatch), then the MPIResponse can contain an error and
+// an error message instead. Finally, an MPIResponse can be a DONE message (if
+// there are no more tensors to reduce on this tick of the background loop) or
+// SHUTDOWN if all MPI processes should shut down.
+message MPIResponse {
+  enum ResponseType {
+    ALLREDUCE = 0;
+    ALLGATHER = 1;
+    ERROR = 2;
+    DONE = 3;
+    SHUTDOWN = 4;
+  }
+
+  // Empty if the type is DONE or SHUTDOWN.
+  ResponseType response_type = 1;
+  string tensor_name = 2;
+
+  // Empty unless response_type is ERROR.
+  string error_message = 3;
+};
