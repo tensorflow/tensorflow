@@ -264,7 +264,7 @@ def read_data_sets(train_dir,
   with zipfile.ZipFile(train_dir + '/gzip.zip') as zf:
 
     for name in zf.namelist():
-      if os.path.isfile(train_dir + "/" + name):
+      if not os.path.isfile(train_dir + "/" + name):
         zf.extract(name, train_dir)
 
     emnist_nice_name = EMNIST.name[emnist_type].lower().replace("_", "")
