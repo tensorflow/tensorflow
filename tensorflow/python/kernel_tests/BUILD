@@ -1173,6 +1173,7 @@ cuda_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:logging_ops_gen",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:state_ops",
