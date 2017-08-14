@@ -268,6 +268,9 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
     return false;
   }
+  if (node.attr().count("_XlaCompile") > 0) {
+    return false;
+  }
 
   // Don't fold stateful ops such as TruncatedNormal.
   const OpDef* op_def = nullptr;

@@ -353,6 +353,24 @@ Status AtanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atan", AtanGrad);
 
+Status AddNGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // AddN doesn't support broadcasting, so all the inputs must be the
+  // same shape.
+  // Note:
+  // dy/dx_k = d(x_1 + x_2 + ... + x_n)/dx_k = 1 for all x_k
+  // hence dx_k = dy for all x_k
+  // So the gradient for AddN just transfers the incoming gradient to
+  // all outgoing gradients.
+  auto incoming = Identity(scope, grad_inputs[0]);
+  for (int32 i = 0; i < op.num_inputs(); ++i) {
+    grad_outputs->push_back(incoming);
+  }
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("AddN", AddNGrad);
+
 Status RealGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
