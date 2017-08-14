@@ -250,6 +250,47 @@ py_library(
 )
 
 py_library(
+    name = "tensor_node",
+    srcs = ["tensor_node.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":tape",
+        ":tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_library(
+    name = "backprop",
+    srcs = ["backprop.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:graph_only_ops",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:tensor",
+        "//tensorflow/python/eager:tensor_node",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "pip_dependencies",
     visibility = ["//tensorflow:internal"],
     deps = [
