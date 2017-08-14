@@ -225,9 +225,7 @@ public final class Graph implements AutoCloseable {
     @Override
     public Operation next() {
       Operation rhett = this.operation;
-
       this.advance();
-
       return rhett;
     }
 
