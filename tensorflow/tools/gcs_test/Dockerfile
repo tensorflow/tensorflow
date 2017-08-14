@@ -7,7 +7,6 @@ RUN apt-get install -y \
     curl \
     libcurl4-openssl-dev \
     python \
-    python-numpy \
     python-pip
 
 # Install Google Cloud SDK

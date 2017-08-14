@@ -18,6 +18,10 @@
 set(tf_c_srcs
     "${tensorflow_source_dir}/tensorflow/c/c_api.cc"
     "${tensorflow_source_dir}/tensorflow/c/c_api.h"
+    "${tensorflow_source_dir}/tensorflow/c/eager/c_api.cc"
+    "${tensorflow_source_dir}/tensorflow/c/eager/c_api.h"
+    "${tensorflow_source_dir}/tensorflow/c/eager/runtime.cc"
+    "${tensorflow_source_dir}/tensorflow/c/eager/runtime.h"
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.h"
     "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.cc"

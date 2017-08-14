@@ -111,7 +111,7 @@ Status ReadValue(const string& data, T* value, int* offset) {
         reinterpret_cast<const uint8*>(data.data() + *offset);
     int shift = 0;
     for (int i = 0; i < sizeof(T); ++i, shift += 8) {
-      *value = *value | (data_buf[i] >> shift);
+      *value = *value | (data_buf[i] << shift);
     }
   }
   *offset = new_offset;

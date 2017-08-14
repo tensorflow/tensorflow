@@ -286,14 +286,14 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       save_path = os.path.join(self.get_temp_dir(),
                                "save-restore-variable-test")
       saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(
           use_gpu=True, graph=ops.get_default_graph()) as sess:
         sess.run(variables.global_variables_initializer())
         params_v = sess.run(params)
         val = saver.save(sess, save_path)
         self.assertEqual(save_path, val)
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(
           use_gpu=True, graph=ops.get_default_graph()) as sess:
         reset_params = state_ops.assign(
@@ -328,14 +328,14 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       save_path = os.path.join(self.get_temp_dir(),
                                "save-restore-variable-test")
       saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(
           use_gpu=True, graph=ops.get_default_graph()) as sess:
         sess.run(variables.global_variables_initializer())
         params_v = sess.run(param_vars)
         val = saver.save(sess, save_path)
         self.assertEqual(save_path, val)
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(
           use_gpu=True, graph=ops.get_default_graph()) as sess:
         reset_params = [
@@ -398,14 +398,14 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
             params=params,
             is_training=False)
       total_sum = sum(map(math_ops.reduce_sum, outputs))
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(
           use_gpu=True, graph=ops.get_default_graph()) as sess:
         sess.run(variables.global_variables_initializer())
         total_sum_v = sess.run(total_sum)
         val = saver.save(sess, save_path)
         self.assertEqual(save_path, val)
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(
           use_gpu=True, graph=ops.get_default_graph()) as sess:
         reset_params = state_ops.assign(

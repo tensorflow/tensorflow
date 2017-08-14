@@ -679,12 +679,12 @@ class ComputationBuilder {
   // Computes the value of a constant indicated by a
   // ComputationDataHandle.
   //
-  // The handle must be from the computation currently being built -
+  // The operand must be from the computation currently being built -
   // i.e., returned from this builder with no intervening call to
   // Build(). This happens to currently work regardless of that, but
   // that may stop working at any time.
   //
-  // The handle must represent a constant value, which in this case
+  // The operand must represent a constant value, which in this case
   // means that it must not statically depend on a parameter to the
   // computation that is being built.
   //
@@ -702,8 +702,8 @@ class ComputationBuilder {
   //
   // If output_layout is non-null, then the output of the computation
   // will be stored using that layout.
-  StatusOr<std::unique_ptr<GlobalData>> ComputeConstant(
-      const ComputationDataHandle& handle,
+  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+      const ComputationDataHandle& operand,
       const Layout* output_layout = nullptr);
 
   // Returns a new ComputationBuilder whose resultant Computation is used only

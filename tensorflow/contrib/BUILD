@@ -55,6 +55,7 @@ py_library(
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
+        "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
         "//tensorflow/contrib/rnn:rnn_py",

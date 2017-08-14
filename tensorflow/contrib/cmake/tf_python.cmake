@@ -561,6 +561,12 @@ add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
 add_python_module("tensorflow/contrib/util")
+add_python_module("tensorflow/contrib/reduce_slice_ops")
+add_python_module("tensorflow/contrib/reduce_slice_ops/kernels")
+add_python_module("tensorflow/contrib/reduce_slice_ops/ops")
+add_python_module("tensorflow/contrib/reduce_slice_ops/python")
+add_python_module("tensorflow/contrib/reduce_slice_ops/python/kernel_tests")
+add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
 
 
 ########################################################
@@ -755,6 +761,8 @@ add_custom_command(
 set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.h"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.cc"
+    "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"

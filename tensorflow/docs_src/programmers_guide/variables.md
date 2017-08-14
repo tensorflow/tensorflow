@@ -110,7 +110,7 @@ devices. For example, the following snippet creates a variable named `v` and
 places it on the second GPU device:
 
 ``` python
-with tf.device("/gpu:1"):
+with tf.device("/device:GPU:1"):
   v = tf.get_variable("v", [1])
 ```
 
