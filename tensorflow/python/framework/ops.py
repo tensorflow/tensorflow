@@ -678,10 +678,15 @@ class EagerTensor(Tensor):
                                         self.shape.num_elements())
 
   def __del__(self):
-    if c_api is not None and c_api.TFE_DeleteTensorHandle is not None:
-      c_api.TFE_DeleteTensorHandle(self._handle)
-    if core.active_trace() is not None:
-      core.active_trace().delete_tensor(_tensor_id(self))
+    try:
+      if c_api is not None and c_api.TFE_DeleteTensorHandle is not None:
+        c_api.TFE_DeleteTensorHandle(self._handle)
+      if core.active_trace() is not None:
+        core.active_trace().delete_tensor(_tensor_id(self))
+    except TypeError:
+      # Sometimes deletion during program shutdown throws TypeError as other
+      # modules are no longer available.
+      pass
 
   def _numpy_text(self, is_repr=False):
     if self.dtype.is_numpy_compatible:
