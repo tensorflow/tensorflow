@@ -967,6 +967,7 @@ py_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 

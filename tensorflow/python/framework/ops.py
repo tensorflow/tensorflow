@@ -961,6 +961,8 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
+  if context.in_eager_mode():
+    return convert_to_eager_tensor(value, dtype=dtype)
   return internal_convert_to_tensor(
       value=value,
       dtype=dtype,
@@ -1005,6 +1007,8 @@ def internal_convert_to_tensor(value,
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
+  if context.in_eager_mode():
+    return convert_to_eager_tensor(value, dtype=dtype)
   error_prefix = "" if name is None else "%s: " % name
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
