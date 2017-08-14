@@ -18,12 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import numpy as np
 
+from tensorflow.python.client import session
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -641,6 +646,56 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
           s.eval()
 
+def type_to_str(t):
+  if t == np.float32:
+    return "fp32"
+  if t == np.float64:
+    return "fp64"
+
+class SegmentReductionOpBenchmark(test.Benchmark):
+
+  def benchmarkSegmentSumGPU(self):
+    repeat = 10
+    outer_dim_options = [2**x for x in range(7, 14, 2)]
+    ratio_options = [2**x for x in range(1, 6, 2)]
+    inner_dim_options = [2**x for x in range(7, 14, 2)]
+    dtype_options = [np.float32, np.float64]
+
+    for outer_dim, ratio, inner_dim, dtype in \
+      itertools.product(outer_dim_options,
+                        ratio_options, inner_dim_options, dtype_options):
+      output_outer_dim = int(outer_dim/ratio)
+
+      const = np.random.randint(5, size=(outer_dim, inner_dim))
+      seg_ids = np.sort(np.random.randint(
+          output_outer_dim, size=outer_dim))
+
+      op_functors = [lambda vc, vs:
+                     ("sorted", math_ops.segment_sum(vc, vs)),
+                     lambda vc, vs, _seg_ids=seg_ids:
+                     ("unsorted", math_ops.unsorted_segment_sum(vc, vs, _seg_ids[-1]+1))]
+
+      t = []
+      for op_functor in op_functors:
+        with ops.Graph().as_default():
+          vs = variables.Variable(seg_ids.astype(np.int32))
+          with ops.device("/gpu:0"):
+            vc = variables.Variable(const.astype(dtype))
+          with session.Session() as sess:
+            variables.global_variables_initializer().run()
+            name, op = op_functor(vc, vs)
+            r = self.run_op_benchmark(sess, op, min_iters=repeat,
+                                      name="_".join(map(str,
+                                                        [name,
+                                                         outer_dim,
+                                                         ratio,
+                                                         inner_dim,
+                                                         type_to_str(dtype)])))
+            t.append(r["wall_time"])
+
+      # print out the speed up factor for each test
+      print("{:d}\t{:d}\t{:d}\t{:f}".format(
+          outer_dim, output_outer_dim, inner_dim, t[1]/t[0]))
 
 if __name__ == "__main__":
   test.main()

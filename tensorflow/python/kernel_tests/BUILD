@@ -631,13 +631,15 @@ cuda_py_test(
 
 tf_py_test(
     name = "segment_reduction_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python:nn_grad",
     ],
 )
