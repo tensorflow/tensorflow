@@ -593,6 +593,45 @@ op {
   is_stateful: true
 }
 op {
+  name: "Angle"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns the argument of a complex number."
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the argument of each element in `input`. All elements in\n`input` must be complex numbers of the form \\(a + bj\\), where *a*\nis the real part and *b* is the imaginary part.\n\nThe argument returned by this operation is of the form \\(atan2(b, a)\\).\n\nFor example:\n```\n # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.angle(input) ==> [2.0132, 1.056]\n```"
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
