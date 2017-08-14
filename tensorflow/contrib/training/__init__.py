@@ -25,6 +25,7 @@ See @{$python/contrib.training} guide.
 @@weighted_resample
 @@bucket
 @@bucket_by_sequence_length
+@@RandomStrategy
 @@GreedyLoadBalancingStrategy
 @@byte_size_load_fn
 @@FailureTolerator

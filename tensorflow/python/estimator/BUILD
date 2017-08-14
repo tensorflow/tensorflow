@@ -164,8 +164,10 @@ py_library(
     srcs = ["canned/dnn_linear_combined.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dnn",
         ":estimator",
         ":head",
+        ":linear",
         ":model_fn",
         ":optimizers",
         "//tensorflow/python:control_flow_ops",

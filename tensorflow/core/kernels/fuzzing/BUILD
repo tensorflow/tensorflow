@@ -10,7 +10,6 @@ cc_library(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:ops",

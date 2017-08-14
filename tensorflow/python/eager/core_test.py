@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
-import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -87,47 +86,6 @@ class TFETest(test_util.TensorFlowTestCase):
     t.start()
     t.join()
 
-  def testScalarTensor(self):
-    t = tensor.Tensor(3)
-    self.assertEqual(t.numpy(), tensor.Tensor(np.array(3)).numpy())
-    self.assertEqual(dtypes.int32, t.dtype)
-    self.assertEqual(0, t.shape.ndims)
-    self.assertAllEqual([], t.shape.as_list())
-
-  def testTensorAndNumpyMatrix(self):
-    expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
-    actual = tensor.Tensor([[1.0, 2.0], [3.0, 4.0]])
-    self.assertAllEqual(expected, actual.numpy())
-    self.assertEqual(np.float32, actual.numpy().dtype)
-    self.assertEqual(dtypes.float32, actual.dtype)
-    self.assertAllEqual([2, 2], actual.shape.as_list())
-
-  def testFloatDowncast(self):
-    # Unless explicitly specified, float64->float32
-    t = tensor.Tensor(3.0)
-    self.assertEqual(dtypes.float32, t.dtype)
-    t = tensor.Tensor(3.0, dtype=dtypes.float64)
-    self.assertEqual(dtypes.float64, t.dtype)
-
-  def testBool(self):
-    t = tensor.Tensor(False)
-    if t:
-      self.assertFalse(True)
-
-  def testIntDowncast(self):
-    t = tensor.Tensor(3)
-    self.assertEqual(dtypes.int32, t.dtype)
-    t = tensor.Tensor(3, dtype=dtypes.int64)
-    self.assertEqual(dtypes.int64, t.dtype)
-    t = tensor.Tensor(2**33)
-    self.assertEqual(dtypes.int64, t.dtype)
-
-  def testTensorCreationFailure(self):
-    with self.assertRaises(Exception):
-      # Should fail because the each row of the Python object has a different
-      # number of columns.
-      self.assertEqual(None, tensor.Tensor([[1], [1, 2]]))
-
   def testTensorPlacement(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -140,11 +98,6 @@ class TFETest(test_util.TensorFlowTestCase):
         'Add', 1, inputs=[x, y],
         attrs=('T', x.dtype.as_datatype_enum))[0].as_cpu_tensor().numpy()
     self.assertEqual(3, result)
-
-  def testNumpyOrderHandling(self):
-    n = np.array([[1, 2], [3, 4]], order='F')
-    t = tensor.Tensor(n)
-    self.assertAllEqual([[1, 2], [3, 4]], t.numpy())
 
   def testCopyBetweenDevices(self):
     if not context.context().num_gpus():

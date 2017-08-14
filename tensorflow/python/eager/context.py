@@ -24,7 +24,6 @@ import threading
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.platform import app
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
@@ -49,16 +48,15 @@ class _EagerContext(threading.local):
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
+# TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self, graph=None):
+  def __init__(self):
     self._eager_context = _EagerContext()
-    if not self.in_eager_mode():
-      raise ValueError("Trying to create a Context in GRAPH_MODE")
     # Create a handle
-    opts = pywrap_tensorflow.TF_NewSessionOptions(target=compat.as_bytes(""),
-                                                  config=None)
+    opts = pywrap_tensorflow.TF_NewSessionOptions(
+        target=compat.as_bytes(""), config=None)
     with errors.raise_exception_on_not_ok_status() as status:
       self._handle = pywrap_tensorflow.TFE_NewContext(opts, status)
       pywrap_tensorflow.TF_DeleteSessionOptions(opts)
@@ -76,7 +74,6 @@ class Context(object):
       pywrap_tensorflow.TF_DeleteDeviceList(device_list)
 
     self._summary_writer_resource = None
-    self._graph = graph or tf_ops.get_default_graph()
 
   def __del__(self):
     if self._handle is not None:
@@ -169,7 +166,50 @@ class Context(object):
     return _default_context_stack.get_controller(self)
 
 
-class _DefaultContextStack(tf_ops._DefaultStack):  # pylint: disable=protected-access
+# TODO(agarwal): make this public and move into its own file.
+class _DefaultStack(threading.local):
+  """A thread-local stack of objects for providing implicit defaults."""
+
+  def __init__(self):
+    super(_DefaultStack, self).__init__()
+    self._enforce_nesting = True
+    self.stack = []
+
+  def get_default(self):
+    return self.stack[-1] if len(self.stack) >= 1 else None
+
+  def reset(self):
+    self.stack = []
+
+  def is_cleared(self):
+    return not self.stack
+
+  @property
+  def enforce_nesting(self):
+    return self._enforce_nesting
+
+  @enforce_nesting.setter
+  def enforce_nesting(self, value):
+    self._enforce_nesting = value
+
+  @tf_contextlib.contextmanager
+  def get_controller(self, default):
+    """A context manager for manipulating a default stack."""
+    try:
+      self.stack.append(default)
+      yield default
+    finally:
+      if self._enforce_nesting:
+        if self.stack[-1] is not default:
+          raise AssertionError(
+              "Nesting violated for default stack of %s objects" %
+              type(default))
+        self.stack.pop()
+      else:
+        self.stack.remove(default)
+
+
+class _DefaultContextStack(_DefaultStack):  # pylint: disable=protected-access
   """A thread-local stack of Context objects."""
 
   def __init__(self):
