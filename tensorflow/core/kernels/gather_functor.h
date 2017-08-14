@@ -54,9 +54,25 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
   mutex mu;
   SliceIndex result = -1 GUARDED_BY(mu);
   auto work = [&] (int64 start, int64 end) {
-    for(int64 i = start; i < end; ++i) {
-      SliceIndex batch_idx = static_cast<SliceIndex>(i / indices_size);
-      SliceIndex indices_idx = static_cast<SliceIndex>(i % indices_size);
+    SliceIndex batch_idx = static_cast<SliceIndex>(start / indices_size);
+    SliceIndex indices_idx = static_cast<SliceIndex>(start % indices_size);
+    SliceIndex batch_idx_end = static_cast<SliceIndex>(end / indices_size);
+    SliceIndex indices_idx_end = static_cast<SliceIndex>(end % indices_size);
+
+    while ((batch_idx < batch_idx_end) ||
+            (batch_idx == batch_idx_end && indices_idx < indices_idx_end)) {
+      SliceIndex i_next = indices_idx + 1;
+      SliceIndex b_next = batch_idx + 1;
+      if ((batch_idx == batch_idx_end && i_next < indices_idx_end) ||
+              (i_next < indices_size)) {
+        port::prefetch<port::PREFETCH_HINT_T0>(&params(batch_idx, indices(i_next), 0));
+        port::prefetch<port::PREFETCH_HINT_T0>(&out(batch_idx, i_next, 0));
+        b_next = batch_idx;
+      } else if (b_next <= batch_idx_end) {
+        port::prefetch<port::PREFETCH_HINT_T0>(&params(b_next, indices(0), 0));
+        port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, 0, 0));
+        i_next = 0;
+      }
       // Grab the index and check its validity.  An earlier version of the
       // code checked it and then grabbed it from memory a second time, which
       // was a security risk since it could have changed in between.
@@ -80,6 +96,8 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
         // For non-"simple" types (e.g. strings).
         out.template chip<1>(indices_idx) = params.template chip<1>(index);
       }
+      indices_idx = i_next;
+      batch_idx = b_next;
     }
   };
 
