@@ -79,9 +79,10 @@ public final class Graph implements AutoCloseable {
   }
 
   /**
-   * Returns an iterator which references all {@link Operation} instances held by the graph
-   *  in no guaranteed order.  This iterator is neither fail fast nor fail safe; consumers of the
-   *  iterator will receive no notification should the underlying graph change during iteration.
+   * Iterator over all the {@link Operation}s in the graph.
+   *
+   * The order of iteration is unspecified. Consumers of the iterator will received no notification
+   * should the underlying graph change during iteration.
    */
   public Iterator<Operation> operations() {
     return new OperationIterator(this);
@@ -190,15 +191,12 @@ public final class Graph implements AutoCloseable {
     return new Reference();
   }
 
-
   private static final class OperationIterator implements Iterator<Operation> {
 
     OperationIterator(Graph g) {
       this.graph = g;
-      
       this.operation = null;
       this.position = 0;
-
       this.advance();
     }
 
@@ -212,14 +210,12 @@ public final class Graph implements AutoCloseable {
 
         if ((nativeReturn != null) && (nativeReturn[0] != 0)) {
           this.operation = new Operation(this.graph, nativeReturn[0]);
-          this.position = (int)nativeReturn[1];
+          this.position = (int) nativeReturn[1];
         }
-      }
-      finally {
+      } finally {
         reference.close();
       }
     }
-
 
     @Override
     public boolean hasNext() {
@@ -240,13 +236,10 @@ public final class Graph implements AutoCloseable {
       throw new UnsupportedOperationException("remove() is unsupported.");
     }
 
-
-    private Graph graph;
+    private final Graph graph;
     private Operation operation;
     private int position;
-
   }
-
 
   private static native long allocate();
 
