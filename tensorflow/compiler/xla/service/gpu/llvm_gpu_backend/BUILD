@@ -42,7 +42,6 @@ cc_library(
         "@llvm//:ipo",
         "@llvm//:ir_reader",
         "@llvm//:linker",
-        "@llvm//:mc",
         "@llvm//:nvptx_code_gen",
         "@llvm//:objc_arc",
         "@llvm//:scalar",
