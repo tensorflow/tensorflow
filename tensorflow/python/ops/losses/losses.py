@@ -20,6 +20,7 @@ Note: All the losses are added to the `GraphKeys.LOSSES` collection by default.
 @@absolute_difference
 @@compute_weighted_loss
 @@cosine_distance
+@@focal_loss
 @@hinge_loss
 @@huber_loss
 @@log_loss
