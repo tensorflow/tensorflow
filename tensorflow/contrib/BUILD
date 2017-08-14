@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//third_party/mpi:mpi.bzl", "if_mpi")
+
 py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
@@ -78,7 +80,7 @@ py_library(
         "//tensorflow/contrib/tpu:tpu_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ],
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
 )
 
 cc_library(
