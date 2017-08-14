@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
-#include "third_party/mkl/include/mkl_service.h"
-#include "third_party/mkl/include/mkl_trans.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
+#include "mkl_service.h"
+#include "mkl_trans.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -616,8 +616,6 @@ inline void ForwarMklTensorInToOut(OpKernelContext* context,
   }
 }
 
-  // TODO(intel_tf): Remove this routine when faster MKL layout conversion is
-  // out. 
 inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
   const float* buf_in = input.flat<float>().data();
   float* buf_out = (*output)->flat<float>().data();
@@ -634,8 +632,6 @@ inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
   }
 }
 
-  // TODO(intel_tf): Remove this routine when faster MKL layout conversion is
-  // out. 
 inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
   const float* buf_in = input.flat<float>().data();
   float* buf_out = (*output)->flat<float>().data();

@@ -63,12 +63,8 @@ constexpr char kRegressionStatProto[] =
 "}";
 
 void TestClassificationNormalUse(const std::unique_ptr<LeafModelOperator>& op) {
-  std::unique_ptr<LeafStat> leaf(new LeafStat);
-  op->InitModel(leaf.get());
-
   Leaf l;
-  op->ExportModel(*leaf, &l);
-
+  op->InitModel(&l);
   // Make sure it was initialized correctly.
   for (int i = 0; i < kNumClasses; ++i) {
     EXPECT_EQ(op->GetOutputValue(l, i), 0);
@@ -80,11 +76,10 @@ void TestClassificationNormalUse(const std::unique_ptr<LeafModelOperator>& op) {
       new TestableInputTarget(labels, weights, 1));
 
   // Update and check value.
-  op->UpdateModel(leaf.get(), target.get(), 0);
-  op->UpdateModel(leaf.get(), target.get(), 1);
-  op->UpdateModel(leaf.get(), target.get(), 2);
+  op->UpdateModel(&l, target.get(), 0);
+  op->UpdateModel(&l, target.get(), 1);
+  op->UpdateModel(&l, target.get(), 2);
 
-  op->ExportModel(*leaf, &l);
   EXPECT_FLOAT_EQ(op->GetOutputValue(l, 1), 3.4);
 }
 

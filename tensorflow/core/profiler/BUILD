@@ -20,8 +20,8 @@ filegroup(
 )
 
 cc_binary(
-    name = "tfprof",
-    srcs = ["tfprof_main.cc"],
+    name = "profiler",
+    srcs = ["profiler.cc"],
     deps = [
         ":protos_all_cc",
         "//tensorflow/c:c_api",
@@ -39,15 +39,14 @@ cc_binary(
 )
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
 tf_proto_library(
     name = "protos_all",
-    srcs = glob(
-        ["**/*.proto"],
-    ),
+    srcs = glob(["**/*.proto"]),
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
-    protodeps = ["//tensorflow/core:protos_all"],
+    protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -211,8 +210,7 @@ class BatchNormTest : public ClientLibraryTestBase,
                       public ::testing::WithParamInterface<BatchNormTestParam> {
 };
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
+XLA_TEST_P(BatchNormTest, RandomizedTests) {
   float epsilon = 0.001;
   ComputationBuilder builder(client_, TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
@@ -265,15 +263,15 @@ XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
     var[i] = square_mean[i] - mean_square[i];
   }
 
-  Array4D<float> mean_4D =
+  Array4D<float> mean4D =
       *ReferenceUtil::Broadcast1DTo4D(mean, bounds, feature_index);
-  auto var_4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
-  auto scale_4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
-  auto offset_4D =
+  auto var4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
+  auto scale4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
+  auto offset4D =
       *ReferenceUtil::Broadcast1DTo4D(offset, bounds, feature_index);
 
-  auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean_4D, var_4D,
-                                                scale_4D, offset_4D, epsilon);
+  auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean4D, var4D,
+                                                scale4D, offset4D, epsilon);
 
   auto expected_normalized = Literal::CreateR4FromArray4D<float>(normalized);
 
@@ -308,6 +306,135 @@ XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
       ErrorSpec(0.01, 1));
 }
 
+XLA_TEST_P(BatchNormTest, RandomizedGradTests) {
+  float epsilon = 0.001;
+  ComputationBuilder builder(client_, TestName());
+  const std::vector<int64>& bounds = GetParam().bounds;
+  Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
+  input_array.FillRandom(GetParam().random_value_var,
+                         GetParam().random_value_mean);
+
+  Array4D<float> grad_output_array(bounds[0], bounds[1], bounds[2], bounds[3]);
+  grad_output_array.FillRandom(GetParam().random_value_var,
+                               GetParam().random_value_mean);
+
+  const int64 feature_index = GetParam().feature_index;
+  const int64 num_elements_per_feature =
+      Product(bounds) / bounds[feature_index];
+  const int64 feature_bound = bounds[feature_index];
+  std::vector<float> scale(feature_bound, 2);
+
+  auto input_squared =
+      ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
+  std::vector<int64> reduce_dims;
+  for (int64 i = 0; i < bounds.size(); ++i) {
+    if (i != feature_index) {
+      reduce_dims.push_back(i);
+    }
+  }
+
+  auto sum =
+      ReferenceUtil::Reduce4DTo1D(input_array, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  auto sum_squared =
+      ReferenceUtil::Reduce4DTo1D(*input_squared, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  std::vector<float> mean(feature_bound);
+
+  for (int64 i = 0; i < feature_bound; ++i) {
+    mean[i] = sum[i] / num_elements_per_feature;
+  }
+
+  std::vector<float> mean_square(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    mean_square[i] = mean[i] * mean[i];
+  }
+
+  std::vector<float> square_mean(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    square_mean[i] = sum_squared[i] / num_elements_per_feature;
+  }
+
+  std::vector<float> var(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    var[i] = square_mean[i] - mean_square[i];
+  }
+
+  Array4D<float> mean4D =
+      *ReferenceUtil::Broadcast1DTo4D(mean, bounds, feature_index);
+  auto var4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
+  auto scale4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
+
+  auto var_add_epsilon = *ReferenceUtil::MapArray4D(
+      var4D, [epsilon](float a) { return std::sqrt(a + epsilon); });
+
+  auto grad_output_times_var =
+      *ReferenceUtil::MapArray4D(grad_output_array, var_add_epsilon,
+                                 [](float a, float b) { return a * b; });
+
+  auto grad_activation = *ReferenceUtil::MapArray4D(
+      grad_output_times_var, scale4D, [](float a, float b) { return a * b; });
+
+  auto activation_shifted = *ReferenceUtil::MapArray4D(
+      input_array, mean4D, [](float a, float b) { return a - b; });
+
+  auto grad_scale_before_reduction =
+      *ReferenceUtil::MapArray4D(grad_output_times_var, activation_shifted,
+                                 [](float a, float b) { return a * b; });
+
+  auto grad_scale = ReferenceUtil::Reduce4DTo1D(
+      grad_scale_before_reduction, /*init=*/0.0f, reduce_dims,
+      [](float a, float b) { return a + b; });
+
+  auto grad_offset =
+      ReferenceUtil::Reduce4DTo1D(grad_output_array, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  auto expected_grad_activation =
+      Literal::CreateR4FromArray4D<float>(grad_activation);
+
+  auto input_literal = Literal::CreateR4FromArray4D<float>(input_array);
+  auto scale_literal = Literal::CreateR1<float>(scale);
+  auto mean_literal = Literal::CreateR1<float>(mean);
+  auto var_literal = Literal::CreateR1<float>(var);
+  auto grad_output_literal =
+      Literal::CreateR4FromArray4D<float>(grad_output_array);
+
+  auto input_parameter = builder.Parameter(0, input_literal->shape(), "input");
+  auto scale_parameter = builder.Parameter(1, scale_literal->shape(), "scale");
+  auto mean_parameter = builder.Parameter(2, mean_literal->shape(), "mean");
+  auto var_parameter = builder.Parameter(3, var_literal->shape(), "variance");
+  auto grad_output_parameter =
+      builder.Parameter(4, grad_output_literal->shape(), "grad_output");
+
+  std::unique_ptr<GlobalData> input_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> scale_data =
+      client_->TransferToServer(*scale_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> mean_data =
+      client_->TransferToServer(*mean_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> var_data =
+      client_->TransferToServer(*var_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> grad_output_data =
+      client_->TransferToServer(*grad_output_literal).ConsumeValueOrDie();
+
+  auto t = builder.BatchNormGrad(input_parameter, scale_parameter,
+                                 mean_parameter, var_parameter,
+                                 grad_output_parameter, epsilon, feature_index);
+
+  auto expected =
+      *Literal::MakeTuple({expected_grad_activation.get(),
+                           Literal::CreateR1<float>(grad_scale).get(),
+                           Literal::CreateR1<float>(grad_offset).get()});
+
+  ComputeAndCompareTuple(&builder, expected,
+                         {input_data.get(), scale_data.get(), mean_data.get(),
+                          var_data.get(), grad_output_data.get()},
+                         ErrorSpec(0.01, 1));
+}
+
 INSTANTIATE_TEST_CASE_P(
     BatchNormTest_Instantiation, BatchNormTest,
     ::testing::Values(BatchNormTestParam{{2, 2, 2, 2}, 0, 100.2f, 200.0f},
@@ -318,6 +445,8 @@ INSTANTIATE_TEST_CASE_P(
                       BatchNormTestParam{{10, 10, 10, 10}, 2, 666.6f, 777.7f},
                       BatchNormTestParam{{10, 10, 10, 10}, 1, -666.6f, 777.7f},
                       BatchNormTestParam{{10, 10, 10, 10}, 2, 0.f, 777.7f},
+                      BatchNormTestParam{{1, 1, 10, 130}, 2, 0.f, 777.7f},
+                      BatchNormTestParam{{1, 1, 130, 11}, 2, 0.f, 777.7f},
                       BatchNormTestParam{{1, 1, 10, 1}, 3, 888.8f, 9.9f},
 
                       BatchNormTestParam{{24, 129, 1, 2}, 2, 10000, 10000},
@@ -328,8 +457,7 @@ INSTANTIATE_TEST_CASE_P(
                       // is correct after relayout.
                       BatchNormTestParam{{1, 2, 3, 4}, 0, 100, 100}));
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTraining)) {
+XLA_TEST_F(BatchNormTest, BasicTraining) {
   const int kFeatureIndex = 3;
   ComputationBuilder builder(client_, TestName());
 
@@ -353,8 +481,7 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTraining)) {
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTrainingOnSublane)) {
+XLA_TEST_F(BatchNormTest, BasicTrainingOnSublane) {
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());
 
@@ -378,7 +505,6 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTrainingOnSublane)) {
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
 XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(TrainingWithFeatureOnLowDimension)) {
   // Use 0 dimension as feature, tests layout analyzer.
   const int kFeatureIndex = 0;
@@ -411,8 +537,7 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(TrainingWithFeatureOnLowDimension)) {
                          ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(LargeEpsilonTest)) {
+XLA_TEST_F(BatchNormTest, LargeEpsilonTest) {
   // Test the correctness of choosing a large epsilon value.
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());
@@ -445,22 +570,34 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(LargeEpsilonTest)) {
                          ErrorSpec(0.1));
 }
 
+XLA_TEST_F(BatchNormTest, BatchNormGradBasic) {
+  const int kFeatureIndex = 2;
+  ComputationBuilder builder(client_, TestName());
+
+  auto operand =
+      builder.ConstantR4FromArray4D<float>(Array4D<float>(2, 2, 2, 1, 0.0f));
+
+  auto scale = builder.ConstantR1<float>({1.0f, 1.0f});
+
+  auto mean = builder.ConstantR1<float>({0.0f, 0.0f});
+
+  auto var = builder.ConstantR1<float>({1.0f, 1.0f});
+
+  auto grad_output = builder.ConstantR4FromArray4D<float>(
+      {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
+
+  builder.BatchNormGrad(operand, scale, mean, var, grad_output,
+                        /*epsilon=*/0.0, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR4<float>(
+           {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}})
+           .get(),
+       Literal::CreateR1<float>({0, 0}).get(),
+       Literal::CreateR1<float>({16, 20}).get()});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

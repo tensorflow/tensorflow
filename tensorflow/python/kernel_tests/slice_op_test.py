@@ -49,6 +49,28 @@ class SliceTest(test.TestCase):
         slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[2, k:k])
 
+  def testInt64Slicing(self):
+    with self.test_session(use_gpu=True):
+      a = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+
+      # Slice using int64 Tensor.
+      i = constant_op.constant(1, dtype=dtypes.int64)
+      slice_t = a[i]
+      slice_val = slice_t.eval()
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i+1]
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1], slice_val)
+
+      # Slice using int64 integer.
+      i = np.asarray(1).astype(np.int64)
+      slice_t = a[i]
+      slice_val = slice_t.eval()
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i+1]
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1], slice_val)
+
   def testSelectAll(self):
     for _ in range(10):
       with self.test_session(use_gpu=True):

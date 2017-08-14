@@ -673,20 +673,20 @@ constexpr AlgorithmType kDefaultAlgorithm = -1;
 // Describes the result from a perf experiment.
 //
 // Arguments:
-//  is_valid: indicates whether a valid measurement was obtained.
 //  algorithm: returns the exact algorithm that was used.
 //  elapsed_time_in_ms: returns the measured elapsed time in milliseconds.
 class ProfileResult {
  public:
-  bool is_valid() const { return is_valid_; }
-  void set_is_valid(bool val) { is_valid_ = val; }
+  bool is_valid() const {
+    return (algorithm_ != kDefaultAlgorithm &&
+            elapsed_time_in_ms_ != std::numeric_limits<float>::max());
+  }
   AlgorithmType algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmType val) { algorithm_ = val; }
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
  private:
-  bool is_valid_ = false;
   AlgorithmType algorithm_ = kDefaultAlgorithm;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
@@ -1902,6 +1902,25 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                            const dnn::RnnSequenceTensorDescriptor& input_desc,
+                            const DeviceMemory<double>& input_data,
+                            const dnn::RnnStateTensorDescriptor& input_h_desc,
+                            const DeviceMemory<double>& input_h_data,
+                            const dnn::RnnStateTensorDescriptor& input_c_desc,
+                            const DeviceMemory<double>& input_c_data,
+                            const DeviceMemory<double>& params,
+                            const dnn::RnnSequenceTensorDescriptor& output_desc,
+                            DeviceMemory<double>* output_data,
+                            const dnn::RnnStateTensorDescriptor& output_h_desc,
+                            DeviceMemory<double>* output_h_data,
+                            const dnn::RnnStateTensorDescriptor& output_c_desc,
+                            DeviceMemory<double>* output_c_data,
+                            bool is_training,
+                            ScratchAllocator* reserve_space_allocator,
+                            ScratchAllocator* workspace_allocator) {
+    return false;
+  }
   // Enqueue a backward operation of the RNN model onto the stream.
   //
   // Arguments:
@@ -1965,6 +1984,33 @@ class DnnSupport {
       DeviceMemory<float>* input_h_backprop_data,
       DeviceMemory<float>* input_c_backprop_data,
       DeviceMemory<float>* params_backprop_data,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
+  virtual bool DoRnnBackward(
+      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<double>& input_data,
+      const dnn::RnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<double>& input_h_data,
+      const dnn::RnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<double>& input_c_data,
+      const DeviceMemory<double>& params,
+      const dnn::RnnSequenceTensorDescriptor& output_desc,
+      const DeviceMemory<double>& output_data,
+      const dnn::RnnStateTensorDescriptor& output_h_desc,
+      const DeviceMemory<double>& output_h_data,
+      const dnn::RnnStateTensorDescriptor& output_c_desc,
+      const DeviceMemory<double>& output_c_data,
+      const DeviceMemory<double>& output_backprop_data,
+      const DeviceMemory<double>& output_h_backprop_data,
+      const DeviceMemory<double>& output_c_backprop_data,
+      DeviceMemory<double>* input_backprop_data,
+      DeviceMemory<double>* input_h_backprop_data,
+      DeviceMemory<double>* input_c_backprop_data,
+      DeviceMemory<double>* params_backprop_data,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) {
     return false;

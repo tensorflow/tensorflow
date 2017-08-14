@@ -57,11 +57,13 @@ class TensorArrayTest(xla_test.XLATestCase):
       r0 = w2.read(0)
       r1 = w2.read(1)
       r2 = w2.read(2)
+      flow = w2.flow
 
-      d0, d1, d2 = session.run([r0, r1, r2])
+      d0, d1, d2, flow_val = session.run([r0, r1, r2, flow])
       self.assertAllEqual([[4.0, 5.0]], d0)
       self.assertAllEqual([[1.0, 3.0]], d1)
       self.assertAllEqual([[7.0, -8.5]], d2)
+      self.assertAllEqual([], flow_val.shape)
 
   def _testTensorArrayWritePack(self, tf_dtype):
     with self.test_session(), self.test_scope():
@@ -339,8 +341,7 @@ class TensorArrayTest(xla_test.XLATestCase):
         # Test reading wrong datatype.
         r0_bad = gen_data_flow_ops._tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtype2, flow_in=w0.flow)
-        with self.assertRaisesOpError(
-            "TensorArray dtype is "):
+        with self.assertRaisesOpError("TensorArray dtype is "):
           r0_bad.eval()
 
         # Test reading from a different index than the one we wrote to

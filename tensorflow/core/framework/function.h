@@ -37,7 +37,9 @@ class CancellationManager;
 class GraphDef;
 class OpKernel;
 class ResourceMgr;
+class Rendezvous;
 class ScopedStepContainer;
+class StepStatsCollector;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -346,17 +348,16 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
  private:
   // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
   struct FunctionDefAndOpRegistration {
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
-        : fdef(fdef_in), op_registration_data(fdef.signature()) {}
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
     FunctionDef fdef;
     OpRegistrationData op_registration_data;
   };
 
   const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>, HashStr>
+  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
       function_defs_;
-  gtl::FlatMap<string, string, HashStr> func_grad_;
+  gtl::FlatMap<string, string> func_grad_;
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
@@ -397,12 +398,12 @@ class FunctionLibraryRuntime {
   //
   // Does not take ownership of "rets".
   struct Options {
-    CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
-
-    // Per-step container.
-    ScopedStepContainer* step_container;
+    Rendezvous* rendezvous = nullptr;
+    CancellationManager* cancellation_manager = nullptr;
+    ScopedStepContainer* step_container = nullptr;
+    StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };

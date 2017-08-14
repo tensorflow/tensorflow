@@ -159,7 +159,7 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
       constructor; `hparams` used as the hyper-paremeters of the model).
       It must return an `Experiment`. For this case, `output_dir` must be None.
     output_dir: Base output directory [Deprecated].
-    schedule: The name of the  method in the `Experiment` to run.
+    schedule: The name of the method in the `Experiment` to run.
     run_config: `RunConfig` instance. The `run_config.model_dir` must be
       non-empty. If `run_config` is set, `output_dir` must be None.
     hparams: `HParams` instance. The default hyper-parameters, which will be

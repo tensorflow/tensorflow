@@ -2772,6 +2772,56 @@ class LayerNormTest(test.TestCase):
     self.doOutputTest((1, 100, 100, 1))
 
 
+class GDNTest(test.TestCase):
+
+  def _runGDN(self, x, shape, inverse, data_format):
+    inputs = array_ops.placeholder(dtypes.float32, shape)
+    outputs = _layers.gdn(inputs, inverse=inverse, data_format=data_format)
+    with self.test_session() as sess:
+      variables_lib.global_variables_initializer().run()
+      y, = sess.run([outputs], {inputs: x})
+    return y
+
+  def testInvalidDataFormat(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    with self.assertRaises(ValueError):
+      self._runGDN(x, x.shape, False, 'NHWC')
+
+  def testUnknownDim(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    with self.assertRaises(ValueError):
+      self._runGDN(x, 4 * [None], False, 'channels_last')
+
+  def testChannelsLast(self):
+    for ndim in [3, 4, 5]:
+      x = np.random.uniform(size=(1, 2, 3, 4)[:ndim])
+      y = self._runGDN(x, x.shape, False, 'channels_last')
+      self.assertEqual(x.shape, y.shape)
+      self.assertAllClose(y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+  def testChannelsFirst(self):
+    # `bias_add` doesn't support NCHW on CPU.
+    if test.is_gpu_available(cuda_only=True):
+      for ndim in [3, 4, 5]:
+        x = np.random.uniform(size=(4, 3, 2, 1)[:ndim])
+        y = self._runGDN(x, x.shape, False, 'channels_first')
+        self.assertEqual(x.shape, y.shape)
+        self.assertAllClose(
+            y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+  def testWrongDims(self):
+    for ndim in [1, 2, 6]:
+      x = np.random.uniform(size=(1, 2, 3, 4, 3, 2)[:ndim])
+      with self.assertRaises(ValueError):
+        self._runGDN(x, x.shape, False, 'channels_last')
+
+  def testIGDN(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    y = self._runGDN(x, x.shape, True, 'channels_last')
+    self.assertEqual(x.shape, y.shape)
+    self.assertAllClose(y, x * np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+
 class MaxPool2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -3176,6 +3226,17 @@ class SeparableConv2dTest(test.TestCase):
           trainable_variables = variables_lib.trainable_variables()
           for model_variable in model_variables:
             self.assertEqual(trainable, model_variable in trainable_variables)
+
+  def testConvNCHW(self):
+    for num_filters, correct_output_filters in [(None, 6), (8, 8)]:
+      with self.test_session():
+        batch, height, width = 4, 5, 6
+        images = random_ops.random_uniform((batch, 3, height, width), seed=1)
+        output = layers_lib.separable_conv2d(
+            images, num_filters, [3, 3], 2, padding='VALID', data_format='NCHW')
+        self.assertListEqual(
+            output.get_shape().as_list(), [batch, correct_output_filters,
+                                           height - 2, width - 2])
 
 
 class ScaleGradientTests(test.TestCase):

@@ -182,6 +182,64 @@ class Iterator(object):
         output_shapes=nest.flatten(output_shapes))
     return Iterator(iterator_resource, None, output_types, output_shapes)
 
+  @staticmethod
+  def from_string_handle(string_handle, output_types, output_shapes=None):
+    """Creates a new, uninitialized `Iterator` based on the given handle.
+
+    This method allows you to define a "feedable" iterator where you can choose
+    between concrete iterators by feeding a value in a @{tf.Session.run} call.
+    In that case, `string_handle` would a @{tf.placeholder}, and you would feed
+    it with the value of @{tf.contrib.data.Iterator.string_handle} in each step.
+
+    For example, if you had two iterators that marked the current position in
+    a training dataset and a test dataset, you could choose which to use in
+    each step as follows:
+
+    ```python
+    train_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
+    train_iterator_handle = sess.run(train_iterator.string_handle())
+
+    test_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
+    test_iterator_handle = sess.run(test_iterator.string_handle())
+
+    handle = tf.placeholder(tf.string, shape=[])
+    iterator = tf.contrib.data.Iterator.from_string_handle(
+        handle, train_iterator.output_types)
+
+    next_element = iterator.get_next()
+    loss = f(next_element)
+
+    train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
+    test_loss = sess.run(loss, feed_dict={handle: test_iterator_handle})
+    ```
+
+    Args:
+      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates
+        to a handle produced by the `Iterator.string_handle()` method.
+      output_types: A nested structure of `tf.DType` objects corresponding to
+        each component of an element of this iterator.
+      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
+        corresponding to each component of an element of this dataset. If
+        omitted, each component will have an unconstrainted shape.
+
+    Returns:
+      An `Iterator`.
+    """
+    output_types = nest.map_structure(dtypes.as_dtype, output_types)
+    if output_shapes is None:
+      output_shapes = nest.map_structure(
+          lambda _: tensor_shape.TensorShape(None), output_types)
+    else:
+      output_shapes = nest.map_structure_up_to(
+          output_types, tensor_shape.as_shape, output_shapes)
+    nest.assert_same_structure(output_types, output_shapes)
+    string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
+    iterator_resource = gen_dataset_ops.iterator_from_string_handle(
+        string_handle,
+        output_types=nest.flatten(output_types),
+        output_shapes=nest.flatten(output_shapes))
+    return Iterator(iterator_resource, None, output_types, output_shapes)
+
   @property
   def initializer(self):
     """A `tf.Operation` that should be run to initialize this iterator.
@@ -199,11 +257,12 @@ class Iterator(object):
       # initializers that simply reset their state to the beginning.
       raise ValueError("Iterator does not have an initializer.")
 
-  def make_initializer(self, dataset):
+  def make_initializer(self, dataset, name=None):
     """Returns a `tf.Operation` that initializes this iterator on `dataset`.
 
     Args:
       dataset: A `Dataset` with compatible structure to this iterator.
+      name: (Optional.) A name for the created operation.
 
     Returns:
       A `tf.Operation` that can be run to initialize this iterator on the given
@@ -213,22 +272,25 @@ class Iterator(object):
       TypeError: If `dataset` and this iterator do not have a compatible
         element structure.
     """
-    nest.assert_same_structure(self._output_types, dataset.output_types)
-    nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
-    for iterator_dtype, dataset_dtype in zip(
-        nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
-      if iterator_dtype != dataset_dtype:
-        raise TypeError(
-            "Expected output types %r but got dataset with output types %r." %
-            (self._output_types, dataset.output_types))
-    for iterator_shape, dataset_shape in zip(
-        nest.flatten(self._output_shapes), nest.flatten(dataset.output_shapes)):
-      if not iterator_shape.is_compatible_with(dataset_shape):
-        raise TypeError("Expected output shapes compatible with %r but got "
-                        "dataset with output shapes %r." %
-                        (self._output_shapes, dataset.output_shapes))
-    return gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
-                                         self._iterator_resource)
+    with ops.name_scope(name, "make_initializer") as name:
+      nest.assert_same_structure(self._output_types, dataset.output_types)
+      nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
+      for iterator_dtype, dataset_dtype in zip(
+          nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
+        if iterator_dtype != dataset_dtype:
+          raise TypeError(
+              "Expected output types %r but got dataset with output types %r." %
+              (self._output_types, dataset.output_types))
+      for iterator_shape, dataset_shape in zip(
+          nest.flatten(self._output_shapes),
+          nest.flatten(dataset.output_shapes)):
+        if not iterator_shape.is_compatible_with(dataset_shape):
+          raise TypeError("Expected output shapes compatible with %r but got "
+                          "dataset with output shapes %r." %
+                          (self._output_shapes, dataset.output_shapes))
+      return gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
+                                           self._iterator_resource,
+                                           name=name)
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
@@ -260,6 +322,18 @@ class Iterator(object):
       A `tf.Operation`.
     """
     return gen_dataset_ops.iterator_dispose(self._iterator_resource, name=name)
+
+  def string_handle(self, name=None):
+    """Returns a string-valued `tf.Tensor` that represents this iterator.
+
+    Args:
+      name: (Optional.) A name for the created operation.
+
+    Returns:
+      A scalar `tf.Tensor` of type `tf.string`.
+    """
+    return gen_dataset_ops.iterator_to_string_handle(self._iterator_resource,
+                                                     name=name)
 
   @property
   def output_shapes(self):
@@ -554,6 +628,44 @@ class Dataset(object):
     """
     return ZipDataset(datasets)
 
+  def concatenate(self, dataset):
+    """Creates a `Dataset` by concatenating given dataset with this dataset.
+
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { 1, 2, 3 }
+    b = { 4, 5, 6, 7 }
+
+    # Input dataset and dataset to be concatenated should have same
+    # nested structures and output types.
+    # c = { (8, 9), (10, 11), (12, 13) }
+    # d = { 14.0, 15.0, 16.0 }
+    # a.concatenate(c) and a.concatenate(d) would result in error.
+
+    a.concatenate(b) == { 1, 2, 3, 4, 5, 6, 7 }
+    ```
+
+    Args:
+      dataset: `Dataset` to be concatenated.
+
+    Returns:
+      A `Dataset`.
+    """
+    return ConcatenateDataset(self, dataset)
+
+  def prefetch(self, buffer_size):
+    """Creates a `Dataset` that prefetches elements from this dataset.
+
+    Args:
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        maximum number elements that will be buffered when prefetching.
+
+    Returns:
+      A `Dataset`.
+    """
+    return PrefetchDataset(self, buffer_size)
+
   @staticmethod
   def read_batch_features(file_pattern,
                           batch_size,
@@ -592,6 +704,11 @@ class Dataset(object):
     else:
       dataset = reader(filenames)
     dataset = dataset.repeat(num_epochs)
+    if dataset.output_types == (dtypes.string, dtypes.string):
+      dataset = dataset.map(lambda unused_k, v: v)
+    elif dataset.output_types != dtypes.string:
+      raise TypeError("`reader` must be a dataset of `tf.string` values, "
+                      "or `(tf.string, tf.string)` key-value pairs.")
     if randomize_input:
       dataset = dataset.shuffle(capacity)
     dataset = dataset.map(lambda x: _parse_example(nest.flatten(x), features))
@@ -882,6 +999,70 @@ class Dataset(object):
     """
     return FlatMapDataset(self, map_func)
 
+  def interleave(self, map_func, cycle_length, block_length=1):
+    """Maps `map_func` across this dataset, and interleaves the results.
+
+    For example, you can use `Dataset.interleave()` to process many input files
+    concurrently:
+
+    ```python
+    # Preprocess 4 files concurrently, and interleave blocks of 16 records from
+    # each file.
+    filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ..."]
+    dataset = (Dataset.from_tensor_slices(filenames)
+               .interleave(
+                   lambda x: TextLineDataset(x).map(parse_fn, num_threads=1),
+                   cycle_length=4, block_length=16))
+    ```
+
+    The `cycle_length` and `block_length` arguments control the order in which
+    elements are produced. `cycle_length` controls the number of input elements
+    that are processed concurrently. If you set `cycle_length` to 1, this
+    transformation will handle one input element at a time, and will produce
+    identical results = to @{tf.contrib.data.Dataset.flat_map}. In general,
+    this transformation will apply `map_func` to `cycle_length` input elements,
+    open iterators on the returned `Dataset` objects, and cycle through them
+    producing `block_length` consecutive elements from each iterator, and
+    consuming the next input element each time it reaches the end of an
+    iterator.
+
+    For example:
+
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { 1, 2, 3, 4, 5 }
+
+    # NOTE: New lines indicate "block" boundaries.
+    a.interleave(lambda x: Dataset.from_tensors(x).repeat(6),
+                 cycle_length=2, block_length=4) == {
+        1, 1, 1, 1,
+        2, 2, 2, 2,
+        1, 1,
+        2, 2,
+        3, 3, 3, 3,
+        4, 4, 4, 4,
+        3, 3,
+        4, 4,
+        5, 5, 5, 5,
+        5, 5,
+    }
+    ```
+
+    Args:
+      map_func: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to a
+        `Dataset`.
+      cycle_length: The number of elements from this dataset that will be
+        processed concurrently.
+      block_length: The number of consecutive elements to produce from each
+        input element before cycling to another input element.
+
+    Returns:
+      A `Dataset`.
+    """
+    return InterleaveDataset(self, map_func, cycle_length, block_length)
+
   def unbatch(self):
     """Splits elements of this dataset into sequences of consecutive elements.
 
@@ -893,8 +1074,12 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    return self.flat_map(
-        map_func=lambda *args: Dataset.from_tensor_slices(args))
+    def unbatch_map(arg, *rest):
+      if rest:
+        return Dataset.from_tensor_slices((arg,) + rest)
+      else:
+        return Dataset.from_tensor_slices(arg)
+    return self.flat_map(map_func=unbatch_map)
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -1036,6 +1221,45 @@ class ZipDataset(Dataset):
     return nest.pack_sequence_as(self._datasets, [
         ds.output_types for ds in nest.flatten(self._datasets)
     ])
+
+
+class ConcatenateDataset(Dataset):
+  """A `Dataset` that concatenates its input with given dataset."""
+
+  def __init__(self, input_dataset, dataset_to_concatenate):
+    """See `Dataset.concatenate()` for details."""
+    super(ConcatenateDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._dataset_to_concatenate = dataset_to_concatenate
+    nest.assert_same_structure(input_dataset.output_types,
+                               dataset_to_concatenate.output_types)
+    for a, b in zip(
+        nest.flatten(input_dataset.output_types),
+        nest.flatten(dataset_to_concatenate.output_types)):
+      if a != b:
+        raise TypeError(
+            "Two datasets to concatenate have different types %s and %s" %
+            (input_dataset.output_types, dataset_to_concatenate.output_types))
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.concatenate_dataset(
+        self._input_dataset.make_dataset_resource(),
+        self._dataset_to_concatenate.make_dataset_resource(),
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return nest.pack_sequence_as(self._input_dataset.output_shapes, [
+        ts1.most_specific_compatible_shape(ts2)
+        for (ts1, ts2) in zip(
+            nest.flatten(self._input_dataset.output_shapes),
+            nest.flatten(self._dataset_to_concatenate.output_shapes))
+    ])
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
 
 
 class RepeatDataset(Dataset):
@@ -1540,7 +1764,7 @@ class MapDataset(Dataset):
             output_buffer_size, dtype=dtypes.int64, name="output_buffer_size")
       else:
         self._output_buffer_size = ops.convert_to_tensor(
-            self._num_threads, dtype=dtypes.int64, name="output_buffer_size")
+            num_threads, dtype=dtypes.int64, name="output_buffer_size")
     else:
       self._num_threads = None
       self._output_buffer_size = None
@@ -1623,6 +1847,65 @@ class FlatMapDataset(Dataset):
     return self._output_types
 
 
+class InterleaveDataset(Dataset):
+  """A `Dataset` that maps a function over its input and flattens the result."""
+
+  def __init__(self,
+               input_dataset,
+               map_func,
+               cycle_length,
+               block_length):
+    """See `Dataset.interleave()` for details."""
+    super(InterleaveDataset, self).__init__()
+    self._input_dataset = input_dataset
+
+    @function.Defun(*nest.flatten(input_dataset.output_types))
+    def tf_map_func(*args):
+      """A wrapper for Defun that facilitates shape inference."""
+      # Pass in shape information from the input_dataset.
+      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
+        arg.set_shape(shape)
+
+      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
+
+      if nest.is_sequence(nested_args):
+        dataset = map_func(*nested_args)
+      else:
+        dataset = map_func(nested_args)
+
+      if not isinstance(dataset, Dataset):
+        raise TypeError("`map_func` must return a `Dataset` object.")
+
+      self._output_types = dataset.output_types
+      self._output_shapes = dataset.output_shapes
+
+      return dataset.make_dataset_resource()
+
+    self._map_func = tf_map_func
+    self._map_func.add_to_graph(ops.get_default_graph())
+
+    self._cycle_length = ops.convert_to_tensor(cycle_length, dtype=dtypes.int64)
+    self._block_length = ops.convert_to_tensor(block_length, dtype=dtypes.int64)
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.interleave_dataset(
+        self._input_dataset.make_dataset_resource(),
+        self._map_func.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        f=self._map_func,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+
 class FilterDataset(Dataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
@@ -1672,21 +1955,54 @@ class FilterDataset(Dataset):
     return self._input_dataset.output_types
 
 
+class PrefetchDataset(Dataset):
+  """A `Dataset` that asynchronously prefetches its input."""
+
+  def __init__(self, input_dataset, buffer_size):
+    """See `Dataset.prefetch()` for details."""
+    super(PrefetchDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64)
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.prefetch_dataset(
+        self._input_dataset.make_dataset_resource(),
+        buffer_size=self._buffer_size,
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+
 class TextLineDataset(Dataset):
   """A `Dataset` comprising lines from one or more text files."""
 
-  def __init__(self, filenames):
+  def __init__(self, filenames, compression_type=None):
     """Creates a `TextLineDataset`.
 
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
+      compression_type: A `tf.string` scalar evaluating to one of `""` (no
+        compression), `"ZLIB"`, or `"GZIP"`.
     """
     super(TextLineDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
+    if compression_type is not None:
+      self._compression_type = ops.convert_to_tensor(
+          compression_type, dtype=dtypes.string, name="compression_type")
+    else:
+      self._compression_type = constant_op.constant("", name="compression_type")
 
   def make_dataset_resource(self):
-    return gen_dataset_ops.text_line_dataset(self._filenames)
+    return gen_dataset_ops.text_line_dataset(self._filenames,
+                                             self._compression_type)
 
   @property
   def output_shapes(self):

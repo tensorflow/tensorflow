@@ -225,7 +225,7 @@ Step-by-step Windows build
 
    * `-Dtensorflow_ENABLE_GPU=(ON|OFF)`. Defaults to `OFF`. Include
      GPU support. If GPU is enabled you need to install the CUDA 8.0 Toolkit and CUDNN 5.1.
-     CMake will expect the location of CUDNN in -DCUDNN_HOME=path_you_unziped_cudnn.
+     CMake will expect the location of CUDNN in -DCUDNN_HOME=path_you_unzipped_cudnn.
 
    * `-Dtensorflow_BUILD_CC_TESTS=(ON|OFF)`. Defaults to `OFF`. This builds cc unit tests.
      There are many of them and building will take a few hours.
@@ -236,6 +236,13 @@ Step-by-step Windows build
      ```
 
    * `-Dtensorflow_BUILD_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python kernel tests.
+     After building the python wheel, you need to install the new wheel before running the tests.
+     To execute the tests, use
+     ```
+     ctest -C RelWithDebInfo
+     ```
+   * `-Dtensorflow_BUILD_MORE_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python tests on
+     serveral major packages. This option is only valid if this and tensorflow_BUILD_PYTHON_TESTS are both set as `ON`.
      After building the python wheel, you need to install the new wheel before running the tests.
      To execute the tests, use
      ```

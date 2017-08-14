@@ -204,12 +204,12 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   // Choose random dimensions for R4 shape.
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, RandR4Dims(), {3, 2, 1, 0});
   // Choose random number of outer dimensions to partition.
-  const int num_outer_dims_to_partiton = 1 + (Rand() % 3);
-  // Choose random outer dimension partiton counts.
-  std::vector<int64> dim_sizes(num_outer_dims_to_partiton);
-  std::vector<int64> dim_partition_counts(num_outer_dims_to_partiton);
+  const int num_outer_dims_to_partition = 1 + (Rand() % 3);
+  // Choose random outer dimension partition counts.
+  std::vector<int64> dim_sizes(num_outer_dims_to_partition);
+  std::vector<int64> dim_partition_counts(num_outer_dims_to_partition);
   int64 total_dim_size = 1;
-  for (int i = 0; i < num_outer_dims_to_partiton; ++i) {
+  for (int i = 0; i < num_outer_dims_to_partition; ++i) {
     const int64 dimension = shape.layout().minor_to_major(
         shape.layout().minor_to_major_size() - 1 - i);
     dim_sizes[i] = shape.dimensions(dimension);
@@ -220,7 +220,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   }
   // Iterate through all partition: for each partition record covered
   // index ranges by dimension.
-  std::vector<std::map<int64, int64>> ranges(num_outer_dims_to_partiton);
+  std::vector<std::map<int64, int64>> ranges(num_outer_dims_to_partition);
   ShapePartitionIterator partition_iterator(shape, dim_partition_counts);
   const int64 partition_count = partition_iterator.GetTotalPartitionCount();
   for (int64 i = 0; i < partition_count; ++i) {

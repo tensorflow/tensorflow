@@ -108,6 +108,7 @@ tensorflow/core/kernels/inplace_ops.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc
+tensorflow/core/kernels/identity_n_op.cc
 tensorflow/core/kernels/gather_op.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
@@ -143,8 +144,10 @@ tensorflow/core/kernels/cwise_op_minimum.cc
 tensorflow/core/kernels/cwise_op_maximum.cc
 tensorflow/core/kernels/cwise_op_logical_not.cc
 tensorflow/core/kernels/cwise_op_logical_and.cc
+tensorflow/core/kernels/cwise_op_logical_or.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
+tensorflow/core/kernels/cwise_op_less_equal.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
 tensorflow/core/kernels/cwise_op_invert.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc
@@ -197,6 +200,7 @@ tensorflow/core/kernels/aggregate_ops.cc
 tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/meta_support.cc
+tensorflow/core/kernels/population_count_op.cc
 tensorflow/core/kernels/quantization_utils.cc
 tensorflow/core/kernels/quantize_down_and_shrink_range.cc
 tensorflow/core/kernels/quantize_op.cc

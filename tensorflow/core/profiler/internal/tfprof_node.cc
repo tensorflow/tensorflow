@@ -25,7 +25,7 @@ bool CountAsAcceleratorTime(const string& device) {
 }
 
 bool CountAsCPUTime(const string& device) {
-  return RE2::FullMatch(device, ".*/(gpu|cpu):\\d+");
+  return RE2::FullMatch(device, ".*/(device:gpu|gpu|cpu|device:sycl):\\d+");
 }
 
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
@@ -110,9 +110,11 @@ void ExecStep::AddMemoryStats(const string& dev,
       uint64 output_ptr =
           output.tensor_description().allocation_description().ptr();
       total_output_bytes += output_bytes;
-      output_bytes_[output.slot()] = std::make_pair(output_bytes, output_ptr);
+      output_memory_[output.slot()] = std::make_pair(output_bytes, output_ptr);
     }
   }
+  output_bytes_ = total_output_bytes;
+
   if (step_stat.has_memory_stats()) {
     host_temp_bytes_ += step_stat.memory_stats().host_temp_memory_size();
     host_persistent_bytes_ +=
@@ -122,7 +124,17 @@ void ExecStep::AddMemoryStats(const string& dev,
     accelerator_persistent_bytes_ +=
         step_stat.memory_stats().device_persistent_memory_size();
   }
-  requested_bytes_ = total_output_bytes;
+  int64 residual_bytes = 0;
+  int64 requested_bytes = 0;
+  int64 peak_bytes = 0;
+  for (const auto& mem : step_stat.memory()) {
+    residual_bytes += mem.live_bytes();
+    requested_bytes += mem.total_bytes();
+    peak_bytes += mem.peak_bytes();
+  }
+  requested_bytes_ = requested_bytes;
+  residual_bytes_ = residual_bytes;
+  peak_bytes_ = peak_bytes;
 }
 
 void TFGraphNode::AddStepStat(int64 step, const string& device,
@@ -131,9 +143,9 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py
-  // It can be /job:0/replica:0/xxxx/gpu:0, or simply /gpu:0.
+  // It can be /job:0/replica:0/xxxx/device:GPU:0, or simply /device:GPU:0.
   // It can has some ad-hoc suffix, such as /stream:xx or /memcpy:xx.
-  if (IsCanonicalDevice(device)) {
+  if (IsCanonicalDevice(dev)) {
     if (!canonical_device_.empty()) {
       if (canonical_device_ != dev) {
         fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
@@ -143,7 +155,11 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
     } else {
       canonical_device_ = dev;
       // TODO(xpan): Support things other than gpu?
-      host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+      if (dev.find("sycl") != dev.npos) {
+        host_device_ = StringReplace(dev, "device:sycl:\\d+", "cpu:0");
+      } else {
+        host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+      }
       AddOpType(canonical_device_);
     }
   }
@@ -217,7 +233,8 @@ TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
 }
 
 bool IsPlacedOnAccelerator(const string& device) {
-  return device.find("gpu") != device.npos;
+  return device.find("gpu") != device.npos ||
+         device.find("sycl") != device.npos;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

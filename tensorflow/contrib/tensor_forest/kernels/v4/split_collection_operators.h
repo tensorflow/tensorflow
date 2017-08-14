@@ -62,6 +62,14 @@ class SplitCollectionOperator {
   // Create a new GrowStats for the given node id and initialize it.
   virtual void InitializeSlot(int32 node_id, int32 depth);
 
+  // Called when the resource is deserialized, possibly needing an
+  // initialization.
+  virtual void MaybeInitialize() {
+    if (stats_.empty()) {
+      InitializeSlot(0, 0);
+    }
+  }
+
   // Perform any necessary cleanup for any tracked state for the slot.
   virtual void ClearSlot(int32 node_id) {
     stats_.erase(node_id);

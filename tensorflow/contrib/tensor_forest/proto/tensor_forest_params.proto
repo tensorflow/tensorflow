@@ -131,6 +131,7 @@ message TensorForestParams {
   bool checkpoint_stats = 11;
   bool use_running_stats_method = 20;
   bool initialize_average_splits = 22;
+  bool inference_tree_paths = 23;
 
   // Number of classes (classification) or targets (regression)
   int32 num_outputs = 12;

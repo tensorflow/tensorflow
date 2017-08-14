@@ -40,6 +40,22 @@ computation is performed on the underlying representation of x.
       .Attr("T: {int8, int16, int32, int64, uint8, uint16}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
+REGISTER_OP("PopulationCount")
+    .Input("x: T")
+    .Output("y: uint8")
+    .Attr("T: {int8, int16, int32, int64, uint8, uint16}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
+
+For each entry in `x`, calculates the number of `1` (on) bits in the binary
+representation of that entry.
+
+**NOTE**: It is more efficient to first `tf.bitcast` your tensors into
+`int32` or `int64` and perform the bitcount on the result, than to feed in
+8- or 16-bit inputs and then aggregate the resulting counts.
+)doc");
+
 REGISTER_OP("BitwiseAnd").BINARY_BITWISE().Doc(R"doc(
 Elementwise computes the bitwise AND of `x` and `y`.
 

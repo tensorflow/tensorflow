@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.keras.python.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
+from tensorflow.contrib.keras.python.keras.utils.data_utils import Sequence
+from tensorflow.contrib.keras.python.keras.utils.data_utils import SequenceEnqueuer
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import custom_object_scope
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object

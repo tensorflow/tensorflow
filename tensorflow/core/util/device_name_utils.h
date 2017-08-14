@@ -152,6 +152,11 @@ class DeviceNameUtils {
   static bool SplitDeviceName(StringPiece name, string* task, string* device);
 
   static string ParsedNameToString(const ParsedName& pn);
+
+  // Returns canonical and legacy full names for the given parsed
+  // device name 'pn'. The returned string names are often useful to
+  // lookup devices from a mapping.
+  static std::vector<string> GetNamesForDeviceMappings(const ParsedName& pn);
 };
 
 }  // namespace tensorflow

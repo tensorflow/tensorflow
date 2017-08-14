@@ -152,11 +152,15 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 }  // namespace
 
 /* static */ void LiteralTestUtil::ExpectEqual(const Literal& expected,
-                                               const Literal& actual) {
+                                               const Literal& actual,
+                                               const string& message) {
   EXPECT_TRUE(Equal(expected, actual))
       << "expected:\n"
       << expected.ToString() << "\n\tvs actual:\n"
-      << actual.ToString();
+      << actual.ToString()
+      << (message.empty()
+              ? ""
+              : tensorflow::strings::StrCat("\nmessage: ", message));
 }
 
 /* static */ void LiteralTestUtil::ExpectNotEqual(const Literal& expected,
@@ -166,8 +170,10 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::Equal(
     const Literal& expected, const Literal& actual) {
-  VLOG(1) << "expected: " << expected.ToString();
-  VLOG(1) << "actual:   " << actual.ToString();
+  VLOG(1) << "expected:";
+  XLA_VLOG_LINES(1, expected.ToString());
+  VLOG(1) << "actual:";
+  XLA_VLOG_LINES(1, actual.ToString());
 
   AssertEqualShapes(expected.shape(), actual.shape());
   std::vector<int64> multi_index(expected.shape().dimensions_size(), 0);
@@ -252,8 +258,10 @@ class NearComparator {
   // within the error bound. Emits useful log messages and dumps literals to
   // temporary files on failure. Returns true if  literals match.
   bool ExpectNear(const Literal& expected, const Literal& actual) {
-    VLOG(1) << "expected: " << expected.ToString();
-    VLOG(1) << "actual:   " << actual.ToString();
+    VLOG(1) << "expected:";
+    XLA_VLOG_LINES(1, expected.ToString());
+    VLOG(1) << "actual:";
+    XLA_VLOG_LINES(1, actual.ToString());
 
     LiteralTestUtil::AssertEqualShapes(expected.shape(), actual.shape());
 
@@ -435,8 +443,12 @@ class NearComparator {
 
 /* static */ void LiteralTestUtil::ExpectNear(const Literal& expected,
                                               const Literal& actual,
-                                              const ErrorSpec& error) {
-  EXPECT_TRUE(Near(expected, actual, error));
+                                              const ErrorSpec& error,
+                                              const string& message) {
+  EXPECT_TRUE(Near(expected, actual, error))
+      << (message.empty()
+              ? ""
+              : tensorflow::strings::StrCat("\nmessage: ", message));
 }
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::NearTuple(

@@ -101,7 +101,9 @@ LayoutConstraints::LayoutConstraints(
     const HloComputation* computation)
     : points_to_analysis_(points_to_analysis), computation_(computation) {
   // Gather all array-shaped logical buffers into unconstrained_buffer_ids.
-  for (auto& buffer : points_to_analysis_.logical_buffers()) {
+  for (LogicalBuffer::Id id = 0; id < points_to_analysis_.num_logical_buffers();
+       id++) {
+    auto& buffer = points_to_analysis_.logical_buffer(id);
     // The points to analysis is computed per module, restrict constraints to
     // array buffers in this computation.
     if (buffer->IsArray() && buffer->instruction()->parent() == computation) {
@@ -309,6 +311,7 @@ const Layout* LayoutConstraints::BufferLayout(
   }
   return nullptr;
 }
+
 const BufferLayoutConstraint* LayoutConstraints::GetBufferLayoutConstraint(
     const LogicalBuffer& buffer) const {
   auto it = buffer_constraints_.find(&buffer);
@@ -323,6 +326,7 @@ const ShapeLayout* LayoutConstraints::OperandLayout(
   }
   return nullptr;
 }
+
 const OperandLayoutConstraint* LayoutConstraints::GetOperandLayoutConstraint(
     const HloInstruction* instruction, int64 operand_no) const {
   auto it = operand_constraints_.find(std::make_pair(instruction, operand_no));
@@ -382,11 +386,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
-      // TODO(b/62477016): When the infeed does not set padding anymore, the
-      // call to ShapeWithoutPadding can be removed.
-      Shape infeed_shape = ShapeUtil::ShapeWithoutPadding(instruction->shape());
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(infeed_shape, instruction.get()));
+      DCHECK(!LayoutUtil::IsPadded(instruction->shape()));
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(instruction->shape(),
+                                                           instruction.get()));
     } else if (instruction->opcode() == HloOpcode::kOutfeed) {
       // Constrain the input to the Outfeed instruction to be the expected
       // layout of the Outfeed.
@@ -611,6 +613,9 @@ Status CheckLayouts(
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (auto& instruction : computation->instructions()) {
       // Verify every instruction has a layout and the layout is valid for the
       // shape.
@@ -736,6 +741,11 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // layouts. So if 'output_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations.
+    if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
+        ShapeUtil::Rank(instruction->shape()) == 1) {
+      // Don't assign a layout in case of R1 -> effective R1 reshape.
+      return nullptr;
+    }
     const Shape& output_shape = instruction->shape();
     Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
@@ -795,6 +805,11 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     // layouts. So if 'operand_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations.
+    if (ShapeUtil::Rank(operand->shape()) == 1 &&
+        ShapeUtil::TrueRank(user->shape()) == 1) {
+      // Don't assign a layout in case of R1 -> effective R1 reshape.
+      return nullptr;
+    }
     Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         operand->shape().element_type(),
         AsInt64Slice(operand->shape().dimensions()),
@@ -1356,6 +1371,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
     if (computation == module->entry_computation()) {
       TF_RETURN_IF_ERROR(RunOnComputation(*entry_computation_layout_,
                                           module->entry_computation()));
+    } else if (computation->IsFusionComputation()) {
+      continue;
     } else {
       ComputationLayout computation_layout(computation->ComputeProgramShape());
       // Setting all embedded computations to the default layout is potentially

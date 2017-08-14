@@ -1721,9 +1721,9 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
       `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
-    ksize: A list of ints that has length >= 4.
+    ksize: A 1-D int Tensor of 4 elements.
       The size of the window for each dimension of the input tensor.
-    strides: A list of ints that has length >= 4.
+    strides: A 1-D int Tensor of 4 elements
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
@@ -1750,9 +1750,9 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
       type `tf.float32`.
-    ksize: A list of ints that has length >= 4.  The size of the window for
+    ksize: A 1-D int Tensor of 4 elements.  The size of the window for
       each dimension of the input tensor.
-    strides: A list of ints that has length >= 4.  The stride of the sliding
+    strides: A 1-D int Tensor of 4 elements.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
@@ -2085,3 +2085,36 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                               rates=rates,
                               padding=padding,
                               name=name))
+
+def in_top_k(predictions, targets, k, name=None):
+  r"""Says whether the targets are in the top `K` predictions.
+
+  This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+  prediction for the target class is among the top `k` predictions among
+  all predictions for example `i`. Note that the behavior of `InTopK` differs
+  from the `TopK` op in its handling of ties; if multiple classes have the
+  same prediction value and straddle the top-`k` boundary, all of those
+  classes are considered to be in the top `k`.
+
+  More formally, let
+
+    \\(predictions_i\\) be the predictions for all classes for example `i`,
+    \\(targets_i\\) be the target class for example `i`,
+    \\(out_i\\) be the output for example `i`,
+
+  $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+  Args:
+    predictions: A `Tensor` of type `float32`.
+      A `batch_size` x `classes` tensor.
+    targets: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      A `batch_size` vector of class ids.
+    k: An `int`. Number of top elements to look at for computing precision.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
+  """
+  with ops.name_scope(name, 'in_top_k'):
+    # TODO (yongtang): Need to switch to v2 after 3 weeks.
+    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)

@@ -29,20 +29,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.profiler import option_builder
 
 # pylint: disable=g-bad-import-order
 # XXX: this depends on pywrap_tensorflow and must come later
 from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.profiler.internal import model_analyzer_testlib as lib
+
 SIZE = 1300
+builder = option_builder.ProfileOptionBuilder
 
 
-def _extract_node(run_meta, node_name):
+def _extract_node(run_meta, node_names):
+  if not isinstance(node_names, list):
+    node_names = [node_names]
   ret = defaultdict(list)
   for dev_stat in run_meta.step_stats.dev_stats:
     dev = dev_stat.device
     for node_stat in dev_stat.node_stats:
-      if node_stat.node_name == node_name:
+      if node_stat.node_name in node_names:
         ret[dev].append(node_stat)
   return ret
 
@@ -54,7 +59,7 @@ def _run_model():
 
   with session.Session() as sess:
     run_metadata = config_pb2.RunMetadata()
-    opts = model_analyzer.PRINT_ALL_TIMING_MEMORY
+    opts = builder.time_and_memory()
     opts['min_micros'] = 0
     opts['min_bytes'] = 0
     _ = sess.run(y,
@@ -82,7 +87,7 @@ def _run_loop_model():
 
     tfprof_node = model_analyzer.profile(
         sess.graph, run_meta,
-        options=model_analyzer.PRINT_ALL_TIMING_MEMORY)
+        options=builder.time_and_memory())
     return tfprof_node, run_meta
 
 
@@ -92,22 +97,22 @@ class RunMetadataTest(test.TestCase):
     if not test.is_gpu_available(cuda_only=True):
       return
 
+    gpu_dev = test.gpu_device_name()
     ops.reset_default_graph()
-    with ops.device('/gpu:0'):
+    with ops.device(gpu_dev):
       tfprof_node, run_meta = _run_model()
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
       self.assertGreater(tfprof_node.children[0].exec_micros, 10)
 
-    ret = _extract_node(run_meta, 'MatMul')
-    self.assertEqual(len(ret), 1)
-    self.assertTrue('/job:localhost/replica:0/task:0/gpu:0' in ret)
+    ret = _extract_node(run_meta, ['MatMul', 'MatMul:MatMul'])
+    self.assertEqual(len(ret), 3)
+    self.assertTrue('/job:localhost/replica:0/task:0' + gpu_dev in ret)
+    del ret['/job:localhost/replica:0/task:0' + gpu_dev]
 
-    ret = _extract_node(run_meta, 'MatMul:MatMul')
-    self.assertEqual(len(ret), 2)
     has_all_stream = False
     for k, _ in six.iteritems(ret):
-      self.assertTrue('gpu:0/stream' in k)
-      if 'gpu:0/stream:all' in k:
+      self.assertTrue(gpu_dev + '/stream' in k)
+      if gpu_dev + '/stream:all' in k:
         has_all_stream = True
     self.assertTrue(has_all_stream)
 
@@ -155,24 +160,24 @@ class RunMetadataTest(test.TestCase):
       return
 
     ops.reset_default_graph()
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       tfprof_node, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul')
-      self.assertEqual(len(ret['/job:localhost/replica:0/task:0/gpu:0']), 4)
+      self.assertEqual(len(ret['/job:localhost/replica:0/task:0/device:GPU:0']), 4)
 
       total_cpu_execs = 0
-      for node in ret['/job:localhost/replica:0/task:0/gpu:0']:
+      for node in ret['/job:localhost/replica:0/task:0/device:GPU:0']:
         total_cpu_execs += node.op_end_rel_micros
 
       ret = _extract_node(
           run_meta,
           'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul:MatMul')
-      self.assertGreaterEqual(len(ret['/gpu:0/stream:all']), 4)
+      self.assertGreaterEqual(len(ret['/device:GPU:0/stream:all']), 4)
 
       total_accelerator_execs = 0
-      for node in ret['/gpu:0/stream:all']:
+      for node in ret['/device:GPU:0/stream:all']:
         total_accelerator_execs += node.op_end_rel_micros
 
       mm_node = lib.SearchTFProfNode(

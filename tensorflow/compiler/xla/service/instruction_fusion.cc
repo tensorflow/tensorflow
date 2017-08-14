@@ -69,6 +69,7 @@ namespace xla {
     case HloOpcode::kReverse:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
@@ -77,6 +78,7 @@ namespace xla {
 
     // Expensive instructions.
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormGrad:
     case HloOpcode::kCall:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
@@ -209,8 +211,17 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
+
+  std::vector<HloComputation*> computations;
   for (auto& computation : module->computations()) {
-    computation_ = computation.get();
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+    computations.push_back(computation.get());
+  }
+  for (auto& computation : computations) {
+    CHECK(!computation->IsFusionComputation());
+    computation_ = computation;
 
     // We want to be able to remove arbitrary instructions from the post order
     // and also compare positions of instructions in the post order. To make
@@ -383,12 +394,15 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
 
   VLOG(2) << "Fusing " << producer << " into " << consumer;
 
+  auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
     fusion_instruction = consumer;
+    if (kind != fusion_instruction->fusion_kind()) {
+      fusion_instruction->set_fusion_kind(kind);
+    }
   } else {
-    fusion_instruction =
-        computation_->AddInstruction(HloInstruction::CreateFusion(
-            consumer->shape(), ChooseKind(producer, consumer), consumer));
+    fusion_instruction = computation_->AddInstruction(
+        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->FuseInstruction(producer);

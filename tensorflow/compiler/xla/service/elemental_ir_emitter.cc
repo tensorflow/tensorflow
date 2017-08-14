@@ -21,10 +21,10 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -177,6 +177,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {operand_value},
                                           {operand_value->getType()},
                                           ir_builder_);
+    case HloOpcode::kSin:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::floor, {operand_value}, {operand_value->getType()},
@@ -288,6 +292,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
+  // TODO(b/64580527): We can do better here if fast-math is enabled.
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, ir_builder_);
@@ -295,6 +300,7 @@ llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
+  // TODO(b/64580527): We can do better here if fast-math is enabled.
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, ir_builder_);
@@ -788,6 +794,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kTanh:
     case HloOpcode::kLogicalNot:
       return [this, hlo, &operand_to_generator](

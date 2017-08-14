@@ -4,6 +4,7 @@
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
     name = "libtensorflow_proto",
@@ -101,10 +102,13 @@ genrule(
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ],
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -132,10 +136,13 @@ genrule(
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ],
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
