@@ -2535,6 +2535,18 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(i, *fused_expression_root());
+    case HloOpcode::kDot:
+      // Dot operations with inputs [A,B] * [B,1] do not re-use
+      // elements on their left operand.
+      // Dot operations with inputs [1,A] * [A,B] do not re-use
+      // elements on their right operand.
+      if (shape().dimensions_size() == 2) {
+        if ((i == 0 && shape().dimensions(1) == 1) ||
+            (i == 1 && shape().dimensions(0) == 1)) {
+          return UseKind::kUse;
+        }
+      }
+      return UseKind::kReuse;
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
