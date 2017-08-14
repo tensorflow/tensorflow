@@ -32,46 +32,46 @@ inline void AppendEscapedName(string *json, const string &name) {
 }
 
 // Adds resource events for a single device.
-void AddResourceMetadata(uint64 device_id,
-                         const std::map<uint64, const Resource *> &resources,
+void AddResourceMetadata(uint32 device_id,
+                         const std::map<uint32, const Resource *> &resources,
                          string *json) {
   for (const auto &pair : resources) {
-    uint64 resource_id = pair.first;
+    uint32 resource_id = pair.first;
     const Resource &resource = *pair.second;
     if (!resource.name().empty()) {
       Appendf(json,
-              R"({"ph":"M","pid":%llu,"tid":%llu,)"
+              R"({"ph":"M","pid":%u,"tid":%u,)"
               R"("name":"thread_name","args":{)",
               device_id, resource_id);
       AppendEscapedName(json, resource.name());
       Appendf(json, "}},");
     }
     Appendf(json,
-            R"({"ph":"M","pid":%llu,"tid":%llu,)"
-            R"("name":"thread_sort_index","args":{"sort_index":%llu}},)",
+            R"({"ph":"M","pid":%u,"tid":%u,)"
+            R"("name":"thread_sort_index","args":{"sort_index":%u}},)",
             device_id, resource_id, resource_id);
   }
 }
 
-void AddDeviceMetadata(const std::map<uint64, const Device *> &devices,
+void AddDeviceMetadata(const std::map<uint32, const Device *> &devices,
                        string *json) {
   for (const auto &pair : devices) {
-    uint64 device_id = pair.first;
+    uint32 device_id = pair.first;
     const Device &device = *pair.second;
     if (!device.name().empty()) {
       Appendf(json,
-              R"({"ph":"M","pid":%llu,"name":"process_name",)"
+              R"({"ph":"M","pid":%u,"name":"process_name",)"
               R"("args":{)",
               device_id);
       AppendEscapedName(json, device.name());
       StrAppend(json, "}},");
     }
     Appendf(json,
-            R"({"ph":"M","pid":%llu,"name":"process_sort_index",)"
-            R"("args":{"sort_index":%llu}},)",
+            R"({"ph":"M","pid":%u,"name":"process_sort_index",)"
+            R"("args":{"sort_index":%u}},)",
             device_id, device_id);
     // Convert to a std::map so that devices are sorted by the device id.
-    std::map<uint64, const Resource *> sorted_resources;
+    std::map<uint32, const Resource *> sorted_resources;
     for (const auto &pair : device.resources()) {
       sorted_resources[pair.first] = &pair.second;
     }
@@ -80,7 +80,7 @@ void AddDeviceMetadata(const std::map<uint64, const Device *> &devices,
 }
 
 inline void AddTraceEvent(const TraceEvent &event, string *json) {
-  Appendf(json, R"({"pid":%llu,"tid":%llu,"ts":%.5f,)", event.device_id(),
+  Appendf(json, R"({"pid":%u,"tid":%u,"ts":%.5f,)", event.device_id(),
           event.resource_id(), event.timestamp_ps() / kPicosPerMicro);
   AppendEscapedName(json, event.name());
   StrAppend(json, ",");
@@ -101,7 +101,7 @@ string TraceEventsToJson(const Trace &trace) {
   Appendf(&json,
           R"("traceEvents":[)");
   // Convert to a std::map so that devices are sorted by the device id.
-  std::map<uint64, const Device *> sorted_devices;
+  std::map<uint32, const Device *> sorted_devices;
   for (const auto &pair : trace.devices()) {
     sorted_devices[pair.first] = &pair.second;
   }

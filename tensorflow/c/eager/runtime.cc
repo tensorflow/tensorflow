@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/eager/runtime.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -270,6 +271,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.output_attr_array = gtl::vector_as_array(&out_attrs);
   params.function_library = flib_;
   params.slice_reader_cache = &slice_reader_cache_;
+  params.rendezvous = rendez_;
   // TODO(apassos): use a thread pool.
   std::function<void(std::function<void()>)> runner =
       [](std::function<void()> f) { f(); };
