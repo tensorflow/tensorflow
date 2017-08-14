@@ -112,23 +112,23 @@ struct GatherFunctorCPU {
                    typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 3>::Tensor out) {
-  const int64 N = indices.size();
-  const int64 slice_size = out.dimension(2);
-  int64 bad_i;
+    const int64 N = indices.size();
+    const int64 slice_size = out.dimension(2);
+    int64 bad_i;
 
-  bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
-                    params.size() > std::numeric_limits<int32>::max() ||
-                    N > std::numeric_limits<int32>::max());
-#define CALL(elems)                                                   \
-  do {                                                                \
-    if (use_large) {                                                  \
+    bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
+                      params.size() > std::numeric_limits<int32>::max() ||
+                      N > std::numeric_limits<int32>::max());
+#define CALL(elems)                                                        \
+  do {                                                                     \
+    if (use_large) {                                                       \
       bad_i = HandleCopies<T, Index, int64, elems>(ctx, params, indices,   \
-                                                   slice_size, out);  \
-    } else {                                                          \
-      const int32 small_slice = static_cast<int32>(slice_size);       \
+                                                   slice_size, out);       \
+    } else {                                                               \
+      const int32 small_slice = static_cast<int32>(slice_size);            \
       bad_i = HandleCopies<T, Index, int32, elems>(ctx, params, indices,   \
-                                                   small_slice, out); \
-    }                                                                 \
+                                                   small_slice, out);      \
+    }                                                                      \
   } while (0)
 
     if (slice_size == 10)
