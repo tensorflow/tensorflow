@@ -915,6 +915,7 @@ class SeparableConv2D(Conv2D):
         trainable=trainable,
         name=name,
         **kwargs)
+    self.data_format = data_format
     self.depth_multiplier = depth_multiplier
     self.depthwise_initializer = depthwise_initializer
     self.pointwise_initializer = pointwise_initializer
@@ -979,7 +980,7 @@ class SeparableConv2D(Conv2D):
         inputs,
         self.depthwise_kernel,
         self.pointwise_kernel,
-        strides=(1,) + self.strides + (1,),
+        strides=(1,) + (1,) + self.strides if self.data_format is 'channels_first' else (1,) + self.strides + (1,),
         padding=self.padding.upper(),
         rate=self.dilation_rate,
         data_format=utils.convert_data_format(self.data_format, ndim=4))
