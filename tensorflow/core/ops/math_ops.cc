@@ -2604,4 +2604,31 @@ Equivalent to np.digitize.
 @end_compatibility
 )doc");
 
+#ifdef INTEL_MKL
+REGISTER_OP("_MklAddN")
+    .Input("inputs: N * T")
+    .Input("mkl_input: N * uint8")
+    .Output("sum: T")
+    .Output("mkl_sum: uint8")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .SetIsCommutative()
+    .SetIsAggregate()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle cur = c->input(c->num_inputs() - 1);
+      for (int i = c->num_inputs() - 2; i >= 0; --i) {
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
+                                        "From merging shape ", i,
+                                        " with other shapes.");
+      }
+      c->set_output(0, cur);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Add two input tensors element wise using mkl kernel sum.
+inputs: Must all be the same size and shape.
+)doc");
+
+#endif  // INTEL_MKL
+
 }  // namespace tensorflow
