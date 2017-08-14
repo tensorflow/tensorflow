@@ -128,6 +128,7 @@ public:
     for (int i=0; i<out.size(); i++) {
 
       int input_index = calculateIndex(pos, index_base, out_shape);
+      if (input_index >= in.size()) break;
       out[i] = in[input_index];
 
       // Advance the element
@@ -163,6 +164,7 @@ public:
     for (int i=0; i<update.size(); i++) {
 
       int output_index = calculateIndex(pos, index_base, update_shape);
+      if (output_index >= in.size()) break;
       in[output_index] = update[i];
 
       // Advance the element
