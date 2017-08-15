@@ -679,7 +679,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "cub_archive",
       urls = [
           "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.6.4.zip",
-          "https://github.com/NVlabs/cub/archive/1.6.4.zip",
       ],
       sha256 = "966d0c4f41e2bdc81aebf9ccfbf0baffaac5a74f00b826b06f4dee79b2bb8cee",
       strip_prefix = "cub-1.6.4",

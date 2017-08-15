@@ -287,6 +287,7 @@ tf_cc_test(
         ":cc_ops",
         ":grad_op_registry",
         ":grad_testutil",
+        ":gradient_checker",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",

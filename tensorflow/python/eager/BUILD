@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 cc_library(
@@ -35,7 +36,7 @@ py_library(
     name = "tensor",
     srcs = ["tensor.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//learning/brain/contrib/eager:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":core",
@@ -52,11 +53,10 @@ py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//learning/brain/contrib/eager:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:device",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
@@ -80,6 +80,17 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "tensor_test",
+    srcs = ["tensor_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor",
+        ":test",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "core_test",
     srcs = ["core_test.py"],
@@ -87,12 +98,11 @@ cuda_py_test(
         ":context",
         ":core",
         ":execute",
-        "//tensorflow/python:pywrap_tensorflow",
         ":tensor",
         ":test",
-        "//third_party/py/numpy",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -187,6 +197,20 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+cuda_py_test(
+    name = "graph_only_ops_test",
+    srcs = ["graph_only_ops_test.py"],
+    additional_deps = [
+        "graph_only_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -226,12 +250,54 @@ py_library(
 )
 
 py_library(
+    name = "tensor_node",
+    srcs = ["tensor_node.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":tape",
+        ":tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_library(
+    name = "backprop",
+    srcs = ["backprop.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:graph_only_ops",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:tensor",
+        "//tensorflow/python/eager:tensor_node",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "pip_dependencies",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":core",
         ":execute",
+        ":graph_only_ops",
         ":tensor",
         ":test",
         "//tensorflow/python:pywrap_tensorflow",
