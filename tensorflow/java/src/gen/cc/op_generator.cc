@@ -15,38 +15,33 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/java/src/gen/cc/gen_util.h"
-#include "tensorflow/java/src/gen/cc/ops/op_generator.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
 
-OpGenerator::OpGenerator(const std::string& ops_lib)
-    : ops_lib(ops_lib) {
-
-  const std::string& lib_name = ops_lib.substr(0, ops_lib.find_last_of('_'));
-  package_name = gen_util::StripChar("org.tensorflow.op." + lib_name, '_');
+OpGenerator::OpGenerator(Env* env, const string& output_dir)
+  : env(env), output_path(output_dir + "/src/main/java/") {
 }
 
 OpGenerator::~OpGenerator() {}
 
-int OpGenerator::Run(const std::string& output_path) {
-  tensorflow::Env* env = tensorflow::Env::Default();
-  std::string package_path(output_path);
-  package_path += gen_util::ReplaceChar(package_name, '.', '/');
+Status OpGenerator::Run(const string& ops_file, const OpList& ops) {
+  const string& lib_name = ops_file.substr(0, ops_file.find_last_of('_'));
+  const string package_name =
+      str_util::StringReplace("org.tensorflow.op." + lib_name, "_", "", true);
+  const string package_path =
+      output_path + str_util::StringReplace(package_name, ".", "/", true);
 
   if (!env->FileExists(package_path).ok()) {
     TF_CHECK_OK(env->RecursivelyCreateDir(package_path));
   }
 
-  OpList ops;
-  OpRegistry::Global()->Export(true, &ops);
+  LOG(INFO) << "Generating Java wrappers for \"" << lib_name << "\" operations";
+  // TODO(karllessard) generate wrappers from list of ops
 
-  // TODO(karllessard) generate wrappers from collected ops
-
-  return 0;
+  return Status::OK();
 }
 
 }  // namespace tensorflow
