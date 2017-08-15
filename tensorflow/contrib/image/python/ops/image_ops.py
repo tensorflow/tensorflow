@@ -99,28 +99,10 @@ def translate(images, translations, interpolation="NEAREST"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  image_or_images = ops.convert_to_tensor(images, name="images")
-  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
-    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-  if len(image_or_images.get_shape()) == 2:
-    images = image_or_images[None, :, :, None]
-  elif len(image_or_images.get_shape()) == 3:
-    images = image_or_images[None, :, :, :]
-  elif len(image_or_images.get_shape()) == 4:
-    images = image_or_images
-  else:
-    raise TypeError("Images should have rank between 2 and 4.")
-
-  output = transform(
+  return transform(
       images,
       translations_to_projective_transforms(translations),
       interpolation=interpolation)
-  if len(image_or_images.get_shape()) == 2:
-    return output[0, :, :, 0]
-  elif len(image_or_images.get_shape()) == 3:
-    return output[0, :, :, :]
-  else:
-    return output
 
 
 def angles_to_projective_transforms(angles, image_height, image_width):
