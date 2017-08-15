@@ -34,6 +34,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIS_SLIM_BUILD \
                      -std=c++11 -fno-rtti -fno-exceptions \
                      -O2 -Wno-narrowing \
                      -mfpu=neon -mfloat-abi=softfp -fPIE \
+                     -ftemplate-depth=900 \
                      -DGOOGLE_PROTOBUF_NO_RTTI \
                      -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
 

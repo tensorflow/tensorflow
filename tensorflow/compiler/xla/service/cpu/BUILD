@@ -443,6 +443,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "cpu_instruction_fusion_test",
+    size = "small",
+    srcs = ["cpu_instruction_fusion_test.cc"],
+    deps = [
+        ":cpu_instruction_fusion",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:transpose_folding",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "xfeed_manager_test",
     size = "small",
     srcs = ["xfeed_manager_test.cc"],

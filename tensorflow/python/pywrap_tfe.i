@@ -25,6 +25,7 @@ limitations under the License.
 %rename("%s") TFE_Py_Execute;
 %rename("%s") TFE_ContextAddFunctionDef;
 %rename("%s") TFE_TensorHandleDim;
+%rename("%s") TFE_TensorHandleDeviceName;
 %rename("%s") TFE_TensorHandleCopyToDevice;
 %rename("%s") TFE_NewOp;
 %rename("%s") TFE_Py_TensorHandleToNumpy;

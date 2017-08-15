@@ -248,6 +248,18 @@ py_test(
 )
 
 py_test(
+    name = "shard_dataset_op_test",
+    size = "small",
+    srcs = ["shard_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+    ],
+)
+
+py_test(
     name = "cache_dataset_op_test",
     size = "small",
     srcs = ["cache_dataset_op_test.py"],
