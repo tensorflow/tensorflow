@@ -24,33 +24,21 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class BatchDatasetOp : public OpKernel {
+class BatchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit BatchDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit BatchDatasetOp(OpKernelConstruction* ctx)
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    // Create a new BatchDatasetOp::Dataset, insert it in the step-local
-    // container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* batch_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("batch_size", &batch_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(batch_size_t->shape()),
-                errors::InvalidArgument("batch_size must be a scalar"));
-    const int64 batch_size = batch_size_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    int64 batch_size = 0;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
 
-    DatasetBase* dataset = new Dataset(batch_size, input);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(batch_size, input);
   }
 
  private:
@@ -94,10 +82,9 @@ class BatchDatasetOp : public OpKernel {
     //
     // TODO(mrry): Reconcile this method with the similar method in
     // the queue implementation.
-    template <DataType DT>
+    template <typename T>
     static Status HandleElementToSlice(const Tensor& element, Tensor* parent,
-                                       int index) {
-      typedef typename EnumToDataType<DT>::Type T;
+                                       int64 index) {
       if (element.NumElements() !=
           (parent->NumElements() / parent->dim_size(0))) {
         TensorShape chip_shape = parent->shape();
@@ -117,31 +104,18 @@ class BatchDatasetOp : public OpKernel {
     // Copies element into the index^th slice of parent (in the 0th dimension).
     static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
                                      int64 index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (element.dtype() == DT) {                                            \
-    TF_RETURN_IF_ERROR(HandleElementToSlice<DT>(element, parent, index)); \
-    return Status::OK();                                                  \
+#define HANDLE_TYPE(T)                                      \
+  case DataTypeToEnum<T>::value: {                          \
+    return HandleElementToSlice<T>(element, parent, index); \
   }
-      HANDLE_TYPE(DT_FLOAT);
-      HANDLE_TYPE(DT_HALF);
-      HANDLE_TYPE(DT_DOUBLE);
-      HANDLE_TYPE(DT_INT32);
-      HANDLE_TYPE(DT_UINT8);
-      HANDLE_TYPE(DT_INT16);
-      HANDLE_TYPE(DT_INT8);
-      HANDLE_TYPE(DT_STRING);
-      HANDLE_TYPE(DT_COMPLEX64);
-      HANDLE_TYPE(DT_COMPLEX128);
-      HANDLE_TYPE(DT_INT64);
-      HANDLE_TYPE(DT_BOOL);
-      HANDLE_TYPE(DT_QINT8);
-      HANDLE_TYPE(DT_QUINT8);
-      HANDLE_TYPE(DT_QINT32);
-      HANDLE_TYPE(DT_QINT16);
-      HANDLE_TYPE(DT_QUINT16);
+
+      switch (element.dtype()) {
+        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
-      return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
-                                   element.dtype());
+        default:
+          return errors::Unimplemented(
+              "CopyElementToSlice Unhandled data type: ", element.dtype());
+      }
     }
 
     class Iterator : public DatasetIterator<Dataset> {

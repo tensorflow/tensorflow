@@ -124,7 +124,6 @@ class LibHDFS {
       // libhdfs.so is installed in non-standard location
       status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
     }
-    return;
   }
 
   Status status_;

@@ -78,6 +78,7 @@ class FakeQuantWithMinMaxArgsOp
     functor(context->eigen_device<Device>(), input.flat<float>(), min_, max_,
             quant_min_, quant_max_, output->flat<float>());
   }
+
  private:
   float min_;
   float max_;
@@ -126,6 +127,7 @@ class FakeQuantWithMinMaxArgsGradientOp
             input.flat<float>(), min_, max_, quant_min_, quant_max_,
             output->flat<float>());
   }
+
  private:
   float min_;
   float max_;
@@ -325,35 +327,10 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
 
-    switch (input.dims()) {
-      case 4: {
-        FakeQuant4WithMinMaxVarsPerChannelFunctor<Device> functor;
-        functor(context->eigen_device<Device>(), input.dim_size(0),
-                input.dim_size(1), input.dim_size(2), input.dim_size(3),
-                input.flat<float>(), min.vec<float>(), max.vec<float>(),
-                quant_min_, quant_max_, output->flat<float>());
-        break;
-      }
-      case 2: {
-        FakeQuant2WithMinMaxVarsPerChannelFunctor<Device> functor;
-        functor(context->eigen_device<Device>(), input.dim_size(0),
-                input.dim_size(1), input.flat<float>(), min.vec<float>(),
-                max.vec<float>(), quant_min_, quant_max_,
-                output->flat<float>());
-        break;
-      }
-      case 1: {
-        FakeQuant1WithMinMaxVarsPerChannelFunctor<Device> functor;
-        functor(context->eigen_device<Device>(), input.vec<float>(),
-                min.vec<float>(), max.vec<float>(), quant_min_, quant_max_,
-                output->vec<float>());
-        break;
-      }
-      default:
-        context->SetStatus(InvalidArgument("Only inputs of dimensions 1, 2 or "
-                                           "4 supported, was: ", input.dims()));
-        break;
-    }
+    FakeQuantWithMinMaxVarsPerChannelFunctor<Device> functor;
+    functor(context->eigen_device<Device>(), input.flat_inner_dims<float, 2>(),
+            min.vec<float>(), max.vec<float>(), quant_min_, quant_max_,
+            output->flat_inner_dims<float, 2>());
   }
 
  private:
@@ -367,7 +344,8 @@ template <typename Device>
 class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
  public:
   explicit FakeQuantWithMinMaxVarsPerChannelGradientOp(
-      OpKernelConstruction* context) : OpKernel::OpKernel(context) {
+      OpKernelConstruction* context)
+      : OpKernel::OpKernel(context) {
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
     OP_REQUIRES(context, IsNumBitsValid(num_bits),
@@ -407,39 +385,12 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(2, min_max_shape, &grad_wrt_max));
 
-    switch (input.dims()) {
-      case 4: {
-        FakeQuant4WithMinMaxVarsPerChannelGradientFunctor<Device> functor;
-        functor(context->eigen_device<Device>(), input.dim_size(0),
-                input.dim_size(1), input.dim_size(2), input.dim_size(3),
-                gradient.flat<float>(), input.flat<float>(), min.vec<float>(),
-                max.vec<float>(), quant_min_, quant_max_,
-                grad_wrt_input->flat<float>(), grad_wrt_min->vec<float>(),
-                grad_wrt_max->vec<float>());
-        break;
-      }
-      case 2: {
-        FakeQuant2WithMinMaxVarsPerChannelGradientFunctor<Device> functor;
-        functor(context->eigen_device<Device>(), input.dim_size(0),
-                input.dim_size(1), gradient.flat<float>(), input.flat<float>(),
-                min.vec<float>(), max.vec<float>(), quant_min_, quant_max_,
-                grad_wrt_input->flat<float>(), grad_wrt_min->vec<float>(),
-                grad_wrt_max->vec<float>());
-        break;
-      }
-      case 1: {
-        FakeQuant1WithMinMaxVarsPerChannelGradientFunctor<Device> functor;
-        functor(context->eigen_device<Device>(), gradient.vec<float>(),
-                input.vec<float>(), min.vec<float>(), max.vec<float>(),
-                quant_min_, quant_max_, grad_wrt_input->vec<float>(),
-                grad_wrt_min->vec<float>(), grad_wrt_max->vec<float>());
-        break;
-      }
-      default:
-        context->SetStatus(InvalidArgument("Only inputs of dimensions 1, 2 or "
-                                           "4 supported, was: ", input.dims()));
-        break;
-    }
+    FakeQuantWithMinMaxVarsPerChannelGradientFunctor<Device> functor;
+    functor(
+        context->eigen_device<Device>(), gradient.flat_inner_dims<float, 2>(),
+        input.flat_inner_dims<float, 2>(), min.vec<float>(), max.vec<float>(),
+        quant_min_, quant_max_, grad_wrt_input->flat_inner_dims<float, 2>(),
+        grad_wrt_min->vec<float>(), grad_wrt_max->vec<float>());
   }
 
  private:
@@ -447,40 +398,21 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
   int quant_max_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannel")
-                            .Device(DEVICE_CPU),
-                        FakeQuantWithMinMaxVarsPerChannelOp<CPUDevice>);
-REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannelGradient")
-                            .Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(
+    Name("FakeQuantWithMinMaxVarsPerChannel").Device(DEVICE_CPU),
+    FakeQuantWithMinMaxVarsPerChannelOp<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("FakeQuantWithMinMaxVarsPerChannelGradient").Device(DEVICE_CPU),
     FakeQuantWithMinMaxVarsPerChannelGradientOp<CPUDevice>);
 
 #if GOOGLE_CUDA
 template <>
-void FakeQuant1WithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, typename TTypes<float>::ConstVec inputs,
-    typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
-    const int quant_min, const int quant_max,
-    typename TTypes<float>::Vec outputs);
-extern template struct FakeQuant1WithMinMaxVarsPerChannelFunctor<GPUDevice>;
-
-template <>
-void FakeQuant2WithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, const Index batch_size, const Index depth,
-    typename TTypes<float>::ConstFlat inputs,
+void FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
+    const GPUDevice& d, typename TTypes<float>::ConstMatrix inputs,
     typename TTypes<float>::ConstFlat min,
     typename TTypes<float>::ConstFlat max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Flat outputs);
-extern template struct FakeQuant2WithMinMaxVarsPerChannelFunctor<GPUDevice>;
-
-template <>
-void FakeQuant4WithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, const Index batch_size, const Index height,
-    const Index width, const Index depth,
-    typename TTypes<float>::ConstFlat inputs,
-    typename TTypes<float>::ConstFlat min,
-    typename TTypes<float>::ConstFlat max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Flat outputs);
-extern template struct FakeQuant4WithMinMaxVarsPerChannelFunctor<GPUDevice>;
+    const int quant_max, typename TTypes<float>::Matrix outputs);
+extern template struct FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>;
 
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannel")
                             .Device(DEVICE_GPU)
@@ -489,43 +421,16 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannel")
                         FakeQuantWithMinMaxVarsPerChannelOp<GPUDevice>);
 
 template <>
-void FakeQuant1WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, typename TTypes<float>::ConstVec gradients,
-    typename TTypes<float>::ConstVec inputs,
+void FakeQuantWithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
+    const GPUDevice& d, typename TTypes<float>::ConstMatrix gradients,
+    typename TTypes<float>::ConstMatrix inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
     const int quant_min, const int quant_max,
-    typename TTypes<float>::Vec backprops_wrt_input,
+    typename TTypes<float>::Matrix backprops_wrt_input,
     typename TTypes<float>::Vec backprop_wrt_min,
     typename TTypes<float>::Vec backprop_wrt_max);
-extern template struct
-    FakeQuant1WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
-
-template <>
-void FakeQuant2WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, const Index batch_size, const Index depth,
-    typename TTypes<float>::ConstFlat gradients,
-    typename TTypes<float>::ConstFlat inputs,
-    typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
-    const int quant_min, const int quant_max,
-    typename TTypes<float>::Flat backprops_wrt_input,
-    typename TTypes<float>::Vec backprop_wrt_min,
-    typename TTypes<float>::Vec backprop_wrt_max);
-extern template struct
-    FakeQuant2WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
-
-template <>
-void FakeQuant4WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, const Index batch_size, const Index height,
-    const Index width, const Index depth,
-    typename TTypes<float>::ConstFlat gradients,
-    typename TTypes<float>::ConstFlat inputs,
-    typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
-    const int quant_min, const int quant_max,
-    typename TTypes<float>::Flat backprops_wrt_input,
-    typename TTypes<float>::Vec backprop_wrt_min,
-    typename TTypes<float>::Vec backprop_wrt_max);
-extern template struct
-    FakeQuant4WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
+extern template struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor<
+    GPUDevice>;
 
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannelGradient")
                             .Device(DEVICE_GPU)

@@ -24,11 +24,12 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class TensorSliceDatasetOp : public OpKernel {
+class TensorSliceDatasetOp : public DatasetOpKernel {
  public:
-  explicit TensorSliceDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit TensorSliceDatasetOp(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     // Create a new TensorDatasetOp::Dataset, insert it in the step
     // container, and return it as the output.
     OpInputList inputs;
@@ -49,13 +50,7 @@ class TensorSliceDatasetOp : public OpKernel {
           errors::InvalidArgument(
               "All components must have the same size in the 0th dimension"));
     }
-    DatasetBase* dataset = new Dataset(std::move(components));
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(std::move(components));
   }
 
  private:
@@ -87,10 +82,9 @@ class TensorSliceDatasetOp : public OpKernel {
     string DebugString() override { return "TensorSliceDatasetOp::Dataset"; }
 
    private:
-    template <DataType DT>
+    template <typename T>
     static Status HandleSliceToElement(const Tensor& parent, Tensor* element,
                                        int64 index) {
-      typedef typename EnumToDataType<DT>::Type T;
       DCHECK_NE(parent.dim_size(0), 0);
       DCHECK_GE(index, 0);
       if (element->NumElements() !=
@@ -110,31 +104,17 @@ class TensorSliceDatasetOp : public OpKernel {
 
     static Status CopySliceToElement(const Tensor& parent, Tensor* element,
                                      int64 index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (parent.dtype() == DT) {                                             \
-    TF_RETURN_IF_ERROR(HandleSliceToElement<DT>(parent, element, index)); \
-    return Status::OK();                                                  \
+#define HANDLE_TYPE(T)                                      \
+  case DataTypeToEnum<T>::value: {                          \
+    return HandleSliceToElement<T>(parent, element, index); \
   }
-      HANDLE_TYPE(DT_FLOAT);
-      HANDLE_TYPE(DT_HALF);
-      HANDLE_TYPE(DT_DOUBLE);
-      HANDLE_TYPE(DT_INT32);
-      HANDLE_TYPE(DT_UINT8);
-      HANDLE_TYPE(DT_INT16);
-      HANDLE_TYPE(DT_INT8);
-      HANDLE_TYPE(DT_STRING);
-      HANDLE_TYPE(DT_COMPLEX64);
-      HANDLE_TYPE(DT_COMPLEX128);
-      HANDLE_TYPE(DT_INT64);
-      HANDLE_TYPE(DT_BOOL);
-      HANDLE_TYPE(DT_QINT8);
-      HANDLE_TYPE(DT_QUINT8);
-      HANDLE_TYPE(DT_QINT32);
-      HANDLE_TYPE(DT_QINT16);
-      HANDLE_TYPE(DT_QUINT16);
-#undef HANDLE_TYPE
-      return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
-                                   element->dtype());
+
+      switch (parent.dtype()) {
+        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
+        default:
+          return errors::Unimplemented(
+              "CopySliceToElement Unhandled data type: ", element->dtype());
+      }
     }
 
     class Iterator : public DatasetIterator<Dataset> {

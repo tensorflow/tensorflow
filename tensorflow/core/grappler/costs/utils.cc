@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -201,14 +202,13 @@ DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
   return GetDeviceInfo(node.device());
 }
 
-OpInfo BuildOpInfo(
-    const NodeDef& node, const string& device_str,
+OpInfo BuildOpInfoWithoutDevice(
+    const NodeDef& node,
     const std::unordered_map<string, const NodeDef*>& name_to_node,
     const std::vector<OpInfo::TensorProperties>& inputs) {
   OpInfo op_info;
   op_info.set_op(node.op());
   *op_info.mutable_attr() = node.attr();
-  *op_info.mutable_device() = GetDeviceInfo(device_str);
   for (auto& input : inputs) {
     *op_info.add_inputs() = input;
   }
@@ -263,8 +263,8 @@ OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
 
     std::vector<OpInfo::TensorProperties> inputs =
         FindInputFeatures(node, name_to_cost, name_to_node);
-    (*perf->mutable_op()) =
-        BuildOpInfo(node, cost_node->device(), name_to_node, inputs);
+    *perf->mutable_op() = BuildOpInfoWithoutDevice(node, name_to_node, inputs);
+    *perf->mutable_op()->mutable_device() = GetDeviceInfo(cost_node->device());
 
     perf->set_temporary_memory_size(cost_node->temporary_memory_size());
     // Note that CostGraphDef::Node::compute_cost is microseconds, while

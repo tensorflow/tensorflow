@@ -22,7 +22,7 @@ limitations under the License.
 // Device names
 // * Every Device should have a unique name with the format:
 //     /job:___/replica:___/task:___/(gpu|cpu):___
-//   An example name would be "/job:train/replica:0/task:3/gpu:2".
+//   An example name would be "/job:train/replica:0/task:3/device:GPU:2".
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 
@@ -34,8 +34,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb_text.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"

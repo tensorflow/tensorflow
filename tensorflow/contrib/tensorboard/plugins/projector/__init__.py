@@ -28,11 +28,11 @@ from __future__ import print_function
 import os
 
 from google.protobuf import text_format
-from tensorflow.python.lib.io import file_io
-from tensorflow.tensorboard.plugins.projector import projector_config_pb2
+from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
 # pylint: disable=wildcard-import
-from tensorflow.tensorboard.plugins.projector.projector_config_pb2 import *
+from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import *
 # pylint: enable=wildcard-import
+from tensorflow.python.lib.io import file_io
 
 
 def visualize_embeddings(summary_writer, config):

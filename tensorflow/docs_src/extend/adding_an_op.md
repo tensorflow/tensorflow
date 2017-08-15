@@ -155,7 +155,7 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ### Multi-threaded CPU kernels
 
 To write a multi-threaded CPU kernel, the Shard function in
-[`work_sharder.h`](https://www.tensorflow.org/code/tensorflow/core/framework/work_sharder.h)
+[`work_sharder.h`](https://www.tensorflow.org/code/tensorflow/core/util/work_sharder.h)
 can be used. This function shards a computation function across the
 threads configured to be used for intra-op threading (see
 intra_op_parallelism_threads in
@@ -178,9 +178,7 @@ suggested implementation is to:
    file, but the specialization for the GPUDevice is defined in a .cu.cc file,
    since it will be compiled with the CUDA compiler.
 
-<!--zippy-->
-
-Expand this to see the example implementation.
+Here is an example implementation.
 
 ```c++
 // example.h
@@ -306,8 +304,6 @@ template struct ExampleFunctor<GPUDevice, int32>;
 
 #endif  // GOOGLE_CUDA
 ```
-
-<!--endzippy-->
 
 ## Build the op library
 ### Compile the op using your system compiler (TensorFlow binary installation)
@@ -763,7 +759,7 @@ Your op registration now specifies that the input's type must be `float`, or
 >   """
 > ```
 
-<pre><pre class="prettyprint"><code class="lang-cpp">
+<pre class="prettyprint"><code class="lang-cpp">
 \#include "tensorflow/core/framework/op_kernel.h"<br/>
 class ZeroOut<b>Int32</b>Op : public OpKernel {
   // as before
@@ -803,7 +799,7 @@ REGISTER\_KERNEL\_BUILDER(
     .Device(DEVICE\_CPU)
     .TypeConstraint&lt;float&gt;("T"),
     ZeroOutFloatOp);
-</b></code></pre></pre>
+</b></code></pre>
 
 > To preserve [backwards compatibility](#backwards-compatibility), you should
 > specify a [default value](#default-values-constraints) when adding an attr to
@@ -1100,7 +1096,7 @@ In general, changes to existing, checked-in specifications must be
 backwards-compatible: changing the specification of an op must not break prior
 serialized `GraphDef` protocol buffers constructed from older specifications.
 The details of `GraphDef` compatibility are
-@{$version_semantics#graphs$described here}.
+@{$version_compat#compatibility_of_graphs_and_checkpoints$described here}.
 
 There are several ways to preserve backwards-compatibility.
 
@@ -1150,7 +1146,7 @@ callers.  The Python API may be kept compatible by careful changes in a
 hand-written Python wrapper, by keeping the old signature except possibly adding
 new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
-@{$version_semantics#graphs$`GraphDef` version semantics}.
+@{$version_compat#compatibility_of_graphs_and_checkpoints$`GraphDef` version semantics}.
 
 ### GPU Support {#gpu-support}
 

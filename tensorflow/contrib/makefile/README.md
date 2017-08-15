@@ -130,7 +130,7 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 ## iOS
 
 _Note: To use this library in an iOS application, see related instructions in
-the [iOS examples](../ios_examples/) directory._
+the [iOS examples](../../examples/ios/) directory._
 
 Install XCode 7.3 or more recent. If you have not already, you will need to
 install the command-line tools using `xcode-select`:
@@ -176,7 +176,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
+[tensorflow/examples/ios](../../examples/ios/) shows how to use the static
 library in a simple app.
 
 ### Building by hand
@@ -214,7 +214,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app. 
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
+[tensorflow/examples/ios](../../examples/ios/) shows how to use the static
 library in a simple app.
 
 #### Universal binaries

@@ -66,6 +66,14 @@ class BatchNormalization(base.Layer):
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: An optional projection function to be applied to the `beta`
+        weight after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    gamma_constraint: An optional projection function to be applied to the
+        `gamma` weight after being updated by an `Optimizer`.
     renorm: Whether to use Batch Renormalization
       (https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
@@ -98,6 +106,8 @@ class BatchNormalization(base.Layer):
                moving_variance_initializer=init_ops.ones_initializer(),
                beta_regularizer=None,
                gamma_regularizer=None,
+               beta_constraint=None,
+               gamma_constraint=None,
                renorm=False,
                renorm_clipping=None,
                renorm_momentum=0.99,
@@ -118,11 +128,18 @@ class BatchNormalization(base.Layer):
     self.moving_variance_initializer = moving_variance_initializer
     self.beta_regularizer = beta_regularizer
     self.gamma_regularizer = gamma_regularizer
+    self.beta_constraint = beta_constraint
+    self.gamma_constraint = gamma_constraint
     self.renorm = renorm
     self.fused = fused
+    self._bessels_correction_test_only = True
     if self.fused and renorm:
       raise ValueError(
           'Batch renorm is currently not supported with fused batch norm.')
+    if self.fused and (beta_regularizer is not None or
+                       gamma_regularizer is not None):
+      raise ValueError('Regularizers are not currently '
+                       'supported for fused batch norm.')
     if renorm:
       renorm_clipping = renorm_clipping or {}
       keys = ['rmax', 'rmin', 'dmax']
@@ -153,7 +170,12 @@ class BatchNormalization(base.Layer):
                        ' is out of range for input with rank ' + str(ndim))
 
     if self.fused is None:
-      self.fused = not self.renorm and ndim == 4 and axis in [1, 3]
+      # Currently fused batch norm doesn't support renorm and beta/gamma
+      # regularizer; and only supports an input tensor of rank 4 and a channel
+      # dimension on axis 1 and 3.
+      self.fused = not self.renorm and ndim == 4 and axis in [
+          1, 3
+      ] and self.beta_regularizer is None and self.gamma_regularizer is None
 
     if self.fused:
       if axis == 1:
@@ -177,6 +199,7 @@ class BatchNormalization(base.Layer):
                                     shape=(param_dim,),
                                     initializer=self.beta_initializer,
                                     regularizer=self.beta_regularizer,
+                                    constraint=self.beta_constraint,
                                     trainable=True)
     else:
       self.beta = None
@@ -187,6 +210,7 @@ class BatchNormalization(base.Layer):
                                      shape=(param_dim,),
                                      initializer=self.gamma_initializer,
                                      regularizer=self.gamma_regularizer,
+                                     constraint=self.gamma_constraint,
                                      trainable=True)
     else:
       self.gamma = None
@@ -263,6 +287,14 @@ class BatchNormalization(base.Layer):
 
     output, mean, variance = utils.smart_cond(
         training, _fused_batch_norm_training, _fused_batch_norm_inference)
+    if not self._bessels_correction_test_only:
+      # Remove Bessel's correction to be consistent with non-fused batch norm.
+      # Note that the variance computed by fused batch norm is
+      # with Bessel's correction.
+      sample_size = math_ops.cast(
+          array_ops.size(inputs) / array_ops.size(variance), variance.dtype)
+      factor = (sample_size - math_ops.cast(1.0, variance.dtype)) / sample_size
+      variance *= factor
 
     training_value = utils.constant_value(training)
     if training_value is not False:
@@ -421,6 +453,8 @@ def batch_normalization(inputs,
                         moving_variance_initializer=init_ops.ones_initializer(),
                         beta_regularizer=None,
                         gamma_regularizer=None,
+                        beta_constraint=None,
+                        gamma_constraint=None,
                         training=False,
                         trainable=True,
                         name=None,
@@ -466,6 +500,14 @@ def batch_normalization(inputs,
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: An optional projection function to be applied to the `beta`
+        weight after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    gamma_constraint: An optional projection function to be applied to the
+        `gamma` weight after being updated by an `Optimizer`.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
       (normalized with statistics of the current batch) or in inference mode
@@ -508,6 +550,8 @@ def batch_normalization(inputs,
       moving_variance_initializer=moving_variance_initializer,
       beta_regularizer=beta_regularizer,
       gamma_regularizer=gamma_regularizer,
+      beta_constraint=beta_constraint,
+      gamma_constraint=gamma_constraint,
       renorm=renorm,
       renorm_clipping=renorm_clipping,
       renorm_momentum=renorm_momentum,

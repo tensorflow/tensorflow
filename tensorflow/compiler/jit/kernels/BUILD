@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/plugin/executor:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
     ],
 )
@@ -35,9 +36,11 @@ cc_library(
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

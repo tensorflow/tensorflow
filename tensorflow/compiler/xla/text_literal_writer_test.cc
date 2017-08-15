@@ -30,7 +30,7 @@ namespace xla {
 namespace {
 
 TEST(TextLiteralWriterTest, WritesFloatLiteral) {
-  auto literal = LiteralUtil::CreateR2<float>({
+  auto literal = Literal::CreateR2<float>({
       {3.14, 2.17}, {1.23, 4.56},
   });
   string path =

@@ -83,6 +83,7 @@ REGISTER_OP("LoadAndRemapMatrix")
     .Input("initializing_values: float")
     .Attr("num_rows: int >= 0")
     .Attr("num_cols: int >= 1")
+    .Attr("max_rows_in_memory: int = -1")
     .Output("output_matrix: float")
     // TODO(b/30502450): Setting the op as being stateful prevents it from being
     // executed more often than expected (possibly due to stateful ops not being
@@ -154,6 +155,9 @@ initializing_values: A float `Tensor` containing  values to fill in for cells
   exactly the same as the number of missing / new cells.
 num_rows: Number of rows (length of the 1st dimension) in the output matrix.
 num_cols: Number of columns (length of the 2nd dimension) in the output matrix.
+max_rows_in_memory: The maximum number of rows to load from the checkpoint at
+  once. If less than or equal to 0, the entire matrix will be loaded into
+  memory. Setting this arg trades increased disk reads for lower memory usage.
 output_matrix: Output matrix containing existing values loaded from the
   checkpoint, and with any missing values filled in from initializing_values.
 )doc");

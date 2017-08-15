@@ -39,20 +39,22 @@ class MatrixDiagTest(test.TestCase):
       self.assertEqual((3, 3), v_diag.get_shape())
       self.assertAllEqual(v_diag.eval(), mat)
 
-  def testBatchVector(self):
+  def _testBatchVector(self, dtype):
     with self.test_session(use_gpu=True):
-      v_batch = np.array([[1.0, 2.0, 3.0],
-                          [4.0, 5.0, 6.0]])
-      mat_batch = np.array(
-          [[[1.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0],
-            [0.0, 0.0, 3.0]],
-           [[4.0, 0.0, 0.0],
-            [0.0, 5.0, 0.0],
-            [0.0, 0.0, 6.0]]])
+      v_batch = np.array([[1.0, 0.0, 3.0], [4.0, 5.0, 6.0]]).astype(dtype)
+      mat_batch = np.array([[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 3.0]],
+                            [[4.0, 0.0, 0.0], [0.0, 5.0, 0.0],
+                             [0.0, 0.0, 6.0]]]).astype(dtype)
       v_batch_diag = array_ops.matrix_diag(v_batch)
       self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
+
+  def testBatchVector(self):
+    self._testBatchVector(np.float32)
+    self._testBatchVector(np.float64)
+    self._testBatchVector(np.int32)
+    self._testBatchVector(np.int64)
+    self._testBatchVector(np.bool)
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
@@ -108,28 +110,28 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((3, 2), output.get_shape())
       self.assertAllEqual(expected, output.eval())
 
-  def testSquareBatch(self):
+  def _testSquareBatch(self, dtype):
     with self.test_session(use_gpu=True):
-      v_batch = np.array([[-1.0, -2.0, -3.0],
-                          [-4.0, -5.0, -6.0]])
-      mat_batch = np.array(
-          [[[1.0, 0.0, 3.0],
-            [0.0, 2.0, 0.0],
-            [1.0, 0.0, 3.0]],
-           [[4.0, 0.0, 4.0],
-            [0.0, 5.0, 0.0],
-            [2.0, 0.0, 6.0]]])
+      v_batch = np.array([[-1.0, 0.0, -3.0], [-4.0, -5.0, -6.0]]).astype(dtype)
+      mat_batch = np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0], [1.0, 0.0, 3.0]],
+                            [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0],
+                             [2.0, 0.0, 6.0]]]).astype(dtype)
 
-      mat_set_diag_batch = np.array(
-          [[[-1.0, 0.0, 3.0],
-            [0.0, -2.0, 0.0],
-            [1.0, 0.0, -3.0]],
-           [[-4.0, 0.0, 4.0],
-            [0.0, -5.0, 0.0],
-            [2.0, 0.0, -6.0]]])
+      mat_set_diag_batch = np.array([[[-1.0, 0.0, 3.0], [0.0, 0.0, 0.0],
+                                      [1.0, 0.0, -3.0]],
+                                     [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0],
+                                      [2.0, 0.0, -6.0]]]).astype(dtype)
+
       output = array_ops.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, output.eval())
+
+  def testSquareBatch(self):
+    self._testSquareBatch(np.float32)
+    self._testSquareBatch(np.float64)
+    self._testSquareBatch(np.int32)
+    self._testSquareBatch(np.int64)
+    self._testSquareBatch(np.bool)
 
   def testRectangularBatch(self):
     with self.test_session(use_gpu=True):
@@ -220,21 +222,23 @@ class MatrixDiagPartTest(test.TestCase):
       mat_diag = array_ops.matrix_diag_part(mat)
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 4.0]))
 
-  def testSquareBatch(self):
+  def _testSquareBatch(self, dtype):
     with self.test_session(use_gpu=True):
-      v_batch = np.array([[1.0, 2.0, 3.0],
-                          [4.0, 5.0, 6.0]])
-      mat_batch = np.array(
-          [[[1.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0],
-            [0.0, 0.0, 3.0]],
-           [[4.0, 0.0, 0.0],
-            [0.0, 5.0, 0.0],
-            [0.0, 0.0, 6.0]]])
+      v_batch = np.array([[1.0, 0.0, 3.0], [4.0, 5.0, 6.0]]).astype(dtype)
+      mat_batch = np.array([[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 3.0]],
+                            [[4.0, 0.0, 0.0], [0.0, 5.0, 0.0],
+                             [0.0, 0.0, 6.0]]]).astype(dtype)
       self.assertEqual(mat_batch.shape, (2, 3, 3))
       mat_batch_diag = array_ops.matrix_diag_part(mat_batch)
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
+
+  def testSquareBatch(self):
+    self._testSquareBatch(np.float32)
+    self._testSquareBatch(np.float64)
+    self._testSquareBatch(np.int32)
+    self._testSquareBatch(np.int64)
+    self._testSquareBatch(np.bool)
 
   def testRectangularBatch(self):
     with self.test_session(use_gpu=True):

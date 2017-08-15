@@ -23,11 +23,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import json
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.python.summary import plugin_asset
+
+PLUGIN_NAME = "text"
+
+# Contains event-related data specific to the text plugin.
+_TextPluginData = namedtuple("_TextPluginData", [])
 
 
 def text_summary(name, tensor, collections=None):
@@ -49,7 +56,7 @@ def text_summary(name, tensor, collections=None):
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
 
   Returns:
-    A  TensorSummary op that is configured so that TensorBoard will recognize
+    A TensorSummary op that is configured so that TensorBoard will recognize
     that it contains textual data. The TensorSummary is a scalar `Tensor` of
     type `string` which contains `Summary` protobufs.
 
@@ -60,9 +67,16 @@ def text_summary(name, tensor, collections=None):
     raise ValueError("Expected tensor %s to have dtype string, got %s" %
                      (tensor.name, tensor.dtype))
 
-  t_summary = tensor_summary(name, tensor, collections=collections)
-  text_assets = plugin_asset.get_plugin_asset(TextSummaryPluginAsset)
-  text_assets.register_tensor(t_summary.op.name)
+  summary_metadata = summary_pb2.SummaryMetadata()
+  text_plugin_data = _TextPluginData()
+  data_dict = text_plugin_data._asdict()  # pylint: disable=protected-access
+  summary_metadata.plugin_data.plugin_name = PLUGIN_NAME
+  summary_metadata.plugin_data.content = json.dumps(data_dict)
+  t_summary = tensor_summary(
+      name=name,
+      tensor=tensor,
+      summary_metadata=summary_metadata,
+      collections=collections)
   return t_summary
 
 

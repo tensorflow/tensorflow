@@ -80,7 +80,6 @@ class LayoutOptimizerTest(test.TestCase):
           optimize_tensor_layout=True)
       graph_options = config_pb2.GraphOptions(
           rewrite_options=rewrite_options,
-          infer_shapes=True,
           build_cost_model=1)
       config = config_pb2.ConfigProto(graph_options=graph_options)
 

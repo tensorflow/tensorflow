@@ -134,6 +134,11 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
         self.assertAllClose(y_tf_np, y_np)
 
+  def testInfinity(self):
+    with self.test_session(use_gpu=True):
+      res = math_ops.reduce_logsumexp(-np.inf).eval()
+      self.assertEqual(-np.inf, res)
+
 
 class RoundTest(test_util.TensorFlowTestCase):
 
@@ -224,7 +229,6 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
 class ScalarMulTest(test_util.TensorFlowTestCase):
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testAcceptsRefs(self):
     var = variables.Variable(10)
     result = math_ops.scalar_mul(3, var)
@@ -313,6 +317,20 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
 
+  def testGrad(self):
+    np.random.seed(42)
+    for num_inputs in range(1, 10):
+      with self.test_session(use_gpu=True) as sess:
+        input_vars = [
+            variables.Variable(10.0 * np.random.random())
+            for i in range(0, num_inputs)
+        ]
+        addn = math_ops.add_n(input_vars)
+        sess.run(variables.global_variables_initializer())
+        add_n_grad = gradients.gradients(addn, input_vars)
+        self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
+                            [g.eval() for g in add_n_grad])
+
 
 class DivAndModTest(test_util.TensorFlowTestCase):
   # TODO(aselle): Test more types before exposing new division operators.
@@ -327,7 +345,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     divs = np.arange(-3, 0, .25).reshape(1, 12)
     return nums, divs
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testFloorModInt(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -337,7 +354,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = nums % divs
       self.assertAllEqual(tf_result, np_result)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testFloorModFloat(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -349,7 +365,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               % array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -357,7 +372,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testTruncateModFloat(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -365,7 +379,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDivideInt(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -377,14 +390,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               // array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDivideName(self):
     with self.test_session():
       op = math_ops.divide(
           array_ops.constant(3), array_ops.constant(4), name="my_cool_divide")
       self.assertEqual(op.name, "my_cool_divide:0")
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testRealDiv(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -392,14 +403,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
     with self.test_session():
       _ = math_ops.divide(foo, 1.).eval()
       _ = math_ops.div(foo, 2.).eval()
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testFloorDivGrad(self):
     with self.test_session():
       a = variables.Variable(2.)
@@ -414,7 +423,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
         self.assertAllEqual([None if x is None else x.eval()
                              for x in c_grad], [None, None])
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testConsistent(self):
     nums, divs = self.intTestData()
     with self.test_session():

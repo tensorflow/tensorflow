@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -661,6 +662,21 @@ bool PartialTensorShapeUtils::AreIdentical(
   } else {
     return false;
   }
+}
+
+Status TensorShapeUtils::NumElements(gtl::ArraySlice<int64> shape,
+                                     int64* num_elements) {
+  int64 n = 1;
+  for (auto dim : shape) {
+    n = MultiplyWithoutOverflow(n, dim);
+    if (n < 0) {
+      return errors::InvalidArgument("Can't compute total size of shape [",
+                                     str_util::Join(shape, ","),
+                                     "]; product would overflow int64");
+    }
+  }
+  *num_elements = n;
+  return Status::OK();
 }
 
 template class TensorShapeBase<TensorShape>;

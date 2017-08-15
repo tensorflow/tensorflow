@@ -1198,6 +1198,24 @@ class IndexTableFromFile(test.TestCase):
       self.assertRaises(errors_impl.OpError, ids.eval)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertEqual(1,
+                       len(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)))
+
+  def test_string_index_table_from_file_placeholder_filename(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
+    with self.test_session():
+      vocabulary_placeholder = array_ops.placeholder(dtypes.string, [])
+      table = lookup.index_table_from_file(
+          vocabulary_file=vocabulary_placeholder, num_oov_buckets=1)
+      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+
+      feed_dict = {vocabulary_placeholder.name: vocabulary_file}
+      lookup_ops.tables_initializer().run(feed_dict=feed_dict)
+      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertEqual(0,
+                       len(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)))
 
   def test_int32_index_table_from_file(self):
     vocabulary_file = self._createVocabFile(

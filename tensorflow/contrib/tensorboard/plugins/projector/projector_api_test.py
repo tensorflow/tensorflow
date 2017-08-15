@@ -24,10 +24,10 @@ import shutil
 from google.protobuf import text_format
 
 from tensorflow.contrib.tensorboard.plugins import projector
+from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer as writer_lib
-from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 
 
 class ProjectorApiTest(test.TestCase):

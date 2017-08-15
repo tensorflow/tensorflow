@@ -20,11 +20,12 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -753,6 +754,24 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   } else {
     return GetSliceValue(
         key, entry,
+        /* a full slice */ TensorSlice(TensorShape(entry.shape()).dims()), val);
+  }
+}
+
+Status BundleReader::ReadCurrent(Tensor* val) {
+  CHECK(val != nullptr);
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
+  if (!TensorShape::IsValid(entry.shape())) {
+    return errors::DataLoss("Invaid tensor shape: ", iter_->key(), " ",
+                            ProtoShortDebugString(entry.shape()));
+  }
+
+  if (entry.slices().empty()) {
+    return GetValue(entry, val);
+  } else {
+    return GetSliceValue(
+        iter_->key(), entry,
         /* a full slice */ TensorSlice(TensorShape(entry.shape()).dims()), val);
   }
 }

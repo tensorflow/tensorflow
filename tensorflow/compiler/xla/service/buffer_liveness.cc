@@ -47,6 +47,9 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
 tensorflow::Status BufferLiveness::Analyze() {
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
   for (auto& computation : module_->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
     // element in other instruction's output.
@@ -120,7 +123,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
                                        b.instruction(), b.index(),
-                                       points_to_analysis())) {
+                                       &points_to_analysis())) {
       return false;
     }
   }

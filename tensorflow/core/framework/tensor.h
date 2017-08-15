@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/tensor_description.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,8 +35,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-class TensorBuffer;  // Forward declaration.
+// Forward declarations.  In particular, we forward declare protos so that their
+// symbols can be removed from .so exports.
+class AllocationDescription;
+class Allocator;
+class TensorBuffer;
 class TensorCApi;
+class TensorDescription;
+class TensorProto;
+class VariantTensorData;
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.
@@ -185,7 +192,7 @@ class Tensor {
   /// The returned tensor shares the underlying tensor buffer with this
   /// tensor.
   ///
-  /// NOTE: The returned tensor may not satisfies the same alignment
+  /// NOTE: The returned tensor may not satisfy the same alignment
   /// requirement as this tensor depending on the shape. The caller
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
@@ -307,7 +314,7 @@ class Tensor {
   /// Returns the data as an Eigen::Tensor with NDIMS dimensions, collapsing the
   /// first 'begin' Tensor dimensions into the first dimension of the result and
   /// the Tensor dimensions of the last dims() - 'begin' - NDIMS into the last
-  /// dimension of the result. If 'begin' < 0 then the the |'begin'| leading
+  /// dimension of the result. If 'begin' < 0 then the |'begin'| leading
   /// dimensions of size 1 will be added. If 'begin' + NDIMS > dims() then
   /// 'begin' + NDIMS - dims() trailing dimensions of size 1 will be added.
   template <typename T, size_t NDIMS = 3>

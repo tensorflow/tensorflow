@@ -27,9 +27,9 @@ limitations under the License.
 namespace xla {
 
 string LogicalBuffer::ToString() const {
-  return tensorflow::strings::StrCat(instruction_->FullyQualifiedName(), "[",
+  return tensorflow::strings::StrCat(instruction_->name(), "[",
                                      tensorflow::str_util::Join(index_, ","),
-                                     "](#", id_, ")");
+                                     "](#", id_, " @", color_.value(), ")");
 }
 
 std::ostream& operator<<(std::ostream& out, const LogicalBuffer& buffer) {
@@ -55,6 +55,7 @@ LogicalBufferProto LogicalBuffer::ToProto(const SizeFunction& size_fn) const {
   LogicalBufferProto::Location proto_location =
       ToLocationProto(*instruction_, index_);
   proto.mutable_defined_at()->Swap(&proto_location);
+  proto.set_color(color_.value());
   return proto;
 }
 

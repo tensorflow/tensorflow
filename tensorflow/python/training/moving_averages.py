@@ -51,8 +51,8 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     variable: A Variable.
     value: A tensor with the same shape as 'variable'.
     decay: A float Tensor or float value.  The moving average decay.
-    zero_debias: A python bool. If true, assume the variable is 0-intialized and
-      unbias it, as in https://arxiv.org/abs/1412.6980. See docstring in
+    zero_debias: A python bool. If true, assume the variable is 0-initialized
+      and unbias it, as in https://arxiv.org/abs/1412.6980. See docstring in
       `_zero_debias` for more details.
     name: Optional name of the returned operation.
 

@@ -127,8 +127,9 @@ class SplitVOpBase : public OpKernel {
                                 "specified.  Got: ",
                                 determined_size));
 
-    if (neg_one_dim >= 0)
+    if (neg_one_dim >= 0) {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
+    }
 
     // Special case 2: split along the 1st dimension. We can share the
     // underlying buffer.
@@ -148,7 +149,6 @@ class SplitVOpBase : public OpKernel {
       *done = true;
       return;
     }
-    return;
   }
 
   template <typename IndexType>

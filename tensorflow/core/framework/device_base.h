@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -44,10 +44,12 @@ class Stream;
 namespace tensorflow {
 
 class Device;
+class DeviceAttributes;
 class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
+class TensorProto;
 
 namespace thread {
 class ThreadPool;
@@ -194,11 +196,8 @@ class DeviceBase {
                                      DeviceContext* /*dc*/,
                                      Allocator* /*allocator*/) {}
 
-  virtual const DeviceAttributes& attributes() const {
-    LOG(FATAL) << "Device does not implement attributes()";
-    static DeviceAttributes dummy;
-    return dummy;
-  }
+  // Unimplemented by default
+  virtual const DeviceAttributes& attributes() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.

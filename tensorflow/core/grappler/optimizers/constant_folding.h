@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
-#include <regex>
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -26,8 +27,9 @@ namespace tensorflow {
 namespace grappler {
 
 const char kConstantFoldingConst[] = "ConstantFolding";
+const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 
-// Contant folding optimization for a graph.
+// Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
   ConstantFolding();
@@ -43,7 +45,9 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  Status MaterializeShapes(const GrapplerItem& item);
+  string AddControlDependency(const string& input_name);
+  Status MaterializeShapes(const GrapplerItem& item,
+                           const GraphProperties& properties);
 
   bool IsFoldable(const NodeDef& node) const;
 
@@ -61,13 +65,15 @@ class ConstantFolding : public GraphOptimizer {
   Status FoldGraph(GraphDef* output);
 
   bool IsSimplifiableReduction(const NodeDef& node) const;
-  Status SimplifyGraph(GraphDef* output);
+  bool IsSimplifiableReshape(const NodeDef& node,
+                             const GraphProperties& properties) const;
+  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
 
   std::unique_ptr<DeviceBase> device_;
+  std::unique_ptr<ResourceMgr> resource_mgr_;
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::set<string> nodes_to_preserve_;
-  std::regex ops_to_preserve_;
 };
 
 }  // end namespace grappler

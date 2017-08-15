@@ -27,6 +27,7 @@ import traceback
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -204,7 +205,7 @@ class _VariableStore(object):
                    initializer=None, regularizer=None, reuse=None,
                    trainable=True, collections=None, caching_device=None,
                    partitioner=None, validate_shape=True, use_resource=None,
-                   custom_getter=None):
+                   custom_getter=None, constraint=None):
     """Gets an existing variable with these parameters or create a new one.
 
     If a variable with the given name is already stored, we return the stored
@@ -266,6 +267,13 @@ class _VariableStore(object):
         def custom_getter(getter, name, *args, **kwargs):
           return getter(name + '_suffix', *args, **kwargs)
         ```
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Returns:
       The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -299,8 +307,11 @@ class _VariableStore(object):
     def _true_getter(name, shape=None, dtype=dtypes.float32,  # pylint: disable=missing-docstring
                      initializer=None, regularizer=None, reuse=None,
                      trainable=True, collections=None, caching_device=None,
-                     partitioner=None, validate_shape=True, use_resource=None):
-      is_scalar = shape is not None and not shape
+                     partitioner=None, validate_shape=True, use_resource=None,
+                     constraint=None):
+      is_scalar = (shape is not None
+                   and isinstance(shape, collections_lib.Sequence)
+                   and not shape)
       # Partitioned variable case
       if partitioner is not None and not is_scalar:
         if not callable(partitioner):
@@ -318,7 +329,8 @@ class _VariableStore(object):
                                                 caching_device=caching_device,
                                                 partitioner=partitioner,
                                                 validate_shape=validate_shape,
-                                                use_resource=use_resource)
+                                                use_resource=use_resource,
+                                                constraint=constraint)
 
       # Special case for partitioned variable to allow reuse without having to
       # specify partitioner.
@@ -335,7 +347,8 @@ class _VariableStore(object):
                                               caching_device=caching_device,
                                               partitioner=None,
                                               validate_shape=validate_shape,
-                                              use_resource=use_resource)
+                                              use_resource=use_resource,
+                                              constraint=constraint)
 
       # Single variable case
       if "%s/part_0" % name in self._vars:
@@ -349,28 +362,44 @@ class _VariableStore(object):
           initializer=initializer, regularizer=regularizer, reuse=reuse,
           trainable=trainable, collections=collections,
           caching_device=caching_device, validate_shape=validate_shape,
-          use_resource=use_resource)
+          use_resource=use_resource, constraint=constraint)
 
     if custom_getter is not None:
-      return custom_getter(
-          getter=_true_getter, name=name, shape=shape, dtype=dtype,
-          initializer=initializer, regularizer=regularizer,
-          reuse=reuse, trainable=trainable, collections=collections,
-          caching_device=caching_device, partitioner=partitioner,
-          validate_shape=validate_shape, use_resource=use_resource)
+      # Handle backwards compatibility with getter arguments that were added
+      # to the API after users started writing custom getters.
+      custom_getter_kwargs = {
+          "getter": _true_getter,
+          "name": name,
+          "shape": shape,
+          "dtype": dtype,
+          "initializer": initializer,
+          "regularizer": regularizer,
+          "reuse": reuse,
+          "trainable": trainable,
+          "collections": collections,
+          "caching_device": caching_device,
+          "partitioner": partitioner,
+          "validate_shape": validate_shape,
+          "use_resource": use_resource,
+      }
+      # `fn_args` can handle functions, `functools.partial`, `lambda`.
+      if "constraint" in estimator_util.fn_args(custom_getter):
+        custom_getter_kwargs["constraint"] = constraint
+      return custom_getter(**custom_getter_kwargs)
     else:
       return _true_getter(
           name, shape=shape, dtype=dtype,
           initializer=initializer, regularizer=regularizer,
           reuse=reuse, trainable=trainable, collections=collections,
           caching_device=caching_device, partitioner=partitioner,
-          validate_shape=validate_shape, use_resource=use_resource)
+          validate_shape=validate_shape, use_resource=use_resource,
+          constraint=constraint)
 
   def _get_partitioned_variable(
       self, name, partitioner, shape=None, dtype=dtypes.float32,
       initializer=None, regularizer=None, reuse=None,
       trainable=True, collections=None, caching_device=None,
-      validate_shape=True, use_resource=None):
+      validate_shape=True, use_resource=None, constraint=None):
     """Gets or creates a sharded variable list with these parameters.
 
     The `partitioner` must be a callable that accepts a fully defined
@@ -428,6 +457,13 @@ class _VariableStore(object):
       use_resource: If False, creates a regular Variable. If True, creates an
         experimental ResourceVariable which has well-defined semantics. Defaults
         to False (will later change to True).
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Returns:
       A `PartitionedVariable` object.
@@ -583,7 +619,8 @@ class _VariableStore(object):
             collections=collections,
             caching_device=caching_device,
             validate_shape=validate_shape,
-            use_resource=use_resource)
+            use_resource=use_resource,
+            constraint=constraint)
 
       # pylint: disable=protected-access
       var._set_save_slice_info(variables.Variable.SaveSliceInfo(
@@ -614,7 +651,8 @@ class _VariableStore(object):
                            collections=None,
                            caching_device=None,
                            validate_shape=True,
-                           use_resource=None,):
+                           use_resource=None,
+                           constraint=None):
     """Get or create a single Variable (e.g. a shard or entire variable).
 
     See the documentation of get_variable above (ignore partitioning components)
@@ -633,6 +671,7 @@ class _VariableStore(object):
       caching_device: see get_variable.
       validate_shape: see get_variable.
       use_resource: see get_variable.
+      constraint: see get_variable.
 
     Returns:
       A Variable.  See documentation of get_variable above.
@@ -713,7 +752,8 @@ class _VariableStore(object):
           collections=collections,
           caching_device=caching_device,
           dtype=variable_dtype,
-          validate_shape=validate_shape)
+          validate_shape=validate_shape,
+          constraint=constraint)
     else:
       v = variables.Variable(
           initial_value=init_val,
@@ -722,7 +762,8 @@ class _VariableStore(object):
           collections=collections,
           caching_device=caching_device,
           dtype=variable_dtype,
-          validate_shape=validate_shape)
+          validate_shape=validate_shape,
+          constraint=constraint)
     self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
@@ -798,6 +839,13 @@ class VariableScope(object):
     use_resource: if False, create a normal Variable; if True create an
       experimental ResourceVariable with well-defined semantics. Defaults
       to False (will later change to True).
+    constraint: An optional projection function to be applied to the variable
+      after being updated by an `Optimizer` (e.g. used to implement norm
+      constraints or value constraints for layer weights). The function must
+      take as input the unprojected Tensor representing the value of the
+      variable and return the Tensor for the projected value
+      (which must have the same shape). Constraints are not safe to
+      use when doing asynchronous distributed training.
   """
 
   def __init__(self,
@@ -810,7 +858,8 @@ class VariableScope(object):
                custom_getter=None,
                name_scope="",
                dtype=dtypes.float32,
-               use_resource=None):
+               use_resource=None,
+               constraint=None):
     """Creates a new VariableScope with the given properties."""
     self._name = name
     self._initializer = initializer
@@ -822,6 +871,7 @@ class VariableScope(object):
     self._name_scope = name_scope
     self._dtype = dtype
     self._use_resource = use_resource
+    self._constraint = constraint
 
   @property
   def name(self):
@@ -862,6 +912,10 @@ class VariableScope(object):
   @property
   def custom_getter(self):
     return self._custom_getter
+
+  @property
+  def constraint(self):
+    return self._constraint
 
   def reuse_variables(self):
     """Reuse variables in this scope."""
@@ -908,6 +962,10 @@ class VariableScope(object):
     """Get this scope's global variables."""
     return self.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 
+  def local_variables(self):
+    """Get this scope's local variables."""
+    return self.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
   def get_variable(self,
                    var_store,
                    name,
@@ -922,7 +980,8 @@ class VariableScope(object):
                    partitioner=None,
                    validate_shape=True,
                    use_resource=None,
-                   custom_getter=None,):
+                   custom_getter=None,
+                   constraint=None):
     """Gets an existing variable with this name or create a new one."""
     if regularizer is None:
       regularizer = self._regularizer
@@ -949,6 +1008,8 @@ class VariableScope(object):
                            "don't match." % (init_dtype, dtype))
       if initializer is None:
         initializer = self._initializer
+      if constraint is None:
+        constraint = self._constraint
       if dtype is None:
         dtype = self._dtype
       if use_resource is None:
@@ -959,7 +1020,8 @@ class VariableScope(object):
           regularizer=regularizer, reuse=reuse, trainable=trainable,
           collections=collections, caching_device=caching_device,
           partitioner=partitioner, validate_shape=validate_shape,
-          use_resource=use_resource, custom_getter=custom_getter)
+          use_resource=use_resource, custom_getter=custom_getter,
+          constraint=constraint)
 
   def _get_partitioned_variable(self,
                                 var_store,
@@ -973,12 +1035,15 @@ class VariableScope(object):
                                 caching_device=None,
                                 partitioner=None,
                                 validate_shape=True,
-                                use_resource=None):
+                                use_resource=None,
+                                constraint=None):
     """Gets an existing variable with this name or create a new one."""
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:
       regularizer = self._regularizer
+    if constraint is None:
+      constraint = self._constraint
     if caching_device is None:
       caching_device = self._caching_device
     if partitioner is None:
@@ -1018,7 +1083,7 @@ class VariableScope(object):
           regularizer=regularizer, reuse=self.reuse, trainable=trainable,
           collections=collections, caching_device=caching_device,
           partitioner=partitioner, validate_shape=validate_shape,
-          use_resource=use_resource)
+          use_resource=use_resource, constraint=constraint)
       # pylint: enable=protected-access
 
 
@@ -1056,19 +1121,21 @@ def get_variable(name,
                  partitioner=None,
                  validate_shape=True,
                  use_resource=None,
-                 custom_getter=None):
+                 custom_getter=None,
+                 constraint=None):
   return get_variable_scope().get_variable(
       _get_default_variable_store(), name, shape=shape, dtype=dtype,
       initializer=initializer, regularizer=regularizer, trainable=trainable,
       collections=collections, caching_device=caching_device,
       partitioner=partitioner, validate_shape=validate_shape,
-      use_resource=use_resource, custom_getter=custom_getter)
+      use_resource=use_resource, custom_getter=custom_getter,
+      constraint=constraint)
 get_variable_or_local_docstring = (
     """%s
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-@{$variable_scope$Variable Scope How To}
+@{$variables$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1176,7 +1243,8 @@ def _get_partitioned_variable(name,
                               caching_device=None,
                               partitioner=None,
                               validate_shape=True,
-                              use_resource=None):
+                              use_resource=None,
+                              constraint=None):
   """Gets or creates a sharded variable list with these parameters.
 
   The `partitioner` must be a callable that accepts a fully defined
@@ -1232,6 +1300,13 @@ def _get_partitioned_variable(name,
     use_resource: If False, creates a regular Variable. If True, creates an
       experimental ResourceVariable instead which has well-defined semantics.
       Defaults to False (will later change to True).
+    constraint: An optional projection function to be applied to the variable
+      after being updated by an `Optimizer` (e.g. used to implement norm
+      constraints or value constraints for layer weights). The function must
+      take as input the unprojected Tensor representing the value of the
+      variable and return the Tensor for the projected value
+      (which must have the same shape). Constraints are not safe to
+      use when doing asynchronous distributed training.
 
   Returns:
     A tuple `(shards, partitions)` where `shards` is the list of `Variable`
@@ -1257,7 +1332,7 @@ def _get_partitioned_variable(name,
       initializer=initializer, regularizer=regularizer, trainable=trainable,
       collections=collections, caching_device=caching_device,
       partitioner=partitioner, validate_shape=validate_shape,
-      use_resource=use_resource)
+      use_resource=use_resource, constraint=constraint)
   # pylint: enable=protected-access
 
 
@@ -1271,7 +1346,8 @@ def _pure_variable_scope(name_or_scope,
                          custom_getter=None,
                          old_name_scope=None,
                          dtype=dtypes.float32,
-                         use_resource=None):
+                         use_resource=None,
+                         constraint=None):
   """Creates a context for the variable_scope, see `variable_scope` for docs.
 
   Note: this does not create a name scope.
@@ -1290,6 +1366,13 @@ def _pure_variable_scope(name_or_scope,
     use_resource: If False, variables in this scope will be regular Variables.
       If True, experimental ResourceVariables will be creates instead, with
       well-defined semantics. Defaults to False (will later change to True).
+    constraint: An optional projection function to be applied to the variable
+      after being updated by an `Optimizer` (e.g. used to implement norm
+      constraints or value constraints for layer weights). The function must
+      take as input the unprojected Tensor representing the value of the
+      variable and return the Tensor for the projected value
+      (which must have the same shape). Constraints are not safe to
+      use when doing asynchronous distributed training.
 
   Yields:
     A scope that can be captured and reused.
@@ -1328,7 +1411,8 @@ def _pure_variable_scope(name_or_scope,
           dtype=name_or_scope.dtype,
           custom_getter=name_or_scope.custom_getter,
           name_scope=name_scope,
-          use_resource=name_or_scope.use_resource)
+          use_resource=name_or_scope.use_resource,
+          constraint=constraint)
       if initializer is not None:
         default_varscope[0].set_initializer(initializer)
       if regularizer is not None:
@@ -1361,7 +1445,8 @@ def _pure_variable_scope(name_or_scope,
           dtype=old.dtype,
           use_resource=old.use_resource,
           custom_getter=old.custom_getter,
-          name_scope=old_name_scope or name_or_scope)
+          name_scope=old_name_scope or name_or_scope,
+          constraint=constraint)
       if initializer is not None:
         default_varscope[0].set_initializer(initializer)
       if regularizer is not None:
@@ -1431,7 +1516,8 @@ def variable_scope(name_or_scope,
                    custom_getter=None,
                    reuse=None,
                    dtype=None,
-                   use_resource=None):
+                   use_resource=None,
+                   constraint=None):
   """Returns a context manager for defining ops that creates variables (layers).
 
   This context manager validates that the (optional) `values` are from
@@ -1444,7 +1530,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the @{$variable_scope$Variable Scope How To},
+  see the @{$variables$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:
@@ -1501,6 +1587,11 @@ def variable_scope(name_or_scope,
   A note about name scoping: Setting `reuse` does not impact the naming of other
   ops such as mult. See related discussion on [github#6189](https://github.com/tensorflow/tensorflow/issues/6189)
 
+  Note that up to and including version 1.0, it was allowed (though
+  explicitly discouraged) to pass False to the reuse argument, yielding
+  undocumented behaviour slightly different from None. Starting at 1.1.0
+  passing None and False as reuse has exactly the same effect.
+
   Args:
     name_or_scope: `string` or `VariableScope`: the scope to open.
     default_name: The default name to use if the `name_or_scope` argument is
@@ -1519,6 +1610,13 @@ def variable_scope(name_or_scope,
     use_resource: If False, all variables will be regular Variables. If True,
       experimental ResourceVariables with well-defined semantics will be used
       instead. Defaults to False (will later change to True).
+    constraint: An optional projection function to be applied to the variable
+      after being updated by an `Optimizer` (e.g. used to implement norm
+      constraints or value constraints for layer weights). The function must
+      take as input the unprojected Tensor representing the value of the
+      variable and return the Tensor for the projected value
+      (which must have the same shape). Constraints are not safe to
+      use when doing asynchronous distributed training.
 
   Returns:
     A scope that can be to captured and reused.
@@ -1562,7 +1660,8 @@ def variable_scope(name_or_scope,
               custom_getter=custom_getter,
               old_name_scope=old_name_scope,
               dtype=dtype,
-              use_resource=use_resource) as vs:
+              use_resource=use_resource,
+              constraint=constraint) as vs:
             yield vs
       else:
         # This can only happen if someone is entering the root variable scope.
@@ -1575,7 +1674,8 @@ def variable_scope(name_or_scope,
             partitioner=partitioner,
             custom_getter=custom_getter,
             dtype=dtype,
-            use_resource=use_resource) as vs:
+            use_resource=use_resource,
+            constraint=constraint) as vs:
           yield vs
     else:  # Here name_or_scope is None. Using default name, but made unique.
       if reuse:
@@ -1591,7 +1691,8 @@ def variable_scope(name_or_scope,
             custom_getter=custom_getter,
             old_name_scope=scope,
             dtype=dtype,
-            use_resource=use_resource) as vs:
+            use_resource=use_resource,
+            constraint=constraint) as vs:
           yield vs
 
 
@@ -1607,7 +1708,8 @@ def variable_op_scope(values,
                       custom_getter=None,
                       reuse=None,
                       dtype=None,
-                      use_resource=None):
+                      use_resource=None,
+                      constraint=None):
   """Deprecated: context manager for defining an op that creates variables."""
   logging.warn("tf.variable_op_scope(values, name, default_name) is deprecated,"
                " use tf.variable_scope(name, default_name, values)")
@@ -1621,7 +1723,8 @@ def variable_op_scope(values,
                       custom_getter=custom_getter,
                       reuse=reuse,
                       dtype=dtype,
-                      use_resource=use_resource) as scope:
+                      use_resource=use_resource,
+                      constraint=constraint) as scope:
     yield scope
 
 

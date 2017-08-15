@@ -2,10 +2,6 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -18,6 +14,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dnn",
+        ":dnn_linear_combined",
         ":estimator",
         ":export",
         ":inputs",
@@ -25,6 +22,7 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
+        ":util",
         "//tensorflow/python:util",
     ],
 )
@@ -107,19 +105,16 @@ py_library(
     ],
 )
 
-py_test(
-    name = "dnn_test",
-    size = "medium",
-    srcs = ["canned/dnn_test.py"],
+py_library(
+    name = "dnn_testing_utils",
+    testonly = 1,
+    srcs = ["canned/dnn_testing_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":dnn",
-        ":export_export",
         ":head",
         ":metric_keys",
         ":model_fn",
         ":numpy_io",
-        ":pandas_io",
         ":prediction_keys",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -127,17 +122,113 @@ py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "dnn_test",
+    size = "medium",
+    srcs = ["canned/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dnn",
+        ":dnn_testing_utils",
+        ":export_export",
+        ":numpy_io",
+        ":pandas_io",
+        ":prediction_keys",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_library(
+    name = "dnn_linear_combined",
+    srcs = ["canned/dnn_linear_combined.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dnn",
+        ":estimator",
+        ":head",
+        ":linear",
+        ":model_fn",
+        ":optimizers",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "dnn_linear_combined_test",
+    size = "medium",
+    srcs = ["canned/dnn_linear_combined_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dnn_linear_combined",
+        ":dnn_testing_utils",
+        ":export_export",
+        ":linear_testing_utils",
+        ":numpy_io",
+        ":pandas_io",
+        ":prediction_keys",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_library(
+    name = "util",
+    srcs = [
+        "util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -151,6 +242,7 @@ py_library(
         ":export",
         ":model_fn",
         ":run_config",
+        ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
@@ -216,6 +308,7 @@ py_library(
 
 py_test(
     name = "parsing_utils_test",
+    size = "small",
     srcs = ["canned/parsing_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -301,7 +394,6 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:logging_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
@@ -309,9 +401,11 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:summary",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
@@ -320,7 +414,9 @@ py_test(
     size = "small",
     srcs = ["canned/head_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":dnn_testing_utils",
         ":head",
         ":metric_keys",
         ":model_fn",
@@ -368,15 +464,49 @@ py_library(
     ],
 )
 
-py_test(
-    name = "linear_test",
-    size = "medium",
-    srcs = ["canned/linear_test.py"],
+py_library(
+    name = "linear_testing_utils",
+    testonly = 1,
+    srcs = ["canned/linear_testing_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
         ":export_export",
         ":linear",
+        ":metric_keys",
+        ":numpy_io",
+        ":pandas_io",
+        ":run_config",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "linear_test",
+    size = "medium",
+    srcs = ["canned/linear_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "noasan",  # times out b/63680444
+    ],
+    deps = [
+        ":estimator",
+        ":export_export",
+        ":linear",
+        ":linear_testing_utils",
         ":metric_keys",
         ":numpy_io",
         ":pandas_io",

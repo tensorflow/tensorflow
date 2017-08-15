@@ -1173,7 +1173,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         features, [real_valued, bucket, embeded_sparse],
         weight_collections=["my_collection"],
         trainable=True)
-    # There should  one trainable variable for embeded sparse
+    # There should one trainable variable for embeded sparse
     self.assertEqual(1, len(variables_lib.trainable_variables()))
 
   def testInputLayerWithNonTrainableEmbeddingForDNN(self):

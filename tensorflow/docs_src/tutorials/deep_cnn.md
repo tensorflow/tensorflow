@@ -178,7 +178,7 @@ the network architecture to return normalized predictions using
 @{tf.nn.softmax}.
 
 The `inputs()` and `inference()` functions provide all the components
-necessary to perform evaluation on a model. We now shift our focus towards
+necessary to perform an evaluation of a model. We now shift our focus towards
 building operations for training a model.
 
 > **EXERCISE:** The model architecture in `inference()` differs slightly from
@@ -411,13 +411,13 @@ the first tower are prepended with `tower_0`, e.g. `tower_0/conv1/Conv2D`.
 
 * A preferred hardware device to run the operation within a tower.
 @{tf.device} specifies this. For
-instance, all operations in the first tower reside within `device('/gpu:0')`
+instance, all operations in the first tower reside within `device('/device:GPU:0')`
 scope indicating that they should be run on the first GPU.
 
 All variables are pinned to the CPU and accessed via
 @{tf.get_variable}
 in order to share them in a multi-GPU version.
-See how-to on @{$variable_scope$Sharing Variables}.
+See how-to on @{$variables$Sharing Variables}.
 
 ### Launching and Training the Model on Multiple GPU cards
 

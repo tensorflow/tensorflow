@@ -831,11 +831,13 @@ a different filter to each input channel (expanding from 1 channel to
 `channel_multiplier` channels for each), then concatenates the results
 together. Thus, the output has `in_channels * channel_multiplier` channels.
 
+```
 for k in 0..in_channels-1
   for q in 0..channel_multiplier-1
     output[b, i, j, k * channel_multiplier + q] =
       sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
                         filter[di, dj, k, q]
+```
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
@@ -1366,6 +1368,34 @@ input: 4-D input to pool over.
 output: The max pooled output tensor.
 )doc");
 
+REGISTER_OP("MaxPoolV2")
+    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("input: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c, 3));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Performs max pooling on the input.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+input: 4-D input to pool over.
+output: The max pooled output tensor.
+)doc");
+
 REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1374,6 +1404,37 @@ REGISTER_OP("MaxPoolGrad")
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
+    .Output("output: T")
+    .Attr("T: realnumbertype = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
+    .Doc(R"doc(
+Computes gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
+output: Gradients w.r.t. the input to `max_pool`.
+)doc");
+
+REGISTER_OP("MaxPoolGradV2")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
     .Output("output: T")
     .Attr("T: realnumbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
@@ -1434,6 +1495,43 @@ grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
 output: Gradients of gradients w.r.t. the input to `max_pool`.
 )doc");
 
+REGISTER_OP("MaxPoolGradGradV2")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c, 5));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
+      // Validate 'orig_output' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes second-order gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
+output: Gradients of gradients w.r.t. the input to `max_pool`.
+)doc");
+
 REGISTER_OP("MaxPoolWithArgmax")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1454,6 +1552,11 @@ Performs max pooling on the input and outputs both max values and indices.
 The indices in `argmax` are flattened, so that a maximum value at position
 `[b, y, x, c]` becomes flattened index
 `((b * height + y) * width + x) * channels + c`.
+
+The indices returned are always in `[0, height) x [0, width)` before flattening,
+even if padding is involved and the mathematically correct answer is outside
+(either negative or too large).  This is a bug, but fixing it is difficult to do
+in a safe backwards compatible way, especially due to flattening.
 
 ksize: The size of the window for each dimension of the input tensor.
 strides: The stride of the sliding window for each dimension of the
@@ -1772,6 +1875,33 @@ backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
 `gradients` otherwise.
 )doc");
 
+REGISTER_OP("Selu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
+if < 0, `scale * features` otherwise.
+
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+)doc");
+
+REGISTER_OP("SeluGrad")
+    .Input("gradients: T")
+    .Input("outputs: T")
+    .Output("backprops: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+Computes gradients for the scaled exponential linear (Selu) operation.
+
+gradients: The backpropagated gradients to the corresponding Selu operation.
+outputs: The outputs of the corresponding Selu operation.
+backprops: The gradients: `gradients * (outputs + scale * alpha)`
+if outputs < 0, `scale * gradients` otherwise.
+)doc");
+
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
@@ -1969,6 +2099,49 @@ predictions: A `batch_size` x `classes` tensor.
 targets: A `batch_size` vector of class ids.
 k: Number of top elements to look at for computing precision.
 precision: Computed Precision at `k` as a `bool Tensor`.
+
+)doc");
+
+// This is the same as `InTopK`, but takes `k` as in input rather than an attr.
+REGISTER_OP("InTopKV2")
+    .Input("predictions: float")
+    .Input("targets: T")
+    .Input("k: T")
+    .Output("precision: bool")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle predictions;
+      ShapeHandle targets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &predictions));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &targets));
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
+      c->set_output(0, c->Vector(batch_size));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Says whether the targets are in the top `K` predictions.
+
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
+
+More formally, let
+
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
+
+$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+predictions: A `batch_size` x `classes` tensor.
+targets: A `batch_size` vector of class ids.
+k: Number of top elements to look at for computing precision.
+precision: Computed precision at `k` as a `bool Tensor`.
 
 )doc");
 

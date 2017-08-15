@@ -58,16 +58,14 @@ void ZlibInputStream::InitZlibBuffer() {
   z_stream_->avail_in = 0;
 
   int status = inflateInit2(z_stream_.get(), zlib_options_.window_bits);
-  if (status != Z_OK) {
-    LOG(FATAL) << "inflateInit failed with status " << status;
-    z_stream_.reset(nullptr);
-  } else {
-    z_stream_->next_in = z_stream_input_.get();
-    z_stream_->next_out = z_stream_output_.get();
-    next_unread_byte_ = reinterpret_cast<char*>(z_stream_output_.get());
-    z_stream_->avail_in = 0;
-    z_stream_->avail_out = output_buffer_capacity_;
-  }
+
+  CHECK_EQ(status, Z_OK) << "inflateInit failed with status " << status;
+
+  z_stream_->next_in = z_stream_input_.get();
+  z_stream_->next_out = z_stream_output_.get();
+  next_unread_byte_ = reinterpret_cast<char*>(z_stream_output_.get());
+  z_stream_->avail_in = 0;
+  z_stream_->avail_out = output_buffer_capacity_;
 }
 
 Status ZlibInputStream::ReadFromStream() {

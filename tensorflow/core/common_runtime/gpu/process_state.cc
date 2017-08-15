@@ -127,7 +127,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
-      for (auto v : gpu_visitors_[bus_id]) {
+      for (const auto& v : gpu_visitors_[bus_id]) {
         gpu_allocators_[gpu_id]->AddAllocVisitor(v);
       }
     }
@@ -167,7 +167,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     if (!status.ok()) {
       LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
     }
-    Allocator* allocator;
+    VisitableAllocator* allocator;
     if (use_bfc_allocator) {
       // TODO(reedwm): evaluate whether 64GB by default is the best choice.
       int64 cpu_mem_limit_in_mb = -1;
@@ -192,7 +192,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.
-      allocator = new TrackingAllocator(allocator, true);
+      allocator = new TrackingVisitableAllocator(allocator, true);
     }
     cpu_allocators_.push_back(allocator);
   }
@@ -237,14 +237,14 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
       LOG(ERROR) << "GetCUDAHostAllocator: " << status.error_message();
     }
     int64 cuda_host_mem_limit = cuda_host_mem_limit_in_mb * (1LL << 20);
-    Allocator* allocator =
+    VisitableAllocator* allocator =
         new BFCAllocator(new CUDAHostAllocator(se), cuda_host_mem_limit,
                          true /*allow_growth*/, "cuda_host_bfc" /*name*/);
 
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.
-      allocator = new TrackingAllocator(allocator, true);
+      allocator = new TrackingVisitableAllocator(allocator, true);
     }
     cuda_host_allocators_.push_back(allocator);
     if (FLAGS_brain_gpu_record_mem_types) {

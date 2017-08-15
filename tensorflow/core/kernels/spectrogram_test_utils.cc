@@ -18,7 +18,6 @@ limitations under the License.
 #include <math.h>
 #include <stddef.h>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"

@@ -33,10 +33,15 @@ class VirtualPlacer {
 
   const DeviceProperties& get_device(const NodeDef& node) const;
 
+  // Returns canonical device name that has a corresponding device in the
+  // cluster; returns empty string if no device found or the node.device() can
+  // not be parsed.
+  string get_canonical_device_name(const NodeDef& node) const;
+
  private:
   std::unordered_map<string, DeviceProperties> devices_;
-  bool has_gpu_;
-  DeviceProperties unknown_device_;
+  string default_device_;
+  const string& get_default_device_name() const;
 };
 
 }  // namespace grappler

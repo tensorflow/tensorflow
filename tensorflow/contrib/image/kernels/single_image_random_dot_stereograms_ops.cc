@@ -54,8 +54,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   float normalize_min;
   float border_level;
   int number_colors;
-  ::tensorflow::TensorShapeProto output_image_shape;
-  ::tensorflow::TensorShapeProto output_data_window;
+  ::tensorflow::PartialTensorShape output_image_shape;
+  ::tensorflow::PartialTensorShape output_data_window;
 
   uint8 Cblack = 0;
   uint8 Cwhite = 255;
@@ -109,15 +109,15 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     input_Yvalue =
         input_tensor.shape().dim_size(0);  // Y value is the number of rows
 
-    output_Ximage = output_image_shape.dim(0).size();
-    output_Yimage = output_image_shape.dim(1).size();
-    output_Cimage = output_image_shape.dim(2).size();
+    output_Ximage = output_image_shape.dim_size(0);
+    output_Yimage = output_image_shape.dim_size(1);
+    output_Cimage = output_image_shape.dim_size(2);
 
     if (number_colors > 256)  // Go to full color image
       output_Cimage = 3;
 
-    int data_Xwindow = output_data_window.dim(0).size();
-    int data_Ywindow = output_data_window.dim(1).size();
+    int data_Xwindow = output_data_window.dim_size(0);
+    int data_Ywindow = output_data_window.dim_size(1);
 
     int deltaX_border_image = output_Ximage - data_Xwindow;
     int deltaY_border_image = output_Yimage - data_Ywindow;

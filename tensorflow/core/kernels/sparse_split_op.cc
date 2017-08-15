@@ -71,12 +71,12 @@ class SparseSplitOp : public OpKernel {
       context->set_output(slice_index + num_split_,
                           outputs[slice_index].values());
       Tensor* shape = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(
-                         slice_index + 2 * num_split_,
-                         {outputs[slice_index].shape().dims()}, &shape));
-      for (int dim = 0; dim < outputs[slice_index].shape().dims(); ++dim) {
-        shape->vec<int64>()(dim) = outputs[slice_index].shape().dim_size(dim);
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  slice_index + 2 * num_split_,
+                                  {outputs[slice_index].dims()}, &shape));
+      auto output_shape = outputs[slice_index].shape();
+      for (int dim = 0; dim < outputs[slice_index].dims(); ++dim) {
+        shape->vec<int64>()(dim) = output_shape[dim];
       }
     }
   }

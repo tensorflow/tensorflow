@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -371,7 +372,7 @@ class DeserializeManySparseOp : public OpKernel {
 
     Tensor final_output_shape(DT_INT64, TensorShape({output.dims()}));
 
-    std::copy_n(output.shape().dim_sizes().data(), output.dims(),
+    std::copy_n(output.shape().data(), output.dims(),
                 final_output_shape.vec<int64>().data());
 
     context->set_output(0, output.indices());

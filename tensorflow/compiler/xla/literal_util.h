@@ -49,94 +49,6 @@ limitations under the License.
 
 namespace xla {
 
-// This class is a simple vector of boolean values. It's used to workaround some
-// implementations of std::vector<bool> that use a bitset which does not have
-// the semantics expected by Literal::preds().
-class BoolVector {
- public:
-  typedef bool* iterator;
-  typedef const bool* const_iterator;
-
-  BoolVector() : bits_(nullptr), size_(0), capacity_(0) {}
-
-  BoolVector(const_iterator other_begin, const_iterator other_end)
-      : bits_(nullptr), size_(0), capacity_(0) {
-    if (other_begin && other_end) {
-      resize(other_end - other_begin);
-      memcpy(begin(), other_begin, size());
-    }
-  }
-
-  BoolVector(const BoolVector& other) { CopyFrom(other); }
-
-  BoolVector& operator=(const BoolVector& other) {
-    CopyFrom(other);
-    return *this;
-  }
-
-  void push_back(const bool& value) {
-    resize(size_ + 1);
-    bits_[size_ - 1] = value;
-  }
-
-  bool* data() const { return bits_.get(); }
-
-  size_t size() const { return size_; }
-
-  size_t capacity() const { return capacity_; }
-
-  void resize(size_t new_size, bool val = false) {
-    if (new_size == 0) {
-      bits_.reset(nullptr);
-      size_ = 0;
-      capacity_ = 0;
-    } else {
-      size_t old_size = size();
-      if (new_size > old_size) {
-        grow(new_size);
-      }
-      if (old_size < new_size) {
-        memset(&bits_[old_size], val, new_size - old_size);
-      }
-      size_ = new_size;
-    }
-  }
-
-  void clear() {
-    bits_.reset(nullptr);
-    size_ = 0;
-    capacity_ = 0;
-  }
-
-  iterator begin() { return &bits_[0]; }
-  iterator end() { return &bits_[size()]; }
-  const_iterator begin() const { return &bits_[0]; }
-  const_iterator end() const { return &bits_[size()]; }
-
- private:
-  void grow(size_t n) {
-    if (capacity_ < n) {
-      capacity_ = 2 * n;
-      bool* new_bits = new bool[capacity_]();
-      if (size_ > 0) {
-        memcpy(new_bits, bits_.get(), size_);
-      }
-      bits_.reset(new_bits);
-    }
-  }
-
-  void CopyFrom(const BoolVector& other) {
-    bits_ = MakeUnique<bool[]>(other.capacity());
-    memcpy(begin(), other.begin(), other.size());
-    size_ = other.size();
-    capacity_ = other.capacity();
-  }
-
-  std::unique_ptr<bool[]> bits_;
-  size_t size_;
-  size_t capacity_;
-};
-
 // Utility class for dealing with XLA literal values.  Most methods are
 // templated by native (host) type which corresponds to a unique XLA
 // PrimitiveType. See ComputationBuilder for details.  Not all primitive types
@@ -147,10 +59,12 @@ class Literal {
   Literal() {}
 
   Literal(const Literal& other) = default;
+  Literal(Literal&&) = default;
 
   explicit Literal(const LiteralProto& other) { CopyFromProto(other); }
 
   Literal& operator=(const Literal& other) = default;
+  Literal& operator=(Literal&&) = default;
 
   LiteralProto ToProto() const;
 
@@ -165,7 +79,6 @@ class Literal {
 
   void Clear() {
     shape_.Clear();
-    preds_.clear();
     u8s_.clear();
     s32s_.clear();
     s64s_.clear();
@@ -177,9 +90,17 @@ class Literal {
     tuple_literals_.clear();
   }
 
-  int preds_size() const { return preds().size(); }
-  const BoolVector& preds() const { return preds_; }
-  BoolVector* mutable_preds() { return &preds_; }
+  int preds_size() const { return u8s().size(); }
+  const std::vector<uint8>& preds() const {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return u8s_;
+  }
+  std::vector<uint8>* mutable_preds() {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return &u8s_;
+  }
 
   int s32s_size() const { return s32s().size(); }
   int32 s32s(int i) const { return s32s_[i]; }
@@ -251,7 +172,7 @@ class Literal {
     *other = temp;
   }
 
-  // CreatesCreate new literal of a given rank. To minimize ambiguity (for users
+  // Creates a new literal of a given rank. To minimize ambiguity (for users
   // and the compiler) these CreateR[0-2] methods should explicitly specify the
   // native type. For example:
   //
@@ -362,10 +283,10 @@ class Literal {
   template <typename NativeT>
   std::unique_ptr<Literal> Replicate(int64 times) const;
 
-  // Creates a literal by converting each element in this literal to a new
-  // type.
-  template <typename NativeSrcT, typename NativeDestT>
-  std::unique_ptr<Literal> Convert() const;
+  // Converts this literal to another primitive type. Returns an error if the
+  // conversion is not possible.
+  StatusOr<std::unique_ptr<Literal>> Convert(
+      PrimitiveType primitive_dest_type) const;
 
   // Creates a literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
@@ -444,10 +365,21 @@ class Literal {
   template <typename NativeT>
   void Set(tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value);
 
-  // Retrieves the mutable array slice interface which can be used to manipulate
-  // pre-allocated literal values.
+  // Returns a (Mutable)ArraySlice view of the array for this literal for the
+  // given NativeT (e.g., float). These functions map native type to XLA
+  // PrimitiveType via template specialization. The unspecialized forms below
+  // aborts to handle the error case where the given native type does not map to
+  // an XLA primitive type.
   template <typename NativeT>
-  tensorflow::gtl::MutableArraySlice<NativeT> GetMutableArraySlice();
+  tensorflow::gtl::ArraySlice<NativeT> GetArraySlice() const {
+    static_assert(!std::is_same<NativeT, NativeT>::value,
+                  "Cannot map native type to primitive type.");
+  }
+  template <typename NativeT>
+  tensorflow::gtl::MutableArraySlice<NativeT> GetMutableArraySlice() {
+    static_assert(!std::is_same<NativeT, NativeT>::value,
+                  "Cannot map native type to primitive type.");
+  }
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
@@ -458,6 +390,11 @@ class Literal {
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index) const;
 
+  // As Get(), but determines the correct type and converts the value into
+  // int64.
+  StatusOr<int64> GetIntegralAsS64(
+      tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
   static std::unique_ptr<Literal> MakeIdentityR2(int64 size);
@@ -465,6 +402,16 @@ class Literal {
   // Returns a tuple literal composed of given literals.
   static std::unique_ptr<Literal> MakeTuple(
       tensorflow::gtl::ArraySlice<const Literal*> elements);
+
+  // As above, but intended to be invoked with move semantics; i.e.
+  //
+  //  std::vector<std::unique_ptr<Literal>> elements = ...;
+  //  auto result = Literal::MakeTupleOwned(std::move(elements));
+  //
+  // This would have been declared as an overload, but there is ambiguity
+  // in invocation between the above signature and this one.
+  static std::unique_ptr<Literal> MakeTupleOwned(
+      std::vector<std::unique_ptr<Literal>> elements);
 
   // Validates that the data payload of the literal matches the literal shape;
   // if it does not, an appropriate status is returned.
@@ -528,10 +475,11 @@ class Literal {
 
   // Populates literal values by calling the generator function for every cell
   // in this literal object.
-  template <typename NativeT>
-  Status Populate(
-      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-          generator);
+  //
+  // generator must be a callable of the type
+  // NativeT(tensorflow::gtl::ArraySlice<int64> indexes) or compatible.
+  template <typename NativeT, typename FnType>
+  Status Populate(const FnType& generator);
 
   // Creates a Literal of the given dimensions with all elements set to the
   // given value.
@@ -588,17 +536,6 @@ class Literal {
   bool IsZero(tensorflow::gtl::ArraySlice<int64> indices) const;
 
  private:
-  // Returns an ArraySlice view of the array for this literal for the given
-  // NativeT (e.g., float). These functions map native type to XLA PrimitiveType
-  // via template specialization. The unspecialized forms below aborts to handle
-  // the error case where the given native type does not map to an XLA primitive
-  // type.
-  template <typename NativeT>
-  tensorflow::gtl::ArraySlice<NativeT> GetArraySlice() const {
-    static_assert(!std::is_same<NativeT, NativeT>::value,
-                  "Cannot map native type to primitive type.");
-  }
-
   // Copy from a LiteralProto instance.
   void CopyFromProto(const LiteralProto& literal_proto);
 
@@ -634,7 +571,6 @@ class Literal {
   };
 
   Shape shape_;
-  BoolVector preds_;
   std::vector<uint8> u8s_;
   std::vector<int32> s32s_;
   std::vector<int64> s64s_;
@@ -644,539 +580,6 @@ class Literal {
   std::vector<float> f32s_;
   std::vector<double> f64s_;
   std::vector<Literal> tuple_literals_;
-};
-
-// Utility class for dealing with XLA literal values.  Most methods are
-// templated by native (host) type which corresponds to a unique XLA
-// PrimitiveType. See ComputationBuilder for details.  Not all primitive types
-// defined in xla_data.proto have a corresponding native type or even have a
-// storage location in the Literal proto yet (for example, primitive type F16).
-//
-// TODO(dnovillo) - All functions in this class simply redirect to the
-// corresponding function in class Literal. Remove this class after converting
-// all user code to use Literal directly.
-class LiteralUtil {
- public:
-  // Creates new literal of a given rank. To minimize ambiguity (for users and
-  // the compiler) these CreateR[0-2] methods should explicitly specify the
-  // native type. For example:
-  //
-  //  CreateR1<float>({1.0, 42.0});
-  //  CreateR2<uint32>({{1, 2}, {3, 4}});
-  //
-  // The variants not ending with WithLayout use the default XLA layout for the
-  // literal's linear representation in memory.
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR0(NativeT value) {
-    return Literal::CreateR0(value);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR1(
-      tensorflow::gtl::ArraySlice<NativeT> values) {
-    return Literal::CreateR1(values);
-  }
-
-  static std::unique_ptr<Literal> CreateR1(
-      const tensorflow::core::Bitmap& values) {
-    return Literal::CreateR1(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR2(
-      std::initializer_list<std::initializer_list<NativeT>> values) {
-    return Literal::CreateR2(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR2WithLayout(
-      std::initializer_list<std::initializer_list<NativeT>> values,
-      const Layout& layout) {
-    return Literal::CreateR2WithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR3(
-      std::initializer_list<
-          std::initializer_list<std::initializer_list<NativeT>>>
-          values) {
-    return Literal::CreateR3(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR3WithLayout(
-      std::initializer_list<
-          std::initializer_list<std::initializer_list<NativeT>>>
-          values,
-      const Layout& layout) {
-    return Literal::CreateR3WithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR4(
-      std::initializer_list<std::initializer_list<
-          std::initializer_list<std::initializer_list<NativeT>>>>
-          values) {
-    return Literal::CreateR4(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR4WithLayout(
-      std::initializer_list<std::initializer_list<
-          std::initializer_list<std::initializer_list<NativeT>>>>
-          values,
-      const Layout& layout) {
-    return Literal::CreateR4WithLayout(values, layout);
-  }
-
-  // Creates a new Literal object with the shape specified as parameter.
-  // The content of the literal values is the default value of the primitive
-  // type of literal itself (0 for numeric types, and false for predicates).
-  static std::unique_ptr<Literal> CreateFromShape(const Shape& shape) {
-    return Literal::CreateFromShape(shape);
-  }
-
-  // Creates a new Literal object with its values havings the primitive_type
-  // type, and with dimensions defined by the dimensions parameter.
-  // The content of the literal values is the default value of the primitive
-  // type of literal itself (0 for numeric types, and false for predicates).
-  static std::unique_ptr<Literal> CreateFromDimensions(
-      PrimitiveType primitive_type,
-      tensorflow::gtl::ArraySlice<int64> dimensions) {
-    return Literal::CreateFromDimensions(primitive_type, dimensions);
-  }
-
-  // Copies the values from src_literal, starting at src_base shape indexes,
-  // to dest_literal, starting at dest_base, where the copy size in each
-  // dimension is specified by copy_size.
-  //
-  // The src_literal and dest_literal must have the same primitive type,
-  // src_base+copy_size must fit the source literal dimensions, as well as
-  // dest_base+copy_size must fit the destination literal dimensions.
-  static Status Copy(const Literal& src_literal,
-                     tensorflow::gtl::ArraySlice<int64> src_base,
-                     Literal* dest_literal,
-                     tensorflow::gtl::ArraySlice<int64> dest_base,
-                     tensorflow::gtl::ArraySlice<int64> copy_size) {
-    return dest_literal->Copy(src_literal, src_base, dest_base, copy_size);
-  }
-
-  // Creates a new value that has the equivalent value as literal, but conforms
-  // to new_layout; e.g. a literal matrix that was in {0, 1} minor-to-major
-  // dimension layout can be re-laid-out as {1, 0} minor-to-major dimension
-  // layout and the value in the cell at any given logical index (i0, i1) will
-  // be the same.
-  //
-  // Note: this is useful when the client wants to ensure that a value placed in
-  // the XLA allocation tracker has a particular layout; for efficiency
-  // purposes or avoiding unimplemented operation/layout combinations.
-  static std::unique_ptr<Literal> Relayout(const Literal& literal,
-                                           const Layout& new_layout) {
-    return literal.Relayout(new_layout);
-  }
-
-  // Reshapes literal 'input' to have 'shape'. Both the original shape and
-  // 'shape' must contain the same number of elements. The implementation
-  // currently only supports monotonic dim0-major layouts.
-  static StatusOr<std::unique_ptr<Literal>> Reshape(
-      const xla::Literal& input, tensorflow::gtl::ArraySlice<int64> shape) {
-    return input.Reshape(shape);
-  }
-
-  // Creates a new literal by reordering the dimensions of the original literal.
-  // The given `permutation` must be a permutation of the dimension numbers
-  // in the original literal, and it specifies the order of the new dimensions
-  // in the result literal (i.e., new_order[i] = old_order[permutation[i]]).
-  // For example, a transpose call on a literal of shape [3 x 8 x 4] and
-  // `permutation` = {2, 0, 1} returns a new literal of shape [4 x 3 x 8].
-  static std::unique_ptr<Literal> Transpose(
-      const Literal& literal, tensorflow::gtl::ArraySlice<int64> permutation) {
-    return literal.Transpose(permutation);
-  }
-
-  // Creates a sub-array from the given literal by extracting the indices
-  // [start_index, limit_index) of each dimension. The result literal has the
-  // same rank and layout as for the given literal. The number of indices in
-  // start_indices and limit_indices must be the rank of the literal, and the
-  // indices follow the order of the dimensions.
-  static std::unique_ptr<Literal> Slice(
-      const Literal& literal, tensorflow::gtl::ArraySlice<int64> start_indices,
-      tensorflow::gtl::ArraySlice<int64> limit_indices) {
-    return literal.Slice(start_indices, limit_indices);
-  }
-
-  // Creates a literal with a prepended dimension with bound "times"; e.g. a
-  // f32[3x2] with times=4 will produce a f32[4x3x2] with the 3x2 from the input
-  // literal replicated four times.
-  template <typename NativeT>
-  static std::unique_ptr<Literal> Replicate(const Literal& input, int64 times) {
-    return input.Replicate<NativeT>(times);
-  }
-
-  // Creates a literal by converting each element in an original literal to a
-  // new type.
-  template <typename NativeSrcT, typename NativeDestT>
-  static std::unique_ptr<Literal> Convert(const Literal& literal) {
-    return literal.Convert<NativeSrcT, NativeDestT>();
-  }
-
-  // Creates a literal value zero of the given primitive type.
-  static Literal Zero(PrimitiveType primitive_type) {
-    return Literal::Zero(primitive_type);
-  }
-
-  // Creates a literal value one of the given primitive type.
-  static Literal One(PrimitiveType primitive_type) {
-    return Literal::One(primitive_type);
-  }
-
-  // Creates a literal value containing the minimum value of the given
-  // primitive type. For floating-point types, returns -inf.
-  static Literal MinValue(PrimitiveType primitive_type) {
-    return Literal::MinValue(primitive_type);
-  }
-
-  // Creates a literal value containing the maximum value of the given
-  // primitive type. For floating-point types, returns inf.
-  static Literal MaxValue(PrimitiveType primitive_type) {
-    return Literal::MaxValue(primitive_type);
-  }
-
-  // Creates a literal of the given shape where each element is `value`.
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateFullWithMonotonicDim0MajorLayout(
-      tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value) {
-    return Literal::CreateFullWithMonotonicDim0MajorLayout(dimensions, value);
-  }
-
-  // Creates a new literal from an array. The variants not ending with
-  // WithLayout use the default XLA layout for the literal's linear
-  // representation in memory.
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR2FromArray2D(
-      const Array2D<NativeT>& values) {
-    return Literal::CreateR2FromArray2D(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR2FromArray2DWithLayout(
-      const Array2D<NativeT>& values, const Layout& layout) {
-    return Literal::CreateR2FromArray2DWithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR3FromArray3D(
-      const Array3D<NativeT>& values) {
-    return Literal::CreateR3FromArray3D(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR3FromArray3DWithLayout(
-      const Array3D<NativeT>& values, const Layout& layout) {
-    return Literal::CreateR3FromArray3DWithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR4FromArray4D(
-      const Array4D<NativeT>& values) {
-    return Literal::CreateR4FromArray4D(values);
-  }
-
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR4FromArray4DWithLayout(
-      const Array4D<NativeT>& values, const Layout& layout) {
-    return Literal::CreateR4FromArray4DWithLayout(values, layout);
-  }
-
-  // Creates a new vector of U8s literal value from a string.
-  static std::unique_ptr<Literal> CreateR1U8(tensorflow::StringPiece value) {
-    return Literal::CreateR1U8(value);
-  }
-
-  // Creates a linspace-populated literal with the given number of rows and
-  // columns.
-  static std::unique_ptr<Literal> CreateR2F32Linspace(float from, float to,
-                                                      int64 rows, int64 cols) {
-    return Literal::CreateR2F32Linspace(from, to, rows, cols);
-  }
-
-  // Creates a literal that projects the (x, y) dimensions given in values into
-  // the z dimension given by "projection".
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR3Projected(
-      std::initializer_list<std::initializer_list<NativeT>> values,
-      int64 projection) {
-    return Literal::CreateR3Projected(values, projection);
-  }
-
-  // Creates a literal that projects the (x, y) dimensions given in values into
-  // the z and p dimensions given.
-  template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR4Projected(
-      std::initializer_list<std::initializer_list<NativeT>> values,
-      int64 projection_p, int64 projection_z) {
-    return Literal::CreateR4Projected(values, projection_p, projection_z);
-  }
-
-  // Clones literal into an owned unique_ptr version.
-  static std::unique_ptr<Literal> CloneToUnique(const Literal& literal) {
-    return literal.CloneToUnique();
-  }
-
-  // Returns the linear index of the given index within the literal's
-  // element_type repeated field.
-  static int64 LinearIndex(const Literal& literal,
-                           tensorflow::gtl::ArraySlice<int64> multi_index) {
-    return literal.LinearIndex(multi_index);
-  }
-
-  // Gets or sets an element in the literal at the given index. The index is
-  // CHECKed against the dimension sizes.
-  template <typename NativeT>
-  static NativeT Get(const Literal& literal,
-                     tensorflow::gtl::ArraySlice<int64> multi_index) {
-    return literal.Get<NativeT>(multi_index);
-  }
-
-  template <typename NativeT>
-  static void Set(Literal* literal,
-                  tensorflow::gtl::ArraySlice<int64> multi_index,
-                  NativeT value) {
-    literal->Set(multi_index, value);
-  }
-
-  // Retrieves the mutable array slice interface which can be used to manipulate
-  // pre-allocated literal values.
-  template <typename NativeT>
-  static tensorflow::gtl::MutableArraySlice<NativeT> GetMutableArraySlice(
-      Literal* literal) {
-    return literal->GetMutableArraySlice<NativeT>();
-  }
-
-  // Returns the element value at index (0, ..., 0), however many zeroes are
-  // required for that index.
-  template <typename NativeT>
-  static NativeT GetFirstElement(const Literal& literal) {
-    return literal.GetFirstElement<NativeT>();
-  }
-
-  // As Get(), but determines the correct type and converts the value
-  // into text.
-  static string GetAsString(const Literal& literal,
-                            tensorflow::gtl::ArraySlice<int64> multi_index) {
-    return literal.GetAsString(multi_index);
-  }
-
-  // Returns an identity matrix (rank 2) with the given row and column count.
-  template <typename NativeT>
-  static std::unique_ptr<Literal> MakeIdentityR2(int64 size) {
-    return Literal::MakeIdentityR2<NativeT>(size);
-  }
-
-  // Returns a tuple literal composed of given literals.
-  static std::unique_ptr<Literal> MakeTuple(
-      tensorflow::gtl::ArraySlice<const Literal*> elements) {
-    return Literal::MakeTuple(elements);
-  }
-
-  // Validates that the data payload of the literal matches the literal shape;
-  // if it does not, an appropriate status is returned.
-  static tensorflow::Status ValidateLiteral(const Literal& literal) {
-    return literal.ValidateLiteral();
-  }
-
-  // Returns a string representation of the literal value.
-  static string ToString(const Literal& literal) { return literal.ToString(); }
-
-  // Invokes the "per cell" callback for each element in the provided
-  // literal with the element's indices and a string representation of
-  // the element's value.
-  //
-  // This function is useful if you want a polymorphic representation
-  // of the tensor's elements (turning it to a string for something
-  // like representation in a protobuf).
-  static void EachCellAsString(
-      const Literal& literal,
-      const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                               const string& value)>& per_cell) {
-    literal.EachCellAsString(per_cell);
-  }
-
-  template <typename NativeT>
-  static void EachCell(
-      const Literal& literal,
-      std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                         NativeT value)>
-          per_cell) {
-    literal.EachCell<NativeT>(per_cell);
-  }
-
-  // Templated methods which populate the given repeated field in the Literal
-  // proto with the given value(s). The Shape field of the Literal proto is set
-  // to match the array dimensions and type. Examples:
-  //
-  //   // Populate with floats.
-  //   Array2D<float> float_values = ...
-  //   PopulateR2FromArray2D(values, literal);
-  //
-  //   // Populate with int32s.
-  //   PopulateR2({{1, 2}, {3, 4}}, literal);
-  //
-  template <typename NativeT>
-  static void PopulateR0(NativeT values, Literal* literal) {
-    literal->PopulateR0(values);
-  }
-
-  template <typename NativeT>
-  static void PopulateR1(tensorflow::gtl::ArraySlice<NativeT> values,
-                         Literal* literal) {
-    literal->PopulateR1(values);
-  }
-
-  static void PopulateR1(const tensorflow::core::Bitmap& values,
-                         Literal* literal) {
-    literal->PopulateR1(values);
-  }
-
-  template <typename NativeT>
-  static void PopulateR2(
-      std::initializer_list<std::initializer_list<NativeT>> values,
-      Literal* literal) {
-    literal->PopulateR2(values);
-  }
-
-  template <typename NativeT>
-  static void PopulateR2WithLayout(
-      std::initializer_list<std::initializer_list<NativeT>> values,
-      const Layout& layout, Literal* literal) {
-    literal->PopulateR2WithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static void PopulateR2FromArray2D(const Array2D<NativeT>& values,
-                                    Literal* literal) {
-    literal->PopulateR2FromArray2D(values);
-  }
-
-  template <typename NativeT>
-  static void PopulateR2FromArray2DWithLayout(const Array2D<NativeT>& values,
-                                              const Layout& layout,
-                                              Literal* literal) {
-    literal->PopulateR2FromArray2DWithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static void PopulateR3FromArray3D(const Array3D<NativeT>& values,
-                                    Literal* literal) {
-    literal->PopulateR3FromArray3D(values);
-  }
-
-  template <typename NativeT>
-  static void PopulateR3FromArray3DWithLayout(const Array3D<NativeT>& values,
-                                              const Layout& layout,
-                                              Literal* literal) {
-    literal->PopulateR3FromArray3DWithLayout(values, layout);
-  }
-
-  template <typename NativeT>
-  static void PopulateR4FromArray4D(const Array4D<NativeT>& values,
-                                    Literal* literal) {
-    literal->PopulateR4FromArray4D(values);
-  }
-
-  template <typename NativeT>
-  static void PopulateR4FromArray4DWithLayout(const Array4D<NativeT>& values,
-                                              const Layout& layout,
-                                              Literal* literal) {
-    literal->PopulateR4FromArray4DWithLayout(values, layout);
-  }
-
-  // Populates literal values by calling the generator function for every cell
-  // in the literal object.
-  template <typename NativeT>
-  static Status Populate(
-      Literal* literal,
-      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-          generator) {
-    return literal->Populate(generator);
-  }
-
-  // Creates a Literal of the given dimensions with all elements set to the
-  // given value.
-  template <typename NativeT>
-  static void PopulateWithValue(NativeT value,
-                                tensorflow::gtl::ArraySlice<int64> dimensions,
-                                Literal* literal) {
-    return literal->PopulateWithValue(value, dimensions);
-  }
-
-  // Returns a pointer to the underlying vector containing the array data. Use
-  // with care.
-  static const void* InternalData(const Literal& literal) {
-    return literal.InternalData();
-  }
-
-  static void* MutableInternalData(Literal* literal) {
-    return literal->MutableInternalData();
-  }
-
-  // Allocates space in the underlying vector of the literal sufficient to hold
-  // num_elements of the literal's primitive type. Values in the vector are set
-  // to zero. num_elements must equal the number of elements in the literals
-  // shape.
-  static void Reserve(int64 num_elements, Literal* literal) {
-    literal->Reserve(num_elements);
-  }
-
-  // Allocates space in the underlying vector of the literal sufficient to hold
-  // num_elements of the literal's primitive type and sets each element in the
-  // literal to the given value. num_elements must equal the number of elements
-  // in the literals shape.
-  template <typename NativeT>
-  static void Resize(int64 num_elements, NativeT value, Literal* literal) {
-    literal->Resize(num_elements, value);
-  }
-
-  // Returns true if the two given literals have the same shape and
-  // values. Layout is not considered in the comparison.
-  static bool Equal(const Literal& literal1, const Literal& literal2) {
-    return literal1.Equal(literal2);
-  }
-
-  // Returns whether every element in the given literal is equal to value.
-  //
-  // value is an int8 because we expect this to be called with small
-  // compile-time constants (0, -1, etc.) and so that whatever value you pass
-  // can be represented exactly by floating-point types as small as 16 bits.
-  //
-  // If value doesn't fit in literal's type, returns false.  Values of 1/0 are
-  // considered equal to true/false; other values are not considered equal to
-  // true.
-  static bool IsAll(const Literal& literal, int8 value) {
-    return literal.IsAll(value);
-  }
-
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular floating-point number.
-  //
-  // If the literal is not a floating-point value, this always returns false.
-  //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for values that can be expressed precisely as a float,
-  // e.g. -0.5.
-  static bool IsAllFloat(const Literal& literal, float value) {
-    return literal.IsAllFloat(value);
-  }
-
-  // Returns whether the literal is zero at the specified index. The literal
-  // must be an array.
-  static bool IsZero(const Literal& literal,
-                     tensorflow::gtl::ArraySlice<int64> indices) {
-    return literal.IsZero(indices);
-  }
-
-  TF_DISALLOW_COPY_AND_ASSIGN(LiteralUtil);
 };
 
 // Declarations of template specializations for GetArraySlice and
@@ -1710,12 +1113,10 @@ void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4());
 }
 
-template <typename NativeT>
-Status Literal::Populate(
-    const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-        generator) {
+template <typename NativeT, typename FnType>
+Status Literal::Populate(const FnType& generator) {
   const Shape& this_shape = shape();
-  int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
   tensorflow::gtl::MutableArraySlice<NativeT> data =
@@ -1728,7 +1129,7 @@ Status Literal::Populate(
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](const std::vector<int64>& indexes) {
-      int64 index = LinearIndex(indexes);
+      const int64 index = LinearIndex(indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64 i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;
@@ -1740,6 +1141,7 @@ Status Literal::Populate(
                             stride_config.dimensions, stride_config.step,
                             init_function);
   } else {
+    // For scalars.
     data.at(0) = generator({});
   }
   return Status::OK();
@@ -1751,27 +1153,6 @@ void Literal::PopulateWithValue(NativeT value,
   *mutable_shape() = ShapeUtil::MakeShape(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions);
   Resize<NativeT>(ShapeUtil::ElementsIn(shape()), value);
-}
-
-template <typename NativeSrcT, typename NativeDestT>
-std::unique_ptr<Literal> Literal::Convert() const {
-  const Shape& this_shape = shape();
-  auto result_literal = MakeUnique<Literal>();
-  Shape* result_shape = result_literal->mutable_shape();
-  *result_shape = this_shape;
-  result_shape->set_element_type(
-      primitive_util::NativeToPrimitiveType<NativeDestT>());
-  result_literal->Reserve(ShapeUtil::ElementsIn(*result_shape));
-  tensorflow::gtl::ArraySlice<NativeSrcT> src_data =
-      GetArraySlice<NativeSrcT>();
-  tensorflow::gtl::MutableArraySlice<NativeDestT> dest_data =
-      result_literal->GetMutableArraySlice<NativeDestT>();
-  int64 num_elements = ShapeUtil::ElementsIn(this_shape);
-
-  for (int64 i = 0; i < num_elements; ++i) {
-    dest_data[i] = static_cast<NativeDestT>(src_data[i]);
-  }
-  return result_literal;
 }
 
 template <typename NativeT>

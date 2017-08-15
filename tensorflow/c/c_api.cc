@@ -27,13 +27,18 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -53,21 +58,16 @@ limitations under the License.
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
-using tensorflow::error::Code;
-using tensorflow::errors::InvalidArgument;
-using tensorflow::gtl::ArraySlice;
-using tensorflow::strings::StrCat;
 using tensorflow::AllocationDescription;
 using tensorflow::DataType;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
-using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
 using tensorflow::Node;
-using tensorflow::NodeDef;
 using tensorflow::NodeBuilder;
+using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
 using tensorflow::PartialTensorShape;
@@ -80,6 +80,12 @@ using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
 using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
+using tensorflow::error::Code;
+using tensorflow::errors::FailedPrecondition;
+using tensorflow::errors::InvalidArgument;
+using tensorflow::gtl::ArraySlice;
+using tensorflow::mutex_lock;
+using tensorflow::strings::StrCat;
 
 extern "C" {
 
@@ -140,7 +146,7 @@ class TF_ManagedBuffer : public TensorBuffer {
 void* allocate_tensor(const char* operation, size_t len) {
   void* data =
       tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawAllocation(
         operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
         len, data, tensorflow::cpu_allocator());
@@ -149,7 +155,7 @@ void* allocate_tensor(const char* operation, size_t len) {
 }
 
 void deallocate_buffer(void* data, size_t len, void* arg) {
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawDeallocation(
         "TensorFlow C Api",
         tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,
@@ -163,7 +169,7 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
   if (out->data != nullptr) {
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
-  const auto proto_size = in.ByteSize();
+  const auto proto_size = in.ByteSizeLong();
   void* buf = tensorflow::port::Malloc(proto_size);
   in.SerializeToArray(buf, proto_size);
   out->data = buf;
@@ -175,6 +181,8 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
 }
 
 }  // namespace
+
+TF_Tensor::~TF_Tensor() { buffer->Unref(); }
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
@@ -194,9 +202,16 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
 
   TF_ManagedBuffer* buf = new TF_ManagedBuffer;
   buf->len_ = len;
-  if (reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
-    // Copy the data into a buffer that satisfies Eigen's alignment
-    // requirements.
+  if (dtype != TF_STRING && dtype != TF_RESOURCE &&
+      tensorflow::DataTypeCanUseMemcpy(static_cast<DataType>(dtype)) &&
+      reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
+    // TF_STRING and TF_RESOURCE tensors have a different representation in
+    // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
+    // (any alignement requirements will be taken care of by TF_TensorToTensor
+    // and TF_TensorFromTensor).
+    //
+    // Other types have the same represntation, so copy only if it is safe to do
+    // so.
     buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_buffer;
@@ -215,18 +230,15 @@ TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
   // It is safe to move the Tensor if and only if we own the unique reference to
   // it. In that case, we might as well not delete and reallocate, but a future
   // implementation might need to do so.
-  if (tensor->buffer->RefCountIsOne() &&
-      tensor->buffer->root_buffer()->RefCountIsOne() &&
-      tensor->buffer->OwnsMemory()) {
+  TensorBuffer* buf = tensor->buffer;
+  if (buf->RefCountIsOne() && buf->root_buffer()->RefCountIsOne() &&
+      buf->OwnsMemory()) {
     return tensor;
   }
   return nullptr;
 }
 
-void TF_DeleteTensor(TF_Tensor* t) {
-  t->buffer->Unref();
-  delete t;
-}
+void TF_DeleteTensor(TF_Tensor* t) { delete t; }
 
 TF_DataType TF_TensorType(const TF_Tensor* t) { return t->dtype; }
 int TF_NumDims(const TF_Tensor* t) { return t->shape.dims(); }
@@ -255,24 +267,27 @@ size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
   return sz;
 }
 
-size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
-                       size_t* dst_len, TF_Status* status) {
+static Status TF_StringDecode_Impl(const char* src, size_t src_len,
+                                   const char** dst, size_t* dst_len) {
   tensorflow::uint64 len64 = 0;
   const char* p = tensorflow::core::GetVarint64Ptr(src, src + src_len, &len64);
   if (p == nullptr) {
-    status->status =
-        InvalidArgument("invalid string encoding or truncated src buffer");
-    return 0;
+    return InvalidArgument("invalid string encoding or truncated src buffer");
   }
   if (len64 > std::numeric_limits<size_t>::max()) {
-    status->status =
-        InvalidArgument("encoded string is ", len64,
-                        "-bytes, which is too large for this architecture");
-    return 0;
+    return InvalidArgument("encoded string is ", len64,
+                           "-bytes, which is too large for this architecture");
   }
   *dst = p;
   *dst_len = static_cast<size_t>(len64);
-  return static_cast<size_t>(p - src) + *dst_len;
+  return Status::OK();
+}
+
+size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
+                       size_t* dst_len, TF_Status* status) {
+  status->status = TF_StringDecode_Impl(src, src_len, dst, dst_len);
+  if (!status->status.ok()) return 0;
+  return static_cast<size_t>(*dst - src) + *dst_len;
 }
 
 size_t TF_StringEncodedSize(size_t len) {
@@ -388,16 +403,36 @@ void TF_Reset(const TF_SessionOptions* opt, const char** containers,
 
 namespace tensorflow {
 
-// Non-static for testing.
-bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status) {
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
+  if (src->dtype == TF_RESOURCE) {
+    if (src->shape.dims() != 0) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
+          "shape ",
+          src->shape.DebugString());
+    }
+    *dst = Tensor(DT_RESOURCE, src->shape);
+    if (!dst->scalar<ResourceHandle>()().ParseFromString(
+            string(static_cast<const char*>(TF_TensorData(src)),
+                   TF_TensorByteSize(src)))) {
+      return InvalidArgument(
+          "Malformed TF_RESOUCE tensor: unable to parse resource handle");
+    }
+    return Status::OK();
+  }
+  if (src->dtype != TF_STRING) {
+    *dst = TensorCApi::MakeTensor(src->dtype, src->shape, src->buffer);
+    return Status::OK();
+  }
+  // TF_STRING tensors require copying since Tensor class expects a sequence of
+  // string objects.
   const tensorflow::int64 num_elements = src->shape.num_elements();
   const char* input = reinterpret_cast<const char*>(TF_TensorData(src));
   const size_t src_size = TF_TensorByteSize(src);
   if (static_cast<tensorflow::int64>(src_size / sizeof(tensorflow::uint64)) <
       num_elements) {
-    status->status = InvalidArgument(
+    return InvalidArgument(
         "Malformed TF_STRING tensor; too short to hold number of elements");
-    return false;
   }
   const char* data_start = input + sizeof(tensorflow::uint64) * num_elements;
   const char* limit = input + src_size;
@@ -408,72 +443,18 @@ bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status) {
     tensorflow::uint64 offset =
         reinterpret_cast<const tensorflow::uint64*>(input)[i];
     if (static_cast<ptrdiff_t>(offset) >= (limit - data_start)) {
-      status->status = InvalidArgument("Malformed TF_STRING tensor; element ",
-                                       i, " out of range");
-      return false;
+      return InvalidArgument("Malformed TF_STRING tensor; element ", i,
+                             " out of range");
     }
     size_t len;
     const char* p;
     const char* srcp = data_start + offset;
-    TF_StringDecode(srcp, limit - srcp, &p, &len, status);
-    if (!status->status.ok()) {
-      return false;
-    }
+    Status status = TF_StringDecode_Impl(srcp, limit - srcp, &p, &len);
+    if (!status.ok()) return status;
     dstarray(i).assign(p, len);
   }
-  return true;
+  return Status::OK();
 }
-
-// Non-static for testing.
-TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
-  // Compute bytes needed for encoding.
-  size_t size = 0;
-  const auto& srcarray = src.flat<tensorflow::string>();
-  for (int i = 0; i < srcarray.size(); ++i) {
-    const tensorflow::string& s = srcarray(i);
-    // uint64 starting_offset, TF_StringEncode-d string.
-    size += sizeof(tensorflow::uint64) + TF_StringEncodedSize(s.size());
-  }
-
-  // Encode all strings.
-  char* base = new char[size];
-  char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
-  char* dst = data_start;  // Where next string is encoded.
-  size_t dst_len = size - static_cast<size_t>(data_start - base);
-  tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
-  TF_Status status;
-  for (int i = 0; i < srcarray.size(); ++i) {
-    *offsets = (dst - data_start);
-    offsets++;
-    const tensorflow::string& s = srcarray(i);
-    size_t consumed =
-        TF_StringEncode(s.data(), s.size(), dst, dst_len, &status);
-    CHECK(status.status.ok());
-    dst += consumed;
-    dst_len -= consumed;
-  }
-  CHECK_EQ(dst, base + size);
-
-  auto dims = src.shape().dim_sizes();
-  std::vector<tensorflow::int64> dimvec(dims.size());
-  for (size_t i = 0; i < dims.size(); ++i) {
-    dimvec[i] = dims[i];
-  }
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                "64-bit int types should match in size");
-  return TF_NewTensor(TF_STRING,
-                      reinterpret_cast<const int64_t*>(dimvec.data()),
-                      dimvec.size(), base, size, DeleteArray, base);
-}
-
-class TensorCApi {
- public:
-  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
-  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
-                           TensorBuffer* buf) {
-    return Tensor(static_cast<DataType>(type), shape, buf);
-  }
-};
 
 // Create an empty tensor of type 'dtype'. 'shape' can be arbitrary, but has to
 // result in a zero-sized tensor.
@@ -491,6 +472,90 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
   return TF_NewTensor(dtype, reinterpret_cast<const int64_t*>(dims.data()),
                       shape.dims(), reinterpret_cast<void*>(&empty), 0,
                       [](void*, size_t, void*) {}, nullptr);
+}
+
+// Non-static for testing.
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
+                               TF_Status* status) {
+  if (!src.IsInitialized()) {
+    status->status = FailedPrecondition(
+        "attempt to use a tensor with an uninitialized value");
+    return nullptr;
+  }
+  if (src.NumElements() == 0) {
+    return EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
+  }
+  if (src.dtype() == DT_RESOURCE) {
+    if (src.shape().dims() != 0) {
+      status->status = InvalidArgument(
+          "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
+          src.shape().DebugString(),
+          "). Please file a bug at "
+          "https://github.com/tensorflow/tensorflow/issues/new, "
+          "ideally with a "
+          "short code snippet that reproduces this error.");
+      return nullptr;
+    }
+    const string str = src.scalar<ResourceHandle>()().SerializeAsString();
+    TF_Tensor* t = TF_AllocateTensor(TF_RESOURCE, {}, 0, str.size());
+    std::memcpy(TF_TensorData(t), str.c_str(), str.size());
+    return t;
+  }
+  if (src.dtype() != DT_STRING) {
+    TensorBuffer* buf = TensorCApi::Buffer(src);
+    buf->Ref();
+    return new TF_Tensor{static_cast<TF_DataType>(src.dtype()), src.shape(),
+                         buf};
+  }
+  // DT_STRING tensors require a copying since TF_Tensor.buffer expects a flatly
+  // encoded sequence of strings.
+
+  // Compute bytes needed for encoding.
+  size_t size = 0;
+  const auto& srcarray = src.flat<tensorflow::string>();
+  for (int i = 0; i < srcarray.size(); ++i) {
+    const tensorflow::string& s = srcarray(i);
+    // uint64 starting_offset, TF_StringEncode-d string.
+    size += sizeof(tensorflow::uint64) + TF_StringEncodedSize(s.size());
+  }
+
+  // Encode all strings.
+  char* base = new char[size];
+  char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
+  char* dst = data_start;  // Where next string is encoded.
+  size_t dst_len = size - static_cast<size_t>(data_start - base);
+  tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
+  for (int i = 0; i < srcarray.size(); ++i) {
+    *offsets = (dst - data_start);
+    offsets++;
+    const tensorflow::string& s = srcarray(i);
+    size_t consumed = TF_StringEncode(s.data(), s.size(), dst, dst_len, status);
+    if (!status->status.ok()) {
+      status->status = InvalidArgument(
+          "invalid string tensor encoding (string #", i, " of ",
+          srcarray.size(), "): ", status->status.error_message());
+      return nullptr;
+    }
+    dst += consumed;
+    dst_len -= consumed;
+  }
+  if (dst != base + size) {
+    status->status = InvalidArgument(
+        "invalid string tensor encoding (decoded ", (dst - base),
+        " bytes, but the tensor is encoded in ", size, " bytes");
+    return nullptr;
+  }
+
+  auto dims = src.shape().dim_sizes();
+  std::vector<tensorflow::int64> dimvec(dims.size());
+  for (size_t i = 0; i < dims.size(); ++i) {
+    dimvec[i] = dims[i];
+  }
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
+  return TF_NewTensor(TF_STRING,
+                      reinterpret_cast<const int64_t*>(dimvec.data()),
+                      dimvec.size(), base, size, DeleteArray, base);
 }
 
 // Helpers for loading a TensorFlow plugin (a .so file).
@@ -513,16 +578,8 @@ static bool TF_Run_Inputs(
     TF_Status* status) {
   const int ninputs = input_pairs->size();
   for (int i = 0; i < ninputs; ++i) {
-    TF_Tensor* src = c_inputs[i];
-    if (c_inputs[i]->dtype != TF_STRING) {
-      (*input_pairs)[i].second = tensorflow::TensorCApi::MakeTensor(
-          src->dtype, src->shape, src->buffer);
-    } else if (!tensorflow::TF_Tensor_DecodeStrings(
-                   src, &(*input_pairs)[i].second, status)) {
-      // TF_STRING tensors require copying since Tensor class expects
-      // a sequence of string objects.
-      return false;
-    }
+    status->status = TF_TensorToTensor(c_inputs[i], &(*input_pairs)[i].second);
+    if (!status->status.ok()) return false;
   }
   return true;
 }
@@ -576,19 +633,12 @@ static void TF_Run_Helper(
   for (int i = 0; i < noutputs; ++i) {
     const Tensor& src = outputs[i];
     if (!src.IsInitialized() || src.NumElements() == 0) {
-      c_outputs[i] = tensorflow::EmptyTensor(
-          static_cast<TF_DataType>(src.dtype()), src.shape());
+      c_outputs[i] =
+          EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;
     }
-    if (src.dtype() != tensorflow::DT_STRING) {
-      // Share the underlying buffer.
-      TensorBuffer* buf = tensorflow::TensorCApi::Buffer(src);
-      buf->Ref();
-      c_outputs[i] = new TF_Tensor{static_cast<TF_DataType>(src.dtype()),
-                                   src.shape(), buf};
-    } else {
-      c_outputs[i] = tensorflow::TF_Tensor_EncodeStrings(src);
-    }
+    c_outputs[i] = TF_TensorFromTensor(src, status);
+    if (!status->status.ok()) return;
   }
 }
 
@@ -628,7 +678,7 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
                   // Target nodes
                   const char** c_target_oper_names, int ntargets,
                   const char** handle, TF_Status* status) {
-  status->status = Status::OK();
+  *handle = nullptr;
 
   std::vector<tensorflow::string> input_names(ninputs);
   std::vector<tensorflow::string> output_names(noutputs);
@@ -643,16 +693,12 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
     target_oper_names[i] = c_target_oper_names[i];
   }
   tensorflow::string new_handle;
-  Status result;
-  result = s->session->PRunSetup(input_names, output_names, target_oper_names,
-                                 &new_handle);
-  if (result.ok()) {
+  status->status = s->session->PRunSetup(input_names, output_names,
+                                         target_oper_names, &new_handle);
+  if (status->status.ok()) {
     char* buf = new char[new_handle.size() + 1];
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
     *handle = buf;
-  } else {
-    *handle = nullptr;
-    status->status = result;
   }
 }
 
@@ -920,7 +966,7 @@ void TF_AddControlInput(TF_OperationDescription* desc, TF_Operation* input) {
 }
 
 void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op) {
-  desc->colocation_constraints.emplace_back(
+  desc->colocation_constraints.emplace(
       StrCat(tensorflow::kColocationGroupPrefix, op->node.name()));
 }
 
@@ -933,12 +979,20 @@ void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
                           const void* const* values, const size_t* lengths,
                           int num_values) {
-  std::vector<tensorflow::StringPiece> v;
-  v.reserve(num_values);
-  for (int i = 0; i < num_values; ++i) {
-    v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
+  if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
+    desc->colocation_constraints.clear();
+    for (int i = 0; i < num_values; ++i) {
+      desc->colocation_constraints.emplace(static_cast<const char*>(values[i]),
+                                           lengths[i]);
+    }
+  } else {
+    std::vector<tensorflow::StringPiece> v;
+    v.reserve(num_values);
+    for (int i = 0; i < num_values; ++i) {
+      v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
+    }
+    desc->node_builder.Attr(attr_name, v);
   }
-  desc->node_builder.Attr(attr_name, v);
 }
 
 void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
@@ -1072,20 +1126,9 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
 
 void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
                       TF_Tensor* value, TF_Status* status) {
-  status->status = Status::OK();
   Tensor t;
-  bool ok = true;
-
-  if (value->dtype != TF_STRING) {
-    t = tensorflow::TensorCApi::MakeTensor(value->dtype, value->shape,
-                                           value->buffer);
-  } else {
-    // TF_STRING tensors require copying since Tensor class expects
-    // a sequence of string objects.
-    ok = tensorflow::TF_Tensor_DecodeStrings(value, &t, status);
-  }
-
-  if (ok) desc->node_builder.Attr(attr_name, t);
+  status->status = TF_TensorToTensor(value, &t);
+  if (status->status.ok()) desc->node_builder.Attr(attr_name, t);
 }
 
 void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
@@ -1094,33 +1137,42 @@ void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
   status->status = Status::OK();
   std::vector<Tensor> t;
   t.reserve(num_values);
-  bool ok = true;
 
-  for (int i = 0; i < num_values && ok; ++i) {
-    if (values[i]->dtype != TF_STRING) {
-      t.emplace_back(tensorflow::TensorCApi::MakeTensor(
-          values[i]->dtype, values[i]->shape, values[i]->buffer));
-    } else {
-      t.emplace_back(::tensorflow::DT_STRING);
-      // TF_STRING tensors require copying since Tensor class expects
-      // a sequence of string objects.
-      ok = tensorflow::TF_Tensor_DecodeStrings(values[i], &t.back(), status);
-    }
+  for (int i = 0; i < num_values && status->status.ok(); ++i) {
+    Tensor v;
+    status->status = TF_TensorToTensor(values[i], &v);
+    t.emplace_back(v);
   }
 
-  if (ok) desc->node_builder.Attr(attr_name, t);
+  if (status->status.ok()) desc->node_builder.Attr(attr_name, t);
 }
 
 void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
                           const void* proto, size_t proto_len,
                           TF_Status* status) {
   tensorflow::AttrValue attr_value;
-  if (attr_value.ParseFromArray(proto, proto_len)) {
-    desc->node_builder.Attr(attr_name, attr_value);
-    status->status = Status::OK();
-  } else {
+  if (!attr_value.ParseFromArray(proto, proto_len)) {
     status->status = InvalidArgument("Unparseable AttrValue proto");
+    return;
   }
+
+  if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
+    if (attr_value.value_case() != tensorflow::AttrValue::kList &&
+        attr_value.value_case() != tensorflow::AttrValue::VALUE_NOT_SET) {
+      status->status =
+          InvalidArgument("Expected \"list\" field for \"",
+                          tensorflow::kColocationAttrName, "\" attribute");
+      return;
+    }
+    desc->colocation_constraints.clear();
+    for (const tensorflow::string& location : attr_value.list().s()) {
+      desc->colocation_constraints.insert(location);
+    }
+  } else {
+    desc->node_builder.Attr(attr_name, attr_value);
+  }
+
+  status->status = Status::OK();
 }
 
 static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
@@ -1132,10 +1184,12 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
     status->status = InvalidArgument("Duplicate node name in graph: '",
                                      desc->node_builder.node_name(), "'");
   } else {
-    std::sort(desc->colocation_constraints.begin(),
-              desc->colocation_constraints.end());
-    desc->node_builder.Attr(tensorflow::kColocationAttrName,
-                            desc->colocation_constraints);
+    if (!desc->colocation_constraints.empty()) {
+      desc->node_builder.Attr(
+          tensorflow::kColocationAttrName,
+          std::vector<tensorflow::string>(desc->colocation_constraints.begin(),
+                                          desc->colocation_constraints.end()));
+    }
     status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
 
     if (status->status.ok()) {
@@ -1565,9 +1619,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
   Tensor t;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
-  *value = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
-                         tensorflow::TensorCApi::Buffer(t)};
-  (*value)->buffer->Ref();
+  *value = TF_TensorFromTensor(t, status);
 }
 
 void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
@@ -1578,10 +1630,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
-    const Tensor& t = ts[i];
-    values[i] = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
-                              tensorflow::TensorCApi::Buffer(t)};
-    values[i]->buffer->Ref();
+    values[i] = TF_TensorFromTensor(ts[i], status);
   }
 }
 
@@ -1599,6 +1648,14 @@ void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
 }
 
 // TF_Graph functions ---------------------------------------------------------
+
+TF_Graph::TF_Graph()
+    : graph(tensorflow::OpRegistry::Global()),
+      refiner(graph.versions().producer(), graph.op_registry()),
+      num_sessions(0),
+      delete_requested(false),
+      parent(nullptr),
+      parent_inputs(nullptr) {}
 
 TF_Graph* TF_NewGraph() { return new TF_Graph; }
 
@@ -2119,7 +2176,8 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
     const int max_node_id_before = g->graph.num_node_ids();
 
     tensorflow::Scope scope =
-        NewInternalScope(&g->graph, &status->status, &g->refiner);
+        NewInternalScope(&g->graph, &status->status, &g->refiner)
+            .NewSubScope("gradients");
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg;
@@ -2145,6 +2203,13 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 }
 
 // TF_Session functions ----------------------------------------------
+
+TF_Session::TF_Session(tensorflow::Session* s, TF_Graph* g)
+    : session(s), graph(g), last_num_graph_nodes(0), device_mgr(nullptr) {
+  if (s->LocalDeviceManager(&device_mgr).ok()) {
+    devices = device_mgr->ListDevices();
+  }
+}
 
 TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
                           TF_Status* status) {
@@ -2176,7 +2241,6 @@ TF_Session* TF_LoadSessionFromSavedModel(
   return nullptr;
 #else
   mutex_lock l(graph->mu);
-
   if (!graph->name_map.empty()) {
     status->status = InvalidArgument("Graph is non-empty.");
     return nullptr;
@@ -2265,8 +2329,8 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
           *node_def = node->def();
         }
       }
+      *graph_def.mutable_library() = graph.flib_def().ToProto();
       session->graph->mu.unlock();
-      // TODO(josh11b): Also send the function library if needed.
       status->status = session->session->Extend(graph_def);
       if (!status->status.ok()) {
         // Contract is we always delete input_values[i].
@@ -2326,6 +2390,8 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
                          int ninputs, const TF_Output* outputs, int noutputs,
                          const TF_Operation* const* target_opers, int ntargets,
                          const char** handle, TF_Status* status) {
+  *handle = nullptr;
+
   if (!ExtendSessionGraphHelper(session, status)) {
     return;
   }

@@ -137,7 +137,8 @@ class Experiment(object):
       self._core_estimator_used = True
       if eval_metrics is not None:
         raise ValueError(
-            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`. "
+            "Use `eval_metric_ops` in `tf.estimator.EstimatorSpec` instead.")
     else:
       self._core_estimator_used = False
       if not isinstance(estimator, evaluable.Evaluable):
@@ -245,6 +246,11 @@ class Experiment(object):
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
     config = self._estimator.config
+    if (config.cluster_spec and config.master and
+        config.environment == run_config.Environment.LOCAL):
+      logging.warn("ClusterSpec and master are provided, but environment is "
+                   "set to 'local'. Set environment to 'cloud' if you intend "
+                   "to use the distributed runtime.")
     if (config.environment != run_config.Environment.LOCAL and
         config.environment != run_config.Environment.GOOGLE and
         config.cluster_spec and config.master):
@@ -274,7 +280,7 @@ class Experiment(object):
                             max_steps=self._train_steps,
                             hooks=self._train_monitors + extra_hooks)
 
-  def evaluate(self, delay_secs=None):
+  def evaluate(self, delay_secs=None, name=None):
     """Evaluate on the evaluation data.
 
     Runs evaluation on the evaluation data and returns the result. Runs for
@@ -286,6 +292,8 @@ class Experiment(object):
     Args:
       delay_secs: Start evaluating after this many seconds. If `None`, defaults
         to using `self._eval_delays_secs`.
+      name: Gives the name to the evauation for the case multiple evaluation is
+        run for the same experiment.
 
     Returns:
       The result of the `evaluate` call to the `Estimator`.
@@ -300,7 +308,7 @@ class Experiment(object):
     return self._call_evaluate(input_fn=self._eval_input_fn,
                                steps=self._eval_steps,
                                metrics=self._eval_metrics,
-                               name="one_pass",
+                               name=(name or "one_pass"),
                                hooks=self._eval_hooks)
 
   @deprecated(
@@ -455,7 +463,7 @@ class Experiment(object):
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
 
-    The frequency of evaluation is controlled by the contructor arg
+    The frequency of evaluation is controlled by the constructor arg
     `min_eval_frequency`. When this parameter is 0, evaluation happens
     only after training has completed. Note that evaluation cannot happen
     more frequently than checkpoints are taken. If no new snapshots are
@@ -515,15 +523,20 @@ class Experiment(object):
 
     This differs from `train_and_evaluate` as follows:
       1. The procedure will have train and evaluation in turns. The model
-      will be trained for a number of steps (usuallly smaller than `train_steps`
+      will be trained for a number of steps (usually smaller than `train_steps`
       if provided) and then be evaluated.  `train_and_evaluate` will train the
-      model for `train_steps` (no small training iteraions).
+      model for `train_steps` (no small training iterations).
 
       2. Due to the different approach this schedule takes, it leads to two
       differences in resource control. First, the resources (e.g., memory) used
       by training will be released before evaluation (`train_and_evaluate` takes
       double resources). Second, more checkpoints will be saved as a checkpoint
-      is generated at the end of each small trainning iteration.
+      is generated at the end of each training iteration.
+
+      3. As the estimator.train starts from scratch (new graph, new states for
+      input, etc) at each iteration, it is recommended to have the
+      `train_steps_per_iteration` larger. It is also recommended to shuffle your
+      input.
 
     Args:
       continuous_eval_predicate_fn: A predicate function determining whether to

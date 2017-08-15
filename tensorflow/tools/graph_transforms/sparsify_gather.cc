@@ -78,13 +78,14 @@ void CreateConstNode(const Tensor& tensor, const string& name,
   node_def->set_name(name);
   SetNodeTensorAttr<float>("value", tensor, node_def);
 }
-}  // namespace
 
-Status SparsifyGather(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def) {
+Status SparsifyGatherInternal(const GraphDef& input_graph_def,
+                              const TransformFuncContext& context,
+                              const OpTypePattern& pattern,
+                              GraphDef* output_graph_def) {
   GraphDef current_graph_def = input_graph_def;
   bool any_match_found = false;
+
   // The subgraphs may have overlapping components, therefore GraphMatcher
   // doesn't return all subgraphs in one round -- this has to be multi-round
   // update.
@@ -94,17 +95,7 @@ Status SparsifyGather(const GraphDef& input_graph_def,
     std::vector<string> init_table_node_names;
 
     TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
-        current_graph_def,  // clang-format off
-      {"Gather",
-        {
-          {"Identity",
-            {
-              {"Const"}
-            }
-          },
-          {"*"},
-        }
-      },  // clang-format on
+        current_graph_def, pattern,
         [&any_match_found, &init_table_node_names](
             const NodeMatch& match, const std::set<string>& input_nodes,
             const std::set<string>& output_nodes,
@@ -143,6 +134,33 @@ Status SparsifyGather(const GraphDef& input_graph_def,
           //    c. a `default_val` arg, valued at 0
           // clang-format on
           const NodeDef& gather_node = match.node;
+
+          // GatherV2 adds an "axis" parameter. sparsify_gather only supports
+          // axis 0 gathers.
+          if (gather_node.op() == "GatherV2") {
+            // Per the OpTypePattern, the 3rd input to Gather must be a Const.
+            const NodeDef& axis_node = match.inputs[2].node;
+
+            Tensor axis_t;
+            TF_RETURN_IF_ERROR(GetNodeAttr(axis_node, "value", &axis_t));
+            int64 axis = 0;
+            if (axis_t.dtype() == DT_INT32) {
+              axis = axis_t.scalar<int32>()();
+            } else if (axis_t.dtype() == DT_INT64) {
+              axis = axis_t.scalar<int64>()();
+            } else {
+              return tensorflow::errors::FailedPrecondition(
+                  "Gather axis was not int32 or int64.");
+            }
+
+            if (axis != 0) {
+              return tensorflow::errors::FailedPrecondition(
+                  "Transform only applicable to subgraph with GatherV2 over "
+                  "axis 0. Found axis ",
+                  axis, ".");
+            }
+          }
+
           const NodeDef& const_node = match.inputs[0].inputs[0].node;
 
           DataType data_type;
@@ -245,20 +263,26 @@ Status SparsifyGather(const GraphDef& input_graph_def,
           return Status::OK();
         },
         {true}, &replaced_graph_def));
+
+    // Revisit this because it is not necessarily true that the init node will
+    // be named "group_deps".
     NodeDef* init_op = nullptr;
     for (int i = 0; i < replaced_graph_def.node_size(); i++) {
       if (replaced_graph_def.node(i).name() == "group_deps" &&
           replaced_graph_def.node(i).op() == "NoOp") {
-        if (init_op != nullptr) {
-          return tensorflow::errors::FailedPrecondition(
-              "Multiple nodes with name: 'group_deps' and type: 'NoOp'.");
-        }
         init_op = replaced_graph_def.mutable_node(i);
+        break;
       }
     }
     if (!init_op) {
-      return tensorflow::errors::FailedPrecondition(
-          "No node found with name: 'group_deps' and type: 'NoOp'");
+      // Since the input is a frozen graph, it is normal for the init node
+      // to be missing.
+      LOG(WARNING) << "No node found with name: 'group_deps' and type: 'NoOp'"
+                   << ", adding one in.";
+      // Init node
+      init_op = replaced_graph_def.mutable_node()->Add();
+      init_op->set_op("NoOp");
+      init_op->set_name("group_deps");
     }
     for (const string& name : init_table_node_names) {
       // Add control dependence from init_table_node to group_deps_node
@@ -268,6 +292,45 @@ Status SparsifyGather(const GraphDef& input_graph_def,
   } while (any_match_found);
   *output_graph_def = current_graph_def;
   return Status::OK();
+}
+}  // namespace
+
+Status SparsifyGather(const GraphDef& input_graph_def,
+                      const TransformFuncContext& context,
+                      GraphDef* output_graph_def) {
+  // clang-format off
+  const OpTypePattern gather_pattern =
+    {"Gather",
+     {
+       {"Identity",
+        {
+          {"Const"}
+        }
+       },
+       {"*"},
+     }
+    };
+  const OpTypePattern gather_v2_pattern =
+    {"GatherV2",
+      {
+        {"Identity",
+          {
+            {"Const"}
+          }
+        },
+        {"*"},
+        // GatherV2's axis must be constant.
+        {"Const"},
+      }
+    };
+  // clang-format on
+
+  GraphDef temp_output;
+  TF_RETURN_IF_ERROR(SparsifyGatherInternal(input_graph_def, context,
+                                            gather_pattern, &temp_output));
+
+  return SparsifyGatherInternal(temp_output, context, gather_v2_pattern,
+                                output_graph_def);
 }
 
 REGISTER_GRAPH_TRANSFORM("sparsify_gather", SparsifyGather);

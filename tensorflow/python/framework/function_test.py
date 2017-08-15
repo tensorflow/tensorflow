@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import function
+from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -325,6 +326,25 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
+  def testWhileLoopCallsFunc(self):
+    with self.test_session(use_gpu=True) as sess:
+
+      @function.Defun(dtypes.float32)
+      def Times2(x):
+        constant_two = constant_op.constant(2, dtypes.int32)
+        two_on_gpu = math_ops.cast(constant_two, dtypes.float32)
+        return x * two_on_gpu
+
+      def Body(x):
+        x2 = Times2(x)
+        x2.set_shape([])
+        return x2
+
+      loop = control_flow_ops.while_loop(lambda x: x < 1e5, Body, [1.0])
+
+      ans = sess.run(loop)
+      self.assertAllClose(ans, 131072.)
+
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -384,7 +404,7 @@ class FunctionTest(test.TestCase):
 
   def testResourceVarAsImplicitInput(self):
     g = ops.Graph()
-    with g.as_default():
+    with g.as_default(), ops.device("cpu:0"):
       v = variable_scope.get_variable(
           "var", (4, 4), dtypes.float32, use_resource=True)
 
@@ -485,7 +505,7 @@ class FunctionTest(test.TestCase):
 
       _ = PlusOne(1, name="p1")
       with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
-        _ = PlusOne(1, device="/gpu:0")
+        _ = PlusOne(1, device="/device:GPU:0")
 
   def testFunctionDecorator(self):
 
@@ -588,8 +608,8 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[2], vals[3])
 
   def testDeclare(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)],
-                           [("y", dtypes.float32)])
+    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
+                                                             dtypes.float32)])
 
     @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
     def FooImpl(x):
@@ -607,8 +627,8 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
 
   def testDeclareUsedInDefun(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)],
-                           [("y", dtypes.float32)])
+    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
+                                                             dtypes.float32)])
 
     @function.Defun()
     def Bar(x):
@@ -630,8 +650,8 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
 
   def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)],
-                           [("y", dtypes.float32)])
+    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
+                                                             dtypes.float32)])
 
     @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
     def Foo(x):
@@ -749,8 +769,9 @@ class FunctionTest(test.TestCase):
       self.assertAllEqual(v1, 20.)
 
   def testShapeFunction(self):
-    @function.Defun(dtypes.float32,
-                    shape_func=lambda op: [op.inputs[0].get_shape()])
+
+    @function.Defun(
+        dtypes.float32, shape_func=lambda op: [op.inputs[0].get_shape()])
     def Foo(x):
       return x + 1.0
 
@@ -767,11 +788,12 @@ class FunctionTest(test.TestCase):
       self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
 
   def testVariableReuse(self):
+
     def LinearWithReuse(input_tensor, reuse=None):
       size = input_tensor.shape.dims[1]
       with variable_scope.variable_scope("linear", reuse=reuse):
-        w = variable_scope.get_variable("w", shape=[size, size],
-                                        dtype=input_tensor.dtype)
+        w = variable_scope.get_variable(
+            "w", shape=[size, size], dtype=input_tensor.dtype)
       return math_ops.matmul(input_tensor, w)
 
     @function.Defun(dtypes.float32)
@@ -789,15 +811,19 @@ class FunctionTest(test.TestCase):
 
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      output_val = sess.run(output_op,
-                            feed_dict={input_op: np.random.rand(32, 100)})
+      output_val = sess.run(
+          output_op, feed_dict={input_op: np.random.rand(32, 100)})
       self.assertEqual(output_val.shape, (32, 100))
 
   def testFunctionCallInDifferentVariableScopes(self):
+
     @function.Defun(dtypes.float32)
     def Foo(inputs):
-      var = variable_scope.get_variable("var", shape=[10], dtype=dtypes.float32,
-                                        initializer=init_ops.ones_initializer())
+      var = variable_scope.get_variable(
+          "var",
+          shape=[10],
+          dtype=dtypes.float32,
+          initializer=init_ops.ones_initializer())
       return inputs + var
 
     input_op = array_ops.placeholder(shape=[10], dtype=dtypes.float32)
@@ -813,8 +839,8 @@ class FunctionTest(test.TestCase):
 
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      out1, out2 = sess.run([out1_op, out2_op],
-                            feed_dict={input_op: np.linspace(1, 10, 10)})
+      out1, out2 = sess.run(
+          [out1_op, out2_op], feed_dict={input_op: np.linspace(1, 10, 10)})
       self.assertAllEqual(out1, np.linspace(2, 11, 10))
       self.assertAllEqual(out2, np.linspace(2, 11, 10))
 
@@ -827,7 +853,7 @@ class FunctionTest(test.TestCase):
       uu = math_ops.reduce_sum(u)
       vv = math_ops.reduce_sum(v)
       result = ss + uu + vv
-    f = function._graph_to_function_def(
+    f = graph_to_function_def.graph_to_function_def(
         g,
         g.get_operations()[1:],  # skip the placeholder
         [s, u, v],
@@ -852,12 +878,15 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(func.captured_inputs, new_func.captured_inputs)
 
   def testBasic(self):
+
     @function.Defun(dtypes.float32, dtypes.float32)
     def Foo(x, y):
       return x + y
+
     self.expectFunctionsEqual(Foo)
 
   def testGradFunc(self):
+
     @function.Defun(dtypes.float32, dtypes.float32)
     def G(x, dy):
       return x * dy
@@ -865,10 +894,12 @@ class FunctionsFromProtos(test.TestCase):
     @function.Defun(dtypes.float32, grad_func=G)
     def F(x):
       return math_ops.exp(x) - math_ops.exp(-x)
+
     self.expectFunctionsEqual(F, grad_func=G)
 
   def testCapturedInputs(self):
     c = constant_op.constant(10, dtypes.int64)
+
     @function.Defun(dtypes.int64)
     def Foo(x):
       return x + c
@@ -885,6 +916,7 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(len(new_func.captured_inputs), 0)
 
   def testNestedFunctions(self):
+
     @function.Defun(dtypes.float32)
     def Outer(x):
 
@@ -958,6 +990,7 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(len(function._from_library(library)), 0)
 
   def testFromLibraryMissingFuncDef(self):
+
     @function.Defun(dtypes.float32, dtypes.float32)
     def G1(x, dy):
       return x * dy
@@ -989,6 +1022,7 @@ class FunctionsFromProtos(test.TestCase):
       function._from_library(library)
 
   def testFromLibraryCyclicGradFuncs(self):
+
     @function.Defun(dtypes.float32)
     def F1(x):
       return math_ops.exp(x) - math_ops.exp(-x)
@@ -1242,10 +1276,11 @@ class FunctionInlineControlTest(test.TestCase):
       inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
       run_metadata = config_pb2.RunMetadata()
       with session.Session(graph=g, config=cfg) as sess:
-        ans = sess.run([y, dx], {x: inp},
-                       run_metadata=run_metadata,
-                       options=config_pb2.RunOptions(
-                           trace_level=config_pb2.RunOptions.FULL_TRACE))
+        ans = sess.run(
+            [y, dx], {x: inp},
+            run_metadata=run_metadata,
+            options=config_pb2.RunOptions(
+                trace_level=config_pb2.RunOptions.FULL_TRACE))
         print(ans[0], np.sum(ans[1]))
         self.assertAllClose(ans[0], 255.971, rtol=1e-3)
         self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
@@ -1275,8 +1310,7 @@ class ModuleFunctionTest(test.TestCase):
   def testBasic(self):
     with ops.Graph().as_default():
       a, b, c, d, e = [
-          constant_op.constant(
-              [[_]], dtype=dtypes.float32) for _ in range(5)
+          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
       ]
       y = Linear(a, b, c)
       z = Linear2(a, b, c, d, e)
@@ -1295,7 +1329,8 @@ class VariableHoistingTest(test.TestCase):
           initializer=init_ops.random_uniform_initializer(seed=312),
           use_resource=use_resource)
       b = variable_scope.get_variable(
-          "b", (64), initializer=init_ops.zeros_initializer(),
+          "b", (64),
+          initializer=init_ops.zeros_initializer(),
           use_resource=use_resource),
       return math_ops.sigmoid(math_ops.matmul(x, w) + b)
 
@@ -1353,6 +1388,7 @@ class VariableHoistingTest(test.TestCase):
   def testBasicResource(self):
     self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)
+
 
 if __name__ == "__main__":
   test.main()

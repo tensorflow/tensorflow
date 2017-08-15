@@ -24,38 +24,23 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class RangeDatasetOp : public OpKernel {
+class RangeDatasetOp : public DatasetOpKernel {
  public:
-  explicit RangeDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit RangeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor* start_t;
-    OP_REQUIRES_OK(ctx, ctx->input("start", &start_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(start_t->shape()),
-                errors::InvalidArgument("start must be a scalar"));
-    const int64 start = start_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
+    int64 start;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "start", &start));
 
-    const Tensor* stop_t;
-    OP_REQUIRES_OK(ctx, ctx->input("stop", &stop_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(stop_t->shape()),
-                errors::InvalidArgument("stop must be a scalar"));
-    const int64 stop = stop_t->flat<int64>()(0);
+    int64 stop;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "stop", &stop));
 
-    const Tensor* step_t;
-    OP_REQUIRES_OK(ctx, ctx->input("step", &step_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(step_t->shape()),
-                errors::InvalidArgument("step must be a scalar"));
-    const int64 step = step_t->flat<int64>()(0);
+    int64 step;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "step", &step));
     OP_REQUIRES(ctx, step != 0,
                 errors::InvalidArgument("step must be a non-zero integer."));
 
-    DatasetBase* dataset = new Dataset(start, stop, step);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(start, stop, step);
   }
 
  private:
