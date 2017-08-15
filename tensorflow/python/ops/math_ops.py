@@ -2039,16 +2039,15 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+  _INPUTS_ERR_MSG = ValueError("inputs must be a list of at least one Tensor"
+                               "with the same dtype and shape")
   if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise _INPUTS_ERR_MSG
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, ops.Tensor) for x in inputs):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise _INPUTS_ERR_MSG
   if not all(x.dtype == inputs[0].dtype for x in inputs):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise _INPTUS_ERR_MSG
   if shape is not None:
     shape = tensor_shape.as_shape(shape)
   else:
@@ -2056,27 +2055,18 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   for input_tensor in inputs:
     if isinstance(input_tensor, ops.Tensor):
       shape = shape.merge_with(input_tensor.get_shape())
-  if tensor_dtype is None:
-    tensor_dtype = inputs[0].dtype
-  if tensor_dtype != inputs[0].dtype:
+
+  # tensor_dtype is for safety only; operator's output type computed in C++
+  if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
     raise TypeError("tensor_dtype is {}, but input is of type {}"
                      .format(tensor_dtype, inputs[0].dtype))
-  if len(inputs) == 1:
+
+  if len(inputs) == 1 and name is None:
     return inputs[0]
-  with ops.name_scope(name, "AccumulateN", inputs) as name:
-    var = gen_state_ops._temporary_variable(
-        shape=tensor_shape.vector(0), dtype=tensor_dtype)
-    with ops.colocate_with(var):
-      zeros = array_ops.zeros_like(gen_control_flow_ops._merge(inputs)[0])
-      zeros.set_shape(shape)
-      ref = state_ops.assign(var, zeros, validate_shape=False)
-      update_ops = [
-          state_ops.assign_add(ref, input_tensor, use_locking=True)
-          for input_tensor in inputs
-      ]
-      with ops.control_dependencies(update_ops):
-        return gen_state_ops._destroy_temporary_variable(
-            ref, var_name=var.op.name, name=name)
+  elif len(inputs) == 1 and name is not None:
+    return array_ops.identity(inputs[0], name=name)
+  else:
+    return gen_math_ops._accumulate_n(inputs, name=name, shape=shape)
 
 
 def sigmoid(x, name=None):

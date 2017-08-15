@@ -47,6 +47,30 @@ Add all input tensors element wise.
 inputs: Must all be the same size and shape.
 )doc");
 
+REGISTER_OP("AccumulateN")
+    .Input("inputs: N * T")
+    .Output("sum: T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("shape: shape")
+    .SetIsCommutative()
+    .SetIsAggregate()
+    .SetShapeFn(shape_inference::ExplicitShape)
+    .Doc(R"doc(
+Returns the element-wise sum of a list of tensors.
+
+`tf.accumulate_n` performs the same operation as `tf.add_n`, but does not wait
+for all of its inputs to be ready before beginning to sum. This can save memory
+if inputs are ready at different times, since minimum temporary storage is
+proportional to the output size rather than the inputs size.
+
+Returns a `Tensor` of same shape and type as the elements of `inputs`.
+
+inputs: A list of `Tensor` objects, each with same shape and type.
+shape: Shape of elements of `inputs`.
+)doc");
+
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BatchMatMul")

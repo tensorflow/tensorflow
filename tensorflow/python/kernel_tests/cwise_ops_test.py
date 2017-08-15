@@ -2116,6 +2116,13 @@ class AccumulateTest(test.TestCase):
         b = variables.Variable(0.1)
         tf_val = math_ops.accumulate_n([a,b], shape=[2,2]) # Should be shape=[]
 
+  def testIncompatibleShapes(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        a = variables.Variable([0.1,0.2], shape=[1,2])
+        b = variables.Variable([0.3,0.4], shape=[2,1])
+        tf_val = math_ops.accumulate_n([a,b]) 
+
   def testWrongType(self):
     with self.test_session():
       with self.assertRaises(TypeError):

@@ -261,6 +261,8 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
 
 
 class AccumulateNTest(test_util.TensorFlowTestCase):
+  # Note that there are additional tests of this operator in
+  # cwise_ops_test.py, which does not run by default.
 
   def testFloat(self):
     np.random.seed(12345)

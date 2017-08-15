@@ -635,15 +635,7 @@ REGISTER_OP("ImmutableConst")
     .Attr("shape: shape")
     .Attr("memory_region_name: string")
     .Output("tensor: dtype")
-    .SetShapeFn([](InferenceContext* c) {
-      TensorShape shape_from_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape_from_attr, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Returns immutable tensor from memory region.
 
@@ -1305,15 +1297,7 @@ REGISTER_OP("_ParallelConcatStart")
     .Attr("shape: shape")
     .Attr("dtype: type")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Creates an empty Tensor with shape `shape` and type `dtype`.
 
@@ -3081,14 +3065,7 @@ REGISTER_OP("PlaceholderV2")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape")
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
-      c->set_output(0, output);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Deprecated(23, "Placeholder now behaves the same as PlaceholderV2.")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.

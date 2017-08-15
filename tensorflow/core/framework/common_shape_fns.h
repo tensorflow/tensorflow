@@ -216,6 +216,9 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);
 
+// Shape function for ops with an explicit "shape" attribute.
+Status ExplicitShape(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow
