@@ -25,6 +25,8 @@ projective transforms (including rotation) are supported.
 @@compose_transforms
 @@rotate
 @@transform
+@@translate
+@@translations_to_projective_transforms
 @@bipartite_match
 @@single_image_random_dot_stereograms
 """
