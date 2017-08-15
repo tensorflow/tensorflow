@@ -5,8 +5,9 @@ package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("build_defs", "JAVACOPTS")
-load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_gen_op_wrappers_java")
+load(":build_defs.bzl", "JAVACOPTS")
+load(":src/gen/gen_ops.bzl", "java_op_gen_srcjar")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 java_library(
     name = "tensorflow",
@@ -36,15 +37,16 @@ filegroup(
 filegroup(
     name = "java_op_sources",
     srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [
-        ":java_op_gensources",
+        ":java_op_gen_sources",
     ],
     visibility = [
         "//tensorflow/java:__pkg__",
     ],
 )
 
-tf_gen_op_wrappers_java(
-    name = "java_op_gensources",
+java_op_gen_srcjar(
+    name = "java_op_gen_sources",
+    gen_tool = "java_op_gen_tool",
     ops_libs = [
         "array_ops",
         "candidate_sampling_ops",
@@ -64,6 +66,24 @@ tf_gen_op_wrappers_java(
         "string_ops",
         "training_ops",
         "user_ops",
+    ],
+)
+
+# Build the gen tool as a library, as it will be linked to a core/ops binary
+# file before making it an executable. See java_op_gen_srcjar().
+cc_library(
+    name = "java_op_gen_tool",
+    srcs = glob([
+        "src/gen/cc/*.h",
+        "src/gen/cc/*.cc",
+    ]),
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -308,21 +328,4 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-cc_library(
-    name = "java_ops_gentool",
-    srcs = glob([
-        "src/gen/cc/gen_util.h",
-        "src/gen/cc/ops/*.h",
-        "src/gen/cc/ops/*.cc",
-    ]),
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
-        "//tensorflow/core:protos_all_cc",
-    ],
 )
