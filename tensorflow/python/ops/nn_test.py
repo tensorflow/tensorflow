@@ -399,6 +399,11 @@ class DropoutTest(test_lib.TestCase):
       y = nn_ops.dropout(x, keep_prob=p)
       self.assertTrue(x is y)
 
+  def testDropoutWithIntegerInputs(self):
+    x = constant_op.constant([1, 1, 1, 1, 1])
+    with self.assertRaises(ValueError):
+      _ = nn_ops.dropout(x, 0.5)
+
 
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
