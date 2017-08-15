@@ -81,7 +81,7 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
   if tensor_map is None:
     raise ValueError(
         "Trying to use tfe.Tensor objects in a graph outside graph mode. "
-        "To build a graph use tfe.defun or tfe.func_to_object.")
+        "To build a graph use tfe.defun or tfe.make_template.")
   captured_value = tensor_map.get(tape.tensor_id(value), None)
   if captured_value is None:
     captured_value = graph_placeholder(
