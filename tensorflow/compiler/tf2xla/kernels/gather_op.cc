@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op.h"
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -21,11 +23,55 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
+
+xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
+    const xla::ComputationDataHandle& input, const TensorShape& input_shape,
+    const xla::ComputationDataHandle& indices, const TensorShape& indices_shape,
+    DataType dtype, xla::ComputationBuilder* builder) {
+  const int num_indices = indices_shape.num_elements();
+
+  // Flatten the indices into 1-D.
+  auto indices_1d = builder->Reshape(indices, {num_indices});
+
+  // Compute the slice for each of these indices separately.
+  std::vector<xla::ComputationDataHandle> slices(num_indices);
+  for (int i = 0; i < num_indices; ++i) {
+    auto index = builder->Slice(indices_1d, {i}, {i + 1}, {1});
+
+    auto start_indices =
+        XlaHelpers::PadWithZeros(builder, index, input_shape.dims() - 1);
+
+    auto slice_shape = input_shape.dim_sizes();
+    slice_shape[0] = 1;
+
+    slices[i] = builder->DynamicSlice(input, start_indices, slice_shape);
+  }
+
+  xla::ComputationDataHandle gather;
+  if (slices.empty()) {
+    auto shape = input_shape.dim_sizes();
+    shape[0] = 0;
+    gather = builder->Broadcast(XlaHelpers::Zero(builder, dtype), shape);
+  } else {
+    gather = builder->ConcatInDim(slices, 0);
+  }
+
+  // Compute the shape of the result tensor, which is:
+  //    indices.shape + resource.shape[1:]
+  TensorShape gather_shape = indices_shape;
+  gather_shape.AppendShape(input_shape);
+  gather_shape.RemoveDim(indices_shape.dims());
+
+  // Reshape the concatenated slices into the shape expected of the result
+  // tensor.
+  return builder->Reshape(gather, gather_shape.dim_sizes());
+}
+
 namespace {
 
-class GatherOp : public XlaOpKernel {
+class GatherOpCustomCall : public XlaOpKernel {
  public:
-  explicit GatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit GatherOpCustomCall(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape params_shape = ctx->InputShape(0);
@@ -124,17 +170,37 @@ class GatherOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(GatherOpCustomCall);
 };
 
 REGISTER_XLA_OP(Name("Gather")
                     .TypeConstraint("Tparams", DT_FLOAT)
                     .Device(DEVICE_CPU_XLA_JIT),
-                GatherOp);
+                GatherOpCustomCall);
 REGISTER_XLA_OP(Name("GatherV2")
                     .TypeConstraint("Tparams", DT_FLOAT)
                     .Device(DEVICE_CPU_XLA_JIT),
-                GatherOp);
+                GatherOpCustomCall);
 
 }  // namespace
+
+GatherOpDynamicSlice::GatherOpDynamicSlice(OpKernelConstruction* context)
+    : XlaOpKernel(context) {}
+
+void GatherOpDynamicSlice::Compile(XlaOpKernelContext* context) {
+  xla::ComputationBuilder* builder = context->builder();
+  auto input = context->Input(0);
+  auto input_shape = context->InputShape(0);
+  auto indices = context->Input(1);
+  auto indices_shape = context->InputShape(1);
+  xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
+      input, input_shape, indices, indices_shape, DT_FLOAT, builder);
+  context->SetOutput(0, gather);
+}
+
+REGISTER_XLA_OP(Name("Gather")
+                    .TypeConstraint("Tparams", DT_FLOAT)
+                    .Device(DEVICE_GPU_XLA_JIT),
+                GatherOpDynamicSlice);
+
 }  // namespace tensorflow

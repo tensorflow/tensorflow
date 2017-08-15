@@ -392,7 +392,8 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
   HloInstruction* fusion_instruction;
 
-  VLOG(2) << "Fusing " << producer << " into " << consumer;
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
 
   auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {

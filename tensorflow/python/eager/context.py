@@ -76,9 +76,14 @@ class Context(object):
     self._summary_writer_resource = None
 
   def __del__(self):
-    if self._handle is not None:
-      with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.TFE_DeleteContext(self._handle, status)
+    try:
+      if self._handle is not None:
+        with errors.raise_exception_on_not_ok_status() as status:
+          pywrap_tensorflow.TFE_DeleteContext(self._handle, status)
+    except TypeError:
+      # Sometimes deletion during program shutdown throws TypeError as other
+      # modules are no longer available.
+      pass
 
   def __str__(self):
     lines = [
@@ -150,7 +155,7 @@ class Context(object):
   def device_name(self):
     """Returns the device name for the current thread."""
     index = self._device_index
-    return None if index < 0 else self._devices[index]
+    return "CPU:0" if index < 0 else self._devices[index]
 
   def devices(self):
     """List of the names of devices available to execute operations."""
@@ -266,6 +271,7 @@ def eager_mode():
   return get_default_context()._mode(EAGER_MODE)  # pylint: disable=protected-access
 
 
+# TODO(agarwal): get rid of this and use ops.name_scope instead.
 @contextlib.contextmanager
 def namescope(name):
   """ContextManager for creating hierarchical name scopes."""

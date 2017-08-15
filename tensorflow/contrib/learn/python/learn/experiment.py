@@ -561,6 +561,7 @@ class Experiment(object):
           "`continuous_eval_predicate_fn` must be a callable, or None.")
 
     eval_result = None
+    export_results = None
 
     # Set the default value for train_steps_per_iteration, which will be
     # overridden by other settings.
@@ -589,8 +590,9 @@ class Experiment(object):
                                         metrics=self._eval_metrics,
                                         name="one_pass",
                                         hooks=self._eval_hooks)
+      export_results = self._maybe_export(eval_result)
 
-    return eval_result, self._maybe_export(eval_result)
+    return eval_result, export_results
 
   def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
