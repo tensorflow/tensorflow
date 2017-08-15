@@ -32,6 +32,7 @@ from tensorflow.contrib.keras.python.keras import optimizers
 from tensorflow.contrib.keras.python.keras.engine import topology
 from tensorflow.contrib.keras.python.keras.engine.topology import Input
 from tensorflow.contrib.keras.python.keras.engine.topology import Layer
+from tensorflow.contrib.keras.python.keras.engine.topology import TFBaseLayer
 from tensorflow.contrib.keras.python.keras.engine.training import Model
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.framework import ops
@@ -455,7 +456,7 @@ class Sequential(Model):
             multiple output tensors, or is already connected
             somewhere else (forbidden in `Sequential` models).
     """
-    if not isinstance(layer, Layer):
+    if not isinstance(layer, (Layer, TFBaseLayer)):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))

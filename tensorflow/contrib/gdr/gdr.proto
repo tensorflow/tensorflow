@@ -3,8 +3,6 @@ syntax = "proto3";
 package tensorflow;
 option cc_enable_arenas = true;
 
-import "google/protobuf/any.proto";
-
 message RemoteMemoryRegion {
   string host = 1;
   string port = 2;
