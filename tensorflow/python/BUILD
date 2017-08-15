@@ -483,6 +483,7 @@ py_library(
         ":framework_ops",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:execute",
     ],
 )
 
@@ -1723,6 +1724,8 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -2203,6 +2206,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 

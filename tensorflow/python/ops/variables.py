@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -187,7 +188,11 @@ class Variable(object):
       ValueError: If both `variable_def` and initial_value are specified.
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+      RuntimeError: If created in EAGER mode.
     """
+    if not context.in_graph_mode():
+      raise RuntimeError("Variable not supported in Eager mode. "
+                         "Please use ResourceVariable instead")
     if variable_def:
       # If variable_def is provided, recreates the variable from its fields.
       if initial_value:
@@ -692,12 +697,15 @@ class Variable(object):
     Raises:
         ValueError: Session is not passed and no default session
     """
-    session = session or ops.get_default_session()
-    if session is None:
-      raise ValueError(
-          "Either session argument should be provided or default session "
-          "should be established")
-    session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
+    if context.in_graph_mode():
+      session = session or ops.get_default_session()
+      if session is None:
+        raise ValueError(
+            "Either session argument should be provided or default session "
+            "should be established")
+      session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
+    else:
+      self.assign(value)
 
   # Conversion to tensor.
   @staticmethod
@@ -1057,7 +1065,10 @@ class PartitionedVariable(object):
         `partitions` is not a list.
       ValueError: If `variable_list` is empty, or the `Variable` shape
         information does not match `shape`, or `partitions` has invalid values.
+      RuntimeError: If created in EAGER mode.
     """
+    if not context.in_graph_mode():
+      raise RuntimeError("PartitionedVariable not supported in Eager mode.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)

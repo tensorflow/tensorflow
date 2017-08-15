@@ -80,6 +80,11 @@ def _in_gpu_device():
   return context.get_default_context()._device_index > 0  # pylint: disable=protected-access
 
 
+@tf_contextlib.contextmanager
+def _null_contextmanager():
+  yield
+
+
 def _override_helper(clazz_object, operator, func):
   """Overrides (string) operator on Tensors to call func.
 
@@ -698,8 +703,9 @@ class EagerTensor(Tensor):
     return numpy_text
 
   def __str__(self):
-    return "tfe.Tensor(shape=%s, dtype=%s, numpy=%s)" % (
-        self.shape, self.dtype.name, self._numpy_text())
+    return "tfe.Tensor(shape=%s, dtype=%s, numpy=%s)" % (self.shape,
+                                                         self.dtype.name,
+                                                         self._numpy_text())
 
   def __repr__(self):
     return "<tfe.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
@@ -728,10 +734,14 @@ class EagerTensor(Tensor):
     with errors.raise_exception_on_not_ok_status() as status:
       return c_api.TFE_Py_TensorHandleToNumpy(cpu._handle, status)  # pylint: disable=protected-access
 
-  def _copy(self, ctx, device_name):
+  def _copy(self, ctx=None, device_name=None):
     """Copies tensor to dest device."""
     # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
+    if ctx is None:
+      ctx = context.get_default_context()
+    if device_name is None:
+      device_name = ctx.device_name
     with errors.raise_exception_on_not_ok_status() as status:
       h = c_api.TFE_TensorHandleCopyToDevice(self._handle, ctx._handle,
                                              device_name, status)
@@ -863,15 +873,26 @@ class EagerTensor(Tensor):
     raise NotImplementedError("eval not supported for Eager Tensors.")
 
 
+# TODO(josh11b): Support other cases like converting TensorShape, lists/tuples and
+# other custom conversion functions.
 def convert_to_eager_tensor(t, dtype=None):
+  """Converts the given `value` to an `EagerTensor`."""
   if isinstance(ag_core.getval(t), EagerTensor):
     if dtype is not None and t.dtype != dtype:
       raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
     return t
+  # Handle converting ResourceVariable to Tensor.
+  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
+  # general scheme in place.
+  try:
+    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
+  except AttributeError:
+    pass
   return EagerTensor(t, dtype=dtype)
 
 
 def convert_n_to_eager_tensor(values, dtype):
+  """Converts the given `values` to a list of `EagerTensor`."""
   return [convert_to_eager_tensor(t, dtype) for t in values]
 
 
@@ -1092,17 +1113,21 @@ def internal_convert_n_to_tensor(values,
   """
   if not isinstance(values, collections.Sequence):
     raise TypeError("values must be a list.")
-  ret = []
-  for i, value in enumerate(values):
-    n = None if name is None else "%s_%d" % (name, i)
-    ret.append(
-        internal_convert_to_tensor(
-            value,
-            dtype=dtype,
-            name=n,
-            as_ref=as_ref,
-            preferred_dtype=preferred_dtype))
-  return ret
+  if context.in_graph_mode():
+    ret = []
+    for i, value in enumerate(values):
+      n = None if name is None else "%s_%d" % (name, i)
+      ret.append(
+          internal_convert_to_tensor(
+              value,
+              dtype=dtype,
+              name=n,
+              as_ref=as_ref,
+              preferred_dtype=preferred_dtype))
+    return ret
+  else:
+    # TODO(josh11b): handle preferred_dtype, as_ref
+    return convert_n_to_eager_tensor(values, dtype=dtype)
 
 
 def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
@@ -2463,7 +2488,7 @@ def _name_from_scope_name(name):
   Returns:
     the name of the op (equal to scope name minus any trailing slash).
   """
-  return name[:-1] if name[-1] == "/" else name
+  return name[:-1] if (name and name[-1] == "/") else name
 
 
 class Graph(object):
@@ -4282,6 +4307,8 @@ class Graph(object):
       return tensor_or_op not in self._unfetchable_ops
 
 
+# TODO(agarwal): currently device directives in an outer eager scope will not
+# apply to inner graph mode code. Fix that.
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
@@ -4297,7 +4324,11 @@ def device(device_name_or_function):
     A context manager that specifies the default device to use for newly
     created ops.
   """
-  return get_default_graph().device(device_name_or_function)
+  if context.in_graph_mode():
+    return get_default_graph().device(device_name_or_function)
+  else:
+    # TODO(agarwal): support device functions in EAGER mode.
+    return context.device(device_name_or_function)
 
 
 def container(container_name):
@@ -4314,7 +4345,15 @@ def container(container_name):
 
 
 def colocate_with(op, ignore_existing=False):
-  return get_default_graph().colocate_with(op, ignore_existing)
+  if context.in_graph_mode():
+    return get_default_graph().colocate_with(op, ignore_existing)
+  else:
+    if not ignore_existing:
+      raise ValueError("ignore_existing must currently be True in EAGER mode.")
+    if op:
+      return device(op.device)
+    else:
+      return _null_contextmanager()
 
 
 def control_dependencies(control_inputs):
@@ -4333,7 +4372,10 @@ def control_dependencies(control_inputs):
    A context manager that specifies control dependencies for all
    operations constructed within the context.
   """
-  return get_default_graph().control_dependencies(control_inputs)
+  if context.in_graph_mode():
+    return get_default_graph().control_dependencies(control_inputs)
+  else:
+    return _null_contextmanager()
 
 
 _default_session_stack = context._DefaultStack()  # pylint: disable=protected-access
@@ -4871,18 +4913,32 @@ def name_scope(name, default_name=None, values=None):
       but `values` are.
   """
   n = default_name if name is None else name
-  if n is None and values is not None:
-    # We only raise an error if values is not None (provided) because currently
-    # tf.name_scope(None) (values=None then) is sometimes used as an idiom
-    # to reset to top scope.
-    raise ValueError(
-        "At least one of name (%s) and default_name (%s) must be provided." %
-        (name, default_name))
-  if values is None:
-    values = []
-  g = _get_graph_from_inputs(values)
-  with g.as_default(), g.name_scope(n) as scope:
-    yield scope
+  if context.in_eager_mode():
+    if n is None:
+      raise ValueError(
+          "At least one of name (%s) and default_name (%s) should be provided" %
+          (name, default_name))
+    ctx = context.get_default_context()
+    old_name = ctx.scope_name
+    scope_name = "%s/%s" % (old_name, name) if old_name else name
+    ctx.scope_name = scope_name
+    try:
+      yield scope_name
+    finally:
+      ctx.scope_name = old_name
+  else:
+    if n is None and values is not None:
+      # We only raise an error if values is not None (provided) because
+      # currently tf.name_scope(None) (values=None then) is sometimes used as an
+      # idiom to reset to top scope.
+      raise ValueError(
+          "At least one of name (%s) and default_name (%s) must be provided." %
+          (name, default_name))
+    if values is None:
+      values = []
+    g = _get_graph_from_inputs(values)
+    with g.as_default(), g.name_scope(n) as scope:
+      yield scope
 
 
 # pylint: enable=g-doc-return-or-yield
