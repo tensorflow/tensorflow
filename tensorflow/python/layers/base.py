@@ -83,6 +83,8 @@ class Layer(object):
     allowed_kwargs = {
         '_scope',
         '_reuse',
+        'input_shape',  # For compatibility with Keras `Sequential` model.
+        'batch_size',  # For compatibility with Keras `Sequential` model.
     }
     for kwarg in kwargs:
       if kwarg not in allowed_kwargs:
@@ -123,6 +125,12 @@ class Layer(object):
       self._scope = next(vs.variable_scope(scope).gen)
     else:
       self._scope = None
+
+    # Set `batch_input_shape` attribute
+    # for compatibility with Keras `Sequential` model.
+    if 'input_shape' in kwargs:
+      batch_size = kwargs.get('batch_size')
+      self.batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
 
   @property
   def scope_name(self):
@@ -787,6 +795,27 @@ class Layer(object):
                            'Use `get_input_shape_at(node_index)` '
                            'instead.')
 
+  def count_params(self):
+    """Count the total number of scalars composing the weights.
+
+    Returns:
+        An integer count.
+
+    Raises:
+        ValueError: if the layer isn't yet built
+          (in which case its weights aren't yet defined).
+    """
+    if not self.built:
+      if self.__class__.__name__ == 'Sequential':
+        self.build()  # pylint: disable=no-value-for-parameter
+      else:
+        raise ValueError('You tried to call `count_params` on ' + self.name +
+                         ', but the layer isn\'t built. '
+                         'You can build it manually via: `' + self.name +
+                         '.build(batch_input_shape)`.')
+    weight_shapes = [w.get_shape().as_list() for w in self.weights]
+    return int(sum([np.prod(w) for w in weight_shapes]))
+
   @property
   def output_shape(self):
     """Retrieves the output shape(s) of a layer.
@@ -816,13 +845,13 @@ class Layer(object):
             for shape in output_shapes
         ]
     else:
-      raise AttributeError('The layer "' + str(self.name) +
+      raise AttributeError('The layer "%s"'
                            ' has multiple inbound nodes, '
                            'with different output shapes. Hence '
                            'the notion of "output shape" is '
                            'ill-defined for the layer. '
                            'Use `get_output_shape_at(node_index)` '
-                           'instead.')
+                           'instead.' % self.name)
 
   def _assert_input_compatibility(self, inputs):
     """Checks compatibility between the layer and provided inputs.
@@ -1119,6 +1148,14 @@ class InputLayer(Layer):
             shape=batch_input_shape,
             dtype=dtype,
             name=self.name)
+
+      # For compatibility with Keras API.
+      self.is_placeholder = True
+      self.batch_input_shape = batch_input_shape
+    else:
+      # For compatibility with Keras API.
+      self.is_placeholder = False
+      self.batch_input_shape = tuple(input_tensor.get_shape().as_list())
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
