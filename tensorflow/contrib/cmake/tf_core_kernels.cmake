@@ -78,7 +78,9 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       #"${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/encode_audio_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/generate_vocab_remapping_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/load_and_remap_matrix_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/zero_initializer_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/checkpoint_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/sparse_feature_cross_kernel.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
@@ -113,7 +115,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/outfeed_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/replication_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/tpu_configuration_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/tpu_sendrecv_ops.cc"
     )
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)

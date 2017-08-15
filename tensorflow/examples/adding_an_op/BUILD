@@ -3,10 +3,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -138,7 +134,10 @@ py_test(
 tf_cc_binary(
     name = "attr_examples",
     srcs = ["attr_examples.cc"],
-    deps = ["//tensorflow/core"],
+    deps = [
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+    ],
 )
 
 filegroup(

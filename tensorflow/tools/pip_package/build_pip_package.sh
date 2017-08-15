@@ -50,6 +50,8 @@ function main() {
   while true; do
     if [[ "$1" == "--gpu" ]]; then
       GPU_FLAG="--project_name tensorflow_gpu"
+    elif [[ "$1" == "--gpudirect" ]]; then
+      GPU_FLAG="--project_name tensorflow_gpudirect"
     fi
     shift
 

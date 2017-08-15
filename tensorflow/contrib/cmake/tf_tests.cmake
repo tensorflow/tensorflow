@@ -156,6 +156,21 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
   )
 
+  if (tensorflow_BUILD_MORE_PYTHON_TESTS)
+    # Adding other major packages
+    file(GLOB_RECURSE tf_test_src_py
+      ${tf_test_src_py}
+      "${tensorflow_source_dir}/tensorflow/contrib/legacy_seq2seq/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/linalg/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
+    )
+  endif()
+
   # exclude the ones we don't want
   set(tf_test_src_py_exclude
     # Python source line inspection tests are flaky on Windows (b/36375074).
@@ -183,6 +198,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     # Loading resources in contrib doesn't seem to work on Windows
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/tensor_forest_test.py"
+    # dask need fix
+    "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/generator_io_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/graph_io_test.py"
     # Test is flaky on Windows GPU builds (b/38283730).
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
   )
@@ -215,11 +233,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
       # training tests
       "${tensorflow_source_dir}/tensorflow/python/training/basic_session_run_hooks_test.py"  # Needs tf.contrib fix.
-      "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"  # Needs portpicker.
-      "${tensorflow_source_dir}/tensorflow/python/training/monitored_session_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/quantize_training_test.py"  # Needs quantization ops to be included in windows.
-      "${tensorflow_source_dir}/tensorflow/python/training/saver_large_variable_test.py"  # Overflow error.
       "${tensorflow_source_dir}/tensorflow/python/training/supervisor_test.py"  # Flaky I/O error on rename.
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
@@ -233,6 +248,45 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/ops/cloud/bigquery_reader_ops_test.py"  # No libcurl support
       # Newly running on Windows since TensorBoard backend move. Fail on Windows and need debug.
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on Windows.
+      # Dask.Dataframe bugs on Window Build
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/tests/dataframe/tensorflow_dataframe_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/data_feeder_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/io_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/graph_actions_test.py"
+      # Need extra build
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/conditional_distribution_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/conditional_transformed_distribution_test.py"
+      # Windows Path
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/python/ops/checkpoint_ops_test.py" #TODO: Fix path
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/models_test.py"
+      # Related to Windows Multiprocessing https://github.com/fchollet/keras/issues/5071
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/engine/training_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/utils/data_utils_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/callbacks_test.py"
+      # Scipy needed
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/image_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/sigmoid_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/binomial_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/chi2_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/geometric_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/inverse_gamma_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/logistic_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/mixture_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/mvn_diag_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/mvn_full_covariance_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/mvn_tril_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/negative_binomial_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/poisson_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/quantized_distribution_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/relaxed_bernoulli_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/relaxed_onehot_categorical_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/transformed_distribution_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/vector_student_t_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/wishart_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/estimators/kmeans_test.py"
+      # Failing with TF 1.3 (TODO)
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/sinh_arcsinh_test.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

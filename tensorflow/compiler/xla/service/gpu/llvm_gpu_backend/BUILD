@@ -2,10 +2,6 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
-    features = [
-        "-parse_headers",
-        "no_layering_check",
-    ],
 )
 
 package_group(
@@ -48,9 +44,9 @@ cc_library(
         "@llvm//:ipo",
         "@llvm//:ir_reader",
         "@llvm//:linker",
-        "@llvm//:mc",
         "@llvm//:nvptx_code_gen",
         "@llvm//:objc_arc",
+        "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
         "@llvm//:transform_utils",

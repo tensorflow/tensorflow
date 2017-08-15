@@ -593,6 +593,45 @@ op {
   is_stateful: true
 }
 op {
+  name: "Angle"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns the argument of a complex number."
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the argument of each element in `input`. All elements in\n`input` must be complex numbers of the form \\(a + bj\\), where *a*\nis the real part and *b* is the imaginary part.\n\nThe argument returned by this operation is of the form \\(atan2(b, a)\\).\n\nFor example:\n```\n # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.angle(input) ==> [2.0132, 1.056]\n```"
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -1048,67 +1087,6 @@ op {
   }
   summary: "Update \'*var\' according to the centered RMSProp algorithm."
   description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\n\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nmg <- rho * mg_{t-1} + (1-rho) * grad\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)\nvar <- var - mom"
-}
-op {
-  name: "ApplyDelayCompensatedGradientDescent"
-  input_arg {
-    name: "var"
-    description: "Should be from a Variable()."
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "alpha"
-    description: "Scaling factor. Must be a scalar."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "delta"
-    description: "The change."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "lambda"
-    description: "The variance parameter."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "shadow"
-    description: "Same as \"var\"."
-    type: DT_RESOURCE
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT64
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_UINT16
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_HALF
-      }
-    }
-  }
-  attr {
-    name: "use_locking"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
-  }
-  summary: "var -= alpha * (delta + lambda * delta * (var - shadow))"
-  description: "Update \'*shadow\' by changing it to the new value of \'var\'"
-  is_stateful: true
 }
 op {
   name: "ApplyFtrl"
@@ -7135,7 +7113,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels (height x width) and the bounding\nbox is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of\nthe bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -7194,7 +7172,7 @@ op {
     type: "type"
   }
   summary: "Interleave the values from the `data` tensors into a single tensor."
-  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
+  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result. If you do not need this guarantee, ParallelDynamicStitch might\nperform better on some devices.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
 }
 op {
   name: "EditDistance"
@@ -9882,6 +9860,25 @@ op {
     type: "type"
   }
   summary: "Return a tensor with the same shape and contents as the input tensor or value."
+}
+op {
+  name: "IdentityN"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Returns a list of tensors with the same shapes and contents as the input"
+  description: "tensors.\n\nThis op can be used to override the gradient for complicated functions. For\nexample, suppose y = f(x) and we wish to apply a custom function g for backprop\nsuch that dx = g(dy). In Python,\n\n```python\nwith tf.get_default_graph().gradient_override_map(\n    {\'IdentityN\': \'OverrideGradientWithG\'}):\n  y, _ = identity_n([f(x), x])\n\n@tf.RegisterGradient(\'OverrideGradientWithG\')\ndef ApplyG(op, dy, _):\n  return [None, g(dy)]  # Do not backprop to f(x).\n```"
 }
 op {
   name: "IdentityReader"
@@ -14986,6 +14983,35 @@ op {
   description: "The input tensors are all required to have size 1 in the first dimension.\n\nFor example:\n\n```\n# \'x\' is [[1, 4]]\n# \'y\' is [[2, 5]]\n# \'z\' is [[3, 6]]\nparallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\n```\n\nThe difference between concat and parallel_concat is that concat requires all\nof the inputs be computed before the operation will begin but doesn\'t require\nthat the input shapes be known during graph construction.  Parallel concat\nwill copy pieces of the input into the output as they become available, in\nsome situations this can provide a performance benefit."
 }
 op {
+  name: "ParallelDynamicStitch"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "data"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "merged"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Interleave the values from the `data` tensors into a single tensor."
+  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues may be merged in parallel, so if an index appears in both `indices[m][i]`\nand `indices[n][j]`, the result may be invalid. This differs from the normal\nDynamicStitch operator that defines the behavior in that case.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
+}
+op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
@@ -15577,6 +15603,36 @@ op {
   }
   summary: "Computes the power of one value to another."
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
+}
+op {
+  name: "PrefetchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The maximum number of elements to buffer in an iterator over\nthis dataset."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that asynchronously prefetches elements from `input_dataset`."
+  is_stateful: true
 }
 op {
   name: "PreventGradient"

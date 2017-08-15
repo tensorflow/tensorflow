@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -134,6 +135,10 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.m = constant_op.constant(
         [[0.0, 1.0, 2.0], [-4.0, -1.0, 0.0]], dtype=dtypes.float32, name="m")
     self.y = math_ops.matmul(self.m, self.xph, name="y")
+
+    self.sparse_ph = array_ops.sparse_placeholder(
+        dtypes.float32, shape=([5, 5]), name="sparse_placeholder")
+    self.sparse_add = sparse_ops.sparse_add(self.sparse_ph, self.sparse_ph)
 
     self.sess = session.Session()
 
@@ -247,6 +252,16 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual([1, 2, 3],
                      wrapped_sess.observers["run_start_cli_run_numbers"])
     self.assertEqual([], wrapped_sess.observers["run_end_cli_run_numbers"])
+
+  def testRunningWithSparsePlaceholderFeedWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
+
+    sparse_feed = ([[0, 1], [0, 2]], [10.0, 20.0])
+    sparse_result = wrapped_sess.run(
+        self.sparse_add, feed_dict={self.sparse_ph: sparse_feed})
+    self.assertAllEqual([[0, 1], [0, 2]], sparse_result.indices)
+    self.assertAllClose([20.0, 40.0], sparse_result.values)
 
   def testRunsUnderNonDebugThenDebugMode(self):
     # Do two NON_DEBUG_RUNs, followed by DEBUG_RUNs.
@@ -387,7 +402,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
     # Use an impossible device name to cause an error before graph execution.
-    with ops.device("/gpu:1337"):
+    with ops.device("/device:GPU:1337"):
       w = variables.Variable([1.0] * 10, name="w")
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(

@@ -817,6 +817,12 @@ class _WeightedSparseColumn(
     return fc_core._CategoricalColumn.IdWeightPair(  # pylint: disable=protected-access
         self.id_tensor(input_tensor), self.weight_tensor(input_tensor))
 
+  def is_compatible(self, other_column):
+    """Check compatibility with other sparse column."""
+    if isinstance(other_column, _WeightedSparseColumn):
+      return self.sparse_id_column.is_compatible(other_column.sparse_id_column)
+    return self.sparse_id_column.is_compatible(other_column)
+
 
 def weighted_sparse_column(sparse_id_column,
                            weight_column_name,
@@ -1340,7 +1346,8 @@ def shared_embedding_columns(sparse_id_columns,
     ValueError: if sparse_id_columns is empty, or its elements are not
       compatible with each other.
     TypeError: if `sparse_id_columns` is not a sequence or is a string. If at
-      least one element of `sparse_id_columns` is not a `SparseTensor`.
+      least one element of `sparse_id_columns` is not a `SparseColumn` or a
+      `WeightedSparseColumn`.
   """
   if (not isinstance(sparse_id_columns, collections.Sequence) or
       isinstance(sparse_id_columns, six.string_types)):
@@ -1351,9 +1358,11 @@ def shared_embedding_columns(sparse_id_columns,
     raise ValueError("The input sparse_id_columns should have at least one "
                      "element.")
   for sparse_id_column in sparse_id_columns:
-    if not isinstance(sparse_id_column, _SparseColumn):
-      raise TypeError("Elements of sparse_id_columns must be _SparseColumn, "
-                      "but {} is not.".format(sparse_id_column))
+    if not (isinstance(sparse_id_column, _SparseColumn) or
+            isinstance(sparse_id_column, _WeightedSparseColumn)):
+      raise TypeError("Elements of sparse_id_columns must be _SparseColumn or "
+                      "_WeightedSparseColumn, but {} is not."
+                      .format(sparse_id_column))
 
   if len(sparse_id_columns) == 1:
     return [
@@ -1362,17 +1371,30 @@ def shared_embedding_columns(sparse_id_columns,
                          shared_embedding_name, max_norm=max_norm,
                          trainable=trainable)]
   else:
-    # check compatibility of sparse_id_columns
+    # Check compatibility of sparse_id_columns
     compatible = True
     for column in sparse_id_columns[1:]:
-      compatible = compatible and column.is_compatible(sparse_id_columns[0])
+      if isinstance(sparse_id_columns[0], _WeightedSparseColumn):
+        compatible = compatible and sparse_id_columns[0].is_compatible(column)
+      else:
+        compatible = compatible and column.is_compatible(sparse_id_columns[0])
     if not compatible:
       raise ValueError("The input sparse id columns are not compatible.")
     # Construct the shared name and size for shared embedding space.
     if not shared_embedding_name:
       # Sort the columns so that shared_embedding_name will be deterministic
       # even if users pass in unsorted columns from a dict or something.
-      sorted_columns = sorted(sparse_id_columns)
+      # Since they are different classes, ordering is SparseColumns first,
+      # then WeightedSparseColumns.
+      sparse_columns = []
+      weighted_sparse_columns = []
+      for column in sparse_id_columns:
+        if isinstance(column, _SparseColumn):
+          sparse_columns.append(column)
+        else:
+          weighted_sparse_columns.append(column)
+      sorted_columns = sorted(sparse_columns) + sorted(
+          weighted_sparse_columns, key=lambda x: x.name)
       if len(sorted_columns) <= 3:
         shared_embedding_name = "_".join([column.name
                                           for column in sorted_columns])

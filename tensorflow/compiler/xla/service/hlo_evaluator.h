@@ -101,6 +101,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return hlo->Visit(typed_visitors_.at(hlo->shape().element_type()).get());
   }
 
+  Status Preprocess(HloInstruction* hlo) override;
+
+  Status Postprocess(HloInstruction* hlo) override;
+
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
@@ -114,8 +118,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
 
   Status HandleReshape(HloInstruction* reshape) override;
-
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
 
   Status HandleTranspose(HloInstruction* transpose) override;
 

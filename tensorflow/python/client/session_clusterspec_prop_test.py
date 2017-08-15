@@ -173,7 +173,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     #
     # W0718 17:14:41.521534  190121 device_mgr.cc:107] Unknown device:
     #     /job:worker/replica:0/task:0/device:CPU:0 all devices:
-    #     /job:local/replica:0/task:0/gpu:0,
+    #     /job:local/replica:0/task:0/device:GPU:0,
     #     /job:local/replica:0/task:0/device:GPU:0,
     #     /job:local/replica:0/task:0/cpu:1, CPU:0, GPU:0,
     #     /job:local/replica:0/task:0/device:CPU:1,
@@ -198,7 +198,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
         sum1 = input1 + input2
 
       if test.is_gpu_available():
-        device_str = '/job:worker/task:0/gpu:0'
+        device_str = '/job:worker/task:0/device:GPU:0'
       else:
         device_str = '/job:worker/task:0/cpu:1'
       with ops.device(device_str):

@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_DEBUG_IO_UTILS_H_
 #define TENSORFLOW_DEBUG_IO_UTILS_H_
 
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
@@ -48,6 +53,9 @@ struct DebugNodeKey {
   // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
   //   ,job_localhost,replica_0,task_0,cpu_0.
   static const string DeviceNameToDevicePath(const string& device_name);
+
+  bool operator==(const DebugNodeKey& other) const;
+  bool operator!=(const DebugNodeKey& other) const;
 
   const string device_name;
   const string node_name;
@@ -219,6 +227,19 @@ class DebugFileIO {
 
 }  // namespace tensorflow
 
+namespace std {
+
+template <>
+struct hash<::tensorflow::DebugNodeKey> {
+  size_t operator()(const ::tensorflow::DebugNodeKey& k) const {
+    return ::tensorflow::Hash64(
+        ::tensorflow::strings::StrCat(k.device_name, ":", k.node_name, ":",
+                                      k.output_slot, ":", k.debug_op, ":"));
+  }
+};
+
+}  // namespace std
+
 // TODO(cais): Support grpc:// debug URLs in open source once Python grpc
 //   genrule becomes available. See b/23796275.
 #ifndef PLATFORM_WINDOWS
@@ -252,13 +273,27 @@ class DebugGrpcChannel {
   // Write an Event proto to the debug gRPC stream.
   //
   // Thread-safety: Safe with respect to other calls to the same method and
-  //   call to Close().
+  //   calls to ReadEventReply() and Close().
+  //
   // Args:
   //   event: The event proto to be written to the stream.
   //
   // Returns:
   //   True iff the write is successful.
   bool WriteEvent(const Event& event);
+
+  // Read an EventReply proto from the debug gRPC stream.
+  //
+  // This method blocks and waits for an EventReply from the server.
+  // Thread-safety: Safe with respect to other calls to the same method and
+  //   calls to WriteEvent() and Close().
+  //
+  // Args:
+  //   event_reply: the to-be-modified EventReply proto passed as reference.
+  //
+  // Returns:
+  //   True iff the read is successful.
+  bool ReadEventReply(EventReply* event_reply);
 
   // Receive EventReplies from server (if any) and close the stream and the
   // channel.
@@ -294,48 +329,49 @@ class DebugGrpcIO {
   static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
                                                 const string& grpc_stream_url);
 
-  // Checks whether a debug watch key is allowed to send data to a given grpc://
-  // debug URL given the current gating status.
-  //
-  // Args:
-  //   watch_key: debug tensor watch key, in the format of
-  //     tensor_name:debug_op, e.g., "Weights:0:DebugIdentity".
-  //   grpc_debug_url: the debug URL, e.g., "grpc://localhost:3333",
-  //
-  // Returns:
-  //   Whether the sending of debug data to grpc_debug_url should
-  //     proceed.
-  static bool IsGateOpen(const string& watch_key, const string& grpc_debug_url);
+  // Receive an EventReply proto through a debug gRPC stream.
+  static Status ReceiveEventReplyProtoThroughGrpcStream(
+      EventReply* event_reply, const string& grpc_stream_url);
+
+  // Check whether a debug watch key is read-activated at a given gRPC URL.
+  static bool IsReadGateOpen(const string& grpc_debug_url,
+                             const string& watch_key);
+
+  // Check whether a debug watch key is write-activated (i.e., read- and
+  // write-activated) at a given gRPC URL.
+  static bool IsWriteGateOpen(const string& grpc_debug_url,
+                              const string& watch_key);
 
   // Closes a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
   static Status CloseGrpcStream(const string& grpc_stream_url);
 
-  // Enables a debug watch key at a grpc:// debug URL.
-  static void EnableWatchKey(const string& grpc_debug_url,
-                             const string& watch_key);
-
-  // Disables a debug watch key at a grpc:// debug URL.
-  static void DisableWatchKey(const string& grpc_debug_url,
-                              const string& watch_key);
+  // Set the gRPC state of a debug node key.
+  // TODO(cais): Include device information in watch_key.
+  static void SetDebugNodeKeyGrpcState(
+      const string& grpc_debug_url, const string& watch_key,
+      const EventReply::DebugOpStateChange::State new_state);
 
  private:
+  using DebugNodeName2State =
+      std::unordered_map<string, EventReply::DebugOpStateChange::State>;
+
   // Returns a global map from grpc debug URLs to the corresponding
   // DebugGrpcChannels.
   static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
   GetStreamChannels();
 
-  // Returns a global map from grpc debug URLs to the enabled gated debug nodes.
-  // The keys are grpc:// URLs of the debug servers, e.g., "grpc://foo:3333".
-  // Each value element of the value has the format
-  // <node_name>:<output_slot>:<debug_op>", e.g.,
-  // "Weights_1:0:DebugNumericSummary".
-  static std::unordered_map<string, std::unordered_set<string>>*
-  GetEnabledWatchKeys();
+  // Returns a map from debug URL to a map from debug op name to enabled state.
+  static std::unordered_map<string, DebugNodeName2State>*
+  GetEnabledDebugOpStates();
 
+  // Returns a map from debug op names to enabled state, for a given debug URL.
+  static DebugNodeName2State* GetEnabledDebugOpStatesAtUrl(
+      const string& grpc_debug_url);
+
+  // Clear enabled debug op state from all debug URLs (if any).
   static void ClearEnabledWatchKeys();
-  static void CreateEmptyEnabledSet(const string& grpc_debug_url);
 
   static mutex streams_mu;
   static int64 channel_connection_timeout_micros;

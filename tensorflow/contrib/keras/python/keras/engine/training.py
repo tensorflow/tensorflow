@@ -856,7 +856,7 @@ class Model(Container):
     def append_metric(layer_num, metric_name, metric_tensor):
       """Helper function used in loop below."""
       if len(self.output_names) > 1:
-        metric_name = self.output_layers[layer_num].name + '_' + metric_name
+        metric_name = self._output_layers[layer_num].name + '_' + metric_name
       self.metrics_names.append(metric_name)
       self.metrics_tensors.append(metric_tensor)
 
@@ -922,8 +922,12 @@ class Model(Container):
       if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
         inputs += [K.learning_phase()]
 
+      constraints = {}
+      for w in self._collected_trainable_weights:
+        if hasattr(w, 'constraint') and w.constraint is not None:
+          constraints[w] = w.constraint
       training_updates = self.optimizer.get_updates(
-          self._collected_trainable_weights, self.constraints, self.total_loss)
+          self._collected_trainable_weights, constraints, self.total_loss)
       updates = self.updates + training_updates
       # Gets loss and metrics. Updates weights at each call.
       self.train_function = K.function(

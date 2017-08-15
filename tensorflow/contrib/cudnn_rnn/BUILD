@@ -3,7 +3,6 @@
 #   APIs are meant to change over time.
 package(
     default_visibility = ["//visibility:private"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0

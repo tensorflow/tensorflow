@@ -36,7 +36,7 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib_internal",
         "@protobuf_archive//:protobuf",
     ],
 )

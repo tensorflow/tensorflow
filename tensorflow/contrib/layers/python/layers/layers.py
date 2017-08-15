@@ -1944,7 +1944,7 @@ def gdn(inputs,
   spatial dimensions. It is similar to local response normalization, but much
   more flexible, as `beta` and `gamma` are trainable parameters.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     inverse: If `False` (default), compute GDN response. If `True`, compute IGDN
       response (one step of fixed point iteration to invert GDN; the division
@@ -2427,6 +2427,7 @@ def separable_convolution2d(
     depth_multiplier,
     stride=1,
     padding='SAME',
+    data_format=DATA_FORMAT_NHWC,
     rate=1,
     activation_fn=nn.relu,
     normalizer_fn=None,
@@ -2462,6 +2463,7 @@ def separable_convolution2d(
     stride: A list of length 2: [stride_height, stride_width], specifying the
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: One of 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
     rate: A list of length 2: [rate_height, rate_width], specifying the dilation
       rates for atrous convolution. Can be an int if both rates are the same.
       If any value is larger than one, then both stride values need to be one.
@@ -2486,7 +2488,11 @@ def separable_convolution2d(
 
   Returns:
     A `Tensor` representing the output of the operation.
+  Raises:
+    ValueError: If `data_format` is invalid.
   """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
   layer_variable_getter = _build_variable_getter(
       {'bias': 'biases',
        'depthwise_kernel': 'depthwise_weights',
@@ -2497,6 +2503,8 @@ def separable_convolution2d(
       custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
     if num_outputs is not None:
       # Apply separable conv using the SeparableConvolution2D layer.
       layer = convolutional_layers.SeparableConvolution2D(
@@ -2504,7 +2512,7 @@ def separable_convolution2d(
           kernel_size=kernel_size,
           strides=stride,
           padding=padding,
-          data_format='channels_last',
+          data_format=df,
           dilation_rate=utils.two_element_tuple(rate),
           activation=None,
           depth_multiplier=depth_multiplier,
@@ -2540,7 +2548,8 @@ def separable_convolution2d(
       dtype = inputs.dtype.base_dtype
       kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
       stride_h, stride_w = utils.two_element_tuple(stride)
-      num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+      num_filters_in = utils.channel_dimension(
+          inputs.get_shape(), df, min_rank=4)
       weights_collections = utils.get_variable_collections(
           variables_collections, 'weights')
 
@@ -2557,7 +2566,8 @@ def separable_convolution2d(
       strides = [1, stride_h, stride_w, 1]
 
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
-                                    rate=utils.two_element_tuple(rate))
+                                    rate=utils.two_element_tuple(rate),
+                                    data_format=data_format)
       num_outputs = depth_multiplier * num_filters_in
 
       if normalizer_fn is not None:
@@ -2574,7 +2584,7 @@ def separable_convolution2d(
                                             regularizer=biases_regularizer,
                                             trainable=trainable,
                                             collections=biases_collections)
-          outputs = nn.bias_add(outputs, biases)
+          outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)

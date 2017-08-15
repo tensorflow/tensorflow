@@ -10,6 +10,7 @@
 // hard coded model files
 // LINT.IfChange
 def models = ['inception5h.zip',
+              'ssd_mobilenet_v1_android_export.zip',
               'mobile_multibox_v1a.zip',
               'stylize_v1.zip']
 // LINT.ThenChange(//tensorflow/examples/android/BUILD)

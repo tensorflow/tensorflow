@@ -17,7 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+
+// Polymorphic datasets should support all primitive TensorFlow
+// types. Use this macro to expand `m(T)` once for each primitive type
+// `T`, e.g. to build a `switch` statement.
+#define TF_CALL_DATASET_TYPES(m) TF_CALL_ALL_TYPES(m) TF_CALL_QUANTIZED_TYPES(m)
 
 namespace tensorflow {
 

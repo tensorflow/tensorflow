@@ -153,11 +153,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl",
       urls = [
-          "http://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
-          "https://github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz",
+          "https://github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz",
       ],
-      sha256 = "3cc2501fb209e1fd0960a5f61c919438f9619c68a644dcebf0fdf69b07460c57",
-      strip_prefix = "mklml_lnx_2018.0.20170425",
+      sha256 = "57ba56c4c243f403ff78f417ff854ef50b9eddf4a610a917b7c95e7fa8553a4b",
+      strip_prefix = "mklml_lnx_2018.0.20170720",
       build_file = str(Label("//third_party/mkl:mkl.BUILD")),
       repository = tf_repo_name,
   )
@@ -528,11 +528,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9aafb854cc7cb8df8338c50cb411a54ce1e09796.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/9aafb854cc7cb8df8338c50cb411a54ce1e09796.tar.gz",
       ],
-      sha256 = "1a085c995522fa19900568c03eb595b425df53842c7f281e3ab79aaa04affffa",
-      strip_prefix = "llvm-4d98985c94c36b9eb4396c91fe0a72a0c5f707b2",
+      sha256 = "2a6d4c23f6660d9130d8d5f16267db53a87f8d0104f9618b558c033570f110af",
+      strip_prefix = "llvm-9aafb854cc7cb8df8338c50cb411a54ce1e09796",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -679,7 +679,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "cub_archive",
       urls = [
           "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.6.4.zip",
-          "https://github.com/NVlabs/cub/archive/1.6.4.zip",
       ],
       sha256 = "966d0c4f41e2bdc81aebf9ccfbf0baffaac5a74f00b826b06f4dee79b2bb8cee",
       strip_prefix = "cub-1.6.4",

@@ -32,10 +32,11 @@ from setuptools.dist import Distribution
 _VERSION = '1.3.0-rc2'
 
 REQUIRED_PACKAGES = [
-    'numpy >= 1.11.0',
+    'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.3.0',
     'tensorflow-tensorboard >= 0.1.0, < 0.2.0',
+    'autograd >= 1.1.11',
 ]
 
 project_name = 'tensorflow'

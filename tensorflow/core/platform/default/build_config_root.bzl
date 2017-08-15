@@ -46,3 +46,11 @@ def tf_additional_binary_deps():
       "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
       "//conditions:default": [],
   })
+
+def tf_additional_gdr_deps():
+  return select({
+      "//tensorflow:with_gdr_support": [
+          "//tensorflow/contrib/gdr:gdr_server_lib",
+      ],
+      "//conditions:default": [],
+  })

@@ -32,6 +32,7 @@ def xla_test(name,
              args=[],
              tags=[],
              copts=[],
+             data=[],
              backend_tags={},
              backend_args={},
              **kwargs):
@@ -115,6 +116,7 @@ def xla_test(name,
     this_backend_tags = ["xla_%s" % backend]
     this_backend_copts = []
     this_backend_args = backend_args.get(backend, [])
+    this_backend_data = []
     if backend == "cpu":
       backend_deps = ["//tensorflow/compiler/xla/service:cpu_plugin"]
       backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_cpu"]
@@ -131,6 +133,7 @@ def xla_test(name,
       this_backend_copts += plugins[backend]["copts"]
       this_backend_tags += plugins[backend]["tags"]
       this_backend_args += plugins[backend]["args"]
+      this_backend_data += plugins[backend]["data"]
     else:
       fail("Unknown backend %s" % backend)
 
@@ -146,6 +149,7 @@ def xla_test(name,
         this_backend_copts,
         args=args + this_backend_args,
         deps=deps + backend_deps,
+        data=data + this_backend_data,
         **kwargs)
 
     test_names.append(test_name)
@@ -228,14 +232,18 @@ def generate_backend_test_macros(backends=[]):
   if not backends:
     backends = all_backends
   for backend in filter_backends(backends):
+    manifest = ""
+    if backend in plugins:
+      manifest = plugins[backend]["disabled_manifest"]
+
     native.cc_library(
         name="test_macros_%s" % backend,
         testonly = True,
         srcs = ["test_macros.cc"],
         hdrs = ["test_macros.h"],
         copts = [
-            "-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper(),
-            "-DXLA_DISABLED_MANIFEST=\\\"\\\""
+          "-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper(),
+          "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
         ],
         deps = [
             "//tensorflow/compiler/xla:types",

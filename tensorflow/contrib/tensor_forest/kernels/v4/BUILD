@@ -148,6 +148,9 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
