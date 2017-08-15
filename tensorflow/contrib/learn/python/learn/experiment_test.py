@@ -718,7 +718,7 @@ class ExperimentTest(test.TestCase):
       ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
       self.assertEqual(0, est.fit_count)
       self.assertEqual(0, est.eval_count)
-      self.assertEqual(1, est.export_count)
+      self.assertEqual(0, est.export_count)
 
   def test_continuous_train_and_eval_with_adapted_steps_per_iteration(self):
     mock_estimator = test.mock.Mock(core_estimator.Estimator)

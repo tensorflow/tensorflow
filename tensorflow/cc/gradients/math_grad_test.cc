@@ -938,5 +938,60 @@ TEST_F(NaryGradTest, AddN) {
   RunTest(xs, {shape, shape, shape}, {y}, {shape});
 }
 
+TEST_F(NaryGradTest, Add) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Add(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Sub) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Sub(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Mul) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Mul(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Div) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y = Div(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, RealDiv) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y =
+      RealDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, SquaredDifference) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = SquaredDifference(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
 }  // namespace
 }  // namespace tensorflow
