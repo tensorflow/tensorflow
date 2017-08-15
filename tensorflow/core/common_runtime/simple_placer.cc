@@ -682,7 +682,7 @@ Status SimplePlacer::Run() {
       int dst_root_id = colocation_graph.FindRoot(dst->id());
       auto& src_root = colocation_graph.members_[src_root_id];
       auto& dst_root = colocation_graph.members_[dst_root_id];
-      // If both the source node and this node have paritally
+      // If both the source node and this node have partially
       // specified a device, then 'node's device should be
       // cleared: the reference edge forces 'node' to be on the
       // same device as the source node.

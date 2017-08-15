@@ -626,7 +626,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(instruction_to_fuse->IsFusable());
   if (GetModule()) {
-    XLA_VLOG_LINES(1, GetModule()->ToString());
+    XLA_VLOG_LINES(3, GetModule()->ToString());
   }
   HloInstruction* clone = nullptr;
   if (called_computations_.empty()) {
@@ -1909,9 +1909,10 @@ bool HloInstruction::IsFusable() const {
     case HloOpcode::kRecv:
       return false;
     // Only fuse Rng if it is used once, otherwise the random numbers generated
-    // will be different in each fusion.
+    // will be different in each fusion. If it is the root (user count = 0)
+    // then it is the equivalent of having one user.
     case HloOpcode::kRng:
-      return users_.size() == 1;
+      return users_.size() <= 1;
     default:
       return true;
   }

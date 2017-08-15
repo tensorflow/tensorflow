@@ -40,6 +40,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 
 # pylint: enable=protected-access
@@ -445,11 +446,12 @@ class RNNCellTest(test.TestCase):
       # Can't perform this test w/o a GPU
       return
 
+    gpu_dev = test.gpu_device_name()
     with self.test_session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1, 3])
-        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), "/gpu:0")
+        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), gpu_dev)
         with ops.device("/cpu:0"):
           outputs, _ = rnn.dynamic_rnn(
               cell=cell, inputs=x, dtype=dtypes.float32)
@@ -461,7 +463,7 @@ class RNNCellTest(test.TestCase):
         _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
 
       step_stats = run_metadata.step_stats
-      ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+      ix = 0 if gpu_dev in step_stats.dev_stats[0].device else 1
       gpu_stats = step_stats.dev_stats[ix].node_stats
       cpu_stats = step_stats.dev_stats[1 - ix].node_stats
       self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])

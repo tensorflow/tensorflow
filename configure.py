@@ -384,12 +384,16 @@ def set_action_env_var(environ_cp,
 def convert_version_to_int(version):
   """Convert a version number to a integer that can be used to compare.
 
+  Version strings of the form X.YZ and X.Y.Z-xxxxx are supported. The
+  'xxxxx' part, for instance 'homebrew' on OS/X, is ignored.
+
   Args:
-    version: a version to be covnerted
+    version: a version to be converted
 
   Returns:
     An integer if converted successfully, otherwise return None.
   """
+  version = version.split('-')[0]
   version_segments = version.split('.')
   for seg in version_segments:
     if not seg.isdigit():
@@ -427,6 +431,8 @@ def check_bazel_version(min_version):
     print('WARNING: current bazel installation is not a release version.')
     print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
+
+  print("You have bazel %s installed." % curr_version)
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
@@ -937,6 +943,8 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
                 'with_hdfs_support', False)
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
+                False)
+  set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
                 False)
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False)

@@ -183,6 +183,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_gdr_support",
+    values = {"define": "with_gdr_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],

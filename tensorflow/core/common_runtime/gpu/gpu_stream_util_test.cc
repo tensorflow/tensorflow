@@ -106,9 +106,9 @@ TEST_F(GpuStreamUtilTest, SimpleGraphManyStreams) {
 TEST_F(GpuStreamUtilTest, StreamOverrides) {
   auto root = Scope::NewRootScope().ExitOnError();
   ops::_Recv(root.WithOpName("input"), DT_FLOAT, "input", "/cpu:0", 0,
-             "/gpu:0");
+             "/device:GPU:0");
   Output n = ops::MatMul(root, {}, {});
-  ops::_Send(root.WithOpName("output"), n, "output", "/gpu:0", 0, "/cpu:0");
+  ops::_Send(root.WithOpName("output"), n, "output", "/device:GPU:0", 0, "/cpu:0");
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&g));
 

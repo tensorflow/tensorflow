@@ -1944,7 +1944,7 @@ def gdn(inputs,
   spatial dimensions. It is similar to local response normalization, but much
   more flexible, as `beta` and `gamma` are trainable parameters.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     inverse: If `False` (default), compute GDN response. If `True`, compute IGDN
       response (one step of fixed point iteration to invert GDN; the division

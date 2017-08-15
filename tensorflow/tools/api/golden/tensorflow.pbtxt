@@ -910,7 +910,7 @@ tf_module {
   }
   member_method {
     name: "einsum"
-    argspec: "args=[\'equation\'], varargs=inputs, keywords=None, defaults=None"
+    argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "encode_base64"
@@ -1070,7 +1070,7 @@ tf_module {
   }
   member_method {
     name: "global_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "global_variables_initializer"
@@ -1226,7 +1226,7 @@ tf_module {
   }
   member_method {
     name: "local_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "local_variables_initializer"
@@ -1346,11 +1346,11 @@ tf_module {
   }
   member_method {
     name: "model_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "moving_average_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "multinomial"
@@ -1950,7 +1950,7 @@ tf_module {
   }
   member_method {
     name: "trainable_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "transpose"

@@ -1562,26 +1562,26 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
 
   def testColocationDeviceInteraction(self):
     with ops.device("/cpu:0"):
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         a = constant_op.constant([2.0], name="a")
       with ops.colocate_with(a.op):
         # 'b' is created in the scope of /cpu:0, but it is
-        # colocated with 'a', which is on '/gpu:0'.  colocate_with
+        # colocated with 'a', which is on '/device:GPU:0'.  colocate_with
         # overrides devices because it is a stronger constraint.
         b = constant_op.constant(3.0)
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
     self.assertEqual(a.op.device, b.op.device)
 
   def testColocationCanonicalization(self):
-    with ops.device("/gpu:0"):
+    with ops.device("/device:GPU:0"):
       _ = constant_op.constant(2.0)
-    with ops.device(lambda op: "/gpu:0"):
+    with ops.device(lambda op: "/device:GPU:0"):
       b = constant_op.constant(3.0)
     with ops.get_default_graph().colocate_with(b):
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         c = constant_op.constant(4.0)
 
-    # A's device will be /gpu:0
+    # A's device will be /device:GPU:0
     # B's device will be /device:GPU:0
     # C's device will be /device:GPU:0 because it
     # inherits B's device name, after canonicalizing the names.
@@ -1589,10 +1589,10 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
 
   def testLocationOverrides(self):
     with ops.device("/cpu:0"):
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         a = constant_op.constant([2.0], name="a")
         # Note that this colocation is "redundant", since we are
-        # within the scope of "/gpu:0".  However, we would like to
+        # within the scope of "/device:GPU:0".  However, we would like to
         # preserve in the GraphDef that these two ops should be
         # colocated in a portable way.
         with ops.colocate_with(a.op):
@@ -1659,7 +1659,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
   def testInconsistentDeviceWithinColocate(self):
-    with ops.device("/gpu:0"):
+    with ops.device("/device:GPU:0"):
       a = constant_op.constant([2.0], name="a")
       with ops.colocate_with(a.op):
         # This is allowed due to legacy but clearly wrong, since we

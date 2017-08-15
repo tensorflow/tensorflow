@@ -57,6 +57,8 @@ function main() {
     fi
     if [[ "$1" == "--gpu" ]]; then
       GPU_BUILD=1
+    elif [[ "$1" == "--gpudirect" ]]; then
+      GPU_FLAG="--project_name tensorflow_gpudirect"
     fi
     shift
 

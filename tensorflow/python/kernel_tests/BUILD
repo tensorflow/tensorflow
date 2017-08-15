@@ -134,6 +134,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
     ],
     shard_count = 5,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -1444,6 +1445,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -1661,6 +1663,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 4,
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2640,6 +2643,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 20,
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2725,6 +2729,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 3,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(

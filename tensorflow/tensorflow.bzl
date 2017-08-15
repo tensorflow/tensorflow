@@ -155,6 +155,7 @@ WIN_COPTS = [
     "/Iexternal/gemmlowp",
     "/wd4018", # -Wno-sign-compare
     "/U_HAS_EXCEPTIONS", "/D_HAS_EXCEPTIONS=1", "/EHsc", # -fno-exceptions
+    "/DNOGDI",
 ]
 
 # LINT.IfChange

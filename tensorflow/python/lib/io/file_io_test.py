@@ -1,3 +1,4 @@
+# This Python file uses the following encoding: utf-8
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -450,6 +451,12 @@ class FileIoTest(test.TestCase):
     f.flush()
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
+
+  def testUTF8StringPath(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file")
+    file_io.write_string_to_file(file_path, "testing")
+    with file_io.FileIO(file_path, mode="rb") as f:
+      self.assertEqual(b"testing", f.read())
 
   def testEof(self):
     """Test that reading past EOF does not raise an exception."""

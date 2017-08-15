@@ -634,7 +634,7 @@ class MixtureBenchmark(test.Benchmark):
     np.random.seed(127)
     with session.Session(config=config, graph=ops.Graph()) as sess:
       random_seed.set_random_seed(0)
-      with ops.device("/gpu:0" if use_gpu else "/cpu:0"):
+      with ops.device("/device:GPU:0" if use_gpu else "/cpu:0"):
         mixture = create_distribution(
             num_components=num_components,
             batch_size=batch_size,

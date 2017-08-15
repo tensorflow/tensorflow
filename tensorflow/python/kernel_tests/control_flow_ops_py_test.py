@@ -1427,9 +1427,8 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
-    gpu_dev_name = test.gpu_device_name().lower() if test.is_gpu_available(
-    ) else "/gpu:0"
-    gpu_short_name = gpu_dev_name.split("/")[-1]
+    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
+    ) else "/device:GPU:0"
 
     with self.test_session(graph=ops.Graph()) as sess:
       v = constant_op.constant(2.0, name="v")
@@ -1443,19 +1442,19 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(
           loop, v, colocate_gradients_with_ops=colocate)[0]
     r_ops = r.graph.get_operations()
-    r_devices = [(op.name, op.device.lower()) for op in r_ops]
+    r_devices = [(op.name, op.device) for op in r_ops]
 
     self.assertTrue(any("Square" in op.name for op in r_ops))
 
     for (name, dev) in r_devices:
       if not colocate and name.endswith("Square"):
         # Only forward graph contain gpu in Square device
-        self.assertTrue(gpu_short_name in dev)
+        self.assertTrue(gpu_dev_name in dev)
       elif colocate and "Square" in name:
         # Forward and backward graphs contain gpu in Square/Square_grad devices
-        self.assertTrue(gpu_short_name in dev)
+        self.assertTrue(gpu_dev_name in dev)
       else:
-        self.assertFalse(gpu_short_name in dev)
+        self.assertFalse(gpu_dev_name in dev)
     self.assertAllClose(1024.0, sess.run(r))
 
   def testWhileGrad_ColocateGradients(self):
@@ -2431,7 +2430,7 @@ class ControlFlowTest(test.TestCase):
 
       # device set on tensor, default device on graph => default device on dep.
       vdef = variables.Variable([0.0], name="vdef")
-      with ops.device("/job:worker/gpu:1"):
+      with ops.device("/job:worker/device:GPU:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
         # The device is empty, but the colocation constraint is set.
