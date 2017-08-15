@@ -59,6 +59,7 @@ $ python
 >>> b = tf.constant(32)
 >>> sess.run(a + b)
 42
+>>> sess.close()
 ```
 
 ## For more information
