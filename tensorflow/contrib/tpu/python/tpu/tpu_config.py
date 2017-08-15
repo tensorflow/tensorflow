@@ -24,10 +24,11 @@ import collections
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 
 
-class TPUConfig(collections.namedtuple(
-    'TPUConfig', ['iterations_per_loop',
-                  'num_shards',
-                  'per_host_input_for_training'])):
+class TPUConfig(
+    collections.namedtuple('TPUConfig', [
+        'iterations_per_loop', 'num_shards', 'per_host_input_for_training',
+        'shard_dimensions'
+    ])):
   """TPU related configuration required by `TPUEstimator`.
 
   Args:
@@ -40,15 +41,30 @@ class TPUConfig(collections.namedtuple(
       rather than per shard. Note: This behavior is going to be default as
       `True` soon, so this flag will be removed after that. Also note that this
       only works for single-host TPU training now.
+    shard_dimensions: A python tuple of int values describing how each tensor
+      produced by the Estimator `input_fn` should be split across the TPU
+      compute shards. For example, if your input_fn produced (images, labels)
+      where the images tensor is in `HWCN` format, your shard dimensions would
+      be: [3, 0], where 3 corresponds to the `N` dimension of your images
+      Tensor, and 0 corresponds to the dimension along which to split the labels
+      to match up with the corresponding images. If None is supplied, and
+      per_host_input_for_training is True, batches will be sharded based on the
+      major dimension. If per_host_input_for_training is False, shard_dimensions
+      is ignored.
   """
+  # TODO(b/64607814): Ensure shard_dimensions works with nested structures.
 
-  def __new__(cls, iterations_per_loop=2, num_shards=2,
-              per_host_input_for_training=False):
+  def __new__(cls,
+              iterations_per_loop=2,
+              num_shards=2,
+              per_host_input_for_training=False,
+              shard_dimensions=None):
     return super(TPUConfig, cls).__new__(
         cls,
         iterations_per_loop=iterations_per_loop,
         num_shards=num_shards,
-        per_host_input_for_training=per_host_input_for_training)
+        per_host_input_for_training=per_host_input_for_training,
+        shard_dimensions=shard_dimensions)
 
 
 class RunConfig(run_config_lib.RunConfig):
