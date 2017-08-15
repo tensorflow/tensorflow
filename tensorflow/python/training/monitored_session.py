@@ -566,6 +566,8 @@ class _MonitoredSession(object):
           h.end(self._coordinated_creator.tf_sess)
     finally:
       try:
+        if self._sess is None:
+          raise RuntimeError('Session is already closed.')
         self._sess.close()
       finally:
         self._sess = None
