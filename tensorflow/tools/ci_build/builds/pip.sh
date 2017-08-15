@@ -142,8 +142,10 @@ if [[ $(uname) == "Darwin" ]]; then
 fi
 
 
+# Check if in a virtualenv
+IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
 # If still in a virtualenv, deactivate it first
-if [[ -n "$(which deactivate)" ]]; then
+if [[ "$IN_VENV" == "1" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || die "FAILED: Unable to deactivate from existing virtualenv"
 fi

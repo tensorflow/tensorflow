@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -130,6 +131,12 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+      // TODO(b/62764704): Do not rewrite on GPU, use cuDNN's BatchNorm APIs
+      // instead.
+      pass.AddPass<BatchNormRewriter>(
+          /*rewrite_training_op=*/true,
+          /*rewrite_grad_op=*/true,
+          /*use_fusion=*/false);
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
@@ -305,6 +312,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
+  if (user_pre_optimization_hook_) {
+    TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
+  }
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
@@ -336,6 +346,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                          module->config(), libdevice_dir_));
 
+  if (user_post_optimization_hook_) {
+    TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
+  }
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
   VLOG(2) << "PTX:";

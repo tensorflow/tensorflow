@@ -50,6 +50,10 @@ See @{$python/contrib.rnn} guide.
 @@UGRNNCell
 @@IntersectionRNNCell
 @@PhasedLSTMCell
+@@ConvLSTMCell
+@@Conv1DLSTMCell
+@@Conv2DLSTMCell
+@@Conv3DLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
 

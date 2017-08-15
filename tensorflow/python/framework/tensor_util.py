@@ -595,7 +595,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def _ConstantValue(tensor):
+def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
@@ -668,8 +668,8 @@ def _ConstantValue(tensor):
     if not tensor.op.inputs:
       return None
     for x in tensor.op.inputs:
-      value = constant_value(x)
-      if value is None:
+      value = constant_value(x, partial)
+      if value is None and not partial:
         return None
       values.append(value)
     return np.array(values)
@@ -684,7 +684,7 @@ def _ConstantValue(tensor):
     return None
 
 
-def constant_value(tensor):
+def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
@@ -701,6 +701,8 @@ def constant_value(tensor):
 
   Args:
     tensor: The Tensor to be evaluated.
+    partial: If True, the returned numpy array is allowed to have partially
+      evaluated values. Values that can't be evaluated will be None.
 
   Returns:
     A numpy ndarray containing the constant value of the given `tensor`,
@@ -709,7 +711,7 @@ def constant_value(tensor):
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  ret = _ConstantValue(tensor)
+  ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
     # conservatively prevent it from being fed.

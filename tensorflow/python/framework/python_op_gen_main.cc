@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/framework/python_op_gen.h"
+#include "tensorflow/python/eager/python_eager_op_gen.h"
 
 #include <memory>
 #include <string>
@@ -81,7 +81,7 @@ void PrintAllPythonOps(const std::vector<string>& hidden_ops,
                        bool require_shapes) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
-  PrintPythonOps(ops, hidden_ops, require_shapes);
+  PrintEagerPythonOps(ops, hidden_ops, require_shapes);
 }
 
 }  // namespace

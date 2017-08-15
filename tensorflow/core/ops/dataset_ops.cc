@@ -177,6 +177,20 @@ output_buffer_size: The maximum number of output elements to buffer in an
   iterator over this dataset.
 )doc");
 
+REGISTER_OP("PrefetchDataset")
+    .Input("input_dataset: resource")
+    .Input("buffer_size: int64")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that asynchronously prefetches elements from `input_dataset`.
+
+buffer_size: The maximum number of elements to buffer in an iterator over
+  this dataset.
+)doc");
+
 REGISTER_OP("FlatMapDataset")
     .Input("input_dataset: resource")
     .Input("other_arguments: Targuments")

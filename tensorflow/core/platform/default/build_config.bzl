@@ -72,6 +72,9 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
       testonly = testonly,
   )
 
+def tf_jspb_proto_library(**kwargs):
+  pass
+
 def tf_proto_library(name, srcs = [], has_services = None,
                      protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],
@@ -156,6 +159,9 @@ def tf_additional_proto_srcs():
       "platform/default/logging.cc",
       "platform/default/protobuf.cc",
   ]
+
+def tf_additional_all_protos():
+  return ["//tensorflow/core:protos_all"]
 
 def tf_env_time_hdrs():
   return [
@@ -284,6 +290,12 @@ def tf_additional_verbs_lib_defines():
 def tf_additional_mpi_lib_defines():
   return select({
       "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
+      "//conditions:default": [],
+  })
+
+def tf_additional_gdr_lib_defines():
+  return select({
+      "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
       "//conditions:default": [],
   })
 

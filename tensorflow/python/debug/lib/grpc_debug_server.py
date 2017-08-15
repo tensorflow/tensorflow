@@ -31,16 +31,20 @@ from tensorflow.core.debug import debug_service_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_service_pb2_grpc
+from tensorflow.python.platform import tf_logging as logging
 
 DebugWatch = collections.namedtuple("DebugWatch",
                                     ["node_name", "output_slot", "debug_op"])
 
 
-def _watch_key_event_reply(to_enable, node_name, output_slot, debug_op):
-  """Make EventReply proto to represent a request to watch/unwatch a debug op.
+def _watch_key_event_reply(new_state, node_name, output_slot, debug_op):
+  """Make `EventReply` proto to represent a request to watch/unwatch a debug op.
 
   Args:
-    to_enable: (`bool`) whether the request is to enable the watch key.
+    new_state: (`debug_service_pb2.EventReply.DebugOpStateChange.State`) the new
+      state to set the debug node to, i.e., whether the debug node will become
+      disabled under the grpc mode (`DISABLED`), become a watchpoint
+      (`READ_ONLY`) or become a breakpoint (`READ_WRITE`).
     node_name: (`str`) name of the node.
     output_slot: (`int`) output slot of the tensor.
     debug_op: (`str`) the debug op attached to node_name:output_slot tensor to
@@ -51,9 +55,7 @@ def _watch_key_event_reply(to_enable, node_name, output_slot, debug_op):
   """
   event_reply = debug_service_pb2.EventReply()
   state_change = event_reply.debug_op_state_changes.add()
-  state_change.change = (
-      debug_service_pb2.EventReply.DebugOpStateChange.ENABLE
-      if to_enable else debug_service_pb2.EventReply.DebugOpStateChange.DISABLE)
+  state_change.state = new_state
   state_change.node_name = node_name
   state_change.output_slot = output_slot
   state_change.debug_op = debug_op
@@ -64,9 +66,7 @@ class EventListenerBaseStreamHandler(object):
   """Per-stream handler of EventListener gRPC streams."""
 
   def __init__(self):
-    """Constructor of EventListenerStreamHandler."""
-    raise NotImplementedError(
-        "__init__() is not implemented in the base stream handler class")
+    """Constructor of EventListenerBaseStreamHandler."""
 
   def on_core_metadata_event(self, event):
     """Callback for core metadata.
@@ -127,6 +127,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
 
     self._event_reply_queue = queue.Queue()
     self._gated_grpc_debug_watches = set()
+    self._breakpoints = set()
 
   def SendEvents(self, request_iterator, context):
     """Implementation of the SendEvents service method.
@@ -173,11 +174,30 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
         maybe_tensor_event = self._process_tensor_event_in_chunks(
             event, tensor_chunks)
         if maybe_tensor_event:
-          stream_handler.on_value_event(maybe_tensor_event)
+          event_reply = stream_handler.on_value_event(maybe_tensor_event)
+          if event_reply is not None:
+            yield event_reply
 
     # The server writes EventReply messages, if any.
     while not self._event_reply_queue.empty():
-      yield self._event_reply_queue.get()
+      event_reply = self._event_reply_queue.get()
+      for state_change in event_reply.debug_op_state_changes:
+        if (state_change.state ==
+            debug_service_pb2.EventReply.DebugOpStateChange.READ_WRITE):
+          logging.info("Adding breakpoint %s:%d:%s", state_change.node_name,
+                       state_change.output_slot, state_change.debug_op)
+          self._breakpoints.add(
+              (state_change.node_name, state_change.output_slot,
+               state_change.debug_op))
+        elif (state_change.state ==
+              debug_service_pb2.EventReply.DebugOpStateChange.DISABLED):
+          logging.info("Removing watchpoint or breakpoint: %s:%d:%s",
+                       state_change.node_name, state_change.output_slot,
+                       state_change.debug_op)
+          self._breakpoints.discard(
+              (state_change.node_name, state_change.output_slot,
+               state_change.debug_op))
+      yield event_reply
 
   def _process_tensor_event_in_chunks(self, event, tensor_chunks):
     """Possibly reassemble event chunks.
@@ -199,8 +219,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     """
 
     value = event.summary.value[0]
-    debugger_plugin_metadata = json.loads(
-        value.metadata.plugin_data[0].content)
+    debugger_plugin_metadata = json.loads(value.metadata.plugin_data.content)
     device_name = debugger_plugin_metadata["device"]
     num_chunks = debugger_plugin_metadata["numChunks"]
     chunk_index = debugger_plugin_metadata["chunkIndex"]
@@ -339,8 +358,8 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     finally:
       self._server_lock.release()
 
-  def request_watch(self, node_name, output_slot, debug_op):
-    """Request enabling a debug tensor watch.
+  def request_watch(self, node_name, output_slot, debug_op, breakpoint=False):
+    """Request enabling a debug tensor watchpoint or breakpoint.
 
     This will let the server send a EventReply to the client side
     (i.e., the debugged TensorFlow runtime process) to request adding a watch
@@ -358,12 +377,19 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
       output_slot: (`int`) output slot index of the tensor to watch.
       debug_op: (`str`) name of the debug op to enable. This should not include
         any attribute substrings.
+      breakpoint: (`bool`) Iff `True`, the debug op will block and wait until it
+        receives an `EventReply` response from the server. The `EventReply`
+        proto may carry a TensorProto that modifies the value of the debug op's
+        output tensor.
     """
     self._event_reply_queue.put(
-        _watch_key_event_reply(True, node_name, output_slot, debug_op))
+        _watch_key_event_reply(
+            debug_service_pb2.EventReply.DebugOpStateChange.READ_WRITE
+            if breakpoint else debug_service_pb2.EventReply.DebugOpStateChange.
+            READ_ONLY, node_name, output_slot, debug_op))
 
   def request_unwatch(self, node_name, output_slot, debug_op):
-    """Request disabling a debug tensor watch.
+    """Request disabling a debug tensor watchpoint or breakpoint.
 
     The request will take effect on the next debugged `Session.run()` call.
 
@@ -377,7 +403,18 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
         any attribute substrings.
     """
     self._event_reply_queue.put(
-        _watch_key_event_reply(False, node_name, output_slot, debug_op))
+        _watch_key_event_reply(debug_service_pb2.EventReply.DebugOpStateChange.
+                               DISABLED, node_name, output_slot, debug_op))
+
+  @property
+  def breakpoints(self):
+    """Get a set of the currently-activated breakpoints.
+
+    Returns:
+      A `set` of 3-tuples: (node_name, output_slot, debug_op), e.g.,
+        {("MatMul", 0, "DebugIdentity")}.
+    """
+    return self._breakpoints
 
   def gated_grpc_debug_watches(self):
     """Get the list of debug watches with attribute gated_grpc=True.

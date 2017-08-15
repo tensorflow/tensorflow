@@ -550,31 +550,6 @@ TEST_F(GraphPropertiesTest, QueuesAndLoops) {
   EXPECT_EQ("float: [-1,4]", PropToString(prop));
 }
 
-TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output var = ops::Variable(s.WithOpName("var"), TensorShape({128, 256}),
-                             DataType::DT_FLOAT);
-  Output filename =
-      ops::Const(s.WithOpName("filename"), string("model"), TensorShape());
-  Output tensor_name =
-      ops::Const(s.WithOpName("tensorname"), string("a"), TensorShape());
-  Output restore = ops::Restore(s.WithOpName("restore"), filename, tensor_name,
-                                DataType::DT_FLOAT);
-  Output init = ops::Assign(s.WithOpName("init"), var, restore);
-
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch.push_back("init");
-
-  GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
-
-  const auto props = properties.GetOutputProperties("restore");
-  const OpInfo::TensorProperties& prop = props[0];
-  EXPECT_EQ(DT_FLOAT, prop.dtype());
-  EXPECT_EQ("float: [128,256]", PropToString(prop));
-}
-
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

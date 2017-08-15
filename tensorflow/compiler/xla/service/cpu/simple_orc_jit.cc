@@ -171,8 +171,9 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
-                           CompilerFunctor::ModuleHook pre_optimization_hook,
-                           CompilerFunctor::ModuleHook post_optimization_hook)
+                           bool optimize_for_size, bool enable_fast_math,
+                           LLVMCompiler::ModuleHook pre_optimization_hook,
+                           LLVMCompiler::ModuleHook post_optimization_hook)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
@@ -187,7 +188,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, GetAvailableIntrinsics(),
+                                     opt_level, optimize_for_size,
+                                     enable_fast_math, GetAvailableIntrinsics(),
                                      std::move(pre_optimization_hook),
                                      std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()

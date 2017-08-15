@@ -39,22 +39,32 @@ from tensorflow.python.platform import tf_logging as _tf_logging
 from tensorflow.python.util.all_util import remove_undocumented
 
 
+def _sorted(dict_):
+  """Returns a sorted list of the dict keys, with error if keys not sortable."""
+  try:
+    return sorted(_six.iterkeys(dict_))
+  except TypeError:
+    raise TypeError("nest only supports dicts with sortable keys.")
+
+
 def _sequence_like(instance, args):
   """Converts the sequence `args` to the same type as `instance`.
 
   Args:
     instance: an instance of `tuple`, `list`, `namedtuple`, `dict`, or
-        `collections.NamedDict`.
-    args: elements to be converted to a sequence.
+        `collections.OrderedDict`.
+    args: elements to be converted to the `instance` type.
 
   Returns:
     `args` with the type of `instance`.
   """
   if isinstance(instance, dict):
-    # For dictionaries with their values extracted, we always order the values
-    # by sorting the keys first (see note below). This code allows recreating
-    # e.g., `OrderedDict`s with their original key ordering.
-    result = dict(zip(sorted(_six.iterkeys(instance)), args))
+    # Pack dictionaries in a deterministic order by sorting the keys.
+    # Notice this means that we ignore the original order of `OrderedDict`
+    # instances. This is intentional, to avoid potential bugs caused by mixing
+    # ordered and plain dicts (e.g., flattening a dict but using a
+    # corresponding `OrderedDict` to pack it back).
+    result = dict(zip(_sorted(instance), args))
     return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
   elif (isinstance(instance, tuple) and
         hasattr(instance, "_fields") and
@@ -69,11 +79,12 @@ def _sequence_like(instance, args):
 
 def _yield_value(iterable):
   if isinstance(iterable, dict):
-    # Iterate through dictionaries in a deterministic order. Note: we
-    # intentionally ignore the order in an `OrderedDict` because of the
-    # potential to introduce bugs if the user mixes ordered and plain dicts with
-    # the same keys. (This is based on experience.)
-    for key in sorted(_six.iterkeys(iterable)):
+    # Iterate through dictionaries in a deterministic order by sorting the
+    # keys. Notice this means that we ignore the original order of `OrderedDict`
+    # instances. This is intentional, to avoid potential bugs caused by mixing
+    # ordered and plain dicts (e.g., flattening a dict but using a
+    # corresponding `OrderedDict` to pack it back).
+    for key in _sorted(iterable):
       yield iterable[key]
   else:
     for value in iterable:
@@ -120,10 +131,19 @@ def is_sequence(seq):
 
 
 def flatten(nest):
-  """Returns a flat sequence from a given nested structure.
+  """Returns a flat list from a given nested structure.
 
   If `nest` is not a sequence, tuple, or dict, then returns a single-element
   list: `[nest]`.
+
+  In the case of dict instances, the sequence consists of the values, sorted by
+  key to ensure deterministic behavior. This is true also for `OrderedDict`
+  instances: their sequence order is ignored, the sorting order of keys is
+  used instead. The same convention is followed in `pack_sequence_as`. This
+  correctly repacks dicts and `OrderedDict`s after they have been flattened,
+  and also allows flattening an `OrderedDict` and then repacking it back using
+  a correponding plain dict, or vice-versa.
+  Dictionaries with non-sortable keys cannot be flattened.
 
   Args:
     nest: an arbitrarily nested structure or a scalar object. Note, numpy
@@ -131,6 +151,9 @@ def flatten(nest):
 
   Returns:
     A Python list, the flattened version of the input.
+
+  Raises:
+    TypeError: The nest is or contains a dict with non-sortable keys.
   """
   if is_sequence(nest):
     return list(_yield_flat_nest(nest))
@@ -288,10 +311,19 @@ def _packed_nest_with_indices(structure, flat, index):
 
 
 def pack_sequence_as(structure, flat_sequence):
-  """Returns a given flattened sequence packed into a nest.
+  """Returns a given flattened sequence packed into a given structure.
 
   If `structure` is a scalar, `flat_sequence` must be a single-element list;
   in this case the return value is `flat_sequence[0]`.
+
+  If `structure` is or contains a dict instance, the keys will be sorted to
+  pack the flat sequence in deterministic order. This is true also for
+  `OrderedDict` instances: their sequence order is ignored, the sorting order of
+  keys is used instead. The same convention is followed in `pack_sequence_as`.
+  This correctly repacks dicts and `OrderedDict`s after they have been
+  flattened, and also allows flattening an `OrderedDict` and then repacking it
+  back using a correponding plain dict, or vice-versa.
+  Dictionaries with non-sortable keys cannot be flattened.
 
   Args:
     structure: Nested structure, whose structure is given by nested lists,
@@ -304,7 +336,9 @@ def pack_sequence_as(structure, flat_sequence):
       `structure`.
 
   Raises:
-    ValueError: If nest and structure have different element counts.
+    ValueError: If `flat_sequence` and `structure` have different
+      element counts.
+    TypeError: `structure` is or contains a dict with non-sortable keys.
   """
   if not is_sequence(flat_sequence):
     raise TypeError("flat_sequence must be a sequence")

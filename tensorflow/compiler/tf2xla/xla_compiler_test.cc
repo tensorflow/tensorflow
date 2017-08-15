@@ -95,6 +95,31 @@ output: dummy output.
 
 REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
 
+// DummyDuplicateOp is present purely to test multiple REGISTER_XLA_OP calls
+// on the same Op name below.
+class DummyDuplicateOp : public XlaOpKernel {
+ public:
+  explicit DummyDuplicateOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, ctx->Input(0));
+  }
+};
+
+REGISTER_OP("DummyDuplicateOp")
+    .Input("input: int32")
+    .Output("output: int32")
+    .Doc(R"doc(
+A dummy Op.
+
+input: dummy input.
+output: dummy output.
+)doc");
+
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
+                DummyDuplicateOp);
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
+                DummyDuplicateOp);
+
 class XlaCompilerTest : public ::testing::Test {
  protected:
   XlaCompilerTest() : cpu_device_type_(DEVICE_CPU_XLA_JIT) {}

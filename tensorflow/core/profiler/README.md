@@ -106,7 +106,7 @@ _TFProfRoot (--/930.58k params)
 ### Show the most expensive operation types.
 ```
 tfprof> op -select micros,bytes,occurrence -order_by micros
-node name | output bytes | total execution time | accelerator execution time | cpu execution time | op occurrence (run|defined)
+node name | requested bytes | total execution time | accelerator execution time | cpu execution time | op occurrence (run|defined)
 SoftmaxCrossEntropyWithLogits      36.58MB (100.00%, 0.05%),      1.37sec (100.00%, 26.68%),           0us (100.00%, 0.00%),      1.37sec (100.00%, 30.75%),      30|30
 MatMul                        2720.57MB (99.95%, 3.66%),      708.14ms (73.32%, 13.83%),     280.76ms (100.00%, 41.42%),       427.39ms (69.25%, 9.62%),  2694|3450
 ConcatV2                       741.37MB (96.29%, 1.00%),       389.63ms (59.49%, 7.61%),        31.80ms (58.58%, 4.69%),       357.83ms (59.63%, 8.05%),  4801|6098
@@ -127,10 +127,10 @@ tfprof> advise
 Not running under xxxx. Skip JobChecker.
 
 AcceleratorUtilizationChecker:
-device: /job:worker/replica:0/task:0/gpu:0 low utilization: 0.03
-device: /job:worker/replica:0/task:0/gpu:1 low utilization: 0.08
-device: /job:worker/replica:0/task:0/gpu:2 low utilization: 0.04
-device: /job:worker/replica:0/task:0/gpu:3 low utilization: 0.21
+device: /job:worker/replica:0/task:0/device:GPU:0 low utilization: 0.03
+device: /job:worker/replica:0/task:0/device:GPU:1 low utilization: 0.08
+device: /job:worker/replica:0/task:0/device:GPU:2 low utilization: 0.04
+device: /job:worker/replica:0/task:0/device:GPU:3 low utilization: 0.21
 
 OperationChecker:
 Found operation using NHWC data_format on GPU. Maybe NCHW is faster.
@@ -192,7 +192,7 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
 <left>
-[Timeline](g3doc/graph_timeline.png)
+![Timeline](g3doc/graph_timeline.png)
 </left>
 
 ```
@@ -213,7 +213,7 @@ pprof -png --nodecount=20 --sample_index=1 <filename>
 ```
 
 <left>
-[PprofGraph](g3doc/pprof.jpg)
+![PprofGraph](g3doc/pprof.jpg)
 </left>
 
 ### Feature Request and Bug Report

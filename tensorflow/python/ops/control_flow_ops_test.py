@@ -25,6 +25,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -790,6 +791,75 @@ class DataTypesTest(TensorFlowTestCase):
 
     self.assertEqual(iteration.get_shape(), tensor_shape.TensorShape([]))
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+
+class CaseTest(TensorFlowTestCase):
+
+  def testCase_withDefault(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
+    default = lambda: constant_op.constant(6)
+    output = control_flow_ops.case(conditions, default, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
+
+  def testCase_multiple_matches_exclusive(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
+    default = lambda: constant_op.constant(8)
+    output = control_flow_ops.case(conditions, default, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "More than one condition evaluated as True"):
+        sess.run(output, feed_dict={x: 2})
+
+  def testCase_multiple_matches_non_exclusive(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
+    default = lambda: constant_op.constant(8)
+    output = control_flow_ops.case(conditions, default, exclusive=False)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
+
+  def testCase_withoutDefault(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
+                  (math_ops.equal(x, 3), lambda: constant_op.constant(6))]
+    output = control_flow_ops.case(conditions, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"\[None of the conditions evaluated as True. "
+          r"Conditions: \(Equal:0, Equal_1:0, Equal_2:0\), Values:\] "
+          r"\[0 0 0\]"):
+        sess.run(output, feed_dict={x: 4})
+
+  def testCase_withoutDefault_oneCondition(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2))]
+    output = control_flow_ops.case(conditions, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"\[None of the conditions evaluated as True. "
+          r"Conditions: \(Equal:0\), Values:\] \[0\]"):
+        sess.run(output, feed_dict={x: 4})
 
 
 if __name__ == "__main__":

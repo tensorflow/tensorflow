@@ -117,6 +117,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           True)
       print(sess.run(abc))
 
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                               constraint=constraint)
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                                 constraint=constraint)
+
   def testInitFn(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
@@ -262,6 +273,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(
           name="var1", initial_value=array_ops.ones(shape=[10, 20, 35]))
+      self.assertEqual("(10, 20, 35)", str(v.shape))
       self.assertEqual("(10, 20, 35)", str(v.get_shape()))
       self.assertEqual("(10, 20, 35)", str(v.value().shape))
       self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))

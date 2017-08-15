@@ -127,7 +127,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   To use SyncReplicasOptimizer with an `Estimator`, you need to send
   sync_replicas_hook while calling the fit.
-  ```
+  ```python
   my_estimator = DNNClassifier(..., optimizer=opt)
   my_estimator.fit(..., hooks=[sync_replicas_hook])
   ```

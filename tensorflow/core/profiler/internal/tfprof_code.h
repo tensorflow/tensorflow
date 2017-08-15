@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Build a tree structure based on the TensorFlow model's python code stacks.
-// Stats are aggregated from descendants from ancestors.
+// Stats are aggregated from descendants to ancestors.
 
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_CODE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_CODE_H_
@@ -79,7 +79,8 @@ class TFCode : public TFMultiShow {
               const Options& opts, string* display_str,
               MultiGraphNodeProto* proto, std::vector<uint64>* call_ids);
 
-  string FormatNode(CodeNode* node, const Options& opts, int64 indent);
+  string FormatNode(CodeNode* node, const Options& opts, int64 indent) const;
+  string FormatNodeMemory(CodeNode* node, int64 bytes, int64 total_bytes) const;
 
   std::unique_ptr<CodeNode> root_;
   std::unique_ptr<TFMultiGraphNode> graph_root_;
