@@ -60,7 +60,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
 
-  Status FoldNode(const NodeDef& node, GraphDef* output);
+  Status FoldNode(NodeDef* node, GraphDef* output);
 
   Status FoldGraph(GraphDef* output);
 

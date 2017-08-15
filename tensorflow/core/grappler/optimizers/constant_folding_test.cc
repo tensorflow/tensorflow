@@ -62,26 +62,23 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ(4, output.node_size());
 
-  const NodeDef& new_c = output.node(0);
-  EXPECT_EQ("ConstantFolding/c", new_c.name());
-  EXPECT_EQ("Const", new_c.op());
-  EXPECT_EQ("/CPU:0", new_c.device());
+  const NodeDef& node_a = output.node(0);
+  EXPECT_EQ("a", node_a.name());
 
-  const NodeDef& new_a = output.node(1);
-  EXPECT_EQ("a", new_a.name());
+  const NodeDef& node_b = output.node(1);
+  EXPECT_EQ("b", node_b.name());
 
-  const NodeDef& new_b = output.node(2);
-  EXPECT_EQ("b", new_b.name());
+  const NodeDef& node_c = output.node(2);
+  EXPECT_EQ("c", node_c.name());
+  EXPECT_EQ("Const", node_c.op());
+  EXPECT_EQ("/CPU:0", node_c.device());
 
-  const NodeDef& old_c = output.node(3);
-  EXPECT_EQ("c", old_c.name());
-
-  const NodeDef& new_d = output.node(4);
-  EXPECT_EQ("d", new_d.name());
-  EXPECT_EQ("ConstantFolding/c", new_d.input(1));
-  EXPECT_EQ("", new_d.device());
+  const NodeDef& node_d = output.node(3);
+  EXPECT_EQ("d", node_d.name());
+  EXPECT_EQ("c", node_d.input(1));
+  EXPECT_EQ("", node_d.device());
 
   std::vector<string> fetch = {"a", "b", "c", "d"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
@@ -169,9 +166,10 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
 
   int found = 0;
   for (const auto& node : output.node()) {
-    if (node.name() == "ConstantFolding/i1") {
+    if (node.name() == "i1") {
+      EXPECT_EQ("Const", node.op());
       ++found;
-      auto folded = EvaluateNodes(output, {"ConstantFolding/i1"});
+      auto folded = EvaluateNodes(output, {"i1"});
       auto expected = EvaluateNodes(item.graph, {"i1"});
       EXPECT_EQ(1, expected.size());
       EXPECT_EQ(1, folded.size());
@@ -179,9 +177,10 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^p1", node.input(0));
     }
-    if (node.name() == "ConstantFolding/i2") {
+    if (node.name() == "i2") {
+      EXPECT_EQ("Const", node.op());
       ++found;
-      auto folded = EvaluateNodes(output, {"ConstantFolding/i2"});
+      auto folded = EvaluateNodes(output, {"i2"});
       auto expected = EvaluateNodes(item.graph, {"i2"});
       EXPECT_EQ(1, expected.size());
       EXPECT_EQ(1, folded.size());

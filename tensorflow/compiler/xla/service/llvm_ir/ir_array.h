@@ -108,6 +108,8 @@ class IrArray {
     const_iterator begin() const { return multidim().begin(); }
     const_iterator end() const { return multidim().end(); }
 
+    llvm::Value* back() const { return multidim().back(); }
+
     bool LinearValidOnShape(const Shape& a) const;
 
     // Given that "this" is the target index of a reshape from `operand_shape`
