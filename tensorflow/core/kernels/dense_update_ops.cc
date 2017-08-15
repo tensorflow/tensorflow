@@ -143,7 +143,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
       Name("AssignSub").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       DenseUpdateOp<GPUDevice, type, DenseUpdateType::SUB>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-TF_CALL_bool(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 #endif  // end GOOGLE_CUDA
 
