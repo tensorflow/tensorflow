@@ -688,8 +688,8 @@ class EagerTensor(Tensor):
         c_api.TFE_DeleteTensorHandle(self._handle)
       if core.active_trace() is not None:
         core.active_trace().delete_tensor(_tensor_id(self))
-    except TypeError:
-      # Sometimes deletion during program shutdown throws TypeError as other
+    except (AttributeError, TypeError):
+      # Sometimes deletion during program shutdown throws exception as other
       # modules are no longer available.
       pass
 

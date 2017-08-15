@@ -80,8 +80,8 @@ class Context(object):
       if self._handle is not None:
         with errors.raise_exception_on_not_ok_status() as status:
           pywrap_tensorflow.TFE_DeleteContext(self._handle, status)
-    except TypeError:
-      # Sometimes deletion during program shutdown throws TypeError as other
+    except (AttributeError, TypeError):
+      # Sometimes deletion during program shutdown throws exception as other
       # modules are no longer available.
       pass
 
