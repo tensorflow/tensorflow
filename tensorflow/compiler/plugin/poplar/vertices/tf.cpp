@@ -101,13 +101,32 @@ WINDOWED_SELECTION(SelectionLt, <)
 
 // Dynamic slicing
 
-int calculateIndex(const std::vector<int>& index,
-                   const Vector<int>& base,
-                   const Vector<int>& shape) {
+int calculateIndexWrap(const std::vector<int>& index,
+                       const Vector<int>& base,
+                       const Vector<int>& shape) {
   int v=0;
   for (int i=0; i<shape.size(); i++) {
     v *= shape[i];
-    v += (index[i] + base[i]);
+    int off = index[i] + base[i];
+    while (off >= shape[i]) {
+      off -= shape[i];
+    }
+    v += off;
+  }
+  return v;
+}
+
+int calculateIndexTrunc(const std::vector<int>& index,
+                        const Vector<int>& base,
+                        const Vector<int>& shape) {
+  int v=0;
+  for (int i=0; i<shape.size(); i++) {
+    v *= shape[i];
+    int off = index[i] + base[i];
+    if (off >= shape[i]) {
+      return -1;
+    }
+    v += off;
   }
   return v;
 }
@@ -127,14 +146,13 @@ public:
     std::vector<int> pos(in_shape.size());
     for (int i=0; i<out.size(); i++) {
 
-      int input_index = calculateIndex(pos, index_base, out_shape);
-      if (input_index >= in.size()) break;
+      int input_index = calculateIndexWrap(pos, index_base, in_shape);
       out[i] = in[input_index];
 
       // Advance the element
-      for (int d=in_shape.size()-1; d>=0; d--) {
+      for (int d=out_shape.size()-1; d>=0; d--) {
         pos[d]++;
-        if (pos[d] < in_shape[d]) break;
+        if (pos[d] < out_shape[d]) break;
         pos[d] = 0;
       }
     }
@@ -147,6 +165,7 @@ public:
 template class DynamicSlice<float>;
 template class DynamicSlice<half>;
 template class DynamicSlice<int>;
+template class DynamicSlice<bool>;
 
 
 template<typename T>
@@ -163,14 +182,15 @@ public:
     std::vector<int> pos(in_shape.size());
     for (int i=0; i<update.size(); i++) {
 
-      int output_index = calculateIndex(pos, index_base, update_shape);
-      if (output_index >= in.size()) break;
-      in[output_index] = update[i];
+      int output_index = calculateIndexTrunc(pos, index_base, in_shape);
+      if (output_index != -1) {
+        in[output_index] = update[i];
+      }
 
       // Advance the element
-      for (int d=in_shape.size()-1; d>=0; d--) {
+      for (int d=update_shape.size()-1; d>=0; d--) {
         pos[d]++;
-        if (pos[d] < in_shape[d]) break;
+        if (pos[d] < update_shape[d]) break;
         pos[d] = 0;
       }
     }
@@ -183,3 +203,4 @@ public:
 template class DynamicUpdateSlice<float>;
 template class DynamicUpdateSlice<half>;
 template class DynamicUpdateSlice<int>;
+template class DynamicUpdateSlice<bool>;
