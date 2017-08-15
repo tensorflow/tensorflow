@@ -19,8 +19,6 @@
 This module provides functions for image manipulation; currently, only
 projective transforms (including rotation) are supported.
 
-## Image `Ops`
-
 @@angles_to_projective_transforms
 @@compose_transforms
 @@rotate
