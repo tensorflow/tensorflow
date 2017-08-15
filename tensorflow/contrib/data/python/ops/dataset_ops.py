@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import warnings
 
 import numpy as np
 
@@ -1048,6 +1049,7 @@ class Dataset(object):
       output_buffer_size: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the maximum number of processed elements that will be
         buffered when processing in parallel.
+        Note that this argument is ignored if 'num_threads' is not set.
 
     Returns:
       A `Dataset`.
@@ -1837,6 +1839,10 @@ class MapDataset(Dataset):
             num_threads, dtype=dtypes.int64, name="output_buffer_size")
     else:
       self._num_threads = None
+      if output_buffer_size is not None:
+        warnings.warn(
+            "Dataset.map() is ignoring output_buffer_size since the argument "
+            "num_threads was not set. To buffer elements, set num_threads >= 1")
       self._output_buffer_size = None
 
   def make_dataset_resource(self):
