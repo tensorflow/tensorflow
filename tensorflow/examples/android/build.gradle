@@ -28,7 +28,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.3.0'
+        classpath 'com.android.tools.build:gradle:2.3.3'
         classpath 'org.apache.httpcomponents:httpclient:4.5.2'
     }
 }
@@ -65,7 +65,7 @@ if (nativeBuildSystem == 'makefile') {
 // If building with Bazel, this is the location of the bazel binary.
 // NOTE: Bazel does not yet support building for Android on Windows,
 // so in this case the Makefile build must be used as described above.
-def bazelLocation = '/usr/local/bin/bazel'
+def bazelLocation = '/usr/bin/bazel'
 
 // import DownloadModels task
 project.ext.ASSET_DIR = projectDir.toString() + '/assets'
@@ -74,7 +74,7 @@ project.ext.TMP_DIR   = project.buildDir.toString() + '/downloads'
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 23
+    compileSdkVersion 25
     buildToolsVersion "25.0.2"
 
     if (nativeBuildSystem == 'cmake') {
@@ -169,14 +169,9 @@ task copyNativeLibs(type: Copy) {
 }
 
 tasks.whenTaskAdded { task ->
-    if (nativeBuildSystem == 'bazel' || nativeBuildSystem == 'makefile') {
-        if (task.name == 'assembleDebug') {
+    if ((nativeBuildSystem == 'bazel' || nativeBuildSystem == 'makefile') && \
+        (task.name == 'assembleDebug') || (task.name == 'assembleRelease'))
             task.dependsOn 'copyNativeLibs'
-        }
-        if (task.name == 'assembleRelease') {
-            task.dependsOn 'copyNativeLibs'
-        }
-    }
 }
 
 // Download default models; if you wish to use your own models then
