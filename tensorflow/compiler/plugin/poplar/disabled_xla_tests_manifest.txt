@@ -53,6 +53,7 @@ ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
 ParamsTest.ConstantR1U8Param      POPLAR // U8
 ScalarComputationsTest.AddTwoScalarsU8      POPLAR // U8
 ReverseTest.Reverse4DU8ArrayOnDim23 POPLAR // U8
+PadTest.Pad4DU8Array POPLAR // U8
 
 ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
 
