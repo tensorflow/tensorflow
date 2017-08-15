@@ -95,13 +95,13 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
              [0, 1, 0, 1],
              [1, 0, 1, 0],
              [0, 1, 0, 1]], dtype=dtype)
-         translation = constant_op.constant([-1, -1], dtypes.float32)
-         image_translated = image_ops.translate(image, translation)
-         self.assertAllEqual(image_transformed.eval(),
-                             [[1, 0, 1, 0],
-                              [0, 1, 0, 0],
-                              [1, 0, 1, 0],
-                              [0, 0, 0, 0]])
+        translation = constant_op.constant([-1, -1], dtypes.float32)
+        image_translated = image_ops.translate(image, translation)
+        self.assertAllEqual(image_translated.eval(),
+                            [[1, 0, 1, 0],
+                             [0, 1, 0, 0],
+                             [1, 0, 1, 0],
+                             [0, 0, 0, 0]])
 
   def test_compose(self):
     with self.test_session():

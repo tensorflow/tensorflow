@@ -89,7 +89,8 @@ def translate(images, translations, interpolation="NEAREST"):
        (NHWC), (num_rows, num_columns, num_channels) (HWC), or
        (num_rows, num_columns) (HW).
     translations: A vector representing [dx, dy] or (if images has rank 4)
-        a vector of length num_images, with a [dx, dy] vector for each image in the batch.
+        a vector of length num_images, with a [dx, dy] vector for each image in
+        the batch.
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
 
   Returns:
@@ -150,8 +151,9 @@ def translations_to_projective_transforms(translations):
   """Returns projective transform(s) for the given translation(s).
 
   Args:
-      translations: A 2-element list representing [dx, dy] or a vector of 2-element lists
-          representing [dx, dy] to translate for each image (for a batch of images)
+      translations: A 2-element list representing [dx, dy] or a vector of
+          2-element lists representing [dx, dy] to translate for each image
+          (for a batch of images).
 
   Returns:
       A tensor of shape (num_images, 8) projective transforms which can be given
@@ -160,11 +162,11 @@ def translations_to_projective_transforms(translations):
   translation_or_translations = ops.convert_to_tensor(
       translations, name="translations", dtype=dtypes.float32)
   if len(translation_or_translations.get_shape()) == 1:
-      translations = translation_or_translations[None]
+    translations = translation_or_translations[None]
   elif len(translation_or_translations.get_shape()) == 2:
-      translations = translation_or_translations
+    translations = translation_or_translations
   else:
-      raise TypeError("Translations should have rank 1 or 2.")
+    raise TypeError("Translations should have rank 1 or 2.")
   num_translations = array_ops.shape(translations)[0]
   return array_ops.concat(
       values=[
