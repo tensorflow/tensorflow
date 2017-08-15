@@ -52,8 +52,11 @@ enum class DataLayout : int64 {
   kYXDepthBatch = 0,  // Same as dist_belief::DF_DEPTH_MAJOR.
   kYXBatchDepth,      // Same as dist_belief::DF_BATCH_MAJOR.
   kBatchYXDepth,      // Same as run_brain output, and tensorflow's layout.
-  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature,
+  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature
                       // maps, rows, columns.
+  kBatchDepthYX4,     // cuDNN's NCHW_VECT_C layout, data laid out the same as
+                      // kBatchDepthYX but each element is a vector of 4 feature
+                      // maps.
 };
 
 // Specifies an index to use when accessing specific spatial dimensions.
@@ -87,6 +90,7 @@ enum class DataType {
   kFloat = 0,
   kDouble = 1,
   kHalf = 2,
+  kInt8 = 3,
 };
 
 // A helper class to convert C/C++ types to the proper enums.
@@ -103,6 +107,10 @@ struct ToDataType<double> {
 template <>
 struct ToDataType<Eigen::half> {
   static constexpr DataType value = DataType::kHalf;
+};
+template <>
+struct ToDataType<int8> {
+  static constexpr DataType value = DataType::kInt8;
 };
 
 // Specifies the types of a RNN model.
@@ -341,8 +349,10 @@ enum class FilterLayout : int64 {
   kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
                        // (major) output feature maps >> input feature maps >>
                        // rows >> columns (minor).
-  kInputYXOutput,      // Same as dist_belief's default filter layout.
-  kYXInputOutput,      // Same as tensorflow's default filter layout.
+  kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
+                    // vector of 4 feature maps.
+  kInputYXOutput,   // Same as dist_belief's default filter layout.
+  kYXInputOutput,   // Same as tensorflow's default filter layout.
 };
 
 // Returns a string representation of the given filter layout.
@@ -663,20 +673,20 @@ constexpr AlgorithmType kDefaultAlgorithm = -1;
 // Describes the result from a perf experiment.
 //
 // Arguments:
-//  is_valid: indicates whether a valid measurement was obtained.
 //  algorithm: returns the exact algorithm that was used.
 //  elapsed_time_in_ms: returns the measured elapsed time in milliseconds.
 class ProfileResult {
  public:
-  bool is_valid() const { return is_valid_; }
-  void set_is_valid(bool val) { is_valid_ = val; }
+  bool is_valid() const {
+    return (algorithm_ != kDefaultAlgorithm &&
+            elapsed_time_in_ms_ != std::numeric_limits<float>::max());
+  }
   AlgorithmType algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmType val) { algorithm_ = val; }
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
  private:
-  bool is_valid_ = false;
   AlgorithmType algorithm_ = kDefaultAlgorithm;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
@@ -1892,6 +1902,25 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                            const dnn::RnnSequenceTensorDescriptor& input_desc,
+                            const DeviceMemory<double>& input_data,
+                            const dnn::RnnStateTensorDescriptor& input_h_desc,
+                            const DeviceMemory<double>& input_h_data,
+                            const dnn::RnnStateTensorDescriptor& input_c_desc,
+                            const DeviceMemory<double>& input_c_data,
+                            const DeviceMemory<double>& params,
+                            const dnn::RnnSequenceTensorDescriptor& output_desc,
+                            DeviceMemory<double>* output_data,
+                            const dnn::RnnStateTensorDescriptor& output_h_desc,
+                            DeviceMemory<double>* output_h_data,
+                            const dnn::RnnStateTensorDescriptor& output_c_desc,
+                            DeviceMemory<double>* output_c_data,
+                            bool is_training,
+                            ScratchAllocator* reserve_space_allocator,
+                            ScratchAllocator* workspace_allocator) {
+    return false;
+  }
   // Enqueue a backward operation of the RNN model onto the stream.
   //
   // Arguments:
@@ -1960,20 +1989,52 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool DoRnnBackward(
+      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<double>& input_data,
+      const dnn::RnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<double>& input_h_data,
+      const dnn::RnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<double>& input_c_data,
+      const DeviceMemory<double>& params,
+      const dnn::RnnSequenceTensorDescriptor& output_desc,
+      const DeviceMemory<double>& output_data,
+      const dnn::RnnStateTensorDescriptor& output_h_desc,
+      const DeviceMemory<double>& output_h_data,
+      const dnn::RnnStateTensorDescriptor& output_c_desc,
+      const DeviceMemory<double>& output_c_data,
+      const DeviceMemory<double>& output_backprop_data,
+      const DeviceMemory<double>& output_h_backprop_data,
+      const DeviceMemory<double>& output_c_backprop_data,
+      DeviceMemory<double>* input_backprop_data,
+      DeviceMemory<double>* input_h_backprop_data,
+      DeviceMemory<double>* input_c_backprop_data,
+      DeviceMemory<double>* params_backprop_data,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
   // Transforms a tensor into another tensor with a different layout and/or data
   // type.
   //
   // Arguments:
   //  stream: pointer to the stream where this operation should be enqueued to.
-  //  input_desc: descriptor for the input tensor.
+  //  input_desc: specifies the shape and the data layout of the input tensor.
+  //  input_type: the data type of the input tensor.
   //  input_data: the device memory region that contains the input tensor.
-  //  output_desc: descriptor for the output tensor.
+  //  output_desc: specifies the shape and the data layout of the output tensor.
+  //  output_type: the data type of the output tensor.
+  //  scale: an element-wise scaling factor to apply.
   //  output_data: the device memory region that contains the output tensor.
   virtual bool DoTransformTensor(Stream* stream,
                                  const dnn::BatchDescriptor& input_desc,
-                                 const DeviceMemory<float>& input_data,
+                                 dnn::DataType input_type,
+                                 const DeviceMemoryBase& input_data,
                                  const dnn::BatchDescriptor& output_desc,
-                                 DeviceMemory<float>* output_data) {
+                                 dnn::DataType output_type, float scale,
+                                 DeviceMemoryBase* output_data) {
     return false;
   }
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mem.h"
 
-#include "third_party/mkl/include/i_malloc.h"
+#include "i_malloc.h"
 
 namespace tensorflow {
 

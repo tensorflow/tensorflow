@@ -22,6 +22,7 @@ import collections
 import glob
 import json
 import os
+import platform
 
 import numpy as np
 import six
@@ -30,8 +31,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import compat
 
 
 # TODO(cais): Tie these string constants in with C++?
@@ -39,9 +42,17 @@ METADATA_FILE_PREFIX = "_tfdbg_"
 CORE_METADATA_TAG = "core_metadata_"
 GRAPH_FILE_TAG = "graph_"
 DEVICE_TAG = "device_"
+HASH_TAG = "hash"
 
 FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
+
+
+def _glob(glob_pattern):
+  if platform.system() == "Windows":
+    return glob.glob(glob_pattern)
+  else:
+    return gfile.Glob(glob_pattern)
 
 
 class InconvertibleTensorProto(object):
@@ -107,8 +118,13 @@ def load_tensor_from_event(event):
   """
 
   tensor_proto = event.summary.value[0].tensor
-  if tensor_proto.tensor_content or tensor_proto.string_val:
-    # Initialized tensor.
+  shape = tensor_util.TensorShapeProtoToList(tensor_proto.tensor_shape)
+  num_elements = 1
+  for shape_dim in shape:
+    num_elements *= shape_dim
+
+  if tensor_proto.tensor_content or tensor_proto.string_val or not num_elements:
+    # Initialized tensor or empty tensor.
     if tensor_proto.dtype == types_pb2.DT_RESOURCE:
       tensor_value = InconvertibleTensorProto(tensor_proto)
     else:
@@ -347,7 +363,7 @@ def extract_core_metadata_from_event_proto(event):
 
 def device_name_to_device_path(device_name):
   """Convert device name to device path."""
-  device_name_items = device_name.split("/")
+  device_name_items = compat.as_text(device_name).split("/")
   device_name_items = [item.replace(":", "_") for item in device_name_items]
   return METADATA_FILE_PREFIX + DEVICE_TAG + ",".join(device_name_items)
 
@@ -364,7 +380,8 @@ def device_path_to_device_name(device_dir):
   path_items = os.path.basename(device_dir)[
       len(METADATA_FILE_PREFIX) + len(DEVICE_TAG):].split(",")
   return "/".join([
-      path_item.replace("_", ":", 1) for path_item in path_items])
+      path_item.replace("device_", "device:").replace("_", ":", 1)
+      for path_item in path_items])
 
 
 class DebugTensorDatum(object):
@@ -556,6 +573,86 @@ class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
   pass
 
 
+class _GraphTracingReachedDestination(Exception):
+  pass
+
+
+class _DFSGraphTracer(object):
+  """Graph input tracer using depth-first search."""
+
+  def __init__(self,
+               input_lists,
+               skip_node_names=None,
+               destination_node_name=None):
+    """Constructor of _DFSGraphTracer.
+
+    Args:
+      input_lists: A list of dicts. Each dict is an adjacency (input) map from
+        the recipient node name as the key and the list of input node names
+        as the value.
+      skip_node_names: Optional: a list of node names to skip tracing.
+      destination_node_name: Optional: destination node name. If not `None`, it
+        should be the name of a destination not as a str and the graph tracing
+        will raise GraphTracingReachedDestination as soon as the node has been
+        reached.
+
+    Raises:
+      _GraphTracingReachedDestination: if stop_at_node_name is not None and
+        the specified node is reached.
+    """
+
+    self._input_lists = input_lists
+    self._skip_node_names = skip_node_names
+
+    self._inputs = []
+    self._visited_nodes = []
+    self._depth_count = 0
+    self._depth_list = []
+
+    self._destination_node_name = destination_node_name
+
+  def trace(self, graph_element_name):
+    """Trace inputs.
+
+    Args:
+      graph_element_name: Name of the node or an output tensor of the node, as a
+        str.
+
+    Raises:
+      _GraphTracingReachedDestination: if destination_node_name of this tracer
+        object is not None and the specified node is reached.
+    """
+    self._depth_count += 1
+
+    node_name = get_node_name(graph_element_name)
+
+    if node_name == self._destination_node_name:
+      raise _GraphTracingReachedDestination()
+
+    if node_name in self._skip_node_names:
+      return
+    if node_name in self._visited_nodes:
+      return
+
+    self._visited_nodes.append(node_name)
+
+    for input_list in self._input_lists:
+      for inp in input_list[node_name]:
+        if get_node_name(inp) in self._visited_nodes:
+          continue
+        self._inputs.append(inp)
+        self._depth_list.append(self._depth_count)
+        self.trace(inp)
+
+    self._depth_count -= 1
+
+  def inputs(self):
+    return self._inputs
+
+  def depth_list(self):
+    return self._depth_list
+
+
 # TODO(cais): This class is getting too large in line count. Refactor to make it
 # smaller and easier to maintain.
 class DebugDumpDir(object):
@@ -598,7 +695,7 @@ class DebugDumpDir(object):
 
   def _load_all_device_dumps(self, partition_graphs, validate):
     """Load the dump data for all devices."""
-    device_dirs = glob.glob(os.path.join(
+    device_dirs = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + DEVICE_TAG + "*"))
 
     self._device_names = []
@@ -624,7 +721,7 @@ class DebugDumpDir(object):
     """Load `DebugTensorDatum` instances from the dump root of a given device.
 
     Populates a map {device_name: a list of `DebugTensorDatum`}, where the list
-    is sorted by  ascending timestamp.
+    is sorted by ascending timestamp.
 
     This sorting order reflects the order in which the TensorFlow executor
     processed the nodes of the graph. It is (one of many possible) topological
@@ -681,7 +778,7 @@ class DebugDumpDir(object):
     self._t0 = min(t0s) if t0s else None
 
   def _load_core_metadata(self):
-    core_metadata_files = glob.glob(os.path.join(
+    core_metadata_files = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + CORE_METADATA_TAG + "*"))
     for core_metadata_file in core_metadata_files:
       with gfile.Open(core_metadata_file, "rb") as f:
@@ -691,7 +788,7 @@ class DebugDumpDir(object):
             extract_core_metadata_from_event_proto(event))
 
   def _load_fetches_info(self):
-    fetches_info_files = glob.glob(os.path.join(
+    fetches_info_files = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + FETCHES_INFO_FILE_TAG + "*"))
     self._run_fetches_info = []
     for fetches_info_file in fetches_info_files:
@@ -699,7 +796,7 @@ class DebugDumpDir(object):
           _load_log_message_from_event_file(fetches_info_file))
 
   def _load_feeds_info(self):
-    feeds_info_files = glob.glob(os.path.join(
+    feeds_info_files = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG + "*"))
     self._run_feed_keys_info = []
     for feeds_info_file in feeds_info_files:
@@ -869,12 +966,14 @@ class DebugDumpDir(object):
 
     self._node_attributes = {}
     self._node_inputs = {}
+    self._node_reversed_ref_inputs = {}
     self._node_ctrl_inputs = {}
     self._node_recipients = {}
     self._node_ctrl_recipients = {}
     self._node_devices = {}
     self._node_op_types = {}
     self._copy_send_nodes = {}
+    self._ref_args = {}
 
     self._partition_graphs = {}
     for device_name in self._device_names:
@@ -891,11 +990,13 @@ class DebugDumpDir(object):
 
       self._node_attributes[device_name] = {}
       self._node_inputs[device_name] = {}
+      self._node_reversed_ref_inputs[device_name] = {}
       self._node_ctrl_inputs[device_name] = {}
       self._node_recipients[device_name] = {}
       self._node_ctrl_recipients[device_name] = {}
       self._node_op_types[device_name] = {}
       self._copy_send_nodes[device_name] = []
+      self._ref_args[device_name] = []
 
       if partition_graph:
         for node in partition_graph.node:
@@ -918,6 +1019,25 @@ class DebugDumpDir(object):
           if node_def.device == device_name:
             return graph_def
       return None
+
+  def _get_ref_args(self, node):
+    """Determine whether an input of an op is ref-type.
+
+    Args:
+      node: A `NodeDef`.
+
+    Returns:
+      A list of the arg names (as strs) that are ref-type.
+    """
+
+    op_def = op_def_registry.get_registered_ops().get(node.op)
+    ref_args = []
+    if op_def:
+      for i, output_arg in enumerate(op_def.output_arg):
+        if output_arg.is_ref:
+          arg_name = node.name if i == 0 else (node.name + ":%d" % i)
+          ref_args.append(arg_name)
+    return ref_args
 
   def _process_partition_graph_node(self, device_name, node):
     """Process a node from the partition graphs.
@@ -957,6 +1077,7 @@ class DebugDumpDir(object):
       self._node_devices[node.name] = set()
     self._node_devices[node.name].add(node.device)
     self._node_op_types[device_name][node.name] = node.op
+    self._ref_args[device_name].extend(self._get_ref_args(node))
 
     for inp in node.input:
       if is_copy_node(inp) and (node.op == "_Send" or node.op == "_Retval"):
@@ -1030,7 +1151,13 @@ class DebugDumpDir(object):
         ctrl_inputs.remove(debug_op_inp)
 
   def _populate_recipient_maps(self, device_name):
-    """Populate the map from node name to recipient(s) of its output(s)."""
+    """Populate the map from node name to recipient(s) of its output(s).
+
+    This method also populates the input map based on reversed ref edges.
+
+    Args:
+      device_name: name of device.
+    """
 
     for node in self._node_inputs[device_name]:
       inputs = self._node_inputs[device_name][node]
@@ -1039,6 +1166,11 @@ class DebugDumpDir(object):
         if inp not in self._node_recipients[device_name]:
           self._node_recipients[device_name][inp] = []
         self._node_recipients[device_name][inp].append(node)
+
+        if inp in self._ref_args[device_name]:
+          if inp not in self._node_reversed_ref_inputs[device_name]:
+            self._node_reversed_ref_inputs[device_name][inp] = []
+          self._node_reversed_ref_inputs[device_name][inp].append(node)
 
     for node in self._node_ctrl_inputs[device_name]:
       ctrl_inputs = self._node_ctrl_inputs[device_name][node]
@@ -1201,21 +1333,36 @@ class DebugDumpDir(object):
     return output[0] if len(output) == 1 else output
 
   def _infer_device_name(self, device_name, node_name):
+    """Infer the device name given node name.
+
+    If device_name is provided (i.e., not None), it'll be simply returned right
+    away.
+
+    Args:
+      device_name: (str or None) name of the device. If None, will try to infer
+        the device name by looking at the available nodes.
+      node_name: (str) name of the node.
+
+    Returns:
+      (str) Inferred name of the device, if available.
+
+    Raises:
+      ValueError: If the node name does not exist on any of the available
+        devices or if there are multiple devices that contain the node with
+        the given name.
+    """
     if device_name is None:
-      if len(self.devices()) == 1:
-        return self.devices()[0]
-      else:
-        if node_name in self._node_devices:
-          if len(self._node_devices[node_name]) == 1:
-            return list(self._node_devices[node_name])[0]
-          else:
-            raise ValueError(
-                "There are multiple (%d) devices with nodes named '%s' but "
-                "device_name is not specified." %
-                (len(self._node_devices[node_name]), node_name))
+      if node_name in self._node_devices:
+        if len(self._node_devices[node_name]) == 1:
+          return list(self._node_devices[node_name])[0]
         else:
-          raise ValueError("None of the %d devices has a node named '%s'." %
-                           (len(self._device_names), node_name))
+          raise ValueError(
+              "There are multiple (%d) devices with nodes named '%s' but "
+              "device_name is not specified." %
+              (len(self._node_devices[node_name]), node_name))
+      else:
+        raise ValueError("None of the %d device(s) has a node named '%s'." %
+                         (len(self._device_names), node_name))
     else:
       return device_name
 
@@ -1223,27 +1370,27 @@ class DebugDumpDir(object):
     """Get a list of all nodes from the partition graphs.
 
     Args:
-      device_name: (`str`) name of device. If there is only one device, this
-        argumnet is optional.
+      device_name: (`str`) name of device. If None, all nodes from all available
+        devices will be included.
 
     Returns:
       All nodes' names, as a list of str.
 
     Raises:
       LookupError: If no partition graphs have been loaded.
-      ValueError: If there are multiple devices, but device_name is not
-        specified.
+      ValueError: If specified node name does not exist.
     """
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
     if device_name is None:
-      if len(self.devices()) == 1:
-        device_name = self.devices()[0]
-      else:
-        raise ValueError(
-            "There are multiple (%d) devices, but "
-            "device_name is not specified." % len(self.devices()))
-    return [node_name for node_name in self._node_inputs[device_name]]
+      nodes = []
+      for device_name in self._node_inputs:
+        nodes.extend(self._node_inputs[device_name].keys())
+      return nodes
+    else:
+      if device_name not in self._node_inputs:
+        raise ValueError("Invalid device name: %s" % device_name)
+      return self._node_inputs[device_name].keys()
 
   def node_attributes(self, node_name, device_name=None):
     """Get the attributes of a node.
@@ -1251,24 +1398,19 @@ class DebugDumpDir(object):
     Args:
       node_name: Name of the node in question.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       Attributes of the node.
 
     Raises:
       LookupError: If no partition graphs have been loaded.
-      ValueError: If no node named node_name exists.
     """
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name in self._node_attributes[device_name]:
-      return self._node_attributes[device_name][node_name]
-    else:
-      raise ValueError("No node named \"%s\" exists on device %s." % (
-          node_name, device_name))
+    return self._node_attributes[device_name][node_name]
 
   def node_inputs(self, node_name, is_control=False, device_name=None):
     """Get the inputs of given node according to partition graphs.
@@ -1278,7 +1420,7 @@ class DebugDumpDir(object):
       is_control: (`bool`) Whether control inputs, rather than non-control
         inputs, are to be returned.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) inputs to the node, as a list of node names.
@@ -1286,7 +1428,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1294,10 +1435,6 @@ class DebugDumpDir(object):
           "Node inputs are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_inputs[device_name]:
-      raise ValueError("Node '%s' does not exist in the partition graph of "
-                       "device %s." % (node_name, device_name))
-
     if is_control:
       return self._node_ctrl_inputs[device_name][node_name]
     else:
@@ -1306,14 +1443,20 @@ class DebugDumpDir(object):
   def transitive_inputs(self,
                         node_name,
                         include_control=True,
-                        device_name=None):
+                        include_reversed_ref=False,
+                        device_name=None,):
     """Get the transitive inputs of given node according to partition graphs.
 
     Args:
       node_name: Name of the node.
       include_control: Include control inputs (True by default).
+      include_reversed_ref: Whether a ref input, say from A to B, is to be also
+        considered as an input from B to A. The rationale is that ref inputs
+        generally let the recipient (e.g., B in this case) mutate the value of
+        the source (e.g., A in this case). So the reverse direction of the ref
+        edge reflects the direction of information flow.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) all transitive inputs to the node, as a list of node
@@ -1322,7 +1465,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1330,53 +1472,107 @@ class DebugDumpDir(object):
           "Node inputs are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_inputs[device_name]:
+
+    input_lists = [self._node_inputs[device_name]]
+    if include_control:
+      input_lists.append(self._node_ctrl_inputs[device_name])
+    if include_reversed_ref:
+      input_lists.append(self._node_reversed_ref_inputs[device_name])
+    tracer = _DFSGraphTracer(
+        input_lists,
+        skip_node_names=self._get_merge_node_names(device_name))
+    tracer.trace(node_name)
+    return tracer.inputs()
+
+  def _get_merge_node_names(self, device_name):
+    """Lazily get a list of Merge nodes on a given device."""
+    if device_name not in self._device_names:
+      raise ValueError("Invalid device name: %s" % device_name)
+
+    if not hasattr(self, "_merge_node_names"):
+      self._merge_node_names = {}
+    if device_name not in self._merge_node_names:
+      self._merge_node_names[device_name] = [
+          node for node in self._node_op_types[device_name]
+          if self._node_op_types[device_name][node] == "Merge"]
+    return self._merge_node_names[device_name]
+
+  def find_some_path(self,
+                     src_node_name,
+                     dst_node_name,
+                     include_control=True,
+                     include_reversed_ref=False,
+                     device_name=None):
+    """Find a path between a source node and a destination node.
+
+    Limitation: the source and destination are required to be on the same
+    device, i.e., this method does not yet take into account Send/Recv nodes
+    across devices.
+
+    TODO(cais): Make this method work across device edges by tracing Send/Recv
+      nodes.
+
+    Args:
+      src_node_name: (`str`) name of the source node or name of an output tensor
+        of the node.
+      dst_node_name: (`str`) name of the destination node or name of an output
+        tensor of the node.
+      include_control: (`bool`) whrther control edges are considered in the
+        graph tracing.
+      include_reversed_ref: Whether a ref input, say from A to B, is to be also
+        considered as an input from B to A. The rationale is that ref inputs
+        generally let the recipient (e.g., B in this case) mutate the value of
+        the source (e.g., A in this case). So the reverse direction of the ref
+        edge reflects the direction of information flow.
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argument is optional.
+
+    Returns:
+      A path from the src_node_name to dst_node_name, as a `list` of `str`, if
+      it exists. The list includes src_node_name as the first item and
+      dst_node_name as the last.
+      If such a path does not exist, `None`.
+
+    Raises:
+      ValueError: If the source and destination nodes are not on the same
+        device.
+    """
+    src_device_name = self._infer_device_name(device_name, src_node_name)
+    dst_device_name = self._infer_device_name(device_name, dst_node_name)
+
+    if src_device_name != dst_device_name:
       raise ValueError(
-          "Node '%s' does not exist in the partition graph of device %s." %
-          (node_name, device_name))
+          "Source (%s) and destination (%s) are not on the same device: "
+          "%s vs. %s" % (src_node_name, dst_node_name, src_device_name,
+                         dst_device_name))
 
-    inputs = []
+    input_lists = [self._node_inputs[dst_device_name]]
+    if include_control:
+      input_lists.append(self._node_ctrl_inputs[dst_device_name])
+    if include_reversed_ref:
+      input_lists.append(self._node_reversed_ref_inputs[dst_device_name])
+    tracer = _DFSGraphTracer(
+        input_lists,
+        skip_node_names=self._get_merge_node_names(dst_device_name),
+        destination_node_name=src_node_name)
+    # Here the value of destination_node_name is src_node_name, because we
+    # are tracing the graph from output to its inputs (i.e., going backwards
+    # on the graph).
 
-    # Keep track of visited nodes to avoid infinite loops during input
-    # tracing.
-    visited_nodes = []
+    try:
+      tracer.trace(dst_node_name)
+    except _GraphTracingReachedDestination:
+      # Prune nodes not on the path.
+      inputs = [dst_node_name] + tracer.inputs()
+      depth_list = [0] + tracer.depth_list()
 
-    def trace_inputs(node):
-      """Inner function for recursive tracing of node inputs.
-
-      The transitive input names are appended to the list captured list
-      "inputs".
-
-      Args:
-        node: Name of the node, as a str.
-      """
-      node = get_node_name(node)
-
-      # Stop the tracing at a Merge op, as it is generally impossible to infer
-      # outside the runtime which input to the Merge op is alive.
-      if self._node_op_types[device_name][node] == "Merge":
-        return
-
-      if node in visited_nodes:
-        return
-      visited_nodes.append(node)
-
-      for inp in self._node_inputs[device_name][node]:
-        if inp == node_name:
-          continue
-        inputs.append(inp)
-        trace_inputs(inp)
-
-      if include_control:
-        for ctrl_inp in self._node_ctrl_inputs[device_name][node]:
-          if ctrl_inp == node_name:
-            continue
-          inputs.append(ctrl_inp)
-          trace_inputs(ctrl_inp)
-
-    trace_inputs(node_name)
-
-    return inputs
+      path = []
+      curr_depth = depth_list[-1]
+      for inp, depth in zip(reversed(inputs), reversed(depth_list)):
+        if depth == curr_depth:
+          path.append(inp)
+          curr_depth -= 1
+      return path
 
   def node_recipients(self, node_name, is_control=False, device_name=None):
     """Get recipient of the given node's output according to partition graphs.
@@ -1386,7 +1582,7 @@ class DebugDumpDir(object):
       is_control: (`bool`) whether control outputs, rather than non-control
         outputs, are to be returned.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) all inputs to the node, as a list of node names.
@@ -1394,7 +1590,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1402,11 +1597,6 @@ class DebugDumpDir(object):
           "Node recipients are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_recipients[device_name]:
-      raise ValueError(
-          "Node '%s' does not exist in the partition graph of device %s." %
-          (node_name, device_name))
-
     if is_control:
       return self._node_ctrl_recipients[device_name][node_name]
     else:
@@ -1486,7 +1676,7 @@ class DebugDumpDir(object):
     Args:
       node_name: (`str`) name of the node.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`str`) op type of the node.
@@ -1494,7 +1684,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node op types have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1502,11 +1691,6 @@ class DebugDumpDir(object):
           "Node op types are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_op_types[device_name]:
-      raise ValueError(
-          "Node '%s' does not exist in the partition graph of device '%s'. " %
-          (node_name, device_name))
-
     return self._node_op_types[device_name][node_name]
 
   def debug_watch_keys(self, node_name, device_name=None):
@@ -1515,7 +1699,7 @@ class DebugDumpDir(object):
     Args:
       node_name: (`str`) name of the node.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) all debug tensor watch keys. Returns an empty list if
@@ -1549,7 +1733,7 @@ class DebugDumpDir(object):
     Args:
       debug_watch_key: (`str`) debug watch key.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1630,7 +1814,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1663,7 +1847,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1701,7 +1885,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1735,7 +1919,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -41,7 +42,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(new LayoutOptimizer());
   }
   if (optimizer == "memory") {
-    graph_optimizer.reset(new MemoryOptimizer());
+    graph_optimizer.reset(new MemoryOptimizer(RewriterConfig::MANUAL));
   }
   if (optimizer == "autoparallel") {
     graph_optimizer.reset(
@@ -57,7 +58,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (!cfg_.disable_model_pruning()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
     }
-    if (cfg_.constant_folding()) {
+    if (cfg_.constant_folding() != RewriterConfig::OFF) {
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new ConstantFolding()));
     }
@@ -65,9 +66,17 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
-    if (cfg_.memory_optimization() > 0) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new MemoryOptimizer()));
+    if (cfg_.memory_optimization() > 1) {
+      if (cfg_.memory_optimizer_target_node_name_prefix().empty()) {
+        optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+            // Use the default target node name prefix "gradients/"
+            new MemoryOptimizer(cfg_.memory_optimization())));
+      } else {
+        optimizers.push_back(
+            std::unique_ptr<GraphOptimizer>(new MemoryOptimizer(
+                cfg_.memory_optimization(),
+                cfg_.memory_optimizer_target_node_name_prefix())));
+      }
     }
     if (cfg_.auto_parallel().enable()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
@@ -94,15 +103,20 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(optimizer->Optimize(cluster, item, optimized_graph));
       already_optimized = true;
     } else {
-      GrapplerItem optimized_item = item;
-      optimized_item.graph = *optimized_graph;
+      GrapplerItem optimized_item(item, std::move(*optimized_graph));
       TF_RETURN_IF_ERROR(
           optimizer->Optimize(cluster, optimized_item, optimized_graph));
     }
   }
   TopologicalSort(optimized_graph);
-  // Copy the graph version.
-  *optimized_graph->mutable_versions() = item.graph.versions();
+
+  // Make sure that the optimizers preserved the graph version and library.
+  DCHECK_GE(optimized_graph->library().function_size(),
+            item.graph.library().function_size());
+  DCHECK_GE(optimized_graph->library().gradient_size(),
+            item.graph.library().gradient_size());
+  DCHECK_EQ(optimized_graph->versions().producer(),
+            item.graph.versions().producer());
 
   return Status::OK();
 }
@@ -113,8 +127,10 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  return cfg.optimize_tensor_layout() || cfg.constant_folding() ||
-         cfg.auto_parallel().enable() || !cfg.optimizers().empty();
+  return !cfg.disable_model_pruning() || cfg.optimize_tensor_layout() ||
+         cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
+         !cfg.optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,

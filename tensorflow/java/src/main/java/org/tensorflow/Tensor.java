@@ -489,7 +489,7 @@ public final class Tensor implements AutoCloseable {
     // assumes a fully-known shape
     int n = 1;
     for (int i = 0; i < shape.length; i++) {
-      n *= shape[i];
+      n *= (int) shape[i];
     }
     return n;
   }

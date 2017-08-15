@@ -45,10 +45,10 @@ TEST_F(StreamAssignmentTest, SequentialMatMul) {
   HloInstruction* dot2 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, dot1, z));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(dot2));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(dot2));
 
-  std::unique_ptr<StreamAssignment> assignment = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
   EXPECT_EQ(assignment->StreamNumberForHlo(*dot1),
             assignment->StreamNumberForHlo(*dot2));
 }
@@ -66,10 +66,10 @@ TEST_F(StreamAssignmentTest, ConcurrentMatMul) {
   HloInstruction* add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, dot1, dot2));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(add));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(add));
 
-  std::unique_ptr<StreamAssignment> assignment = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
   EXPECT_NE(assignment->StreamNumberForHlo(*dot1),
             assignment->StreamNumberForHlo(*dot2));
 }
@@ -110,10 +110,10 @@ TEST_F(StreamAssignmentTest, LatticeMatMul) {
   HloInstruction* d40 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d30, d31));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(d40));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(d40));
 
-  std::unique_ptr<StreamAssignment> assignment = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
   // The two dots on layer 1 are concurrent.
   EXPECT_NE(assignment->StreamNumberForHlo(*d10),
             assignment->StreamNumberForHlo(*d11));
@@ -131,3 +131,7 @@ TEST_F(StreamAssignmentTest, LatticeMatMul) {
 
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

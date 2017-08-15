@@ -23,20 +23,21 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+namespace {
 
-static Tensor TensorA() {
+Tensor TensorA() {
   Tensor a_tensor(DT_INT32, TensorShape({2, 2}));
   test::FillValues<int32>(&a_tensor, {3, 2, -1, 0});
   return a_tensor;
 }
 
-static Tensor TensorB() {
+Tensor TensorB() {
   Tensor b_tensor(DT_INT32, TensorShape({1, 2}));
   test::FillValues<int32>(&b_tensor, {1, 2});
   return b_tensor;
 }
 
-static void BuildRunStepRequest(MutableRunStepRequestWrapper* request) {
+void BuildRunStepRequest(MutableRunStepRequestWrapper* request) {
   request->set_session_handle("handle");
   request->set_partial_run_handle("partial_handle");
   request->add_feed("feed_a:0", TensorA());
@@ -48,7 +49,7 @@ static void BuildRunStepRequest(MutableRunStepRequestWrapper* request) {
   request->mutable_options()->set_timeout_in_ms(37);
 }
 
-static void CheckRunStepRequest(const RunStepRequestWrapper& request) {
+void CheckRunStepRequest(const RunStepRequestWrapper& request) {
   EXPECT_EQ("handle", request.session_handle());
   EXPECT_EQ("partial_handle", request.partial_run_handle());
   EXPECT_EQ(2, request.num_feeds());
@@ -68,9 +69,8 @@ static void CheckRunStepRequest(const RunStepRequestWrapper& request) {
   EXPECT_EQ(37, request.options().timeout_in_ms());
 }
 
-static void BuildRunGraphRequest(
-    const RunStepRequestWrapper& run_step_request,
-    MutableRunGraphRequestWrapper* run_graph_request) {
+void BuildRunGraphRequest(const RunStepRequestWrapper& run_step_request,
+                          MutableRunGraphRequestWrapper* run_graph_request) {
   run_graph_request->set_graph_handle("graph_handle");
   run_graph_request->set_step_id(13);
   run_graph_request->mutable_exec_opts()->set_record_timeline(true);
@@ -83,11 +83,12 @@ static void BuildRunGraphRequest(
   run_graph_request->set_is_partial(true);
 }
 
-static void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
+void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
   EXPECT_EQ("graph_handle", request.graph_handle());
   EXPECT_EQ(13, request.step_id());
   EXPECT_FALSE(request.exec_opts().record_costs());
   EXPECT_TRUE(request.exec_opts().record_timeline());
+  EXPECT_FALSE(request.exec_opts().record_partition_graphs());
   EXPECT_EQ(2, request.num_sends());
   Tensor val;
   TF_EXPECT_OK(request.SendValue(0, &val));
@@ -98,17 +99,20 @@ static void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
   EXPECT_FALSE(request.is_last_partial_run());
 }
 
-static void BuildRunGraphResponse(
-    MutableRunGraphResponseWrapper* run_graph_response) {
+void BuildRunGraphResponse(MutableRunGraphResponseWrapper* run_graph_response) {
   run_graph_response->AddRecv("recv_2", TensorA());
   run_graph_response->AddRecv("recv_3", TensorB());
   run_graph_response->mutable_step_stats()->add_dev_stats()->set_device(
       "/cpu:0");
   run_graph_response->mutable_cost_graph()->add_node()->set_name("cost_node");
+  GraphDef graph_def;
+  graph_def.mutable_versions()->set_producer(1234);
+  graph_def.mutable_versions()->set_min_consumer(1234);
+  run_graph_response->AddPartitionGraph(graph_def);
 }
 
-static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
-  EXPECT_EQ(2, response->num_recvs());
+void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
+  ASSERT_EQ(2, response->num_recvs());
   EXPECT_EQ("recv_2", response->recv_key(0));
   EXPECT_EQ("recv_3", response->recv_key(1));
   Tensor val;
@@ -116,26 +120,34 @@ static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
   test::ExpectTensorEqual<int32>(TensorA(), val);
   TF_EXPECT_OK(response->RecvValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
-  EXPECT_EQ(1, response->mutable_step_stats()->dev_stats_size());
+  ASSERT_EQ(1, response->mutable_step_stats()->dev_stats_size());
   EXPECT_EQ("/cpu:0", response->mutable_step_stats()->dev_stats(0).device());
-  EXPECT_EQ(1, response->mutable_cost_graph()->node_size());
+  ASSERT_EQ(1, response->mutable_cost_graph()->node_size());
   EXPECT_EQ("cost_node", response->mutable_cost_graph()->node(0).name());
+  ASSERT_EQ(1, response->num_partition_graphs());
+  EXPECT_EQ(1234, response->mutable_partition_graph(0)->versions().producer());
+  EXPECT_EQ(1234,
+            response->mutable_partition_graph(0)->versions().min_consumer());
 }
 
-static void BuildRunStepResponse(
-    MutableRunGraphResponseWrapper* run_graph_response,
-    MutableRunStepResponseWrapper* run_step_response) {
+void BuildRunStepResponse(MutableRunGraphResponseWrapper* run_graph_response,
+                          MutableRunStepResponseWrapper* run_step_response) {
   TF_EXPECT_OK(run_step_response->AddTensorFromRunGraphResponse(
       "fetch_x:0", run_graph_response, 0));
   TF_EXPECT_OK(run_step_response->AddTensorFromRunGraphResponse(
       "fetch_y:0", run_graph_response, 1));
   *run_step_response->mutable_metadata()->mutable_step_stats() =
       *run_graph_response->mutable_step_stats();
+  protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
+      run_step_response->mutable_metadata()->mutable_partition_graphs();
+  for (size_t i = 0; i < run_graph_response->num_partition_graphs(); i++) {
+    partition_graph_defs->Add()->Swap(
+        run_graph_response->mutable_partition_graph(i));
+  }
 }
 
-static void CheckRunStepResponse(
-    const MutableRunStepResponseWrapper& response) {
-  EXPECT_EQ(2, response.num_tensors());
+void CheckRunStepResponse(const MutableRunStepResponseWrapper& response) {
+  ASSERT_EQ(2, response.num_tensors());
   EXPECT_EQ("fetch_x:0", response.tensor_name(0));
   EXPECT_EQ("fetch_y:0", response.tensor_name(1));
   Tensor val;
@@ -143,8 +155,13 @@ static void CheckRunStepResponse(
   test::ExpectTensorEqual<int32>(TensorA(), val);
   TF_EXPECT_OK(response.TensorValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
-  EXPECT_EQ(1, response.metadata().step_stats().dev_stats_size());
+  ASSERT_EQ(1, response.metadata().step_stats().dev_stats_size());
   EXPECT_EQ("/cpu:0", response.metadata().step_stats().dev_stats(0).device());
+  ASSERT_EQ(1, response.metadata().partition_graphs_size());
+  EXPECT_EQ(1234,
+            response.metadata().partition_graphs(0).versions().producer());
+  EXPECT_EQ(1234,
+            response.metadata().partition_graphs(0).versions().min_consumer());
 }
 
 TEST(MessageWrappers, RunStepRequest_Basic) {
@@ -323,4 +340,5 @@ TEST(MessageWrappers, RunStepResponse_Basic) {
   }
 }
 
+}  // namespace
 }  // namespace tensorflow

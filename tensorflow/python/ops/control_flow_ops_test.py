@@ -25,6 +25,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -43,7 +44,6 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
 from tensorflow.python.util import nest
-from tensorflow.python.util.protobuf import compare
 
 
 TestTuple = collections.namedtuple("TestTuple", "a b")
@@ -399,7 +399,7 @@ class ContextTest(TensorFlowTestCase):
       for op in sess.graph.get_operations():
         c = op._get_control_flow_context()
         if c:
-          compare.ProtoEq(
+          self.assertProtoEquals(
               c.to_proto(),
               control_flow_ops.CondContext.from_proto(c.to_proto()).to_proto())
 
@@ -412,9 +412,34 @@ class ContextTest(TensorFlowTestCase):
       for op in sess.graph.get_operations():
         c = op._get_control_flow_context()
         if c:
-          compare.ProtoEq(
+          self.assertProtoEquals(
               c.to_proto(),
               control_flow_ops.WhileContext.from_proto(c.to_proto()).to_proto())
+
+  def testControlContextImportScope(self):
+    with self.test_session():
+      constant_op.constant(0, name="a")
+      constant_op.constant(2, name="test_scope/a")
+      b1 = constant_op.constant(1, name="b")
+      b2 = constant_op.constant(3, name="test_scope/b")
+
+      c = control_flow_ops.ControlFlowContext()
+      c._values = ["a", "b"]
+      c._external_values = {"a": b1}
+
+      c_with_scope = control_flow_ops.ControlFlowContext._from_proto(
+          c._to_proto(), import_scope="test_scope")
+
+      # _values and _external_values should be have scope prepended.
+      self.assertEquals(
+          c_with_scope._values, set(["test_scope/a", "test_scope/b"]))
+      self.assertEquals(
+          c_with_scope._external_values, {"test_scope/a": b2})
+
+      # Calling _to_proto() with export_scope should remove "test_scope".
+      self.assertProtoEquals(
+          c._to_proto(),
+          c_with_scope._to_proto(export_scope="test_scope"))
 
 
 def _GetNestedShape(nested):
@@ -766,6 +791,75 @@ class DataTypesTest(TensorFlowTestCase):
 
     self.assertEqual(iteration.get_shape(), tensor_shape.TensorShape([]))
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+
+class CaseTest(TensorFlowTestCase):
+
+  def testCase_withDefault(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
+    default = lambda: constant_op.constant(6)
+    output = control_flow_ops.case(conditions, default, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
+
+  def testCase_multiple_matches_exclusive(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
+    default = lambda: constant_op.constant(8)
+    output = control_flow_ops.case(conditions, default, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "More than one condition evaluated as True"):
+        sess.run(output, feed_dict={x: 2})
+
+  def testCase_multiple_matches_non_exclusive(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(6))]
+    default = lambda: constant_op.constant(8)
+    output = control_flow_ops.case(conditions, default, exclusive=False)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
+
+  def testCase_withoutDefault(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4)),
+                  (math_ops.equal(x, 3), lambda: constant_op.constant(6))]
+    output = control_flow_ops.case(conditions, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
+      self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"\[None of the conditions evaluated as True. "
+          r"Conditions: \(Equal:0, Equal_1:0, Equal_2:0\), Values:\] "
+          r"\[0 0 0\]"):
+        sess.run(output, feed_dict={x: 4})
+
+  def testCase_withoutDefault_oneCondition(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2))]
+    output = control_flow_ops.case(conditions, exclusive=True)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"\[None of the conditions evaluated as True. "
+          r"Conditions: \(Equal:0\), Values:\] \[0\]"):
+        sess.run(output, feed_dict={x: 4})
 
 
 if __name__ == "__main__":

@@ -100,6 +100,17 @@ Status QuantizeAndDequantizeV2Grad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantizeV2", QuantizeAndDequantizeV2Grad);
 
+Status QuantizeAndDequantizeV3Grad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("QuantizeAndDequantizeV3", QuantizeAndDequantizeV3Grad);
+
 Status SplitGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
                  std::vector<Output>* grad_outputs) {
@@ -247,6 +258,18 @@ Status ScatterNdGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ScatterNd", ScatterNdGrad);
 
+Status ScatterNdNonAliasingAddGrad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  auto indices = op.input(1);
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(GatherNd(scope, grad_inputs[0], indices));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("ScatterNdNonAliasingAdd", ScatterNdNonAliasingAddGrad);
+
+template <bool IsPadV2>
 Status PadGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {
@@ -259,9 +282,14 @@ Status PadGrad(const Scope& scope, const Operation& op,
   auto begin = Reshape(scope, pad_before, {-1});
   grad_outputs->push_back(Slice(scope, grad_inputs[0], begin, Shape(scope, x)));
   grad_outputs->push_back(NoGradient());
+  // PadV2 adds a "constant_values" input.
+  if (IsPadV2) {
+    grad_outputs->push_back(NoGradient());
+  }
   return scope.status();
 }
-REGISTER_GRADIENT_OP("Pad", PadGrad);
+REGISTER_GRADIENT_OP("Pad", PadGrad<false>);
+REGISTER_GRADIENT_OP("PadV2", PadGrad<true>);
 
 Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,

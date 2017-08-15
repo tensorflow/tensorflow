@@ -20,13 +20,14 @@ py_library(
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:session",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )
 
 py_test(
     name = "copy_test",
+    size = "small",
     srcs = glob(["python/util/copy_test.py"]),
     srcs_version = "PY2AND3",
     deps = [
@@ -36,9 +37,7 @@ py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

@@ -63,6 +63,9 @@ class HloModule {
   HloComputation* AddEmbeddedComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Removes an embedded computation.
+  Status RemoveEmbeddedComputation(HloComputation* to_remove);
+
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.
@@ -74,6 +77,9 @@ class HloModule {
       const std::unordered_map<HloComputation*, HloComputation*>& replacements);
 
   const string& name() const { return name_; }
+
+  // Returns a deep copy of this module including all computations.
+  std::unique_ptr<HloModule> Clone(const string& suffix = "clone");
 
   // Return a pointer to the entry computation of the module..
   HloComputation* entry_computation() const {
@@ -121,13 +127,27 @@ class HloModule {
     return computation_name_uniquer_.GetUniqueName(prefix);
   }
 
+  // Returns the NameUniquer for uniquing instruction names in this module.
+  NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
+
+  // Assign a new unique dense id for an instruction
+  int NewUniqueInstructionId() {
+    int result = next_unique_id_;
+    next_unique_id_++;
+    return result;
+  }
+
+  // Returns the number of unique intruction ids given out.  All ids up to
+  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
+  int NumUniqueInstructionIds() const { return next_unique_id_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation);
 
   const string name_;
   HloModuleConfig config_;
-  HloComputation* entry_computation_;
+  HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 
   // Random number generator engine to use when generating random numbers per
@@ -141,8 +161,11 @@ class HloModule {
   bool has_entry_computation_handle_ = false;
   VersionedComputationHandle entry_computation_handle_;
 
-  // Unique name generator for computation names, which are unique per module.
-  NameUniquer computation_name_uniquer_;
+  // Unique name generator for computation and instruction names, which are
+  // unique per module.
+  NameUniquer computation_name_uniquer_{/*separator=*/"."};
+  NameUniquer instruction_name_uniquer_{/*separator=*/"."};
+  int next_unique_id_ = 0;
 };
 
 }  // namespace xla

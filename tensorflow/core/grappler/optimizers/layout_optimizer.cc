@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -32,6 +35,7 @@ namespace grappler {
 const char kConcatConst[] = "LayoutOptimizerConcatConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
+const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
 const char kTransposeNHWCToNCHW[] = "LayoutOptimizerTransposeNHWCToNCHW";
 const char kTransposeNCHWToNHWC[] = "LayoutOptimizerTransposeNCHWToNHWC";
 const char kPermVecNHWCToNCHW[] = "LayoutOptimizerPermVecNHWCToNCHW";
@@ -206,40 +210,58 @@ class NodeProcessor {
     return Status::OK();
   }
 
+  Status UpdateAttrValueOfInput(int input_index) {
+    auto input_node = node_map_->GetNode(node_->input(input_index));
+    NodeDef* added_node = graph_->add_node();
+    *added_node = *input_node;
+    string base_name = strings::StrCat(node_->name(), "-", input_node->name());
+    string node_name = AddPrefixToNodeName(base_name, "LayoutOptimizer", "-");
+    added_node->set_name(node_name);
+    *node_->mutable_input(input_index) = node_name;
+    node_map_->AddNode(node_name, added_node);
+    node_map_->AddOutput(node_name, node_->name());
+    return UpdateAttrValue(added_node);
+  }
+
   virtual std::vector<int> GetInputPos() const {
     std::vector<int> input_pos = {0};
     return input_pos;
   }
 
-  void AddNodeTranspose(const string& node_name, const string& input_name,
-                        DataType data_type, const TensorShapeProto& input_shape,
-                        bool NHWCToNCHW) {
+  NodeDef* AddNodeTranspose(const string& node_name, const string& input_name,
+                            DataType data_type,
+                            const TensorShapeProto& input_shape,
+                            bool NHWCToNCHW) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
     *node->add_input() = input_name;
     *node->add_input() = NHWCToNCHW ? kPermNHWCToNCHW : kPermNCHWToNHWC;
     node->set_op("Transpose");
+    node->set_device(node_->device());
     AttrValue attr_data_type;
     attr_data_type.set_type(data_type);
     node->mutable_attr()->insert({"T", attr_data_type});
     AttrValue attr_data_type_perm;
     attr_data_type_perm.set_type(DT_INT32);
     node->mutable_attr()->insert({"Tperm", attr_data_type_perm});
-    AttrValue attr_output_shape;
-    auto output_shape = attr_output_shape.mutable_list()->add_shape();
-    if (NHWCToNCHW) {
-      output_shape->add_dim()->set_size(input_shape.dim(0).size());
-      output_shape->add_dim()->set_size(input_shape.dim(3).size());
-      output_shape->add_dim()->set_size(input_shape.dim(1).size());
-      output_shape->add_dim()->set_size(input_shape.dim(2).size());
-    } else {
-      output_shape->add_dim()->set_size(input_shape.dim(0).size());
-      output_shape->add_dim()->set_size(input_shape.dim(2).size());
-      output_shape->add_dim()->set_size(input_shape.dim(3).size());
-      output_shape->add_dim()->set_size(input_shape.dim(1).size());
+    if (!input_shape.unknown_rank()) {
+      AttrValue attr_output_shape;
+      auto output_shape = attr_output_shape.mutable_list()->add_shape();
+      if (NHWCToNCHW) {
+        output_shape->add_dim()->set_size(input_shape.dim(0).size());
+        output_shape->add_dim()->set_size(input_shape.dim(3).size());
+        output_shape->add_dim()->set_size(input_shape.dim(1).size());
+        output_shape->add_dim()->set_size(input_shape.dim(2).size());
+      } else {
+        output_shape->add_dim()->set_size(input_shape.dim(0).size());
+        output_shape->add_dim()->set_size(input_shape.dim(2).size());
+        output_shape->add_dim()->set_size(input_shape.dim(3).size());
+        output_shape->add_dim()->set_size(input_shape.dim(1).size());
+      }
+      node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
     }
-    node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
+    return node;
   }
 
   virtual Status AddLayoutTransposeToInputs() {
@@ -328,10 +350,7 @@ class AvgPoolGradProcessor : public NodeProcessor {
     std::vector<int> input_pos = {1};
     return input_pos;
   }
-  Status CustomizedProcessing() override {
-    NodeDef* node = node_map_->GetNode(node_->input(0));
-    return UpdateAttrValue(node);
-  }
+  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(0); }
 };
 
 class BiasAddGradProcessor : public NodeProcessor {
@@ -466,16 +485,7 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     return input_pos;
   }
 
-  Status CustomizedProcessing() override {
-    NodeDef* node = node_map_->GetNode(node_->input(0));
-    NodeDef* added_node = graph_->add_node();
-    *added_node = *node;
-    string node_name =
-        AddPrefixToNodeName(node->name(), "LayoutOptimizer", "-");
-    added_node->set_name(node_name);
-    node_map_->AddNode(node_name, added_node);
-    return UpdateAttrValue(added_node);
-  }
+  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(0); }
 };
 
 class FusedBatchNormGradProcessor : public NodeProcessor {
@@ -588,11 +598,12 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
   bool Is4DOperateWithVector() const { return Is4DOperateWithND(1); }
 
-  void AddNodeShapeConst(const string& name, int num_channels) {
+  NodeDef* AddNodeShapeConst(const string& name, int num_channels) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(name, node);
     node->set_name(name);
     node->set_op("Const");
+    node->set_device(node_->device());
     AttrValue attr_data_type;
     attr_data_type.set_type(DT_INT32);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -605,16 +616,19 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  void AddNodeReshape(const string& node_name, const string& input_name,
-                      const string& shape_const_node_name, DataType data_type) {
+  NodeDef* AddNodeReshape(const string& node_name, const string& input_name,
+                          const string& shape_const_node_name,
+                          DataType data_type) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
     *node->add_input() = input_name;
     *node->add_input() = shape_const_node_name;
     node->set_op("Reshape");
+    node->set_device(node_->device());
 
     AttrValue attr_type_indices;
     attr_type_indices.set_type(DT_INT32);
@@ -623,6 +637,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     AttrValue attr_type_params;
     attr_type_params.set_type(data_type);
     node->mutable_attr()->insert({"T", attr_type_params});
+    return node;
   }
 
   Status CustomizedProcessing() override {
@@ -739,11 +754,16 @@ class SliceProcessor : public AgnosticNodeProcessor {
     node->set_name(node_name);
     *node->add_input() = input_name;
     *node->add_input() = NHWCToNCHW ? kPermNHWCToNCHW : kPermNCHWToNHWC;
-    node->set_op("Gather");
+    *node->add_input() = kGatherAxisConst;
+    node->set_op("GatherV2");
 
     AttrValue attr_type_indices;
     attr_type_indices.set_type(DT_INT32);
     node->mutable_attr()->insert({"Tindices", attr_type_indices});
+
+    AttrValue attr_type_axis;
+    attr_type_axis.set_type(DT_INT32);
+    node->mutable_attr()->insert({"Taxis", attr_type_axis});
 
     AttrValue attr_type_params;
     attr_type_params.set_type(data_type);
@@ -767,8 +787,7 @@ class SliceProcessorConst : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     // Skip the first input, which is the data to be sliced.
     for (int i = 1; i < node_->input_size(); i++) {
-      auto shape_node = node_map_->GetNode(node_->input(i));
-      TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
+      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
     }
     return Status::OK();
   }
@@ -926,14 +945,18 @@ struct TuningConfig {
   // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
   // usually faster than the NCHW implementation. The downside is that this
   // might result in more non-cancellable layout conversion nodes (implemented
-  // by the Tranpose op).
+  // by the Transpose op).
   bool no_gemm;
 };
 
 class DataLayoutOptimizer {
  public:
-  explicit DataLayoutOptimizer(GraphDef* graph, TuningConfig config)
-      : graph_(graph), node_map_(graph_), config_(config) {}
+  explicit DataLayoutOptimizer(const string& default_device, GraphDef* graph,
+                               TuningConfig config)
+      : default_device_(default_device),
+        graph_(graph),
+        node_map_(graph_),
+        config_(config) {}
 
   Status Optimize() {
     LOG(INFO) << "Number of nodes for original graph: " << graph_->node_size();
@@ -945,12 +968,13 @@ class DataLayoutOptimizer {
   }
 
  private:
-  void AddNodePermConst(const string& name,
-                        const std::vector<int>& permutation) {
+  NodeDef* AddNodePermConst(const string& name,
+                            const std::vector<int>& permutation) {
     NodeDef* node = graph_->add_node();
     node_map_.AddNode(name, node);
     node->set_name(name);
     node->set_op("Const");
+    node->set_device(default_device_);
     AttrValue attr_data_type;
     attr_data_type.set_type(DT_INT32);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -961,28 +985,40 @@ class DataLayoutOptimizer {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  void AddNodeConcatConst() {
+  NodeDef* AddConstScalar(const char* name, DataType dtype, int value) {
     NodeDef* node = graph_->add_node();
-    node_map_.AddNode(kConcatConst, node);
-    node->set_name(kConcatConst);
+    node_map_.AddNode(name, node);
+    node->set_name(name);
     node->set_op("Const");
+    node->set_device(default_device_);
     AttrValue attr_data_type;
-    attr_data_type.set_type(DT_INT32);
+    attr_data_type.set_type(dtype);
     node->mutable_attr()->insert({"dtype", attr_data_type});
     AttrValue attr_tensor;
-    Tensor tensor(DT_INT32, TensorShape({}));
-    tensor.scalar<int>()() = 1;
+    Tensor tensor(dtype, TensorShape({}));
+    tensor.scalar<int>()() = value;
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  void AddNodeReductionConst() {
+  NodeDef* AddNodeConcatConst() {
+    return AddConstScalar(kConcatConst, DT_INT32, 1);
+  }
+
+  NodeDef* AddGatherAxisConst() {
+    return AddConstScalar(kGatherAxisConst, DT_INT32, 0);
+  }
+
+  NodeDef* AddNodeReductionConst() {
     NodeDef* node = graph_->add_node();
     node_map_.AddNode(kReductionConst, node);
     node->set_name(kReductionConst);
     node->set_op("Const");
+    node->set_device(default_device_);
     AttrValue attr_data_type;
     attr_data_type.set_type(DT_INT32);
     node->mutable_attr()->insert({"dtype", attr_data_type});
@@ -995,6 +1031,7 @@ class DataLayoutOptimizer {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
@@ -1039,10 +1076,11 @@ class DataLayoutOptimizer {
     // only needs to be performed if at least one node in the previous pass is
     // expanded.
     if (graph_->node_size() > node_size_original) {
-      AddNodePermConst(kPermNHWCToNCHW, {0, 3, 1, 2});
-      AddNodePermConst(kPermNCHWToNHWC, {0, 2, 3, 1});
-      AddNodeConcatConst();
-      AddNodeReductionConst();
+      NodeDef* n = AddNodePermConst(kPermNHWCToNCHW, {0, 3, 1, 2});
+      n = AddNodePermConst(kPermNCHWToNHWC, {0, 2, 3, 1});
+      n = AddNodeConcatConst();
+      n = AddGatherAxisConst();
+      n = AddNodeReductionConst();
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
@@ -1131,6 +1169,7 @@ class DataLayoutOptimizer {
     return Status::OK();
   }
 
+  string default_device_;
   GraphDef* graph_;
   NodeMap node_map_;
   TuningConfig config_;
@@ -1147,6 +1186,21 @@ int GetNumTranspose(const GraphDef& graph) {
   return number;
 }
 
+Status LayoutOptimizer::InferOutputShapes(GrapplerItem* item) {
+  GraphProperties graph_properties(*item);
+  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+  for (int i = 0; i < item->graph.node_size(); i++) {
+    auto node = item->graph.mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = graph_properties.GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+    }
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
+  }
+  return Status::OK();
+}
+
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   if (num_gpus_ == 0) {
@@ -1154,28 +1208,44 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   if (num_gpus_ < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
+    *output = item.graph;
     return Status::OK();
   }
 
-  *output = item.graph;
+  GrapplerItem new_item = item;
+  auto status = InferOutputShapes(&new_item);
+  if (!status.ok()) {
+    *output = item.graph;
+    return status;
+  }
+
+  *output = new_item.graph;
   TuningConfig config;
   config.no_gemm = false;
-  DataLayoutOptimizer layout_optimizer(output, config);
-  auto status = layout_optimizer.Optimize();
-
+  string default_device = "/job:localhost/replica:0/task:0/cpu:0";
+  if (cluster) {
+    if (!cluster->GetDevices().empty()) {
+      default_device = cluster->GetDevices().begin()->first;
+    }
+  }
+  std::unique_ptr<DataLayoutOptimizer> layout_optimizer(
+      new DataLayoutOptimizer(default_device, output, config));
+  status = layout_optimizer->Optimize();
   // This is based on an empirical observation that if the introduced Transpose
   // nodes is more than 30, not using GEMM implementation would result in better
   // performance.
   if (status.ok() && GetNumTranspose(*output) > 30) {
-    *output = item.graph;
+    *output = new_item.graph;
     config.no_gemm = true;
-    DataLayoutOptimizer layout_optimizer(output, config);
-    status = layout_optimizer.Optimize();
+    layout_optimizer.reset(
+        new DataLayoutOptimizer(default_device, output, config));
+    status = layout_optimizer->Optimize();
   }
 
   if (!status.ok()) {
     *output = item.graph;
   }
+
   return status;
 }
 

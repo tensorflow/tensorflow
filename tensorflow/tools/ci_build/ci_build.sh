@@ -80,7 +80,7 @@ fi
 
 # cmake (CPU) builds do not require configuration.
 if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
-  CI_COMMAND_PREFIX=""
+  CI_COMMAND_PREFIX=("")
 fi
 
 # Use nvidia-docker if the container is GPU.
@@ -120,9 +120,9 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
 echo "WORKSPACE: ${WORKSPACE}"
-echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
-echo "COMMAND: ${COMMAND[@]}"
-echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
+echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[*]}"
+echo "COMMAND: ${COMMAND[*]}"
+echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[*]}"
 echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
 echo "BUILD_TAG: ${BUILD_TAG}"
 echo "  (docker container name will be ${DOCKER_IMG_NAME})"
@@ -140,7 +140,7 @@ if [[ $? != "0" ]]; then
 fi
 
 # Run the command inside the container.
-echo "Running '${COMMAND[@]}' inside ${DOCKER_IMG_NAME}..."
+echo "Running '${COMMAND[*]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 # By default we cleanup - remove the container once it finish running (--rm)
 # and share the PID namespace (--pid=host) so the process inside does not have

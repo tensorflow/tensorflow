@@ -40,15 +40,10 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-)
-
-cc_library(
-    name = "depthwise_conv2d_test_kernel",
-    testonly = 1,
-    srcs = ["depthwise_conv2d_test_kernel.cc"],
-    deps = ["//tensorflow/core:framework_lite"],
 )
 
 tf_xla_py_test(
@@ -158,6 +153,27 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "depthwise_conv_op_test",
+    size = "medium",
+    srcs = ["depthwise_conv_op_test.py"],
+    shard_count = 5,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -174,12 +190,31 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
+    # TODO(b/62962492): Test fails with assertion error.
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "ftrl_test",
+    size = "small",
+    srcs = ["ftrl_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -309,7 +344,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "reverse_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reverse_ops_test.py"],
     deps = [
         ":xla_test",
@@ -333,6 +368,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "segment_reduction_ops_test",
+    size = "medium",
+    srcs = ["segment_reduction_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "spacetobatch_op_test",
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
@@ -342,6 +391,19 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "stack_ops_test",
+    size = "small",
+    srcs = ["stack_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -394,6 +456,23 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "fused_batchnorm_test",
+    size = "small",
+    srcs = ["fused_batchnorm_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "variable_ops_test",
     size = "small",
     srcs = ["variable_ops_test.py"],
@@ -440,6 +519,11 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+    ],
+    # TODO(b/62961789): Test fails with SIGABRT
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 
@@ -509,8 +593,12 @@ cuda_py_test(
 # --dump_graph_dir, and the config file was written by hand.
 #
 # Run the following to build a minimal benchmark of the computation on Android:
-# $ bazel build -c opt --config=android_arm \
-#       third_party/tensorflow/compiler/tests:lstm_layer_inference_benchmark
+# $ bazel build -c opt --cxxopt='-std=c++11' --linkopt='-lm' \
+#   --cpu=armeabi-v7a \
+#   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+#   --crosstool_top=//external:android/crosstool \
+#   //tensorflow/compiler/tests:lstm_layer_inference_benchmark
+
 #
 # Currently the resulting binary size is ~190KB
 tf_library(

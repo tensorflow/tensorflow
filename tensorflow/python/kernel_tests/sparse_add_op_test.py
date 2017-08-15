@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gradient_checker
@@ -189,6 +190,22 @@ class SparseAddTest(test.TestCase):
                                                     [(nnz,), (n, m)], s, (n, m))
       self.assertLess(err, 1e-3)
 
+  def testInvalidSparseTensor(self):
+    with self.test_session(use_gpu=False) as sess:
+      shape = [2, 2]
+      val = [0]
+      dense = constant_op.constant(np.zeros(shape, dtype=np.int32))
+
+      for bad_idx in [
+          [[-1, 0]],  # -1 is invalid.
+          [[1, 3]],  # ...so is 3.
+      ]:
+        sparse = sparse_tensor.SparseTensorValue(bad_idx, val, shape)
+        s = sparse_ops.sparse_add(sparse, dense)
+
+        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                     "invalid index"):
+          sess.run(s)
 
 ######################## Benchmarking code
 

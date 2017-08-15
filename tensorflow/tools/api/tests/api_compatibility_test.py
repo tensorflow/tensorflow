@@ -198,7 +198,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.do_not_descend_map[''].append('contrib')
+    public_api_visitor.do_not_descend_map['tf'].append('contrib')
     traverse.traverse(tf, public_api_visitor)
 
     proto_dict = visitor.GetProtos()

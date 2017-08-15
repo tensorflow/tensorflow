@@ -210,6 +210,14 @@ class BundleReader {
   // REQUIRES: status().ok()
   Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
 
+  // Looks up the tensor pointed to by the internal iterator.
+  //
+  // On error, "val" may contain nonsense data.
+  //
+  // Validates the stored crc32c checksum against the restored bytes.
+  // REQUIRES: status().ok() && Valid()
+  Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
   //

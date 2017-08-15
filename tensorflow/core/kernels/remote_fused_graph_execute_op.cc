@@ -41,7 +41,8 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
           RemoteFusedGraphExecuteUtils::GetExecutorBuildFunc(
               execute_info_.executor_name());
       if (build_func != nullptr) {
-        Status status = (*build_func)(&remote_fused_graph_executor_);
+        TF_CHECK_OK((*build_func)(&remote_fused_graph_executor_));
+        CHECK(remote_fused_graph_executor_->IsEnabled());
       } else {
         LOG(ERROR) << "Executor not found for "
                    << execute_info_.executor_name();
@@ -109,6 +110,12 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
               TF_CHECK_OK(ctx->allocate_output(i, shape, &output));
               return output;
             });
+      } else {
+        // For compatibility purpose, returns an empty tensor with specified
+        // data type as output if no executor is used.
+        Tensor* output = nullptr;
+        TensorShape ts({});
+        TF_CHECK_OK(ctx->allocate_output(i, ts, &output));
       }
     }
   }

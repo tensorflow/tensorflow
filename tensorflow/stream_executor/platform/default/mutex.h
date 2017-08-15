@@ -42,8 +42,10 @@ enum ConditionResult { kCond_Timeout, kCond_MaybeNotified };
 
 #ifdef STREAM_EXECUTOR_USE_SHARED_MUTEX
 typedef std::shared_timed_mutex BaseMutex;
+typedef std::condition_variable_any ConditionVariableForMutex;
 #else
 typedef std::mutex BaseMutex;
+typedef std::condition_variable ConditionVariableForMutex;
 #endif
 
 // A class that wraps around the std::mutex implementation, only adding an
@@ -82,7 +84,7 @@ typedef mutex_lock shared_lock;
 using std::condition_variable;
 
 inline ConditionResult WaitForMilliseconds(mutex_lock* mu,
-                                           condition_variable* cv, int64 ms) {
+                                           ConditionVariableForMutex* cv, int64 ms) {
   std::cv_status s = cv->wait_for(*mu, std::chrono::milliseconds(ms));
   return (s == std::cv_status::timeout) ? kCond_Timeout : kCond_MaybeNotified;
 }

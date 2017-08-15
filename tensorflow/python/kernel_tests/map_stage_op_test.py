@@ -24,6 +24,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
+TIMEOUT = 1
 
 class MapStageTest(test.TestCase):
 
@@ -45,7 +46,7 @@ class MapStageTest(test.TestCase):
     with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
-        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i+1, gi:i})
+        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
         self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
   def testMultiple(self):
@@ -66,7 +67,7 @@ class MapStageTest(test.TestCase):
     with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
-        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i+1, gi:i})
+        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
@@ -93,7 +94,7 @@ class MapStageTest(test.TestCase):
     with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
-        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i+1, gi:i})
+        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
@@ -107,15 +108,15 @@ class MapStageTest(test.TestCase):
       with ops.device(gpu_dev):
         stager = data_flow_ops.MapStagingArea([dtypes.float32])
         y = stager.put(1, [v], [0])
-        self.assertEqual(y.device, '/device:GPU:0' if gpu_dev
-                                                   else gpu_dev)
+        expected_name = gpu_dev if 'gpu' not in gpu_dev else '/device:GPU:0'
+        self.assertEqual(y.device, expected_name)
       with ops.device('/cpu:0'):
         _, x = stager.get(1)
-        y = stager.peek(1)
+        y = stager.peek(1)[0]
         _, z = stager.get()
-        self.assertEqual(x.device, '/device:CPU:0')
+        self.assertEqual(x[0].device, '/device:CPU:0')
         self.assertEqual(y.device, '/device:CPU:0')
-        self.assertEqual(z.device, '/device:CPU:0')
+        self.assertEqual(z[0].device, '/device:CPU:0')
 
     G.finalize()
 
@@ -138,10 +139,10 @@ class MapStageTest(test.TestCase):
 
     with self.test_session(use_gpu=True, graph=G) as sess:
       for i in range(n):
-        sess.run(stage, feed_dict={x:i, pi:i})
+        sess.run(stage, feed_dict={x: i, pi: i})
 
       for i in range(n):
-        self.assertTrue(sess.run(peek, feed_dict={gi: i}) == i)
+        self.assertTrue(sess.run(peek, feed_dict={gi: i})[0] == i)
 
       self.assertTrue(sess.run(size) == 10)
 
@@ -194,8 +195,7 @@ class MapStageTest(test.TestCase):
     import threading
 
     queue = Queue.Queue()
-    n = 5
-    missed = 0
+    n = 8
 
     with self.test_session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
@@ -207,30 +207,33 @@ class MapStageTest(test.TestCase):
           queue.put(0)
 
       t = threading.Thread(target=thread_run)
+      t.daemon = True
       t.start()
 
-      # Get tokens from the queue, making notes of when we timeout
-      for i in range(n):
-        try:
-          queue.get(timeout=0.05)
-        except Queue.Empty:
-          missed += 1
+      # Get tokens from the queue until a timeout occurs
+      try:
+        for i in range(n):
+          queue.get(timeout=TIMEOUT)
+      except Queue.Empty:
+        pass
 
-      # We timed out n - capacity times waiting for queue puts
-      self.assertTrue(missed == n - capacity)
+      # Should've timed out on the iteration 'capacity'
+      if not i == capacity:
+        self.fail("Expected to timeout on iteration '{}' "
+                  "but instead timed out on iteration '{}' "
+                  "Staging Area size is '{}' and configured "
+                  "capacity is '{}'.".format(capacity, i,
+                                            sess.run(size),
+                                            capacity))
 
-      # Clear the staging area out a bit
-      for i in range(n - capacity):
-        sess.run(get)
-
-      # This should now succeed
-      t.join()
-
+      # Should have capacity elements in the staging area
       self.assertTrue(sess.run(size) == capacity)
 
-      # Clear out the staging area completely
-      for i in range(capacity):
+      # Clear the staging area completely
+      for i in range(n):
         sess.run(get)
+
+      self.assertTrue(sess.run(size) == 0)
 
   def testMemoryLimit(self):
     memory_limit = 512*1024  # 512K
@@ -256,8 +259,7 @@ class MapStageTest(test.TestCase):
     import numpy as np
 
     queue = Queue.Queue()
-    n = 5
-    missed = 0
+    n = 8
 
     with self.test_session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
@@ -265,35 +267,38 @@ class MapStageTest(test.TestCase):
       # not fill the queue with n tokens
       def thread_run():
         for i in range(n):
-          sess.run(stage, feed_dict={x: np.full(chunk, i, dtype=np.uint8),
-                                    pi: i})
+          data = np.full(chunk, i, dtype=np.uint8)
+          sess.run(stage, feed_dict={x: data, pi: i})
           queue.put(0)
 
       t = threading.Thread(target=thread_run)
+      t.daemon = True
       t.start()
 
-      # Get tokens from the queue, making notes of when we timeout
-      for i in range(n):
-        try:
-          queue.get(timeout=0.05)
-        except Queue.Empty:
-          missed += 1
+      # Get tokens from the queue until a timeout occurs
+      try:
+        for i in range(n):
+          queue.get(timeout=TIMEOUT)
+      except Queue.Empty:
+        pass
 
-      # We timed out n - capacity times waiting for queue puts
-      self.assertTrue(missed == n - capacity)
+      # Should've timed out on the iteration 'capacity'
+      if not i == capacity:
+        self.fail("Expected to timeout on iteration '{}' "
+                  "but instead timed out on iteration '{}' "
+                  "Staging Area size is '{}' and configured "
+                  "capacity is '{}'.".format(capacity, i,
+                                            sess.run(size),
+                                            capacity))
 
-      # Clear the staging area out a bit
-      for i in range(n - capacity):
-        sess.run(get)
-
-      # This should now succeed
-      t.join()
-
+      # Should have capacity elements in the staging area
       self.assertTrue(sess.run(size) == capacity)
 
-      # Clear out the staging area completely
-      for i in range(capacity):
+      # Clear the staging area completely
+      for i in range(n):
         sess.run(get)
+
+      self.assertTrue(sess.run(size) == 0)
 
   def testOrdering(self):
     import six
@@ -367,16 +372,26 @@ class MapStageTest(test.TestCase):
       # 1 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [1, 1])
       # We can now obtain tuple associated with key 0
-      self.assertTrue(sess.run([key, ret], feed_dict={gi:0})
-                              == [0, { 'x':1, 'f':2, 'v':1}])
+      self.assertTrue(
+          sess.run([key, ret],
+                   feed_dict={gi: 0}) == [0, {
+                       'x': 1,
+                       'f': 2,
+                       'v': 1
+                   }])
 
       # 0 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [0, 1])
       # Now complete key 1 with tuple entry v
       sess.run(stage_v, feed_dict={pi: 1, v: 3})
       # We can now obtain tuple associated with key 1
-      self.assertTrue(sess.run([key, ret], feed_dict={gi:1})
-                              == [1, { 'x':1, 'f':2, 'v':3}])
+      self.assertTrue(
+          sess.run([key, ret],
+                   feed_dict={gi: 1}) == [1, {
+                       'x': 1,
+                       'f': 2,
+                       'v': 3
+                   }])
 
   def testPartialIndexInsert(self):
     with ops.Graph().as_default() as G:
@@ -412,16 +427,14 @@ class MapStageTest(test.TestCase):
       # 1 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [1, 1])
       # We can now obtain tuple associated with key 0
-      self.assertTrue(sess.run([key, ret], feed_dict={gi:0})
-                              == [0, [1, 1, 2]])
+      self.assertTrue(sess.run([key, ret], feed_dict={gi: 0}) == [0, [1, 1, 2]])
 
       # 0 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [0, 1])
       # Now complete key 1 with tuple entry v
       sess.run(stage_v, feed_dict={pi: 1, v: 3})
       # We can now obtain tuple associated with key 1
-      self.assertTrue(sess.run([key, ret], feed_dict={gi:1})
-                              == [1, [1,3, 2]])
+      self.assertTrue(sess.run([key, ret], feed_dict={gi: 1}) == [1, [1, 3, 2]])
 
   def testPartialDictGetsAndPeeks(self):
     with ops.Graph().as_default() as G:
@@ -466,23 +479,25 @@ class MapStageTest(test.TestCase):
       self.assertTrue(sess.run([size, isize]) == [1, 1])
 
       # We can now peek at 'x' and 'f' values associated with key 0
-      self.assertTrue(sess.run(peek_xf, feed_dict={pei:0})
-                              == { 'x':1, 'f':2})
+      self.assertTrue(sess.run(peek_xf, feed_dict={pei: 0}) == {'x': 1, 'f': 2})
       # Peek at 'v' value associated with key 0
-      self.assertTrue(sess.run(peek_v, feed_dict={pei:0})
-                              == { 'v':1})
+      self.assertTrue(sess.run(peek_v, feed_dict={pei: 0}) == {'v': 1})
       # 1 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [1, 1])
 
       # We can now obtain 'x' and 'f' values associated with key 0
-      self.assertTrue(sess.run([key_xf, get_xf], feed_dict={gi:0})
-                              == [0, { 'x':1, 'f':2}])
+      self.assertTrue(
+          sess.run([key_xf, get_xf],
+                   feed_dict={gi: 0}) == [0, {
+                       'x': 1,
+                       'f': 2
+                   }])
       # Still have 1 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [1, 1])
 
       # We can no longer get 'x' and 'f' from key 0
       with self.assertRaises(errors.InvalidArgumentError) as cm:
-        sess.run([key_xf, get_xf], feed_dict={gi:0})
+        sess.run([key_xf, get_xf], feed_dict={gi: 0})
 
       exc_str = ("Tensor at index '0' for key '0' "
                 "has already been removed.")
@@ -490,8 +505,10 @@ class MapStageTest(test.TestCase):
       self.assertTrue(exc_str in cm.exception.message)
 
       # Obtain 'v' value associated with key 0
-      self.assertTrue(sess.run([key_v, get_v], feed_dict={gi:0})
-                              == [0, { 'v':1}])
+      self.assertTrue(
+          sess.run([key_v, get_v], feed_dict={gi: 0}) == [0, {
+              'v': 1
+          }])
       # 0 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [0, 1])
 
@@ -501,13 +518,14 @@ class MapStageTest(test.TestCase):
       self.assertTrue(sess.run([size, isize]) == [1, 0])
 
       # Pop without key to obtain 'x' and 'f' values associated with key 1
-      self.assertTrue(sess.run([pop_key_xf, pop_xf])
-                              == [1, { 'x':1, 'f':2}])
+      self.assertTrue(sess.run([pop_key_xf, pop_xf]) == [1, {'x': 1, 'f': 2}])
       # still 1 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [1, 0])
       # We can now obtain 'x' and 'f' values associated with key 1
-      self.assertTrue(sess.run([pop_key_v, pop_v], feed_dict={pi:1})
-                              == [1, { 'v': 1 }])
+      self.assertTrue(
+          sess.run([pop_key_v, pop_v], feed_dict={pi: 1}) == [1, {
+              'v': 1
+          }])
       # Nothing is left
       self.assertTrue(sess.run([size, isize]) == [0, 0])
 

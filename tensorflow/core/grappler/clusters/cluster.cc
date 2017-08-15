@@ -14,27 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include <atomic>
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
-static std::atomic<bool> already_created(false);
-
 Cluster::Cluster(int timeout_s) : timeout_s_(timeout_s) {
-  // This is really ugly: to avoid leaking variables, we need to reset the tf
-  // session every time we're done processing a grappler item. However,
-  // variables are global, and therefore we can't have more than 1 session alive
-  // at a time. This check detects when more that one cluster is created.
-  CHECK(!already_created);
-  already_created = true;
-
   DisableDetailedStats(false);
 }
 
 Cluster::~Cluster() {
-  CHECK(already_created);
-  already_created = false;
 }
 
 void Cluster::AllowSoftPlacement(bool soft_placement_state) {
@@ -61,8 +50,21 @@ void Cluster::DisableOptimizer(bool disable) {
       options_.config.mutable_graph_options()->mutable_optimizer_options();
   if (disable) {
     options->set_opt_level(OptimizerOptions::L0);
+    // Disable Grappler optimizations.
+    auto rewriter_config =
+        options_.config.mutable_graph_options()->mutable_rewrite_options();
+    rewriter_config->set_optimize_tensor_layout(false);
+    rewriter_config->set_disable_model_pruning(true);
+    rewriter_config->set_constant_folding(RewriterConfig::OFF);
+    rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);
+    rewriter_config->mutable_auto_parallel()->set_enable(false);
+    rewriter_config->clear_optimizers();
   } else {
     options->set_opt_level(OptimizerOptions::L1);
+    auto rewriter_config =
+        options_.config.mutable_graph_options()->mutable_rewrite_options();
+    rewriter_config->set_constant_folding(RewriterConfig::DEFAULT);
+    rewriter_config->set_memory_optimization(RewriterConfig::DEFAULT_MEM_OPT);
   }
 }
 

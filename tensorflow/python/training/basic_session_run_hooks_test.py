@@ -227,25 +227,69 @@ class LoggingTensorHookTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'xactly one of'):
       basic_session_run_hooks.LoggingTensorHook(tensors=['t'])
 
-  def test_print_every_n_steps(self):
+  def test_print_at_end_only(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
       t = constant_op.constant(42.0, name='foo')
       train_op = constant_op.constant(3)
       hook = basic_session_run_hooks.LoggingTensorHook(
-          tensors=[t.name], every_n_iter=10)
+          tensors=[t.name], at_end=True)
       hook.begin()
       mon_sess = monitored_session._HookedSession(sess, [hook])
       sess.run(variables_lib.global_variables_initializer())
+      self.logged_message = ''
+      for _ in range(3):
+        mon_sess.run(train_op)
+        # assertNotRegexpMatches is not supported by python 3.1 and later
+        self.assertEqual(str(self.logged_message).find(t.name), -1)
+
+      hook.end(sess)
+      self.assertRegexpMatches(str(self.logged_message), t.name)
+
+  def _validate_print_every_n_steps(self, sess, at_end):
+    t = constant_op.constant(42.0, name='foo')
+
+    train_op = constant_op.constant(3)
+    hook = basic_session_run_hooks.LoggingTensorHook(
+        tensors=[t.name], every_n_iter=10, at_end=at_end)
+    hook.begin()
+    mon_sess = monitored_session._HookedSession(sess, [hook])
+    sess.run(variables_lib.global_variables_initializer())
+    mon_sess.run(train_op)
+    self.assertRegexpMatches(str(self.logged_message), t.name)
+    for _ in range(3):
+      self.logged_message = ''
+      for _ in range(9):
+        mon_sess.run(train_op)
+        # assertNotRegexpMatches is not supported by python 3.1 and later
+        self.assertEqual(str(self.logged_message).find(t.name), -1)
       mon_sess.run(train_op)
       self.assertRegexpMatches(str(self.logged_message), t.name)
-      for _ in range(3):
-        self.logged_message = ''
-        for _ in range(9):
-          mon_sess.run(train_op)
-          # assertNotRegexpMatches is not supported by python 3.1 and later
-          self.assertEqual(str(self.logged_message).find(t.name), -1)
-        mon_sess.run(train_op)
-        self.assertRegexpMatches(str(self.logged_message), t.name)
+
+    # Add additional run to verify proper reset when called multiple times.
+    self.logged_message = ''
+    mon_sess.run(train_op)
+    # assertNotRegexpMatches is not supported by python 3.1 and later
+    self.assertEqual(str(self.logged_message).find(t.name), -1)
+
+    self.logged_message = ''
+    hook.end(sess)
+    if at_end:
+      self.assertRegexpMatches(str(self.logged_message), t.name)
+    else:
+      # assertNotRegexpMatches is not supported by python 3.1 and later
+      self.assertEqual(str(self.logged_message).find(t.name), -1)
+
+  def test_print_every_n_steps(self):
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      self._validate_print_every_n_steps(sess, at_end=False)
+      # Verify proper reset.
+      self._validate_print_every_n_steps(sess, at_end=False)
+
+  def test_print_every_n_steps_and_end(self):
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      self._validate_print_every_n_steps(sess, at_end=True)
+      # Verify proper reset.
+      self._validate_print_every_n_steps(sess, at_end=True)
 
   def test_print_first_step(self):
     # if it runs every iteration, first iteration has None duration.
@@ -262,29 +306,48 @@ class LoggingTensorHookTest(test.TestCase):
       # in first run, elapsed time is None.
       self.assertEqual(str(self.logged_message).find('sec'), -1)
 
+  def _validate_print_every_n_secs(self, sess, at_end):
+    t = constant_op.constant(42.0, name='foo')
+    train_op = constant_op.constant(3)
+
+    hook = basic_session_run_hooks.LoggingTensorHook(
+        tensors=[t.name], every_n_secs=1.0, at_end=at_end)
+    hook.begin()
+    mon_sess = monitored_session._HookedSession(sess, [hook])
+    sess.run(variables_lib.global_variables_initializer())
+
+    mon_sess.run(train_op)
+    self.assertRegexpMatches(str(self.logged_message), t.name)
+
+    # assertNotRegexpMatches is not supported by python 3.1 and later
+    self.logged_message = ''
+    mon_sess.run(train_op)
+    self.assertEqual(str(self.logged_message).find(t.name), -1)
+    time.sleep(1.0)
+
+    self.logged_message = ''
+    mon_sess.run(train_op)
+    self.assertRegexpMatches(str(self.logged_message), t.name)
+
+    self.logged_message = ''
+    hook.end(sess)
+    if at_end:
+      self.assertRegexpMatches(str(self.logged_message), t.name)
+    else:
+      # assertNotRegexpMatches is not supported by python 3.1 and later
+      self.assertEqual(str(self.logged_message).find(t.name), -1)
+
   def test_print_every_n_secs(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
-      t = constant_op.constant(42.0, name='foo')
-      train_op = constant_op.constant(3)
+      self._validate_print_every_n_secs(sess, at_end=False)
+      # Verify proper reset.
+      self._validate_print_every_n_secs(sess, at_end=False)
 
-      hook = basic_session_run_hooks.LoggingTensorHook(
-          tensors=[t.name], every_n_secs=1.0)
-      hook.begin()
-      mon_sess = monitored_session._HookedSession(sess, [hook])
-      sess.run(variables_lib.global_variables_initializer())
-
-      mon_sess.run(train_op)
-      self.assertRegexpMatches(str(self.logged_message), t.name)
-
-      # assertNotRegexpMatches is not supported by python 3.1 and later
-      self.logged_message = ''
-      mon_sess.run(train_op)
-      self.assertEqual(str(self.logged_message).find(t.name), -1)
-      time.sleep(1.0)
-
-      self.logged_message = ''
-      mon_sess.run(train_op)
-      self.assertRegexpMatches(str(self.logged_message), t.name)
+  def test_print_every_n_secs_and_end(self):
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      self._validate_print_every_n_secs(sess, at_end=True)
+      # Verify proper reset.
+      self._validate_print_every_n_secs(sess, at_end=True)
 
   def test_print_formatter(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:

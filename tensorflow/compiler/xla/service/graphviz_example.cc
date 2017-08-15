@@ -47,7 +47,7 @@ HloComputation* AddScalarConstantComputation(int64 addend, HloModule* module) {
   auto x_value = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "x_value"));
   auto half = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.5)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.5)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       half->shape(), HloOpcode::kAdd, x_value, half));
   return module->AddEmbeddedComputation(builder.Build());
@@ -118,7 +118,7 @@ std::unique_ptr<HloModule> MakeBigGraph() {
   auto rng = builder.AddInstruction(
       HloInstruction::CreateRng(vshape, RNG_UNIFORM, {param_m, param_m}));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto add_computation = ScalarSumComputation(module.get());
   builder.AddInstruction(
       HloInstruction::CreateReduce(vshape, rng, one, {1}, add_computation));
@@ -156,10 +156,9 @@ int main(int argc, char** argv) {
 
   auto module = xla::MakeBigGraph();
 
-  printf("Graph URL: %s\n",
-         xla::hlo_graph_dumper::DumpGraph(
-             *module->entry_computation(), "Example computation",
-             /*show_addresses=*/false, /*show_layouts=*/false)
-             .c_str());
+  printf("Graph URL: %s\n", xla::hlo_graph_dumper::DumpGraph(
+                                *module->entry_computation(),
+                                "Example computation", xla::DebugOptions())
+                                .c_str());
   return 0;
 }

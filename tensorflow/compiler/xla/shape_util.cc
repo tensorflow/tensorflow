@@ -105,6 +105,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return equal;
 }
 
+/* static */ int64 ShapeUtil::Rank(const Shape& shape) {
+  CHECK(!ShapeUtil::IsTuple(shape)) << "Tuples do not have a rank";
+  return shape.dimensions_size();
+}
+
 /* static */ int64 ShapeUtil::TrueRank(const Shape& shape) {
   int64 accum = 0;
   for (int64 dimension : shape.dimensions()) {
@@ -165,6 +170,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   return MakeShapeWithMonotonicDim0MajorLayout(shape.element_type(), dims);
 }
+
 /* static */ void ShapeUtil::PopulateShape(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
     Shape* shape) {
@@ -270,7 +276,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsEmptyTuple(shape) || HasZeroElements(shape);
+  return IsTuple(shape) ? IsEmptyTuple(shape) : HasZeroElements(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -323,6 +329,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
+  CHECK(!IsTuple(shape));
   CHECK_EQ(shape.dimensions_size(), Rank(shape));
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
@@ -355,6 +362,35 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
 }
 
+namespace {
+
+// Class to memoize the computation of
+//   tensorflow::str_util::Lowercase(PrimitiveType_Name(p))
+// for all PrimitiveType values "p"
+class PrimitiveTypeNameGenerator {
+ public:
+  PrimitiveTypeNameGenerator() {
+    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+      if (PrimitiveType_IsValid(i)) {
+        lowercase_name_[i] = tensorflow::str_util::Lowercase(
+            PrimitiveType_Name(static_cast<PrimitiveType>(i)));
+      }
+    }
+  }
+  const string& LowercaseName(PrimitiveType t) {
+    return lowercase_name_[static_cast<int>(t)];
+  }
+
+ private:
+  string lowercase_name_[PrimitiveType_ARRAYSIZE];
+};
+
+const string& LowercasePrimitiveTypeName(PrimitiveType s) {
+  static PrimitiveTypeNameGenerator* gen = new PrimitiveTypeNameGenerator();
+  return gen->LowercaseName(s);
+}
+}  // namespace
+
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.element_type() == TUPLE) {
     string text = "(";
@@ -367,18 +403,22 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     text += ")";
     return text;
   } else {
-    string layout;
+    string result = tensorflow::strings::StrCat(
+        LowercasePrimitiveTypeName(shape.element_type()), "[");
+    for (int i = 0; i < shape.dimensions().size(); i++) {
+      tensorflow::strings::StrAppend(&result, (i > 0) ? "," : "",
+                                     shape.dimensions(i));
+    }
+    result += "]";
     if (!IsScalar(shape) && !IsOpaque(shape)) {
       if (LayoutUtil::HasLayout(shape)) {
-        layout = LayoutUtil::HumanString(shape.layout());
+        tensorflow::strings::StrAppend(&result,
+                                       LayoutUtil::HumanString(shape.layout()));
       } else {
-        layout = "{no layout}";
+        tensorflow::strings::StrAppend(&result, "{no layout}");
       }
     }
-    return tensorflow::strings::StrCat(
-        tensorflow::str_util::Lowercase(
-            PrimitiveType_Name(shape.element_type())),
-        "[", tensorflow::str_util::Join(shape.dimensions(), ","), "]", layout);
+    return result;
   }
 }
 
@@ -534,11 +574,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
   if (shape.element_type() == TUPLE) {
-    // Tuple shape.
-    if (Rank(shape) != 0) {
-      return InvalidArgument("tuples must be rank-0; got rank %lld",
-                             Rank(shape));
-    }
     if (shape.dimensions_size() != 0) {
       return InvalidArgument("tuples must not have dimensions specified");
     }
@@ -1214,36 +1249,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
-}
-
-/* static */ void ShapeUtil::ForEachIndex(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> base,
-    tensorflow::gtl::ArraySlice<int64> count,
-    tensorflow::gtl::ArraySlice<int64> incr,
-    const IndexVisitorFunction& visitor_function) {
-  if (ShapeUtil::HasZeroElements(shape)) {
-    return;
-  }
-  DCHECK_EQ(Rank(shape), base.size());
-  DCHECK_EQ(incr.size(), base.size());
-  DCHECK_EQ(count.size(), base.size());
-  const Layout& layout = shape.layout();
-  int64 rank = layout.minor_to_major_size();
-  // Allows handling R0 arrays, such that the visitor function will be called
-  // once with the proper empty indexes.
-  int64 n = -1;
-  std::vector<int64> indexes(base.begin(), base.end());
-  while (n < rank && visitor_function(indexes)) {
-    // Increments dimensions in minor to major order.
-    for (n = 0; n < rank; ++n) {
-      int64 dim = layout.minor_to_major(n);
-      indexes[dim] += incr[dim];
-      if (indexes[dim] < base[dim] + count[dim]) {
-        break;
-      }
-      indexes[dim] = base[dim];
-    }
-  }
 }
 
 }  // namespace xla

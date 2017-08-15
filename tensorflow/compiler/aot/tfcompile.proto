@@ -7,6 +7,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.tfcompile";
 
 import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
 
 // TensorId identifies a tensor in a TensorFlow graph, by specifying the output
 // index of a particular node in the graph.  If the output of the named node
@@ -23,6 +24,12 @@ message Feed {
   TensorId id = 1;
   TensorShapeProto shape = 2;
   string name = 3;  // Optional name for generated code.
+
+  // Optional data type. This is not normally required, as the graph itself
+  // contains this information. However, if the node being fed is an op that
+  // is not linked into the tfcompile binary, then the type cannot be inferred
+  // from the node; in this case, the type should be set here.
+  DataType type = 4;
 };
 
 // Fetch represents a single fetch tensor in the graph, which corresponds to an

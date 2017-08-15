@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
@@ -30,7 +31,6 @@ class DeviceSet;
 class Env;
 class MasterSession;
 class OpRegistryInterface;
-class WorkerCacheInterface;
 
 // Options passed to the worker_cache_factory function.
 struct WorkerCacheFactoryOptions {

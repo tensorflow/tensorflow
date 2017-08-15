@@ -23,14 +23,12 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.estimator.canned import linear
 from tensorflow.python.estimator.canned import optimizers
-from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
@@ -85,7 +83,7 @@ def _dnn_linear_combined_model_fn(
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
-    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    features: dict of `Tensor`.
     labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of dtype
       `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
@@ -114,8 +112,12 @@ def _dnn_linear_combined_model_fn(
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
-      are empty at the same time, or `input_layer_partitioner` is missing.
+      are empty at the same time, or `input_layer_partitioner` is missing,
+      or features has the wrong type.
   """
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
         'Either linear_feature_columns or dnn_feature_columns must be defined.')
@@ -145,36 +147,15 @@ def _dnn_linear_combined_model_fn(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=dnn_partitioner):
-      with variable_scope.variable_scope('input',
-                                         partitioner=input_layer_partitioner):
-        net = feature_column_lib.input_layer(
-            features=features,
-            feature_columns=dnn_feature_columns)
 
-      for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
-        with variable_scope.variable_scope(
-            'hiddenlayer_%d' % layer_id,
-            values=(net,)) as dnn_hidden_layer_scope:
-          net = core_layers.dense(
-              net,
-              units=num_hidden_units,
-              activation=dnn_activation_fn,
-              kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=dnn_hidden_layer_scope)
-          if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-            net = core_layers.dropout(net, rate=dnn_dropout, training=True)
-        _add_layer_summary(net, dnn_hidden_layer_scope.name)
-
-      with variable_scope.variable_scope(
-          'logits',
-          values=(net,)) as dnn_logits_scope:
-        dnn_logits = core_layers.dense(
-            net,
-            units=head.logits_dimension,
-            activation=None,
-            kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=dnn_logits_scope)
-      _add_layer_summary(dnn_logits, dnn_logits_scope.name)
+      dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
+          units=head.logits_dimension,
+          hidden_units=dnn_hidden_units,
+          feature_columns=dnn_feature_columns,
+          activation_fn=dnn_activation_fn,
+          dropout=dnn_dropout,
+          input_layer_partitioner=input_layer_partitioner)
+      dnn_logits = dnn_logit_fn(features=features, mode=mode)
 
   linear_parent_scope = 'linear'
 
@@ -189,10 +170,10 @@ def _dnn_linear_combined_model_fn(
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
-      linear_logits = feature_column_lib.linear_model(
-          features=features,
-          feature_columns=linear_feature_columns,
-          units=head.logits_dimension)
+      logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
+          units=head.logits_dimension,
+          feature_columns=linear_feature_columns)
+      linear_logits = logit_fn(features=features)
       _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.
@@ -295,6 +276,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
 
+  Loss is calculated by using softmax cross entropy.
   """
 
   def __init__(self,
@@ -307,6 +289,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                n_classes=2,
+               weight_column=None,
+               label_vocabulary=None,
                input_layer_partitioner=None,
                config=None):
     """Initializes a DNNLinearCombinedClassifier instance.
@@ -333,6 +317,20 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         a given coordinate.
       n_classes: Number of label classes. Defaults to 2, namely binary
         classification. Must be > 1.
+      weight_column: A string or a `_NumericColumn` created by
+        `tf.feature_column.numeric_column` defining feature column representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example. If it is a string, it is
+        used as a key to fetch weight tensor from the `features`. If it is a
+        `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+        then weight_column.normalizer_fn is applied on it to get weight tensor.
+      label_vocabulary: A list of strings represents possible label values. If
+        given, labels must be string type and have any value in
+        `label_vocabulary`. If it is not given, that means labels are
+        already encoded as integer or float within [0, 1] for `n_classes=2` and
+        encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
+        Also there will be errors if vocabulary is not provided and labels are
+        string.
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
@@ -343,16 +341,20 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     """
     linear_feature_columns = linear_feature_columns or []
     dnn_feature_columns = dnn_feature_columns or []
-    self._feature_columns = linear_feature_columns + dnn_feature_columns
+    self._feature_columns = (
+        list(linear_feature_columns) + list(dnn_feature_columns))
     if not self._feature_columns:
       raise ValueError('Either linear_feature_columns or dnn_feature_columns '
                        'must be defined.')
     if n_classes == 2:
-      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()  # pylint: disable=protected-access
+      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
+          weight_column=weight_column,
+          label_vocabulary=label_vocabulary)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes)
-
+          n_classes,
+          weight_column=weight_column,
+          label_vocabulary=label_vocabulary)
     def _model_fn(features, labels, mode, config):
       return _dnn_linear_combined_model_fn(
           features=features,
@@ -433,6 +435,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
 
+  Loss is calculated by using mean squared error.
   """
 
   def __init__(self,
@@ -445,7 +448,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                label_dimension=1,
-               weight_feature_key=None,
+               weight_column=None,
                input_layer_partitioner=None,
                config=None):
     """Initializes a DNNLinearCombinedRegressor instance.
@@ -458,12 +461,12 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. If `None`, will use a FTRL optimizer.
+        the linear part of the model. Defaults to FTRL optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. If `None`, will use an Adagrad optimizer.
+        the deep part of the model. Defaults to Adagrad optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,
@@ -473,9 +476,13 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       label_dimension: Number of regression targets per example. This is the
         size of the last dimension of the labels and logits `Tensor` objects
         (typically, these have shape `[batch_size, label_dimension]`).
-      weight_feature_key: A string defining feature column name representing
+      weight_column: A string or a `_NumericColumn` created by
+        `tf.feature_column.numeric_column` defining feature column representing
         weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
+        will be multiplied by the loss of the example. If it is a string, it is
+        used as a key to fetch weight tensor from the `features`. If it is a
+        `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+        then weight_column.normalizer_fn is applied on it to get weight tensor.
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
@@ -499,8 +506,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           mode=mode,
           head=head_lib.  # pylint: disable=protected-access
           _regression_head_with_mean_squared_error_loss(
-              label_dimension=label_dimension,
-              weight_feature_key=weight_feature_key),
+              label_dimension=label_dimension, weight_column=weight_column),
           linear_feature_columns=linear_feature_columns,
           linear_optimizer=linear_optimizer,
           dnn_feature_columns=dnn_feature_columns,

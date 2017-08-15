@@ -24,8 +24,8 @@ import copy
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.engine import InputSpec
 from tensorflow.contrib.keras.python.keras.engine import Layer
+from tensorflow.contrib.keras.python.keras.utils.generic_utils import has_arg
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.util import tf_inspect
 
 
 class Wrapper(Layer):
@@ -183,15 +183,29 @@ class TimeDistributed(Wrapper):
     return tensor_shape.TensorShape([child_output_shape[0], timesteps] +
                                     child_output_shape[1:])
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs, training=None, mask=None):
+    kwargs = {}
+    if has_arg(self.layer.call, 'training'):
+      kwargs['training'] = training
+    uses_learning_phase = False  # pylint: disable=redefined-outer-name
+
     input_shape = K.int_shape(inputs)
     if input_shape[0]:
       # batch size matters, use rnn-based implementation
       def step(x, _):
-        output = self.layer.call(x)
+        global uses_learning_phase  # pylint: disable=global-variable-undefined
+        output = self.layer.call(x, **kwargs)
+        if hasattr(output, '_uses_learning_phase'):
+          uses_learning_phase = (output._uses_learning_phase or
+                                 uses_learning_phase)
         return output, []
 
-      _, outputs, _ = K.rnn(step, inputs, initial_states=[], unroll=False)
+      _, outputs, _ = K.rnn(
+          step,
+          inputs,
+          initial_states=[],
+          input_length=input_shape[1],
+          unroll=False)
       y = outputs
     else:
       # No batch size specified, therefore the layer will be able
@@ -202,16 +216,22 @@ class TimeDistributed(Wrapper):
         input_length = K.shape(inputs)[1]
       # Shape: (num_samples * timesteps, ...)
       inputs = K.reshape(inputs, (-1,) + input_shape[2:])
-      y = self.layer.call(inputs)  # (num_samples * timesteps, ...)
+      # (num_samples * timesteps, ...)
+      y = self.layer.call(inputs, **kwargs)
+      if hasattr(y, '_uses_learning_phase'):
+        uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
-      output_shape = self._compute_output_shape(input_shape).as_list()  # pylint: disable=protected-access
-      y = K.reshape(y, [-1, input_length] + output_shape[2:])
+      output_shape = self._compute_output_shape(input_shape).as_list()
+      y = K.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
 
     # Apply activity regularizer if any:
     if (hasattr(self.layer, 'activity_regularizer') and
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
       self.add_loss(regularization_loss, inputs)
+
+    if uses_learning_phase:
+      y._uses_learning_phase = True
     return y
 
 
@@ -285,10 +305,9 @@ class Bidirectional(Wrapper):
 
   def call(self, inputs, training=None, mask=None):
     kwargs = {}
-    func_args = tf_inspect.getargspec(self.layer.call).args
-    if 'training' in func_args:
+    if has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
-    if 'mask' in func_args:
+    if has_arg(self.layer.call, 'mask'):
       kwargs['mask'] = mask
 
     y = self.forward_layer.call(inputs, **kwargs)

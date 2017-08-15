@@ -16,7 +16,7 @@ r"""Prints a header file to be used with SELECTIVE_REGISTRATION.
 
 An example of command-line usage is:
   bazel build tensorflow/python/tools:print_selective_registration_header && \
-  bazel-bin/tensorflow/python/tools:print_selective_registration_header \
+  bazel-bin/tensorflow/python/tools/print_selective_registration_header \
     --graphs=path/to/graph.pb > ops_to_register.h
 
 Then when compiling tensorflow, include ops_to_register.h in the include search
@@ -28,7 +28,7 @@ When compiling for Android:
     --copt="-DSUPPORT_SELECTIVE_REGISTRATION" \
     //tensorflow/contrib/android:libtensorflow_inference.so \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-    --config=android_arm
+    --crosstool_top=//external:android/crosstool --cpu=armeabi-v7a
 """
 
 from __future__ import absolute_import

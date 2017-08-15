@@ -52,7 +52,8 @@ class ResourceVariable(variables.Variable):
                name=None,
                dtype=None,
                variable_def=None,
-               import_scope=None):
+               import_scope=None,
+               constraint=None):
     """Creates a variable.
 
     Args:
@@ -84,6 +85,13 @@ class ResourceVariable(variables.Variable):
         arguments (except for import_scope) are mutually exclusive.
       import_scope: Optional `string`. Name scope to add to the
         ResourceVariable. Only used when `variable_def` is provided.
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -101,7 +109,8 @@ class ResourceVariable(variables.Variable):
                            validate_shape=validate_shape,
                            caching_device=caching_device,
                            name=name,
-                           dtype=dtype)
+                           dtype=dtype,
+                           constraint=constraint)
 
   # pylint: disable=unused-argument
   def _init_from_args(self,
@@ -111,7 +120,8 @@ class ResourceVariable(variables.Variable):
                       validate_shape=True,
                       caching_device=None,
                       name=None,
-                      dtype=None):
+                      dtype=None,
+                      constraint=None):
 
     """Creates a variable.
 
@@ -139,6 +149,13 @@ class ResourceVariable(variables.Variable):
         If None, either the datatype will be kept (if initial_value is
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -154,6 +171,9 @@ class ResourceVariable(variables.Variable):
       raise ValueError(
           "collections argument to Variable constructor must be a list, tuple, "
           "or set. Got %s of type %s" % (collections, type(collections)))
+    if constraint is not None and not callable(constraint):
+      raise ValueError("The `constraint` argument must be a callable.")
+
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     self._save_slice_info = None
@@ -197,6 +217,7 @@ class ResourceVariable(variables.Variable):
               shared_name=true_name, name=name)
 
         self._dtype = self._initial_value.dtype.base_dtype
+        self._constraint = constraint
 
         with ops.name_scope("IsInitialized"):
           self._is_initialized_op = (
@@ -204,7 +225,9 @@ class ResourceVariable(variables.Variable):
         if initial_value is not None:
           with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
             self._initializer_op = gen_resource_variable_ops.assign_variable_op(
-                self._handle, self._initial_value, name=n)
+                self._handle,
+                self._build_initializer_expr(self._initial_value),
+                name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
           # Manually assign reads to the handle's device to avoid log messages.
           with ops.device(self._handle.device):
@@ -254,6 +277,7 @@ class ResourceVariable(variables.Variable):
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
+    self._constraint = None
 
   @property
   def dtype(self):
@@ -275,7 +299,8 @@ class ResourceVariable(variables.Variable):
     """The name of the handle for this variable."""
     return self._handle.name
 
-  def get_shape(self):
+  @property
+  def shape(self):
     """The shape of this variable."""
     return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
 
@@ -311,6 +336,16 @@ class ResourceVariable(variables.Variable):
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable."""
     return self._initial_value
+
+  @property
+  def constraint(self):
+    """Returns the constraint function associated with this variable.
+
+    Returns:
+      The constraint function that was passed to the variable constructor.
+      Can be `None` if no constraint was passed.
+    """
+    return self._constraint
 
   @property
   def op(self):
@@ -553,6 +588,16 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 ops.register_proto_function(
     ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.LOCAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MODEL_VARIABLES,
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)

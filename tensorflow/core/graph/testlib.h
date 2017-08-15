@@ -171,8 +171,8 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
 
-// Perform gather op on params "in0" with indices "in1".
-Node* Gather(Graph* g, Node* in0, Node* in1);
+// Perform gather op on params "in0" with indices "in1" and axis "axis".
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis);
 
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);

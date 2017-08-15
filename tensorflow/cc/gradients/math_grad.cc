@@ -203,6 +203,46 @@ Status TanhGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
 
+Status AsinhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = asinh(x)
+  // dy/dx = 1 / cosh(y)
+  auto dydx = Reciprocal(scope, Cosh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Asinh", AsinhGrad);
+
+Status AcoshGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = acosh(x)
+  // dy/dx = 1 / sinh(y)
+  auto dydx = Reciprocal(scope, Sinh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Acosh", AcoshGrad);
+
+Status AtanhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = atanh(x)
+  // dy/dx = 1 / (1 - x^2)
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dydx = Reciprocal(scope, Sub(scope, one, Square(scope, op.input(0))));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atanh", AtanhGrad);
+
 Status SigmoidGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,
                    std::vector<Output>* grad_outputs) {
@@ -313,6 +353,24 @@ Status AtanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atan", AtanGrad);
 
+Status AddNGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // AddN doesn't support broadcasting, so all the inputs must be the
+  // same shape.
+  // Note:
+  // dy/dx_k = d(x_1 + x_2 + ... + x_n)/dx_k = 1 for all x_k
+  // hence dx_k = dy for all x_k
+  // So the gradient for AddN just transfers the incoming gradient to
+  // all outgoing gradients.
+  auto incoming = Identity(scope, grad_inputs[0]);
+  for (int32 i = 0; i < op.num_inputs(); ++i) {
+    grad_outputs->push_back(incoming);
+  }
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("AddN", AddNGrad);
+
 Status RealGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -332,6 +390,22 @@ Status ImagGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Imag", ImagGrad);
+
+Status AngleGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = Angle(x)
+  // dx = -dy / (Im(x) + iRe(x)) = -dy * z
+  auto re = Real(scope, op.input(0));
+  auto im = Imag(scope, op.input(0));
+  auto z_inv = Reciprocal(scope, Complex(scope, im, re));
+  auto zero = Cast(scope, Const(scope, 0), grad_inputs[0].type());
+  auto grad = Complex(scope, grad_inputs[0], zero);
+  auto dx = Neg(scope, Mul(scope, grad, z_inv));
+  grad_outputs->push_back(dx);
+  return scope.status(); 
+}
+REGISTER_GRADIENT_OP("Angle", AngleGrad);
 
 Status ConjGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 
@@ -49,7 +50,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
 
   Output a = ops::Const(s.WithOpName("a"), 1.0f, {1});
   Output b = ops::Const(s.WithOpName("b"), 2.0f, {1});
-  Output c = ops::AddN(s.WithOpName("c"), {a, b});
+  Output c = ops::AddN(s.WithOpName("c").WithDevice("/CPU:0"), {a, b});
   Output d = ops::AddN(s.WithOpName("d"), {b, c});
 
   GrapplerItem item;
@@ -66,6 +67,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   const NodeDef& new_c = output.node(0);
   EXPECT_EQ("ConstantFolding/c", new_c.name());
   EXPECT_EQ("Const", new_c.op());
+  EXPECT_EQ("/CPU:0", new_c.device());
 
   const NodeDef& new_a = output.node(1);
   EXPECT_EQ("a", new_a.name());
@@ -79,6 +81,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   const NodeDef& new_d = output.node(4);
   EXPECT_EQ("d", new_d.name());
   EXPECT_EQ("ConstantFolding/c", new_d.input(1));
+  EXPECT_EQ("", new_d.device());
 
   std::vector<string> fetch = {"a", "b", "c", "d"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
@@ -148,18 +151,16 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   Output dflt = ops::Const(scope.WithOpName("dflt"), 3.14f, {1});
   Output p1 = ops::PlaceholderWithDefault(scope.WithOpName("p1"), dflt, {1});
   Output p2 = ops::PlaceholderWithDefault(scope.WithOpName("p2"), dflt, {1});
-  Output c = ops::Const(scope.WithOpName("c"), 10, {3});
+  Output c =
+      ops::Const(scope.WithOpName("c").WithControlDependencies(p1), 10, {3});
   Output i1 = ops::Identity(scope.WithOpName("i1"), {c});
-  Output i2 = ops::Identity(scope.WithOpName("i2"), {i1});
+  Output i2 =
+      ops::Identity(scope.WithOpName("i2").WithControlDependencies(p2), {i1});
   Output i3 = ops::Identity(scope.WithOpName("e"), {i2});
 
   GrapplerItem item;
   item.fetch.push_back("i3");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-  ASSERT_EQ("c", item.graph.node(3).name());
-  (*item.graph.mutable_node(3)->add_input()) = "^p1";
-  ASSERT_EQ("i2", item.graph.node(5).name());
-  (*item.graph.mutable_node(5)->add_input()) = "^p2";
 
   ConstantFolding fold;
   GraphDef output;
@@ -191,6 +192,83 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
     }
   }
   EXPECT_EQ(2, found);
+}
+
+TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  // Add a DynamicPartition node to the graph
+  Output input = ops::Const(scope.WithOpName("in0"), 314, {3, 4, 5});
+  Output indices = ops::Const(scope.WithOpName("indices"), 1, {3, 4});
+  int num_partitions = 4;
+  ops::DynamicPartition part(scope.WithOpName("partition"), input, indices,
+                             num_partitions);
+
+  std::vector<string> outputs;
+  for (int i = 0; i < num_partitions; ++i) {
+    string part_out_name = strings::StrCat("part_out", i);
+    ops::Identity partition_out(scope.WithOpName(part_out_name),
+                                {part.outputs[i]});
+    outputs.push_back(part_out_name);
+  }
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  // Add a ConcatOffset node to the graph
+  Tensor initial_val(DT_INT32, TensorShape({3}));
+  test::FillIota<int>(&initial_val, 7);
+  for (int i = 1; i < 5; ++i) {
+    TF_CHECK_OK(NodeDefBuilder(strings::StrCat("in", i), "Const")
+                    .Attr("dtype", DT_INT32)
+                    .Attr("value", initial_val)
+                    .Finalize(item.graph.add_node()));
+  }
+  Tensor concat_dim(DT_INT32, TensorShape({}));
+  test::FillIota<int>(&concat_dim, 0);
+  TF_CHECK_OK(NodeDefBuilder("concat_dim", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", concat_dim)
+                  .Finalize(item.graph.add_node()));
+
+  TF_CHECK_OK(NodeDefBuilder("concat_offsets", "ConcatOffset")
+                  .Input("concat_dim", 0, DT_INT32)
+                  .Input({NodeDefBuilder::NodeOut("in1", 0, DT_INT32),
+                          NodeDefBuilder::NodeOut("in2", 0, DT_INT32),
+                          NodeDefBuilder::NodeOut("in3", 0, DT_INT32),
+                          NodeDefBuilder::NodeOut("in4", 0, DT_INT32)})
+                  .Finalize(item.graph.add_node()));
+
+  for (int i = 0; i < 4; ++i) {
+    string concat_offset_out_name = strings::StrCat("concat_offset_out", i);
+    TF_CHECK_OK(NodeDefBuilder(concat_offset_out_name, "Identity")
+                    .Attr("T", DT_INT32)
+                    .Input("concat_offsets", i, DT_INT32)
+                    .Finalize(item.graph.add_node()));
+    outputs.push_back(concat_offset_out_name);
+  }
+
+  item.fetch = outputs;
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int constant_folded = 0;
+  for (const auto& node : output.node()) {
+    if (node.name().find("ConstantFolding/partition") != string::npos ||
+        node.name().find("ConstantFolding/concat_offsets") != string::npos) {
+      ++constant_folded;
+      EXPECT_EQ("Const", node.op());
+    }
+  }
+  EXPECT_EQ(8, constant_folded);
+
+  auto expected = EvaluateNodes(item.graph, outputs);
+  auto optimized = EvaluateNodes(output, outputs);
+  ASSERT_EQ(expected.size(), optimized.size());
+  for (int i = 0; i < expected.size(); ++i) {
+    test::ExpectTensorEqual<int>(expected[i], optimized[i]);
+  }
 }
 
 TEST_F(ConstantFoldingTest, ShapeMaterialization) {
@@ -305,13 +383,104 @@ TEST_F(ConstantFoldingTest, SwitchNodes) {
   }
 }
 
+TEST_F(ConstantFoldingTest, MergeNodes) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output x =
+      ops::RandomNormal(scope.WithOpName("x"), {3, 5}, DataType::DT_FLOAT);
+  Output y =
+      ops::RandomNormal(scope.WithOpName("y"), {3, 5}, DataType::DT_FLOAT);
+  Output const1 =
+      ops::Const(scope.WithOpName("const1").WithControlDependencies(x), 2.7f,
+                 TensorShape({3, 5}));
+  Output const2 =
+      ops::Const(scope.WithOpName("const2"), 3.14f, TensorShape({3, 5}));
+  Output const3 =
+      ops::Const(scope.WithOpName("const3").WithControlDependencies(x), 3.14f,
+                 TensorShape({3, 5}));
+
+  // Create 3 merge nodes: m1 is foldable, m2 and m3 aren't.
+  ops::Merge m1(scope.WithOpName("m1"), {x, const1, const2});
+  ops::Merge m2(scope.WithOpName("m2"), {const1, const3});
+  ops::Merge m3(scope.WithOpName("m3"), {x, y});
+
+  ops::Identity out1(scope.WithOpName("out1"), m1.output);
+  ops::Identity idx1(scope.WithOpName("idx1"), m1.value_index);
+  ops::Identity out2(scope.WithOpName("out2"), m2.output);
+  ops::Identity idx2(scope.WithOpName("idx2"), m2.value_index);
+  ops::Identity out3(scope.WithOpName("out3"), m3.output);
+  ops::Identity idx3(scope.WithOpName("idx3"), m3.value_index);
+
+  GrapplerItem item;
+  item.fetch.push_back("out1, idx1, out2, idx2, out3, idx3");
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int found_nodes = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "out1") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/m1", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "idx1") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ConstantFolding/m1_index", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "ConstantFolding/m1") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^m1", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "ConstantFolding/m1_index") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^m1", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "out2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m2", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "idx2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m2:1", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "out3") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m3", node.input(0));
+      ++found_nodes;
+    } else if (node.name() == "idx3") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("m3:1", node.input(0));
+      ++found_nodes;
+    }
+  }
+  // Make sure the graph contains all the nodes we're expecting.
+  EXPECT_EQ(8, found_nodes);
+
+  std::vector<string> fetch = {"out1", "idx1"};
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(2, tensors.size());
+  const Tensor& out_value = tensors[0];
+  EXPECT_EQ(3 * 5, out_value.NumElements());
+  for (int i = 0; i < 3 * 5; ++i) {
+    EXPECT_EQ(3.14f, out_value.flat<float>()(i));
+  }
+  const Tensor& out_idx = tensors[1];
+  EXPECT_EQ(1, out_idx.NumElements());
+  EXPECT_EQ(2, out_idx.flat<int32>()(0));
+}
+
 TEST_F(ConstantFoldingTest, NoOpReduction) {
   // Build a simple graph with a reduction that can be reduced to the identity.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
-  Output d = ops::Const(scope.WithOpName("d"), 3.14f, {3, 5, 7});
-  Output v = ops::PlaceholderWithDefault(scope.WithOpName("v"), d, {3, 5, 7});
-  Output c = ops::Const(scope.WithOpName("c"), 0, {0});
+  Output v = ops::Variable(scope.WithOpName("v"), {3, 5, 7}, DT_FLOAT);
+  Output c =
+      ops::Const(scope.WithOpName("c").WithControlDependencies(v), 0, {0});
   Output i = ops::Identity(scope.WithOpName("i"), c);
   Output p = ops::Prod(scope.WithOpName("p"), v, i);
   Output s = ops::Square(scope.WithOpName("s"), p);
@@ -319,19 +488,11 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
   GrapplerItem item;
   item.fetch.push_back("s");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-  ASSERT_EQ("c", item.graph.node(2).name());
-  (*item.graph.mutable_node(2)->add_input()) = "^v";
 
   ConstantFolding fold;
   GraphDef output;
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-
-  auto expected = EvaluateNodes(item.graph, {"s"});
-  auto optimized = EvaluateNodes(output, {"s"});
-  EXPECT_EQ(1, expected.size());
-  EXPECT_EQ(1, optimized.size());
-  test::ExpectTensorEqual<float>(expected[0], optimized[0]);
 
   bool found = false;
   for (const auto& node : output.node()) {
@@ -344,6 +505,84 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
     }
   }
   EXPECT_TRUE(found);
+}
+
+TEST_F(ConstantFoldingTest, NoOpReshape) {
+  // Build a simple graph with a reshape that can be reduced to the identity.
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  // A reshape than can be optimized
+  Output d1 = ops::Const(scope.WithOpName("d1"), 3.14f, {17});
+  Output v1 = ops::Variable(scope.WithOpName("v1"), {17}, DT_FLOAT);
+  Output c1 =
+      ops::Const(scope.WithOpName("c1").WithControlDependencies(v1), 17, {1});
+  Output i1 = ops::Identity(scope.WithOpName("i1"), c1);
+  Output r1 =
+      ops::Reshape(scope.WithOpName("r1").WithControlDependencies(d1), v1, i1);
+  Output s1 = ops::Square(scope.WithOpName("s1"), r1);
+
+  // A multi dimensional reshape than can be optimized
+  Output v3 = ops::Variable(scope.WithOpName("v3"), {5, 5, 5}, DT_FLOAT);
+  Output c3 =
+      ops::Const(scope.WithOpName("c3").WithControlDependencies(v3), 5, {3});
+  Output i3 = ops::Identity(scope.WithOpName("i3"), c3);
+  Output r3 = ops::Reshape(scope.WithOpName("r3"), v3, i3);
+  Output s3 = ops::Square(scope.WithOpName("s3"), r3);
+
+  // A multi dimensional partially defined reshape than can be optimized
+  Output v4 = ops::Variable(scope.WithOpName("v4"), {5, 5, 5}, DT_FLOAT);
+  Output c4 = ops::Const(scope.WithOpName("c4").WithControlDependencies(v4),
+                         {5, -1, 5}, {3});
+  Output i4 = ops::Identity(scope.WithOpName("i4"), c4);
+  Output r4 = ops::Reshape(scope.WithOpName("r4"), v4, i4);
+  Output s4 = ops::Square(scope.WithOpName("s4"), r4);
+
+  // A reshape that can't be optimized
+  Output v2 = ops::Variable(scope.WithOpName("v2"), {17, 1}, DT_FLOAT);
+  Output c2 =
+      ops::Const(scope.WithOpName("c2").WithControlDependencies(v2), 17, {1});
+  Output r2 = ops::Reshape(scope.WithOpName("r2"), v2, c2);
+  Output s2 = ops::Square(scope.WithOpName("s2"), r2);
+
+  GrapplerItem item;
+  item.fetch = {"s1", "s2", "s3", "s4"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "r1") {
+      ++found;
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(3, node.input_size());
+      EXPECT_EQ("v1", node.input(0));
+      EXPECT_EQ("^d1", node.input(1));
+      EXPECT_EQ("^v1", node.input(2));
+    } else if (node.name() == "r3") {
+      ++found;
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("v3", node.input(0));
+      EXPECT_EQ("^v3", node.input(1));
+    } else if (node.name() == "r4") {
+      ++found;
+      EXPECT_EQ("Identity", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("v4", node.input(0));
+      EXPECT_EQ("^v4", node.input(1));
+    } else if (node.name() == "r2") {
+      ++found;
+      EXPECT_EQ("Reshape", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("v2", node.input(0));
+      EXPECT_EQ("c2", node.input(1));
+    }
+  }
+  EXPECT_EQ(4, found);
 }
 
 }  // namespace

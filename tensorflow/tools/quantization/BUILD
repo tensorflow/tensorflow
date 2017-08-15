@@ -13,7 +13,20 @@ py_library(
     name = "quantize_graph_lib",
     srcs = ["quantize_graph.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_binary(
@@ -27,18 +40,17 @@ py_binary(
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_util",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "quantize_graph_test",
     size = "small",
-    srcs = [
-        "quantize_graph_test.py",
-    ],
+    srcs = ["quantize_graph_test.py"],
     srcs_version = "PY2AND3",
     tags = ["nomsan"],  # http://b/32242946
     deps = [
@@ -48,6 +60,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
@@ -55,12 +68,13 @@ py_test(
 
 py_binary(
     name = "graph_to_dot",
-    srcs = [
-        "graph_to_dot.py",
-    ],
+    srcs = ["graph_to_dot.py"],
     main = "graph_to_dot.py",
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:platform"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+    ],
 )
 
 filegroup(

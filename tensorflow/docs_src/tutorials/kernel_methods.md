@@ -22,7 +22,7 @@ TensorFlow will provide support for sparse features at a later release.
 
 This tutorial uses [tf.contrib.learn](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn)
 (TensorFlow's high-level Machine Learning API) Estimators for our ML models.
-If you are not familiar with this API, [tf.contrib.learn Quickstart](https://www.tensorflow.org/get_started/tflearn)
+If you are not familiar with this API, [tf.estimator Quickstart](https://www.tensorflow.org/get_started/estimator)
 is a good place to start. We will use the MNIST dataset. The tutorial consists
 of the following steps:
 
@@ -153,7 +153,7 @@ input space to another feature space (of possibly higher dimension) where the
 model on the mapped features. This is shown in the following figure:
 
 <div style="text-align:center">
-<img src="../images/kernel_mapping.png" alt>
+<img src="https://www.tensorflow.org/versions/master/images/kernel_mapping.png" />
 </div>
 
 
@@ -279,8 +279,8 @@ accuracy by very little, while making training take more time. This is shown in
 the following two Figures which depict the eval accuracy as a function of the
 output dimension and the training time, respectively.
 
-![image](../images/acc_vs_outdim.png)
-![image](../images/acc-vs-trn_time.png)
+![image](https://www.tensorflow.org/versions/master/images/acc_vs_outdim.png)
+![image](https://www.tensorflow.org/versions/master/images/acc-vs-trn_time.png)
 
 
 ## Summary

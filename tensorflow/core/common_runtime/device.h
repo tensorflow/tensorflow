@@ -22,7 +22,7 @@ limitations under the License.
 // Device names
 // * Every Device should have a unique name with the format:
 //     /job:___/replica:___/task:___/(gpu|cpu):___
-//   An example name would be "/job:train/replica:0/task:3/gpu:2".
+//   An example name would be "/job:train/replica:0/task:3/device:GPU:2".
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 

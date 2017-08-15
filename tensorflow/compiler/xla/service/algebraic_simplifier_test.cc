@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -57,7 +55,7 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param0, zero));
 
@@ -78,7 +76,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   HloInstruction* bcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(r2f32, zero, {0, 1}));
   builder.AddInstruction(
@@ -101,7 +99,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0, 0, 0})));
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({0, 0, 0})));
   HloInstruction* bcast =
       builder.AddInstruction(HloInstruction::CreateBroadcast(r2f32, zero, {1}));
   builder.AddInstruction(
@@ -125,7 +123,7 @@ TEST_F(AlgebraicSimplifierTest, SubZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kSubtract, param0, zero));
 
@@ -140,6 +138,155 @@ TEST_F(AlgebraicSimplifierTest, SubZero) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that (A/B)/C is simplified to A/(B*C).
+TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* div = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, param1));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, div, param2));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(op::Divide(param0, param1), param2));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(param0, op::Multiply(param1, param2)));
+}
+
+// Test that A/(B/C) is simplified to (A*C)/B.
+TEST_F(AlgebraicSimplifierTest, RhsDivOfDiv) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* div = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param1, param2));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, div));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(param0, op::Divide(param1, param2)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(op::Multiply(param0, param2), param1));
+}
+
+// Test that (A/B)/(C/D) is simplified to (A*D)/(B*C).
+TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* param3 = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, r0f32, "param3"));
+  HloInstruction* div0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, param1));
+  HloInstruction* div1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param2, param3));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, div0, div1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Divide(op::Divide(param0, param1), op::Divide(param2, param3)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Divide(op::Multiply(param0, param3), op::Multiply(param1, param2)));
+}
+
+// Test that A/exp(B) is simplified to A*exp(-B).
+TEST_F(AlgebraicSimplifierTest, DivOfExp) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, param1));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, exp));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(param0, op::Exp(param1)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(param0, op::Exp(op::Negate(param1))));
+}
+
+// Test that A/pow(B,C) is simplified to A*pow(B,-C).
+TEST_F(AlgebraicSimplifierTest, DivOfPower) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* power = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param1, param2));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, power));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(param0, op::Power(param1, param2)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(param0, op::Power(param1, op::Negate(param2))));
+}
+
 // Test that A/1 is simplified to A for a scalar.
 TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -147,7 +294,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   HloInstruction* div = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, one));
 
@@ -169,7 +316,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* one = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 1.0}, {1.0, 1.0}})));
+      Literal::CreateR2<float>({{1.0, 1.0}, {1.0, 1.0}})));
   HloInstruction* div = builder.AddInstruction(
       HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, param0, one));
 
@@ -241,6 +388,89 @@ TEST_F(AlgebraicSimplifierTest, ExpDiv) {
               op::Exp(op::Subtract(param0, param1)));
 }
 
+// Test that exp(A)*exp(B) is simplified to exp(A+B)
+TEST_F(AlgebraicSimplifierTest, ExpMul) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* exp0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, param0));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, param1));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kMultiply, exp0, exp1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(op::Exp(param0), op::Exp(param1)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Exp(op::Add(param0, param1)));
+}
+
+// Test that pow(exp(A), B) is simplified to exp(A*B)
+TEST_F(AlgebraicSimplifierTest, PowExp) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* exp0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, param0));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, exp0, param1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Power(op::Exp(param0), param1));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Exp(op::Multiply(param0, param1)));
+}
+
+// Test that ln(pow(A, B)) is simplified to ln(A)*B
+TEST_F(AlgebraicSimplifierTest, LnPow) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* pow = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, param1));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kLog, pow));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Log(op::Power(param0, param1)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(op::Log(param0), param1));
+}
+
 // Test that ln(exp(A)) is simplified to A
 TEST_F(AlgebraicSimplifierTest, LnExp) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -302,7 +532,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Scalar) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, zero));
 
@@ -317,7 +547,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Scalar) {
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Constant());
-  EXPECT_EQ(LiteralUtil::GetFirstElement<float>(root->literal()), 1);
+  EXPECT_EQ(root->literal().GetFirstElement<float>(), 1);
 }
 
 // Test that pow(A, 0) where A is not a scalar is simplified to broadcast(1).
@@ -327,7 +557,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Vector) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kPower, param0, zero));
 
@@ -346,8 +576,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Vector) {
       << ShapeUtil::HumanString(root->shape());
   EXPECT_EQ(root->dimensions().size(), 0);
   EXPECT_TRUE(ShapeUtil::IsScalar(root->operand(0)->shape()));
-  EXPECT_EQ(LiteralUtil::GetFirstElement<float>(root->operand(0)->literal()),
-            1);
+  EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
 }
 
 // Test that pow(A, 1) is simplified to A.
@@ -357,7 +586,7 @@ TEST_F(AlgebraicSimplifierTest, Pow1) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, one));
 
@@ -380,7 +609,7 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* two = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, two));
 
@@ -403,7 +632,7 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* negative_one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-1)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(-1)));
   builder.AddInstruction(HloInstruction::CreateBinary(r0f32, HloOpcode::kPower,
                                                       param0, negative_one));
 
@@ -418,8 +647,7 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Divide(op::Constant(), param0));
-  EXPECT_EQ(LiteralUtil::GetFirstElement<float>(root->operand(0)->literal()),
-            1);
+  EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
 }
 
 TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
@@ -453,7 +681,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
 TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
@@ -521,10 +749,10 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
   HloInstruction* param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, r1f32, "param1"));
   HloInstruction* empty_literal = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}));
+          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}, {1}));
   Shape result_shape = ShapeUtil::MakeShape(F32, {3 * kParamLength});
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       result_shape, {empty_literal, param0, param0, empty_slice, param1}, 0));
@@ -552,10 +780,10 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* empty_literal = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}));
+          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}, {1}));
   Shape result_shape = ShapeUtil::MakeShape(F32, {0});
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       result_shape, {empty_literal, empty_slice}, 0));
@@ -571,6 +799,29 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(computation->root_instruction(), empty_literal);
+}
+
+// Test that concat with a scalar broadcast becomes a pad.
+TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {100});
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r1f32, param1, {}));
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      param0->shape(), {broadcast, param0}, 0));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Pad(param0, param1));
 }
 
 // Test that a simplification which changes layouts is not performed if layout
@@ -714,7 +965,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeAfterEffectiveUnary) {
       builder.AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(F32, {1, 2, 3, 4, 5}), param));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {1, 2, 3, 4, 5}),
                                    HloOpcode::kMaximum, movable_reshape, zero));
@@ -730,6 +981,34 @@ TEST_F(AlgebraicSimplifierTest, ReshapeAfterEffectiveUnary) {
   simplifier.Run(module.get()).ValueOrDie();
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Maximum(param, zero)));
+}
+
+// Regression test for a bug in the reshape sinking transformation, where
+// moving a reshape to a scalar led to a crash.
+TEST_F(AlgebraicSimplifierTest, ReshapeToScalarNotHoistedAfterEffectiveUnary) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1, 1}), "param"));
+  HloInstruction* reshape = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {}), param));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({1., 2., 3.})));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, reshape, zero));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Maximum(op::Reshape(param), zero));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+
+  simplifier.Run(module.get()).ValueOrDie();
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Maximum(op::Reshape(param), zero));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
@@ -1014,7 +1293,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {2, 2}), "param"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   PaddingConfig no_padding;
   for (int i = 0; i < 2; ++i) {
     auto dimension = no_padding.add_dimensions();
@@ -1045,7 +1324,7 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {10, 10}), "param"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   PaddingConfig padding;
   int64 low_padding[2] = {-1, -2};
   int64 high_padding[2] = {2, -3};
@@ -1113,7 +1392,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
           0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
   builder.AddInstruction(HloInstruction::CreateSlice(
       ShapeUtil::MakeShape(F32, {dim0, dim1}), param, /*start_indices=*/{0, 0},
-      /*limit_indices=*/{dim0, dim1}));
+      /*limit_indices=*/{dim0, dim1}, /*strides=*/{1, 1}));
 
   HloModule module(TestName());
   HloComputation* computation = module.AddEntryComputation(builder.Build());
@@ -1355,9 +1634,9 @@ TEST_F(AlgebraicSimplifierTest, MaxMinToClamp) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* min_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   HloInstruction* max_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   HloInstruction* min = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32, HloOpcode::kMinimum, param0, min_value));
   builder.AddInstruction(
@@ -1385,9 +1664,9 @@ TEST_F(AlgebraicSimplifierTest, MinMaxToClamp) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* min_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   HloInstruction* max_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   HloInstruction* max = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32, HloOpcode::kMaximum, param0, max_value));
   builder.AddInstruction(
@@ -1416,9 +1695,9 @@ TEST_F(AlgebraicSimplifierTest, MinMaxWithBroadcastToClamp) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* min_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   HloInstruction* max_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   HloInstruction* max = builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kMaximum, param0, max_value));
   builder.AddInstruction(
@@ -1476,9 +1755,9 @@ TEST_F(AlgebraicSimplifierTest, MinEquationWithMaxNotToClamp) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* min_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   HloInstruction* max_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   HloInstruction* max = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32, HloOpcode::kMaximum, param0, max_value));
   HloInstruction* fmax = builder.AddInstruction(
@@ -1518,7 +1797,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 
   Shape slice_shape = ShapeUtil::MakeShape(F32, {2, 2, 3, 3});
   HloInstruction* slice = builder.AddInstruction(HloInstruction::CreateSlice(
-      slice_shape, broadcast, {0, 1, 2, 3}, {2, 3, 5, 6}));
+      slice_shape, broadcast, {0, 1, 2, 3}, {2, 3, 5, 6}, {1, 1, 1, 1}));
 
   HloModule module(TestName());
   auto computation = module.AddEntryComputation(builder.Build());
@@ -1545,7 +1824,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* forty_two = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
 
   Shape broadcast_shape = ShapeUtil::MakeShape(F32, {4, 5, 6});
   HloInstruction* broadcast =
@@ -1593,7 +1872,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   padding.mutable_dimensions(3)->set_edge_padding_high(2);
 
   HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0f)));
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(F32, {1, 3, 3, 5}), operand, pad_value, padding));
 
@@ -1624,7 +1903,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   const Shape reduce_window_shape =
       ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
   HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
       builder.AddInstruction(HloInstruction::CreateReduceWindow(
           reduce_window_shape, pad, reduce_init_value, window,
@@ -1693,9 +1972,9 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
 
   HloComputation::Builder call_builder(TestName() + ".Call");
   HloInstruction* zero = call_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0.0f})));
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({0.0f})));
   HloInstruction* one = call_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1.0f})));
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({1.0f})));
   builder.AddInstruction(
       HloInstruction::CreateCall(r1f32, {zero, one}, dot_computation.get()));
 
@@ -1707,22 +1986,29 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 }
 
+// Test that a constant with tuple shape becomes a tuple of constants.
+TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
+  HloComputation::Builder builder(TestName());
+  const float constant_scalar = 7.3f;
+  std::initializer_list<float> constant_vector = {1.1f, 2.0f, 3.3f};
+  std::unique_ptr<Literal> value =
+      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
+                          Literal::CreateR1<float>(constant_vector).get()});
+  builder.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(),
+              op::Tuple(op::Constant(), op::Constant()));
+}
+
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
 }

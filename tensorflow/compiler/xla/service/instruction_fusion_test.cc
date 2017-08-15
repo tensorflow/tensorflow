@@ -28,14 +28,14 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
           ShapeUtil::MakeShape(S32, {1}), exp1, {0}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_TRUE(
@@ -49,14 +49,14 @@ TEST_F(InstructionFusionTest,
        NonCostlyProducerAndOperandElementReusingConsumerFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
           ShapeUtil::MakeShape(S32, {1}), negate1, {0}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_TRUE(
@@ -70,13 +70,13 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* reshape2 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), exp1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
   EXPECT_TRUE(
@@ -90,13 +90,13 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* transpose2 = builder.AddInstruction(
       HloInstruction::CreateTranspose(ShapeUtil::MakeShape(S32, {}), exp1, {}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
   EXPECT_TRUE(
@@ -113,7 +113,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
@@ -129,7 +129,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastSimpleReshapeOfParameterUnfused) {
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
@@ -145,7 +145,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
   auto transpose1 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {}), param0, {}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose1, computation->root_instruction());
   EXPECT_FALSE(
@@ -167,7 +167,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_FALSE(
@@ -187,7 +187,7 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary2, computation->root_instruction());
   EXPECT_TRUE(
@@ -210,7 +210,7 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_TRUE(
@@ -220,3 +220,7 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
 }
 
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

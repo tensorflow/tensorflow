@@ -20,7 +20,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include <vector>
-#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -205,7 +205,6 @@ class OpDefBuilderWrapper;
 template <>
 class OpDefBuilderWrapper<true> {
  public:
-  typedef OpDefBuilderWrapper<true> WrapperType;
   OpDefBuilderWrapper(const char name[]) : builder_(name) {}
   OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
     builder_.Attr(spec);

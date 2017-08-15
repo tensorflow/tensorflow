@@ -13,21 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_C_C_API_INTERNAL_H_
+#define TENSORFLOW_C_C_API_INTERNAL_H_
+
 #include "tensorflow/c/c_api.h"
 
-#include <vector>
+#include <set>
 #include <unordered_map>
+#include <vector>
 
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/public/session.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/public/session.h"
+
+namespace tensorflow {
+class Device;
+class DeviceMgr;
+}  // namespace tensorflow
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -37,6 +46,8 @@ struct TF_Status {
 };
 
 struct TF_Tensor {
+  ~TF_Tensor();
+
   TF_DataType dtype;
   tensorflow::TensorShape shape;
   tensorflow::TensorBuffer* buffer;
@@ -56,13 +67,8 @@ struct TF_Library {
 };
 
 struct TF_Graph {
-  TF_Graph()
-      : graph(tensorflow::OpRegistry::Global()),
-        refiner(graph.versions().producer(), graph.op_registry()),
-        num_sessions(0),
-        delete_requested(false),
-        parent(nullptr),
-        parent_inputs(nullptr) {}
+  TF_Graph();
+
   tensorflow::mutex mu;
   tensorflow::Graph graph GUARDED_BY(mu);
 
@@ -94,7 +100,7 @@ struct TF_OperationDescription {
 
   tensorflow::NodeBuilder node_builder;
   TF_Graph* graph;
-  std::vector<tensorflow::string> colocation_constraints;
+  std::set<tensorflow::string> colocation_constraints;
 };
 
 struct TF_Operation {
@@ -102,12 +108,18 @@ struct TF_Operation {
 };
 
 struct TF_Session {
-  TF_Session(tensorflow::Session* s, TF_Graph* g)
-      : session(s), graph(g), last_num_graph_nodes(0) {}
+  TF_Session(tensorflow::Session* s, TF_Graph* g);
+
   tensorflow::Session* session;
   TF_Graph* graph;
+
   tensorflow::mutex mu;
   int last_num_graph_nodes;
+
+  // NOTE(ashankar): Experimental fields to help keep the
+  // buffers of a TF_Tensor pinned in device memory.
+  const tensorflow::DeviceMgr* device_mgr;   // Owned by session.
+  std::vector<tensorflow::Device*> devices;  // Owned by device_mgr.
 };
 
 struct TF_ImportGraphDefOptions {
@@ -117,3 +129,19 @@ struct TF_ImportGraphDefOptions {
 struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
 };
+
+namespace tensorflow {
+
+class TensorCApi {
+ public:
+  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
+  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
+                           TensorBuffer* buf) {
+    return Tensor(static_cast<DataType>(type), shape, buf);
+  }
+};
+
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
+}  // end namespace tensorflow
+
+#endif  // TENSORFLOW_C_C_API_INTERNAL_H_

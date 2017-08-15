@@ -578,10 +578,14 @@ eight-bit form.
 
 ### quantize_weights
 
-Args: None \
+Args:
+
+*   minimum_size: Tensors with fewer elements than this won't be quantized
+(defaults to 1024)
+
 Prerequisites: None
 
-Converts any large (more than 15 element) float Const op into an eight-bit
+Converts any large (more than minimum_size) float Const op into an eight-bit
 equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced
@@ -760,7 +764,7 @@ heart, all of the transforms take in a valid GraphDef, make some changes, and
 output a new GraphDef. Each GraphDef is just a list of NodeDefs, each defining
 one node in the graph and its connections. You can find more information on the
 format at [this guide to TensorFlow model
-files](https://www.tensorflow.org/versions/master/how_tos/tool_developers/index.html),
+files](https://www.tensorflow.org/versions/master/extend/tool_developers/index.html),
 but for a simple example take a look at
 [tensorflow/tools/graph_transforms/rename_op.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms/rename_op.cc),
 which implements the [rename_op](#rename_op) transform:
@@ -1055,7 +1059,7 @@ in the future.
 
 The Graph Transform Tool associates names of transforms with the code to
 implement them using the `REGISTER_GRAPH_TRANSFORM()` macro. This takes a string
-and a function, and automatically registers the transform with the tool. You
+and a function, and automagically registers the transform with the tool. You
 will need to watch out for a few things though:
 
 *   Because it's using global C++ objects in each file under the hood, the

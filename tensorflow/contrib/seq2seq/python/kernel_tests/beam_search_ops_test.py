@@ -65,7 +65,9 @@ class GatherTreeTest(test.TestCase):
         _ = beams.eval()
 
   def testBadParentValuesOnGPU(self):
-    if not test.is_gpu_available():
+    # Only want to run this test on CUDA devices, as gather_tree is not
+    # registered for SYCL devices.
+    if not test.is_gpu_available(cuda_only=True):
       return
     # (max_time = 4, batch_size = 1, beams = 3)
     # bad parent in beam 1 time 1; appears as a negative index at time 0
@@ -76,7 +78,7 @@ class GatherTreeTest(test.TestCase):
     sequence_length = [[3, 3, 3]]
     expected_result = _transpose_batch_time(
         [[[2, -1, 2], [6, 5, 6], [7, 8, 9], [-1, -1, -1]]])
-    with ops.device("/gpu:0"):
+    with ops.device("/device:GPU:0"):
       beams = beam_search_ops.gather_tree(
           step_ids=step_ids, parent_ids=parent_ids,
           sequence_length=sequence_length)

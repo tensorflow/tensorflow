@@ -33,6 +33,30 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Type traits to get CUDA complex types from std::complex<T>.
+template <typename T>
+struct CUDAComplexT {
+  typedef T type;
+};
+template <>
+struct CUDAComplexT<std::complex<float>> {
+  typedef cuComplex type;
+};
+template <>
+struct CUDAComplexT<std::complex<double>> {
+  typedef cuDoubleComplex type;
+};
+// Converts pointers of std::complex<> to pointers of
+// cuComplex/cuDoubleComplex. No type conversion for non-complex types.
+template <typename T>
+inline const typename CUDAComplexT<T>::type* CUDAComplex(const T* p) {
+  return reinterpret_cast<const typename CUDAComplexT<T>::type*>(p);
+}
+template <typename T>
+inline typename CUDAComplexT<T>::type* CUDAComplex(T* p) {
+  return reinterpret_cast<typename CUDAComplexT<T>::type*>(p);
+}
+
 // Container of LAPACK info data (an array of int) generated on-device by
 // a CudaSolver call. One or more such objects can be passed to
 // CudaSolver::CopyLapackInfoToHostAsync() along with a callback to
@@ -116,9 +140,10 @@ class CudaSolver {
   // Launches a memcpy of solver status data specified by dev_lapack_info from
   // device to the host, and asynchronously invokes the given callback when the
   // copy is complete. The first Status argument to the callback will be
-  // Status::OK if all lapack infos retrieved are zero, otherwise an error status
-  // is given. The second argument contains a host-side copy of the entire set
-  // of infos retrieved, and can be used for generating detailed error messages.
+  // Status::OK if all lapack infos retrieved are zero, otherwise an error
+  // status is given. The second argument contains a host-side copy of the
+  // entire set of infos retrieved, and can be used for generating detailed
+  // error messages.
   Status CopyLapackInfoToHostAsync(
       const std::vector<DeviceLapackInfo>& dev_lapack_info,
       std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
@@ -131,14 +156,40 @@ class CudaSolver {
   // to those in cuSolverDN and cuBlas, which follow the naming convention in
   // LAPACK see, e.g., http://docs.nvidia.com/cuda/cusolver/#naming-convention
 
+  // This function performs the matrix-matrix addition/transposition
+  //   C = alpha * op(A) + beta * op(B).
+  // Returns Status::OK() if the kernel was launched successfully.  See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
+  // NOTE(ebrevdo): Does not support in-place transpose of non-square matrices.
+  template <typename Scalar>
+  Status Geam(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
+              const Scalar* alpha, /* host or device pointer */
+              const Scalar* A, int lda,
+              const Scalar* beta, /* host or device pointer */
+              const Scalar* B, int ldb, Scalar* C, int ldc) const;
+
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
-  // Returns Status::OK(), if the kernel was launched successfully. See:
+  // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) const;
 
-  // Computes partially pivoted LU factorizations for a batch of matrices.
+  // LU factorization.
+  // Computes LU factorization with partial pivoting P * A = L * U.
+  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
+  template <typename Scalar>
+  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
+               int* dev_lapack_info) const;
+
+  // Uses LU factorization to solve A * X = B.
+  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
+  template <typename Scalar>
+  Status Getrs(cublasOperation_t trans, int n, int nrhs, const Scalar* A,
+               int lda, const int* pivots, Scalar* B, int ldb,
+               int* dev_lapack_info) const;
+
+  // Computes partially pivoted LU factorizations for a batch of small matrices.
   // Returns Status::OK() if the kernel was launched successfully.See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
   template <typename Scalar>
@@ -146,15 +197,23 @@ class CudaSolver {
                       int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
                       int batch_size) const;
 
-  // Computes matrix inverses for a batch of matrices. Uses the outputs from
-  // GetrfBatched. Returns Status::OK() if the kernel was launched successfully.
-  // See:
+  // Computes matrix inverses for a batch of small matrices. Uses the outputs
+  // from GetrfBatched. Returns Status::OK() if the kernel was launched
+  // successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
   template <typename Scalar>
   Status GetriBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
                       const int* dev_pivots,
                       const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
                       DeviceLapackInfo* dev_lapack_info, int batch_size) const;
+
+  // Computes matrix inverses for a batch of small matrices with size n < 32.
+  // Returns Status::OK() if the kernel was launched successfully. See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-matinvbatched
+  template <typename Scalar>
+  Status MatInvBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
+                       const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
+                       DeviceLapackInfo* dev_lapack_info, int batch_size) const;
 
   /*
   TODO(rmlarsen, volunteers): Implement the kernels below.
@@ -163,19 +222,6 @@ class CudaSolver {
   template <typename Scalar>
   Status Potrs(cublasFillMode_t uplo, int n, int nrhs, const Scalar* dev_A, int
   lda, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
-
-  // LU factorization.
-  // Computes LU factorization with partial pivoting P * A = L * U.
-  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
-  template <typename Scalar>
-  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
-             int* dev_lapack_info) const;
-
-  // Uses LU factorization to solve A * X = B.
-  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
-  template <typename Scalar>
-  Status Getrs(int n, int nrhs, const Scalar* dev_A, int lda, const int*
-  dev_pivots, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -260,6 +306,9 @@ class ScratchSpace {
   const Scalar* data() const {
     return scratch_tensor_.template flat<Scalar>().data();
   }
+  Scalar operator[](int64 i) const {
+    return scratch_tensor_.template flat<Scalar>().data()[i];
+  }
   int64 bytes() const { return scratch_tensor_.TotalBytes(); }
   int64 size() const { return scratch_tensor_.NumElements(); }
   const string& debug_info() const { return debug_info_; }
@@ -313,6 +362,25 @@ struct AdjointBatchFunctor {
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output);
 };
+
+// Helper functor to compute the product of diagonal elements in all matrices
+// in a flattened batch.
+template <typename Device, typename Scalar>
+struct DeterminantFromPivotedLUFunctor {
+  void operator()(const Device& d, typename TTypes<Scalar, 3>::Tensor lu_factor,
+                  const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
+                  int* info);
+};
+
+// Helper functor to set a batch of matrices to the identity.
+// TODO(rmlarsen): Use this kernel to replace the horribly inefficient tf.eye
+// op.
+template <typename Device, typename Scalar>
+struct EyeFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<Scalar, 3>::Tensor matrix_batch);
+};
+
 }  // namespace functor
 
 }  // namespace tensorflow

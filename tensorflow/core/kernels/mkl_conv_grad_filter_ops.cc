@@ -38,8 +38,8 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #include "tensorflow/core/util/mkl_util.h"
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 
 namespace tensorflow {
 
@@ -348,8 +348,9 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
           (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
 
       const Tensor& out_backprop = MklGetInput(context, 2);
-      void* mkl_buf_out_backprop = const_cast<void*>(
-          static_cast<const void*>(out_backprop.flat<T>().data()));
+      void* mkl_buf_out_backprop = const_cast<void*>(static_cast<const void*>(
+                                      out_backprop.flat<T>().data()));
+
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_out_backprop,
                                                 prim_conv_bwdfilter,
                                                 dnnResourceDiffDst),
@@ -358,11 +359,10 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
           !dnnLayoutCompare_F32(mkl_lt_internal_out_backprop, lt_out_backprop);
       if (mkl_convert_out_backprop) {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_out_backprop,
-                                         lt_out_backprop,
-                                         mkl_lt_internal_out_backprop),
+                      lt_out_backprop, mkl_lt_internal_out_backprop),
                  E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_out_backprop_buf_tensor,
-                       lt_out_backprop, &mkl_buf_convert_out_backprop);
+            lt_out_backprop, &mkl_buf_convert_out_backprop);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_out_backprop,
                                           mkl_buf_out_backprop,
                                           mkl_buf_convert_out_backprop),

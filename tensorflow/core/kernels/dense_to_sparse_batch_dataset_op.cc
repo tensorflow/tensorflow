@@ -24,28 +24,23 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class DenseToSparseBatchDatasetOp : public OpKernel {
+class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit DenseToSparseBatchDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
     // Create a new DenseToSparseBatchDatasetOp::Dataset, insert it in the
     // step-local container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
     OP_REQUIRES(
         ctx, input->output_dtypes().size() == 1,
         errors::InvalidArgument("DenseToSparseBatchDataset only supports "
                                 "inputs with a single component."));
 
-    const Tensor* batch_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("batch_size", &batch_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(batch_size_t->shape()),
-                errors::InvalidArgument("batch_size must be a scalar"));
-    const int64 batch_size = batch_size_t->flat<int64>()(0);
+    int64 batch_size;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
@@ -59,42 +54,23 @@ class DenseToSparseBatchDatasetOp : public OpKernel {
       row_shape.AddDim(row_shape_t->vec<int64>()(i));
     }
 
-    DatasetBase* dataset = nullptr;
+    *output = nullptr;
 
-#define HANDLE_TYPE(DT)                                                      \
-  if (input->output_dtypes()[0] == DT) {                                     \
-    dataset =                                                                \
-        new Dataset<EnumToDataType<DT>::Type>(batch_size, row_shape, input); \
+#define HANDLE_TYPE(T)                                      \
+  case DataTypeToEnum<T>::value: {                          \
+    *output = new Dataset<T>(batch_size, row_shape, input); \
+    break;                                                  \
   }
-    HANDLE_TYPE(DT_FLOAT);
-    HANDLE_TYPE(DT_HALF);
-    HANDLE_TYPE(DT_DOUBLE);
-    HANDLE_TYPE(DT_INT32);
-    HANDLE_TYPE(DT_UINT8);
-    HANDLE_TYPE(DT_INT16);
-    HANDLE_TYPE(DT_INT8);
-    HANDLE_TYPE(DT_STRING);
-    HANDLE_TYPE(DT_COMPLEX64);
-    HANDLE_TYPE(DT_COMPLEX128);
-    HANDLE_TYPE(DT_INT64);
-    HANDLE_TYPE(DT_BOOL);
-    HANDLE_TYPE(DT_QINT8);
-    HANDLE_TYPE(DT_QUINT8);
-    HANDLE_TYPE(DT_QINT32);
-    HANDLE_TYPE(DT_QINT16);
-    HANDLE_TYPE(DT_QUINT16);
-#undef HANDLE_TYPE
-    OP_REQUIRES(
-        ctx, dataset != nullptr,
-        errors::Unimplemented("DenseToSparseBatchDataset unhandled data type: ",
-                              input->output_dtypes()[0]));
 
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    switch (input->output_dtypes()[0]) {
+      TF_CALL_DATASET_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
+      default:
+        OP_REQUIRES(ctx, false,
+                    errors::Unimplemented(
+                        "DenseToSparseBatchDataset unhandled data type: ",
+                        input->output_dtypes()[0]));
+    }
   }
 
  private:

@@ -24,6 +24,7 @@
 
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds/builds_common.sh"
 
 # Helper functions
 die() {
@@ -47,7 +48,7 @@ num_cpus() {
 # Get the hash of the last non-merge git commit on the current branch.
 # Usage: get_last_non_merge_git_commit
 get_last_non_merge_git_commit() {
-  echo $(git rev-list --no-merges -n 1 HEAD)
+  git rev-list --no-merges -n 1 HEAD
 }
 
 # List files changed (i.e., added, removed or revised) in the last non-merge
@@ -75,7 +76,7 @@ get_py_files_to_check() {
 
     echo "${PY_FILES}"
   else
-    echo $(find tensorflow -name '*.py')
+    find tensorflow -name '*.py'
   fi
 }
 
@@ -157,25 +158,25 @@ do_pylint() {
   NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
 
   rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FLIE}
+  rm -rf ${ERRORS_FILE}
   rm -rf ${NONWL_ERRORS_FILE}
   touch ${NONWL_ERRORS_FILE}
 
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} 2>&1 > ${OUTPUT_FILE}
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pylint took $((${PYLINT_END_TIME} - ${PYLINT_START_TIME})) s"
+  echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
   grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
-  while read LINE; do
+  while read -r LINE; do
     IS_WHITELISTED=0
     for WL_REGEX in ${ERROR_WHITELIST}; do
-      if [[ ! -z $(echo ${LINE} | grep "${WL_REGEX}") ]]; then
+      if echo ${LINE} | grep -q "${WL_REGEX}"; then
         echo "Found a whitelisted error:"
         echo "  ${LINE}"
         IS_WHITELISTED=1
@@ -248,7 +249,7 @@ do_pep8() {
   PEP8_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pep8 took $((${PEP8_END_TIME} - ${PEP8_START_TIME})) s"
+  echo "pep8 took $((PEP8_END_TIME - PEP8_START_TIME)) s"
   echo ""
 
   if [[ -s ${PEP8_OUTPUT_FILE} ]]; then
@@ -278,7 +279,7 @@ do_buildifier(){
   BUILDIFIER_END_TIME=$(date +'%s')
 
   echo ""
-  echo "buildifier took $((${BUILDIFIER_END_TIME} - ${BUILDIFIER_START_TIME})) s"
+  echo "buildifier took $((BUILDIFIER_END_TIME - BUILDIFIER_START_TIME)) s"
   echo ""
 
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
@@ -306,7 +307,7 @@ do_external_licenses_check(){
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
  bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
-  | egrep -v "^//tensorflow" \
+  | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
@@ -315,7 +316,7 @@ do_external_licenses_check(){
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
   bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
-  | egrep -v "^//tensorflow" \
+  | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
@@ -329,7 +330,7 @@ do_external_licenses_check(){
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
   echo
-  echo "do_external_licenses_check took $((${EXTERNAL_LICENSES_CHECK_END_TIME} - ${EXTERNAL_LICENSES_CHECK_START_TIME})) s"
+  echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
   echo
 
   if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
@@ -418,9 +419,25 @@ do_pip_smoke_test() {
     "The pip smoke test failed."
 }
 
+do_code_link_check() {
+  tensorflow/tools/ci_build/code_link_check.sh
+}
+
+do_check_load_py_test() {
+  BUILD_CMD="bazel build //tensorflow/tools/pip_package:check_load_py_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "check_load_py_test failed to build."
+
+  BUILD_CMD="bazel-bin/tensorflow/tools/pip_package/check_load_py_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "check_load_py_test failed."
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
 
 INCREMENTAL_FLAG=""
 
@@ -478,20 +495,21 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
-    echo "  PASS"
+    printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
-    echo "  FAIL"
+    printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
   fi
 
   ((COUNTER++))
 done
 
-echo ""
+echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
 
-echo ""
+echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then
-  echo "Sanity checks PASSED"
+  printf "Sanity checks ${COLOR_GREEN}PASSED${COLOR_NC}\n"
 else
-  die "Sanity checks FAILED"
+  printf "Sanity checks ${COLOR_RED}FAILED${COLOR_NC}\n"
+  exit 1
 fi

@@ -19,8 +19,8 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -115,6 +115,16 @@ class IrArray {
     Index SourceIndexOfReshape(const Shape& shape, const Shape& operand_shape,
                                llvm::IRBuilder<>* builder) const;
 
+    // Returns the index into the source operand from which a slice operation
+    // selects a value to be placed into index "this". The slice is described
+    // by starting indices `starts` and stride values `strides`.
+    //
+    // Precondition: "this" is an index into a slice whose shape is `shape`.
+    Index SourceIndexOfSlice(const Shape& shape,
+                             tensorflow::gtl::ArraySlice<int64> starts,
+                             tensorflow::gtl::ArraySlice<int64> strides,
+                             llvm::IRBuilder<>* builder) const;
+
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
     Index SourceIndexOfTranspose(
@@ -183,6 +193,10 @@ class IrArray {
                                        llvm::IRBuilder<>* ir_builder,
                                        tensorflow::StringPiece name = "") const;
 
+  // Attach metadata this IrArray instance knows about to "instruction".
+  void AnnotateLoadStoreInstructionWithMetadata(
+      llvm::Instruction* instruction) const;
+
   // Emit IR to read an array element at the given index. Returns the read
   // result (effectively, a Value loaded from memory). This method seamlessly
   // handles scalar shapes by broadcasting their value to all indices (index is
@@ -204,16 +218,21 @@ class IrArray {
                       llvm::IRBuilder<>* ir_builder) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
+    CHECK_NE(alias_scope, nullptr);
     AddMetadata(llvm::LLVMContext::MD_alias_scope, alias_scope);
   }
 
   void AddNoaliasMetadata(llvm::MDNode* noalias) {
+    CHECK_NE(noalias, nullptr);
     AddMetadata(llvm::LLVMContext::MD_noalias, noalias);
   }
 
   void AddInvariantLoad(llvm::MDNode* invariant_load) {
+    CHECK_NE(invariant_load, nullptr);
     AddMetadata(llvm::LLVMContext::MD_invariant_load, invariant_load);
   }
+
+  const std::map<int, llvm::MDNode*>& metadata() const { return metadata_; }
 
   // Bumps the "which_dimension" value within the provided index by the provided
   // addend.

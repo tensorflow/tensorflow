@@ -88,6 +88,14 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=file_path, log_usage=False)
 
+  def testConstructWrapperWithNonexistentSessionRootCreatesDirectory(self):
+    new_dir_path = os.path.join(tempfile.mkdtemp(), "new_dir")
+    dumping_wrapper.DumpingDebugWrapperSession(
+        session.Session(), session_root=new_dir_path, log_usage=False)
+    self.assertTrue(gfile.IsDirectory(new_dir_path))
+    # Cleanup.
+    gfile.DeleteRecursively(new_dir_path)
+
   def testDumpingOnASingleRunWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess, session_root=self.session_root, log_usage=False)

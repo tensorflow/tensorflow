@@ -48,7 +48,7 @@ class HloTestBase : public ::testing::Test {
   // TestName() for its name; it will also automatically populate its debug
   // options from command-line flags. It's recommended to use this method to
   // create all HloModules for tests.
-  std::unique_ptr<HloModule> CreateNewModule();
+  static std::unique_ptr<HloModule> CreateNewModule();
 
   // Executes the given module and returns a global data handle.
   StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
@@ -104,8 +104,6 @@ class HloTestBase : public ::testing::Test {
 
   std::unique_ptr<Backend> backend_;
 
-  Compiler::HloDumper test_hlo_dumper_;
-
   // This vector contains handles of all the device memory allocations performed
   // by the test. These are deallocated on destruction of the test object.
   std::vector<perftools::gputools::DeviceMemoryBase> allocations_;
@@ -114,6 +112,11 @@ class HloTestBase : public ::testing::Test {
 
   std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 };
+
+// Convenience function that parses XLA debug options flags from argc/argv,
+// calls InitGoogleTest and then calls and returns RUN_ALL_TESTS. Intended to be
+// invoked from a test main() function.
+int ParseDebugOptionsFlagsAndRunTests(int argc, char** argv);
 
 }  // namespace xla
 

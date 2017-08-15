@@ -20,7 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -38,6 +40,10 @@ ShapeRefiner::ShapeRefiner(int graph_def_version,
     : graph_def_version_(graph_def_version),
       ops_registry_(ops),
       graph_runner_(Env::Default()) {}
+
+ShapeRefiner::ShapeRefiner(const VersionDef& versions,
+                           const OpRegistryInterface* ops)
+    : ShapeRefiner(versions.producer(), ops) {}
 
 ShapeRefiner::~ShapeRefiner() {
   // The lifetime of the tensors are bound to the GraphRunner, so the tensors
@@ -139,7 +145,7 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
   return Status::OK();
 }
 
-Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
+Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
   auto it = node_to_context_.find(node);
   if (it == node_to_context_.end()) {
     *refined = true;
@@ -155,29 +161,55 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
+    int dst_input = e->dst_input();
+    int src_output = e->src_output();
+
     Node* input = e->src();
     auto iter = node_to_context_.find(input);
     if (iter == node_to_context_.end()) {
       return errors::FailedPrecondition(
-          "Input ", e->dst_input(), " ('", input->name(), "') for '",
-          node->name(), "' was not previously added to ShapeRefiner.");
+          "Input ", dst_input, " ('", input->name(), "') for '", node->name(),
+          "' was not previously added to ShapeRefiner.");
     }
 
     InferenceContext* c = iter->second.get();
-    DCHECK_GE(e->dst_input(), 0);
-    if (node_context->MergeInput(e->dst_input(), c->output(e->src_output()))) {
+    DCHECK_GE(dst_input, 0);
+    ShapeHandle existing_input = node_context->input(dst_input);
+    if (!relax && node_context->MergeInput(dst_input, c->output(src_output))) {
       *refined = true;
+    } else if (relax) {
+      if (node_context->RelaxInput(dst_input, c->output(src_output))) {
+        if (!SameDefinedShape(node_context, node_context->input(dst_input),
+                              existing_input)) {
+          *refined = true;
+        }
+      }
     }
 
     // Also propagate handle shape and dtype of edges which are carrying
     // resource handles.
-    if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
-      auto* shapes_and_types =
-          c->output_handle_shapes_and_types(e->src_output());
-      if (shapes_and_types != nullptr &&
-          node_context->MergeInputHandleShapesAndTypes(e->dst_input(),
-                                                       *shapes_and_types)) {
+    if (e->src()->output_type(src_output) == DT_RESOURCE) {
+      auto* outputs = c->output_handle_shapes_and_types(src_output);
+      if (!outputs) continue;
+
+      if (!relax &&
+          node_context->MergeInputHandleShapesAndTypes(dst_input, *outputs)) {
         *refined = true;
+      } else if (relax) {
+        std::vector<ShapeAndType> existing_inputs;
+        const std::vector<ShapeAndType>* inputs =
+            node_context->input_handle_shapes_and_types(dst_input);
+        if (inputs) {
+          existing_inputs = *inputs;
+        }
+        if (node_context->RelaxInputHandleShapesAndMergeTypes(dst_input,
+                                                              *outputs)) {
+          if (IsUpdatedShapesOrTypes(
+                  node_context, existing_inputs,
+                  *node_context->input_handle_shapes_and_types(dst_input))) {
+            *refined = true;
+          }
+        }
       }
     }
   }
@@ -210,8 +242,22 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
                                                    int dst_idx, bool* evaluated,
                                                    Tensor* result) {
   *evaluated = false;
+
   const Edge* input_edge;
   TF_RETURN_IF_ERROR(node->input_edge(dst_idx, &input_edge));
+
+  // Simple case: the source node is a constant
+  const Node* src = input_edge->src();
+  if (src->IsConstant()) {
+    if (result->FromProto(src->def().attr().at("value").tensor())) {
+      *evaluated = true;
+      return Status::OK();
+    }
+  }
+
+  if (disable_constant_propagation_) {
+    return Status::OK();
+  }
 
   bool is_constant_graph = false;
   Graph subgraph(ops_registry_);
@@ -233,6 +279,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
   const string output_tensor_name =
       strings::StrCat(input_edge->src()->name(), ":", input_edge->src_output());
   std::vector<Tensor> outputs;
+
   // NOTE; we should pass in a function library runtime if we want
   // to support constant-expression evaluation on functions.
   Status s = graph_runner_.Run(&subgraph, nullptr /* function_library */,
@@ -268,7 +315,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
   }
   InferenceContext* c = it->second.get();
 
-  if (node->def().op() == "Shape") {
+  if (node->type_string() == "Shape") {
     // If input shapes to the shape op are fully defined,
     // we can infer the shape op's output tensor.
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
@@ -298,7 +345,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
       *output = t;
       *success = true;
     }
-  } else if (node->def().op() == "Rank") {
+  } else if (node->type_string() == "Rank") {
     bool rank_known = c->RankKnown(c->input(0));
     if (rank_known) {
       int32 input_rank = c->Rank(c->input(0));
@@ -307,7 +354,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
       *output = t;
       *success = true;
     }
-  } else if (node->def().op() == "Size") {
+  } else if (node->type_string() == "Size") {
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
     if (fully_defined_inputs) {
       int32 rank = c->Rank(c->input(0));
@@ -346,9 +393,15 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
-  std::map<Node*, Node*> old_to_new;
+  struct NodeAndRecursed {
+    Node* new_node = nullptr;
+    bool recursed = false;
+  };
+
+  std::map<Node*, NodeAndRecursed> old_to_new_and_recursed;
   Node* target_node_copy = out_graph->CopyNode(target_node);
-  old_to_new[target_node] = target_node_copy;
+  old_to_new_and_recursed[target_node].new_node = target_node_copy;
+  old_to_new_and_recursed[target_node].recursed = true;
 
   // Add the target node's inputs to seed the recursion.
   std::deque<const Edge*> edges_to_visit;
@@ -407,30 +460,27 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Add a copy of its node and a new edge to the new subgraph.
 
     // Get or create the version of 'current_node' in the new graph.
-    bool first_visit_to_node = false;
     Node* current_node_copy;
-    {
-      auto it = old_to_new.find(current_node);
-      if (it == old_to_new.end()) {
-        // First time processing this node.
-        first_visit_to_node = true;
-        current_node_copy = out_graph->CopyNode(current_node);
-        // Track the mapping from the original node to the new one.
-        old_to_new[current_node] = current_node_copy;
-      } else {
-        current_node_copy = it->second;
-      }
+    // This gets or creates the NodeAndRecursed entry for current_node.
+    NodeAndRecursed* node_and_recursed = &old_to_new_and_recursed[current_node];
+    if (node_and_recursed->new_node == nullptr) {
+      // First time processing this node.
+      current_node_copy = out_graph->CopyNode(current_node);
+      // Track the mapping from the original node to the new one.
+      node_and_recursed->new_node = current_node_copy;
+    } else {
+      current_node_copy = node_and_recursed->new_node;
     }
 
     // Add the edge to the destination node.
     {
-      auto it = old_to_new.find(current_edge->dst());
-      if (it == old_to_new.end()) {
+      auto it = old_to_new_and_recursed.find(current_edge->dst());
+      if (it == old_to_new_and_recursed.end()) {
         return errors::Internal(
             "Could not find mapping from old to new copy of destination node: ",
             current_edge->dst()->name());
       }
-      Node* dst_copy = it->second;
+      Node* dst_copy = it->second.new_node;
 
       out_graph->AddEdge(current_node_copy, current_edge->src_output(),
                          dst_copy, current_edge->dst_input());
@@ -461,9 +511,9 @@ Status ShapeRefiner::ExtractConstantSubgraph(
       continue;
     }
 
-    // If this is the first time visiting this node, recurse on this
-    // node's inputs.
-    if (first_visit_to_node) {
+    // If this node's inputs have not been processed already, do so now.
+    if (!node_and_recursed->recursed) {
+      node_and_recursed->recursed = true;
       for (const Edge* e : current_node->in_edges()) {
         if (e->IsControlEdge()) continue;
         edges_to_visit.push_back(e);
@@ -636,6 +686,38 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   } while (rerun_shape_fn);
 
   return Status::OK();
+}
+
+bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
+                                    ShapeHandle s1) {
+  if (!c->RankKnown(s0)) {
+    return !c->RankKnown(s1);
+  } else if (!c->RankKnown(s1) || c->Rank(s0) != c->Rank(s1)) {
+    return false;
+  }
+
+  for (int i = 0; i < c->Rank(s0); ++i) {
+    if (c->Value(c->Dim(s0, i)) != c->Value(c->Dim(s1, i))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool ShapeRefiner::IsUpdatedShapesOrTypes(
+    InferenceContext* c, const std::vector<ShapeAndType>& existing,
+    const std::vector<ShapeAndType>& updated) {
+  if (existing.size() != updated.size()) {
+    return true;
+  }
+  for (int i = 0; i < existing.size(); i++) {
+    if (!SameDefinedShape(c, existing[i].shape, updated[i].shape) ||
+        existing[i].dtype != updated[i].dtype) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace tensorflow

@@ -42,7 +42,7 @@ class AnalyticalCostEstimatorTest : public ::testing::Test {
     gpu_device.set_frequency(1100);
     gpu_device.set_bandwidth(180 * 1024 * 1024);
     (*gpu_device.mutable_environment())["architecture"] = "6";
-    devices["/job:localhost/replica:0/task:0/gpu:0"] = gpu_device;
+    devices["/job:localhost/replica:0/task:0/device:GPU:0"] = gpu_device;
 
     cluster_.reset(new VirtualCluster(devices));
   }
@@ -102,7 +102,7 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   Costs summary;
   TF_ASSERT_OK(estimator.PredictCosts(item.graph, &cost_graph, &summary));
 
-  EXPECT_EQ(Costs::NanoSeconds(9108), summary.execution_time);
+  EXPECT_EQ(Costs::NanoSeconds(9156), summary.execution_time);
   EXPECT_FALSE(summary.inaccurate);
 }
 

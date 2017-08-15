@@ -169,10 +169,6 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          if dtype.is_complex:
-            self.skipTest(
-                "tf.matrix_determinant does not work with complex, so this "
-                "test is being skipped.")
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
@@ -190,10 +186,6 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          if dtype.is_complex:
-            self.skipTest(
-                "tf.matrix_determinant does not work with complex, so this "
-                "test is being skipped.")
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
@@ -262,6 +254,23 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve],
                                                    feed_dict=feed_dict)
                 self.assertAC(op_solve_v, mat_solve_v)
+
+  def test_trace(self):
+    self._skip_if_tests_to_skip_contains("trace")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_trace = operator.trace()
+            mat_trace = math_ops.trace(mat)
+            if not use_placeholder:
+              self.assertAllEqual(op_trace.get_shape(), mat_trace.get_shape())
+            op_trace_v, mat_trace_v = sess.run([op_trace, mat_trace],
+                                               feed_dict=feed_dict)
+            self.assertAC(op_trace_v, mat_trace_v)
 
   def test_add_to_tensor(self):
     self._skip_if_tests_to_skip_contains("add_to_tensor")
@@ -445,7 +454,7 @@ def random_tril_matrix(shape,
     remove_upper:  Python `bool`.
       If `True`, zero out the strictly upper triangle.
       If `False`, the lower triangle of returned matrix will have desired
-      properties, but will not not have the strictly upper triangle zero'd out.
+      properties, but will not have the strictly upper triangle zero'd out.
 
   Returns:
     `Tensor` with desired shape and dtype.

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -517,8 +516,8 @@ TEST_P(ConcatR2BinaryTest, DoIt) {
 //     concat
 XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
-  auto x_literal = LiteralUtil::CreateR0<float>(2.f);
-  auto y_literal = LiteralUtil::CreateR0<float>(3.f);
+  auto x_literal = Literal::CreateR0<float>(2.f);
+  auto y_literal = Literal::CreateR0<float>(3.f);
   auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
   auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
 
@@ -535,6 +534,63 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
                              {x_data.get(), y_data.get()}, ErrorSpec(1e-4));
 }
 
+// Test that the HLO optimization to replace a concat of a bradcasted scalar
+// produces the correct result in rank 1.
+XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
+  auto x_literal = Literal::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
+  auto y_literal = Literal::CreateR0<float>(1.5f);
+  auto z_literal = Literal::CreateR0<float>(5.5f);
+  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.Parameter(0, x_literal->shape(), "x");
+  auto y = builder.Parameter(1, f32_scalar, "y");
+  auto z = builder.Parameter(2, f32_scalar, "z");
+  auto bcast = builder.Broadcast(y, {5});
+  auto bcast2 = builder.Broadcast(z, {3});
+  auto concat = builder.ConcatInDim({bcast, x}, /*dimension=*/0);
+  builder.ConcatInDim({concat, bcast2}, /*dimension=*/0);
+
+  ComputeAndCompareR1<float>(
+      &builder,
+      {1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 2.0f, 3.0f, 5.0f, 6.0f, 5.5f, 5.5f, 5.5f},
+      {x_data.get(), y_data.get(), z_data.get()}, ErrorSpec(1e-4));
+}
+
+// Test that the HLO optimization to replace a concat of a bradcasted scalar
+// produces the correct result in rank 3 with both high and low padding in
+// different dimensions.
+XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
+  Array3D<float> x3d(3, 5, 7, 3.14f);
+  auto x_literal = Literal::CreateR3FromArray3D<float>(x3d);
+  auto y_literal = Literal::CreateR0<float>(1.5f);
+  auto z_literal = Literal::CreateR0<float>(5.5f);
+  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.Parameter(0, x_literal->shape(), "x");
+  auto y = builder.Parameter(1, f32_scalar, "y");
+  auto z = builder.Parameter(2, f32_scalar, "y");
+  auto y_bcast = builder.Broadcast(y, {1, 5, 7});
+  auto z_bcast = builder.Broadcast(z, {4, 1, 7});
+  auto concat = builder.ConcatInDim({y_bcast, x}, /*dimension=*/0);
+  builder.ConcatInDim({concat, z_bcast}, /*dimension=*/1);
+  Array3D<float> y_bcast3d(1, 5, 7, 1.5f);
+  Array3D<float> z_bcast3d(4, 1, 7, 5.5f);
+  auto concat0 = ReferenceUtil::Concat3D(y_bcast3d, x3d, 0);
+  auto concat1 = ReferenceUtil::Concat3D(*concat0, z_bcast3d, 1);
+
+  ComputeAndCompareR3<float>(&builder, *concat1,
+                             {x_data.get(), y_data.get(), z_data.get()},
+                             ErrorSpec(1e-4));
+}
+
 INSTANTIATE_TEST_CASE_P(ConcatR2BinaryTestInstantiation, ConcatR2BinaryTest,
                         ::testing::Values(R2BinarySpec{1, 1, 1, 1, 0},
                                           R2BinarySpec{1, 1, 1, 1, 1},
@@ -545,20 +601,3 @@ INSTANTIATE_TEST_CASE_P(ConcatR2BinaryTestInstantiation, ConcatR2BinaryTest,
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

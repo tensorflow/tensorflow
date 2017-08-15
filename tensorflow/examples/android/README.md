@@ -24,12 +24,14 @@ on API >= 14 devices.
         model to classify camera frames in real-time, displaying the top results
         in an overlay on the camera image.
 2. [TF Detect](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/src/org/tensorflow/demo/DetectorActivity.java):
-        Demonstrates a model based on [Scalable Object Detection
-        using Deep Neural Networks](https://arxiv.org/abs/1312.2249) to
-        localize and track people in the camera preview in real-time.
+        Demonstrates an SSD-Mobilenet model trained using the
+        [Tensorflow Object Detection API](https://github.com/tensorflow/models/tree/master/object_detection/)
+        introduced in [Speed/accuracy trade-offs for modern convolutional object detectors](https://arxiv.org/abs/1611.10012) to
+        localize and track objects (from 80 categories) in the camera preview
+        in real-time.
 3. [TF Stylize](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/src/org/tensorflow/demo/StylizeActivity.java):
         Uses a model based on [A Learned Representation For Artistic
-        Style](https://arxiv.org/abs/1610.07629) to restyle the camera preview 
+        Style](https://arxiv.org/abs/1610.07629) to restyle the camera preview
         image to that of a number of different artists.
 
 <img src="sample_images/classify1.jpg" width="30%"><img src="sample_images/stylize1.jpg" width="30%"><img src="sample_images/detect1.jpg" width="30%">
@@ -124,7 +126,7 @@ it and the Android NDK and SDK must be installed on your system.
 
 ##### Edit WORKSPACE
 
-The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L32)
+The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L36)
 must be uncommented with the paths filled in appropriately depending on where
 you installed the NDK and SDK. Otherwise an error such as:
 "The external label '//external:android/sdk' is not bound to anything" will
@@ -149,7 +151,7 @@ and extract the archives yourself to the `assets` directory in the source tree:
 
 ```bash
 BASE_URL=https://storage.googleapis.com/download.tensorflow.org/models
-for MODEL_ZIP in inception5h.zip mobile_multibox_v1a.zip stylize_v1.zip
+for MODEL_ZIP in inception5h.zip ssd_mobilenet_v1_android_export.zip stylize_v1.zip
 do
   curl -L ${BASE_URL}/${MODEL_ZIP} -o /tmp/${MODEL_ZIP}
   unzip /tmp/${MODEL_ZIP} -d tensorflow/examples/android/assets/

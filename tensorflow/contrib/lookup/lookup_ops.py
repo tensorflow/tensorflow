@@ -86,7 +86,7 @@ def index_table_from_tensor(mapping,
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
   `default_value`.
-  The bucket ID range is `[mapping size, mapping size + num_oov_buckets]`.
+  The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
@@ -97,7 +97,7 @@ def index_table_from_tensor(mapping,
   Sample Usages:
 
   ```python
-  mapping_strings = t.constant(["emerson", "lake", "palmer"])
+  mapping_strings = tf.constant(["emerson", "lake", "palmer"])
   table = tf.contrib.lookup.index_table_from_tensor(
       mapping=mapping_strings, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
@@ -208,7 +208,7 @@ def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
   Sample Usages:
 
   ```python
-  mapping_string = t.constant(["emerson", "lake", "palmer")
+  mapping_string = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
   table = tf.contrib.lookup.index_to_string_table_from_tensor(
       mapping_string, default_value="UNKNOWN")
@@ -260,7 +260,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   For example:
 
   ```python
-  mapping_string = t.constant(["emerson", "lake", "palmer")
+  mapping_string = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
   values = tf.contrib.lookup.index_to_string(
       indices, mapping=mapping_string, default_value="UNKNOWN")
@@ -300,7 +300,7 @@ class MutableHashTable(LookupInterface):
                                              default_value=-1)
   table.insert(keys, values)
   out = table.lookup(query_keys)
-  print out.eval()
+  print(out.eval())
   ```
   """
 
@@ -502,7 +502,7 @@ class MutableDenseHashTable(LookupInterface):
                                                   empty_key=0)
   table.insert(keys, values)
   out = table.lookup(query_keys)
-  print out.eval()
+  print(out.eval())
   ```
   """
 

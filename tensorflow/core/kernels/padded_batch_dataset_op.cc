@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/dataset.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 
@@ -72,7 +71,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
   }
 
   switch (element.dtype()) {
-    TF_CALL_ALL_TYPES(HANDLE_TYPE);
+    TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented(
@@ -116,28 +115,22 @@ Status SetElementZero(Tensor* element, const Tensor& padding) {
     element->flat<T>().setConstant(padding.scalar<T>()()); \
     return Status::OK();                                   \
   }
-  TF_CALL_ALL_TYPES(HANDLE_TYPE);
+  TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
                                element->dtype());
 }
 
-class PaddedBatchDatasetOp : public OpKernel {
+class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit PaddedBatchDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit PaddedBatchDatasetOp(OpKernelConstruction* ctx)
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    // Create a new BatchDatasetOp::Dataset, insert it in the step-local
-    // container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* batch_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("batch_size", &batch_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(batch_size_t->shape()),
-                errors::InvalidArgument("batch_size must be a scalar"));
-    const int64 batch_size = batch_size_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    int64 batch_size;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
@@ -188,14 +181,8 @@ class PaddedBatchDatasetOp : public OpKernel {
       padding_values.push_back(tensor::DeepCopy(padding_value_t));
     }
 
-    DatasetBase* dataset = new Dataset(batch_size, std::move(padded_shapes),
-                                       std::move(padding_values), input);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(batch_size, std::move(padded_shapes),
+                          std::move(padding_values), input);
   }
 
  private:

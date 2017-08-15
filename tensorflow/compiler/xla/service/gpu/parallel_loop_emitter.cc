@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -34,6 +34,13 @@ ParallelLoopEmitter::ParallelLoopEmitter(
     BodyEmitter body_emitter, const Shape& shape,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
     : LoopEmitter(body_emitter, shape, ir_builder),
+      launch_dimensions_(launch_dimensions) {}
+
+ParallelLoopEmitter::ParallelLoopEmitter(
+    const llvm_ir::ElementGenerator& target_element_generator,
+    tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
+    : LoopEmitter(target_element_generator, target_arrays, ir_builder),
       launch_dimensions_(launch_dimensions) {}
 
 ParallelLoopEmitter::ParallelLoopEmitter(

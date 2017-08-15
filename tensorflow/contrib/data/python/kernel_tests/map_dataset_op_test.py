@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import threading
+
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
@@ -25,12 +28,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 class MapDatasetTest(test.TestCase):
@@ -180,6 +187,8 @@ class MapDatasetTest(test.TestCase):
                   np.array(37.0) * np.arange(1000))
 
     dataset = self._buildParallelMapDataset(components, 1000, 100, 100)
+    # NOTE(mrry): Also test that the prefetching thread is cancelled correctly.
+    dataset = dataset.prefetch(100)
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -199,11 +208,27 @@ class MapDatasetTest(test.TestCase):
   def testImplicitDisposeParallelMapDataset(self):
     self._testDisposeParallelMapDataset(False)
 
+  def testParallelMapUnspecifiedOutputSize(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"),
+                    num_threads=2))
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(3):
+        sess.run(get_next)
+
   def testParallelMapError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message")))
+               .map(lambda x: array_ops.check_numerics(x, "message"),
+                    num_threads=2, output_buffer_size=2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -216,6 +241,97 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
       sess.run(get_next)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testPrefetchError(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"))
+               .prefetch(2))
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(3):
+        sess.run(get_next)
+      # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(get_next)
+      sess.run(get_next)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testMapIgnoreError(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"))
+               .ignore_errors())
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for x in [1., 2., 3., 5.]:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testParallelMapIgnoreError(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"),
+                    num_threads=2, output_buffer_size=2)
+               .ignore_errors())
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for x in [1., 2., 3., 5.]:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testReadFileIgnoreError(self):
+    def write_string_to_file(value, filename):
+      with open(filename, "w") as f:
+        f.write(value)
+    filenames = [os.path.join(self.get_temp_dir(), "file_%d.txt" % i)
+                 for i in range(5)]
+    for filename in filenames:
+      write_string_to_file(filename, filename)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(filenames)
+               .map(io_ops.read_file, num_threads=2, output_buffer_size=2)
+               .ignore_errors())
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      # All of the files are present.
+      sess.run(init_op)
+      for filename in filenames:
+        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Delete one of the files.
+      os.remove(filenames[0])
+
+      # Attempting to read filenames[0] will fail, but ignore_errors()
+      # will catch the error.
+      sess.run(init_op)
+      for filename in filenames[1:]:
+        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -323,6 +439,93 @@ class MapDatasetTest(test.TestCase):
 
       # Randomness is repeatable given same seed
       self.assertAllClose(random_values, random_values_2)
+
+  def testMapDict(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
+                .map(lambda d: d["foo"] + d["bar"])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testUseStepContainerInMap(self):
+    row = np.arange(6)
+    iterator = (
+        dataset_ops.Dataset.from_tensors(row)
+        .map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(row ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testPrefetch(self):
+    # We will use this event to test that `_map_py_func()` has been
+    # invoked a certain number of times (6 times, to be exact) after
+    # consuming fewer elements from the iterator.
+    ev = threading.Event()
+
+    set_event_during_invocation = 5
+
+    def _map_py_func(x):
+      if x == set_event_during_invocation:
+        ev.set()
+      return x * x
+
+    def _map_fn(x):
+      return script_ops.py_func(_map_py_func, [x], x.dtype)
+
+    buffer_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+    iterator = (
+        dataset_ops.Dataset.range(100)
+        .map(_map_fn)
+        .prefetch(buffer_size_placeholder)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      # Simple test that prefetch yields the expected values in the
+      # expected order.
+      for buffer_size in [1, 10, 100, 1000]:
+        sess.run(init_op, feed_dict={buffer_size_placeholder: buffer_size})
+        for i in range(100):
+          self.assertEqual(i * i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+      # We can indirectly observe that varying the buffer size has the
+      # intended effect by observing when `ev` is set (on the 6th
+      # invocation of `_map_py_func()`).
+      # NOTE(mrry): We do not test with `buffer_size ==
+      # set_event_during_invocation`, because we must consume at least
+      # one element to start the prefetching.
+      for buffer_size in range(1, set_event_during_invocation):
+        event_will_be_set_after_consuming = (
+            set_event_during_invocation - buffer_size + 1)
+
+        ev.clear()
+        sess.run(init_op, feed_dict={buffer_size_placeholder: buffer_size})
+        for i in range(event_will_be_set_after_consuming):
+          self.assertFalse(ev.is_set())
+          self.assertEqual(i * i, sess.run(get_next))
+        ev.wait()
+        for i in range(event_will_be_set_after_consuming, 100):
+          self.assertEqual(i * i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()
