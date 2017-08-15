@@ -20,10 +20,6 @@ limitations under the License.
 // improve compilation times.
 #include <algorithm>
 
-#ifdef INTEL_MKL
-#define EIGEN_USE_MKL_ALL
-#endif // INTEL_MKL
-
 #include "third_party/eigen3/Eigen/QR"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
