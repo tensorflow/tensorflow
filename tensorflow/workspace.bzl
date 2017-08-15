@@ -489,15 +489,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//third_party/nanopb:nanopb",
   )
 
-  patched_http_archive(
+  native.http_archive(
       name = "grpc",
       urls = [
-          "http://mirror.bazel.build/github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
-          "https://github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
+          "http://mirror.bazel.build/github.com/grpc/grpc/archive/dc1cfe9e21d0b3ea19911300d15a65ef6201bb92.tar.gz",
+          "https://github.com/grpc/grpc/archive/dc1cfe9e21d0b3ea19911300d15a65ef6201bb92.tar.gz",
       ],
-      sha256 = "2004635e6a078acfac8ffa71738397796be4f8fb72f572cc44ecee5d99511d9f",
-      strip_prefix = "grpc-781fd6f6ea03645a520cd5c675da67ab61f87e4b",
-      patch_file = str(Label("//third_party/grpc:grpc.patch")),
+      sha256 = "3686142889a0607e2f19351c967f7f01220c8364f54ba25c2eab1c705500d8e5",
+      strip_prefix = "grpc-dc1cfe9e21d0b3ea19911300d15a65ef6201bb92",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
