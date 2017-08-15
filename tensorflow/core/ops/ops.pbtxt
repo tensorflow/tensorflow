@@ -12877,6 +12877,82 @@ op {
   summary: "Computes second-order gradients of the maxpooling function."
 }
 op {
+  name: "MaxPoolGradGradV2"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "4-D.  Gradients of gradients w.r.t. the input of `max_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    description: "The size of the window for each dimension of the input tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients of gradients w.r.t. the input to `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
   name: "MaxPoolGradGradWithArgmax"
   input_arg {
     name: "input"
@@ -12953,6 +13029,85 @@ op {
   summary: "Computes second-order gradients of the maxpooling function."
 }
 op {
+  name: "MaxPoolGradV2"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "4-D.  Gradients w.r.t. the output of `max_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    description: "The size of the window for each dimension of the input tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients w.r.t. the input to `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes gradients of the maxpooling function."
+}
+op {
   name: "MaxPoolGradWithArgmax"
   input_arg {
     name: "input"
@@ -13027,6 +13182,75 @@ op {
     }
   }
   summary: "Computes gradients of the maxpooling function."
+}
+op {
+  name: "MaxPoolV2"
+  input_arg {
+    name: "input"
+    description: "4-D input to pool over."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    description: "The size of the window for each dimension of the input tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "The max pooled output tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  summary: "Performs max pooling on the input."
 }
 op {
   name: "MaxPoolWithArgmax"
