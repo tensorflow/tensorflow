@@ -260,7 +260,18 @@ class BasicRNNCell(RNNCell):
 
 
 class GRUCell(RNNCell):
-  """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
+  """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
+
+  Args:
+    num_units: int, The number of units in the GRU cell.
+    activation: Nonlinearity to use.  Default: `tanh`.
+    reuse: (optional) Python boolean describing whether to reuse variables
+     in an existing scope.  If not `True`, and the existing scope already has
+     the given variables, an error is raised.
+    kernel_initializer: (optional) The initializer to use for the weight and
+    projection matrices.
+    bias_initializer: (optional) The initializer to use for the bias.
+  """
 
   def __init__(self,
                num_units,
@@ -308,7 +319,8 @@ _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
-  Stores two elements: `(c, h)`, in that order.
+  Stores two elements: `(c, h)`, in that order. Where `c` is the hidden state
+  and `h` is the output.
 
   Only used when `state_is_tuple=True`.
   """
@@ -445,7 +457,7 @@ class LSTMCell(RNNCell):
     """Initialize the parameters for an LSTM cell.
 
     Args:
-      num_units: int, The number of units in the LSTM cell
+      num_units: int, The number of units in the LSTM cell.
       use_peepholes: bool, set True to enable diagonal/peephole connections.
       cell_clip: (optional) A float value, if provided the cell state is clipped
         by this value prior to the cell output activation.

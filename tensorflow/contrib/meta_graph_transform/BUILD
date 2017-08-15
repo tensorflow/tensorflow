@@ -35,7 +35,16 @@ py_test(
     visibility = ["//visibility:private"],
     deps = [
         ":meta_graph_transform",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/tools/graph_transforms:transform_graph_py",
     ],
 )
 

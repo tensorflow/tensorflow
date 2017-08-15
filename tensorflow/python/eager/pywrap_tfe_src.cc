@@ -46,12 +46,11 @@ namespace {
 #if PY_MAJOR_VERSION >= 3
 PARSE_VALUE(ParseIntValue, int, PyLong_Check, PyLong_AsLong)
 PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLong)
-PARSE_VALUE(ParseStringValue, const char*, PyUnicode_Check, PyUnicode_AsUTF8)
 #else
-PARSE_VALUE(ParseStringValue, const char*, PyString_Check, PyString_AsString)
 PARSE_VALUE(ParseIntValue, int, PyInt_Check, PyInt_AsLong)
 PARSE_VALUE(ParseInt64Value, int64_t, PyInt_Check, PyInt_AsLong)
 #endif
+PARSE_VALUE(ParseStringValue, const char*, PyBytes_Check, PyBytes_AsString)
 PARSE_VALUE(ParseFloatValue, float, PyFloat_Check, PyFloat_AsDouble)
 
 #undef PARSE_VALUE

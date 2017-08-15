@@ -15,6 +15,7 @@ cc_library(
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -47,7 +48,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 

@@ -360,11 +360,11 @@ cc_library(
     srcs = ["framework/python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/eager:python_eager_op_gen",
     ],
 )
 
@@ -403,6 +403,10 @@ py_library(
         ":registry",
         ":tensor_shape",
         ":versions",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -480,6 +484,7 @@ py_library(
         ":framework_ops",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:execute",
     ],
 )
 
@@ -592,6 +597,8 @@ py_library(
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:core",
         "@six_archive//:six",
     ],
 )
@@ -962,6 +969,7 @@ py_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -1127,6 +1135,15 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "audio_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/contrib/framework:__pkg__",
     ],
 )
 
@@ -1708,6 +1725,8 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -2188,6 +2207,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 

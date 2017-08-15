@@ -210,6 +210,7 @@ add_python_module("tensorflow/python/debug/cli")
 add_python_module("tensorflow/python/debug/examples")
 add_python_module("tensorflow/python/debug/lib")
 add_python_module("tensorflow/python/debug/wrappers")
+add_python_module("tensorflow/python/eager")
 add_python_module("tensorflow/python/estimator")
 add_python_module("tensorflow/python/estimator/canned")
 add_python_module("tensorflow/python/estimator/export")
@@ -573,6 +574,9 @@ add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
 # tf_python_op_gen_main library
 ########################################################
 set(tf_python_op_gen_main_srcs
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
@@ -765,6 +769,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"

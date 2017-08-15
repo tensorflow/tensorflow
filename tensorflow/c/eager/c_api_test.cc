@@ -56,48 +56,53 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   return op;
 }
 
-// TODO(apassos) uncomment after rewriting to use the right benchmark API
-// void BM_InitOp(benchmark::State& state) {
-//   TF_Status* status = TF_NewStatus();
-//   TF_SessionOptions* opts = TF_NewSessionOptions();
-//   TFE_Context* ctx = TFE_NewContext(opts, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteSessionOptions(opts);
+void BM_InitOp(int iters) {
+  tensorflow::testing::StopTiming();
+  TF_Status* status = TF_NewStatus();
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteSessionOptions(opts);
 
-//   TFE_TensorHandle* m = TestMatrixTensorHandle();
-//   for (auto _ : state) {
-//     TFE_Op* matmul = MatMulOp(ctx, m, m);
-//     TFE_DeleteOp(matmul);
-//   }
-//   TFE_DeleteTensorHandle(m);
-//   TFE_DeleteContext(ctx, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteStatus(status);
-// }
-// BENCHMARK(BM_InitOp);
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    TFE_Op* matmul = MatMulOp(ctx, m, m);
+    TFE_DeleteOp(matmul);
+  }
+  tensorflow::testing::StopTiming();
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteContext(ctx, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
+BENCHMARK(BM_InitOp);
 
-// void BM_Execute(benchmark::State& state) {
-//   TF_Status* status = TF_NewStatus();
-//   TF_SessionOptions* opts = TF_NewSessionOptions();
-//   TFE_Context* ctx = TFE_NewContext(opts, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteSessionOptions(opts);
+void BM_Execute(int iters) {
+  tensorflow::testing::StopTiming();
+  TF_Status* status = TF_NewStatus();
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteSessionOptions(opts);
 
-//   TFE_TensorHandle* m = TestMatrixTensorHandle();
-//   TFE_Op* matmul = MatMulOp(ctx, m, m);
-//   TFE_TensorHandle* retvals[1];
-//   int num_retvals = 1;
-//   for (auto _ : state) {
-//     TFE_Execute(matmul, &retvals[0], &num_retvals, status);
-//     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   }
-//   TFE_DeleteOp(matmul);
-//   TFE_DeleteTensorHandle(m);
-//   TFE_DeleteContext(ctx, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteStatus(status);
-// }
-// BENCHMARK(BM_Execute);
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_Op* matmul = MatMulOp(ctx, m, m);
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    TFE_Execute(matmul, &retvals[0], &num_retvals, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  }
+  tensorflow::testing::StopTiming();
+  TFE_DeleteOp(matmul);
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteContext(ctx, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
+BENCHMARK(BM_Execute);
 
 TEST(CAPI, Context) {
   TF_Status* status = TF_NewStatus();
@@ -315,157 +320,161 @@ TEST(CAPI, FunctionDefAndExecute) {
   TF_DeleteStatus(status);
 }
 
-// TODO(apassos) uncomment after rewriting to use the right benchmark API
-// void BM_ExecuteFunction(benchmark::State& state) {
-//   TF_Status* status = TF_NewStatus();
-//   TF_SessionOptions* opts = TF_NewSessionOptions();
-//   TFE_Context* ctx = TFE_NewContext(opts, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteSessionOptions(opts);
+void BM_ExecuteFunction(int iters) {
+  tensorflow::testing::StopTiming();
+  TF_Status* status = TF_NewStatus();
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteSessionOptions(opts);
 
-//   string function_def = MatMulFunction();
-//   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
-//                             status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  string function_def = MatMulFunction();
+  TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
+                            status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-//   TFE_TensorHandle* m = TestMatrixTensorHandle();
-//   TFE_Op* matmul = TFE_NewOp(ctx, "MatMulFunction", status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TFE_OpAddInput(matmul, m, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TFE_TensorHandle* retval[1] = {nullptr};
-//   int num_retvals = 1;
-//   for (auto _ : state) {
-//     TFE_Execute(matmul, &retval[0], &num_retvals, status);
-//     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   }
-//   TFE_DeleteTensorHandle(m);
-//   TFE_DeleteTensorHandle(retval[0]);
-//   TFE_DeleteContext(ctx, status);
-//   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteStatus(status);
-// }
-// BENCHMARK(BM_ExecuteFunction);
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_Op* matmul = TFE_NewOp(ctx, "MatMulFunction", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(matmul, m, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* retval[1] = {nullptr};
+  int num_retvals = 1;
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    TFE_Execute(matmul, &retval[0], &num_retvals, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  }
+  tensorflow::testing::StopTiming();
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteTensorHandle(retval[0]);
+  TFE_DeleteContext(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
+BENCHMARK(BM_ExecuteFunction);
 
-// TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
-//                                  TF_Status* status) {
-//   // Create the variable handle.
-//   TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
-//   if (TF_GetCode(status) != TF_OK) return nullptr;
-//   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-//   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-//   TFE_OpSetAttrString(op, "container", "");
-//   TFE_OpSetAttrString(op, "shared_name", "");
-//   if (TF_GetCode(status) != TF_OK) return nullptr;
-//   TFE_TensorHandle* var_handle = nullptr;
-//   int num_retvals = 1;
-//   TFE_Execute(op, &var_handle, &num_retvals, status);
-//   TFE_DeleteOp(op);
-//   if (TF_GetCode(status) != TF_OK) return nullptr;
-//   CHECK_EQ(1, num_retvals);
+TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
+                                 TF_Status* status) {
+  // Create the variable handle.
+  TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpSetAttrShape(op, "shape", {}, 0, status);
+  TFE_OpSetAttrString(op, "container", "");
+  TFE_OpSetAttrString(op, "shared_name", "");
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_TensorHandle* var_handle = nullptr;
+  int num_retvals = 1;
+  TFE_Execute(op, &var_handle, &num_retvals, status);
+  TFE_DeleteOp(op);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  CHECK_EQ(1, num_retvals);
 
-//   // Assign 'value' to it.
-//   op = TFE_NewOp(ctx, "AssignVariableOp", status);
-//   if (TF_GetCode(status) != TF_OK) return nullptr;
-//   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-//   TFE_OpAddInput(op, var_handle, status);
+  // Assign 'value' to it.
+  op = TFE_NewOp(ctx, "AssignVariableOp", status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpAddInput(op, var_handle, status);
 
-//   // Convert 'value' to a TF_Tensor then a TFE_TensorHandle.
-//   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> t(
-//       TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(value)),
-//       TF_DeleteTensor);
-//   memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
+  // Convert 'value' to a TF_Tensor then a TFE_TensorHandle.
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> t(
+      TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(value)), TF_DeleteTensor);
+  memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
 
-//   std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-//       value_handle(TFE_NewTensorHandle(t.get()), TFE_DeleteTensorHandle);
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
+      value_handle(TFE_NewTensorHandle(t.get()), TFE_DeleteTensorHandle);
 
-//   TFE_OpAddInput(op, value_handle.get(), status);
-//   if (TF_GetCode(status) != TF_OK) return nullptr;
+  TFE_OpAddInput(op, value_handle.get(), status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
-//   num_retvals = 0;
-//   TFE_Execute(op, nullptr, &num_retvals, status);
-//   TFE_DeleteOp(op);
-//   if (TF_GetCode(status) != TF_OK) return nullptr;
-//   CHECK_EQ(0, num_retvals);
+  num_retvals = 0;
+  TFE_Execute(op, nullptr, &num_retvals, status);
+  TFE_DeleteOp(op);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  CHECK_EQ(0, num_retvals);
 
-//   return var_handle;
-// }
+  return var_handle;
+}
 
-// TEST(CAPI, Variables) {
-//   // Variables use resource handles, so this is really a test for resource
-//   // tensor handling.
-//   TF_Status* status = TF_NewStatus();
-//   TF_SessionOptions* opts = TF_NewSessionOptions();
-//   TFE_Context* ctx = TFE_NewContext(opts, status);
-//   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteSessionOptions(opts);
+TEST(CAPI, Variables) {
+  // Variables use resource handles, so this is really a test for resource
+  // tensor handling.
+  TF_Status* status = TF_NewStatus();
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteSessionOptions(opts);
 
-//   TFE_TensorHandle* var_handle = CreateVariable(ctx, 12.0, status);
-//   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* var_handle = CreateVariable(ctx, 12.0, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-//   TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
-//   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-//   TFE_OpAddInput(op, var_handle, status);
-//   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   int num_retvals = 1;
-//   TFE_TensorHandle* value_handle = nullptr;
-//   TFE_Execute(op, &value_handle, &num_retvals, status);
-//   TFE_DeleteOp(op);
+  TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpAddInput(op, var_handle, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  int num_retvals = 1;
+  TFE_TensorHandle* value_handle = nullptr;
+  TFE_Execute(op, &value_handle, &num_retvals, status);
+  TFE_DeleteOp(op);
 
-//   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   ASSERT_EQ(1, num_retvals);
-//   EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(value_handle));
-//   EXPECT_EQ(0, TFE_TensorHandleNumDims(value_handle));
-//   float value = 0.0f;
-//   TF_Tensor* t = TFE_TensorHandleResolve(value_handle, status);
-//   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   ASSERT_EQ(sizeof(float), TF_TensorByteSize(t));
-//   memcpy(&value, TF_TensorData(t), sizeof(float));
-//   TF_DeleteTensor(t);
-//   EXPECT_EQ(12.0, value);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(1, num_retvals);
+  EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(value_handle));
+  EXPECT_EQ(0, TFE_TensorHandleNumDims(value_handle));
+  float value = 0.0f;
+  TF_Tensor* t = TFE_TensorHandleResolve(value_handle, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(sizeof(float), TF_TensorByteSize(t));
+  memcpy(&value, TF_TensorData(t), sizeof(float));
+  TF_DeleteTensor(t);
+  EXPECT_EQ(12.0, value);
 
-//   TFE_DeleteTensorHandle(var_handle);
-//   TFE_DeleteTensorHandle(value_handle);
-//   TFE_DeleteContext(ctx, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteStatus(status);
-// }
+  TFE_DeleteTensorHandle(var_handle);
+  TFE_DeleteTensorHandle(value_handle);
+  TFE_DeleteContext(ctx, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
 
-// void BM_ReadVariable(benchmark::State& state) {
-//   TF_Status* status = TF_NewStatus();
-//   TF_SessionOptions* opts = TF_NewSessionOptions();
-//   TFE_Context* ctx = TFE_NewContext(opts, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteSessionOptions(opts);
+void BM_ReadVariable(int iters) {
+  tensorflow::testing::StopTiming();
+  TF_Status* status = TF_NewStatus();
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteSessionOptions(opts);
 
-//   TFE_TensorHandle* var_handle = CreateVariable(ctx, 5.0, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* var_handle = CreateVariable(ctx, 5.0, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-//   TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-//   TFE_OpAddInput(op, var_handle, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+  TFE_OpAddInput(op, var_handle, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-//   int num_retvals = 1;
-//   TFE_TensorHandle* h = nullptr;
-//   for (auto _ : state) {
-//     TFE_Execute(op, &h, &num_retvals, status);
-//     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//     CHECK_EQ(1, num_retvals);
-//     CHECK(h);
-//     CHECK_EQ(TF_FLOAT, TFE_TensorHandleDataType(h));
-//     CHECK_EQ(0, TFE_TensorHandleNumDims(h));
-//     h = nullptr;
-//   }
-//   TFE_DeleteOp(op);
+  int num_retvals = 1;
+  TFE_TensorHandle* h = nullptr;
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    TFE_Execute(op, &h, &num_retvals, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    CHECK_EQ(1, num_retvals);
+    CHECK(h);
+    CHECK_EQ(TF_FLOAT, TFE_TensorHandleDataType(h));
+    CHECK_EQ(0, TFE_TensorHandleNumDims(h));
+    h = nullptr;
+  }
+  tensorflow::testing::StopTiming();
+  TFE_DeleteOp(op);
 
-//   TFE_DeleteTensorHandle(var_handle);
-//   TFE_DeleteContext(ctx, status);
-//   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-//   TF_DeleteStatus(status);
-// }
-// BENCHMARK(BM_ReadVariable);
+  TFE_DeleteTensorHandle(var_handle);
+  TFE_DeleteContext(ctx, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
+BENCHMARK(BM_ReadVariable);
 
 }  // namespace

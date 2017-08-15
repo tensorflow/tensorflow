@@ -789,7 +789,8 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config):
     unsharded_inputs = inputs_holder.as_flattened_inputs()
     infeed_queue = tpu_feed.InfeedQueue(
         tuple_types=[t.dtype for t in unsharded_inputs],
-        tuple_shapes=[t.shape for t in unsharded_inputs])
+        tuple_shapes=[t.shape for t in unsharded_inputs],
+        shard_dimensions=run_config.tpu_config.shard_dimensions)
     infeed_queue.set_number_of_shards(inputs_holder.num_shards)
 
   def dequeue_fn():

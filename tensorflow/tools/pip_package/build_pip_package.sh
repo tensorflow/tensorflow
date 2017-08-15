@@ -48,8 +48,13 @@ function main() {
   DEST=$(real_path $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
-  GPU_FLAG=""
+  PKG_NAME_FLAG=""
+  GPU_BUILD=0
+  NIGHTLY_BUILD=0
   while true; do
+    if [[ "$1" == "--nightly_flag" ]]; then
+      NIGHTLY_BUILD=1
+    fi
     if [[ "$1" == "--gpu" ]]; then
       GPU_FLAG="--project_name tensorflow_gpu"
     elif [[ "$1" == "--gpudirect" ]]; then
@@ -61,6 +66,14 @@ function main() {
       break
     fi
   done
+
+  if [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_gpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly"
+  elif [[ ${GPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_gpu"
+  fi
 
   echo $(date) : "=== Using tmpdir: ${TMPDIR}"
 
@@ -150,7 +163,7 @@ function main() {
   pushd ${TMPDIR}
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${GPU_FLAG} >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd
