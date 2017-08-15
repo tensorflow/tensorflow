@@ -252,6 +252,7 @@ py_library(
 py_library(
     name = "tensor_node",
     srcs = ["tensor_node.py"],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
@@ -269,6 +270,7 @@ py_library(
 py_library(
     name = "backprop",
     srcs = ["backprop.py"],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:array_ops",
