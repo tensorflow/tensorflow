@@ -326,10 +326,10 @@ class _GeneratorFeedFn(object):
 
     if self._pad_value is not None:
       feed_dict = {key: np.asarray(_pad_if_needed(item, self._pad_value))
-                 for key, item in list(list_dict.items())}
+                   for key, item in list(list_dict.items())}
     else:
       feed_dict = {key: np.asarray(item)
-                 for key, item in list(list_dict.items())}
+                   for key, item in list(list_dict.items())}
     return feed_dict
 
 
@@ -408,10 +408,10 @@ def _enqueue_data(data,
     pad_data = pad_value is not None
     if pad_data and get_feed_fn is not _GeneratorFeedFn:
       raise NotImplementedError(
-        "padding is only available with generator usage")
+          "padding is only available with generator usage")
     if shuffle and pad_data:
       raise NotImplementedError(
-        "padding and shuffling data at the same time is not implemented")
+          "padding and shuffling data at the same time is not implemented")
 
     # TODO(jamieas): TensorBoard warnings for all warnings below once available.
 
