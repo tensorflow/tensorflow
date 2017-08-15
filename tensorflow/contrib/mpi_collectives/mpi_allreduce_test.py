@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import tensorflow as tf
-import tensorflow.contrib.mpi as mpi
+import tensorflow.contrib.mpi_collectives as mpi
 from tensorflow.python.platform import test
 
 

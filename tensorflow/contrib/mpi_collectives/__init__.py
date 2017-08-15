@@ -238,10 +238,10 @@ class Session(tf.Session):
     """A class for running TensorFlow operations, with copies of the same graph
     running distributed across different MPI nodes.
 
-    The primary difference between `tf.Session` and `tf.contrib.mpi.Session` is
-    that the MPI `Session` ensures that the `Session` options are correct for
-    use with `tf.contrib.mpi`, and initializes MPI immediately upon the start
-    of the session.
+    The primary difference between `tf.Session` and
+    `tf.contrib.mpi_collectives.Session` is that the MPI `Session` ensures that
+    the `Session` options are correct for use with `tf.contrib.mpi`, and
+    initializes MPI immediately upon the start of the session.
     """
 
     def __init__(self, target='', graph=None, config=None):
