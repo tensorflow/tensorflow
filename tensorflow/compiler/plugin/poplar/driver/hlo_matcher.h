@@ -50,6 +50,11 @@ public:
 
   StatusOr<bool> Run(HloModule *module) override;
 
+protected:
+  ReplacedInstructions OutlineExpressionFromComputation(
+          const HloMatcherMatched& matched,
+          const std::string& outlined_computation_name);
+
 private:
   virtual ReplacedInstructions ReplaceNodes(int pattern,
                                             const HloMatcherMatched&) = 0;

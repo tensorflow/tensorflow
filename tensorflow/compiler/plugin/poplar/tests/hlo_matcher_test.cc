@@ -27,10 +27,8 @@ using HloMatcherTest = HloTestBase;
 class TestMatcher : public HloMatcher {
 public:
   TestMatcher(const std::vector<HloMatcherPattern>& patterns,
-              bool root_only,
-              bool drop_last_instruction)
-          : HloMatcher(patterns, root_only)
-          , drop_last_instruction_(drop_last_instruction) {}
+              bool root_only)
+          : HloMatcher(patterns, root_only) {}
 
 private:
   ReplacedInstructions ReplaceNodes(int pattern,
@@ -39,15 +37,11 @@ private:
     match_pattern.push_back(pattern);
     match_count.push_back(match.instructions.size());
 
-    ReplacedInstructions replaced = match.instructions;
-    if (drop_last_instruction_) {
-      replaced.pop_back();
-    }
+    ReplacedInstructions replaced =
+            OutlineExpressionFromComputation(match,"test");
 
     return replaced;
   }
-
-  bool drop_last_instruction_;
 
 public:
   int replace_count=0;
@@ -85,10 +79,11 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
   std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, nullptr, {-1, -1}}}
   };
-  TestMatcher matcher(patterns, false, false);
+  TestMatcher matcher(patterns, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
+  EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
 }
 
 
@@ -128,10 +123,11 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
 
     {{HloOpcode::kAdd, true, nullptr, {-1, -1}}}
   };
-  TestMatcher matcher(patterns, false, false);
+  TestMatcher matcher(patterns, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
+  EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
 }
 
 
@@ -171,10 +167,11 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
      {HloOpcode::kBroadcast, true, nullptr, {-1}}}
   };
-  TestMatcher matcher(patterns, false, false);
+  TestMatcher matcher(patterns, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(8, hlo_module->entry_computation()->instruction_count());
 }
 
 
@@ -215,10 +212,11 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
      {HloOpcode::kBroadcast, true, nullptr, {-1}}}
   };
-  TestMatcher matcher(patterns, false, true);
+  TestMatcher matcher(patterns, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
+  EXPECT_EQ(7, hlo_module->entry_computation()->instruction_count());
 }
 
 
@@ -260,11 +258,48 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
      {HloOpcode::kAdd, true, nullptr, {-1, 2}},
      {HloOpcode::kBroadcast, false, nullptr, {-1}}}
   };
-  TestMatcher matcher(patterns, false, false);
+  TestMatcher matcher(patterns, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
   EXPECT_EQ(2, matcher.match_count[0]);
+  EXPECT_EQ(7, hlo_module->entry_computation()->instruction_count());
+}
+
+TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {10});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto i1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape1, "in1"));
+  auto i2 = builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::One(F32).CloneToUnique()));
+  auto sub1 = builder.AddInstruction(
+          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, i2));
+  auto add1 = builder.AddInstruction(
+          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, i2));
+  auto sub2 = builder.AddInstruction(
+          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
+
+  builder.AddInstruction(
+          HloInstruction::CreateTuple({sub2}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+
+  std::vector<HloMatcherPattern> patterns = {
+    {{HloOpcode::kSubtract, true, nullptr, {-1, 1}},
+     {HloOpcode::kConstant, true, nullptr, {}}}
+  };
+  TestMatcher matcher(patterns, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
 }
 
 
