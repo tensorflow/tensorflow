@@ -3,6 +3,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -30,7 +31,7 @@ CreateSliceUpdateOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(update,
                       FindInstructionInput(tensor_map, inst, 1));
 
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
 
   std::vector<int64> begin;
   TF_ASSIGN_OR_RETURN(begin,
@@ -81,7 +82,7 @@ CreateSliceOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(input,
                       FindInstructionInput(tensor_map, inst, 0));
 
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
 
   std::vector<int64> begin;
   TF_ASSIGN_OR_RETURN(begin,

@@ -346,9 +346,9 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
   PoolingType reduction_type;
 
   // Find the type of the reduction
-  if (inst->opcode() == HloOpcode::kFusion) {
+  if (inst->opcode() == HloOpcode::kCall) {
     reduction_type = PoolingType::AVG;
-    pooling_inst = inst->fused_expression_root()->operand(0);
+    pooling_inst = inst->to_apply()->root_instruction()->operand(0);
   } else if (inst->to_apply()->root_instruction()->opcode() ==
           HloOpcode::kMaximum) {
     reduction_type = PoolingType::MAX;

@@ -36,19 +36,7 @@ Outliner::Outliner() : HloMatcher(patterns, true) {}
 
 ReplacedInstructions Outliner::ReplaceNodes(int pattern,
                                             const HloMatcherMatched& match) {
-
-  HloModule* module = match.computation->parent();
-
-  std::vector<HloInstruction*> reversed(match.instructions.begin(),
-                                       match.instructions.end());
-
-  std::reverse(reversed.begin(), reversed.end());
-
-  module->OutlineExpressionFromComputation(reversed,
-                                           names[pattern],
-                                           module->entry_computation());
-
-  return match.instructions;
+  return OutlineExpressionFromComputation(match, names[pattern]);
 }
 
 }

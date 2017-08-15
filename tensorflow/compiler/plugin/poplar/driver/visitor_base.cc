@@ -176,15 +176,7 @@ Status BaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
 Status BaseVisitor::HandleRng(
         HloInstruction* inst,
         RandomDistribution distribution) {
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog,
-                      CreateRandomOp(*graph_,
-                                     resources_,
-                                     inst,
-                                     GetOutputShape(inst),
-                                     tensor_map));
-  sequence.add(prog);
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status BaseVisitor::HandleReverse(
@@ -248,9 +240,41 @@ Status BaseVisitor::HandleTranspose(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleFusion(HloInstruction* inst) {
-  switch (static_cast<int>(inst->fusion_kind())) {
-    case FUSED_RELU:
-    {
+  return Unimplemented(inst);
+};
+
+
+Status BaseVisitor::HandleCall(HloInstruction* inst) {
+  HloComputation* comp = inst->to_apply();
+
+  // If is is a special fusion-type op
+  if (comp->name().substr(0, 8) == "_pop_op_") {
+    auto end = comp->name().find('.');
+    std::string name = comp->name().substr(8, end-8);
+
+    if (name == "const_slice_update") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSliceUpdateOp(*graph_,
+                                              resources_,
+                                              inst,
+                                              GetOutputShape(inst),
+                                              tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    else if (name == "const_slice") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSliceOp(*graph_,
+                                        resources_,
+                                        inst,
+                                        GetOutputShape(inst),
+                                        tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    else if (name == "relu") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
                           CreateReluOp(*graph_,
@@ -261,8 +285,7 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
-    case FUSED_SIGMOID:
-    {
+    else if (name == "sigmoid") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
                           CreateSigmoidOp(*graph_,
@@ -273,27 +296,83 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
-    case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
-    case FUSED_TRUNCATED_NORMAL:
-    case FUSED_RANDOM_NORMAL_WITH_SCALE:
-    case FUSED_RANDOM_UNIFORM_WITH_SCALE:
-    case FUSED_RANDOM_NORMAL:
-    case FUSED_RANDOM_UNIFORM:
-    case FUSED_BERNOULLI:
-    {
+    else if (name == "biasadd_broadcast" ||
+             name == "biasadd") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
-                          CreateRandomOp(*graph_,
-                                         resources_,
-                                         inst,
-                                         GetOutputShape(inst),
-                                         tensor_map));
+                          CreateBiasAddOp(*graph_,
+                                          resources_,
+                                          inst,
+                                          GetOutputShape(inst),
+                                          tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+
+    }
+    else if (name == "zero_pad") {
+      const HloInstruction* root = inst->to_apply()->root_instruction();
+      const PaddingConfig& cfg(root->padding_config());
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+      TF_ASSIGN_OR_RETURN(out, PadWithConstantZero(*graph_, cfg, out));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+      return Status::OK();
+    } else if (name == "trunc_norm_scale_add") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+        TruncatedNormalScale(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "trunc_norm") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          TruncatedNormal(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "norm_scale_add") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          RandomNormalScale(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "uniform_scale_add") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          RandomUniformScale(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "norm") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          RandomNormal(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "uniform") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          RandomUniform(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "bernoulli") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          Bernoulli(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
+      sequence.add(prog);
+    }
+    else if (name == "avgpool_same" ||
+             name == "avgpool_valid") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreatePoplibsWindowReduction(*graph_,
+                                                       resources_,
+                                                       inst,
+                                                       GetOutputShape(inst),
+                                                       tensor_map));
       sequence.add(prog);
       return Status::OK();
     }
-    case FUSED_WIDE_CONSTANT:
-    {
-      const HloInstruction* root = inst->fused_expression_root();
+    else if (name == "wide_const") {
+      const HloInstruction* root = inst->to_apply()->root_instruction();
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, AddConstantTensor(*graph_, inst->shape(),
                                                  root->operand(0)->literal(),
@@ -301,14 +380,22 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
       return Status::OK();
     }
-    default:
-      return Unimplemented(inst);
+    else {
+      return port::Status(port::error::FAILED_PRECONDITION,
+                          port::StrCat("Unrecognized special call op ",
+                                       inst->name()));
+    }
+  } else {
+    poplar::program::Program prog;
+    TF_ASSIGN_OR_RETURN(prog,
+                        CreateCallOp(*graph_,
+                                     resources_,
+                                     inst,
+                                     GetOutputShape(inst),
+                                     tensor_map));
+    sequence.add(prog);
   }
-};
-
-
-Status BaseVisitor::HandleCall(HloInstruction* inst) {
-  return Unimplemented(inst);
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleCustomCall(

@@ -30,14 +30,14 @@ DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   return *val;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 TruncatedNormalScale(poplar::Graph &graph,
                      CompilerResources& res,
                      const HloInstruction *inst,
                      const xla::Shape& output_shape,
                      TensorMap& tensor_map) {
   const HloInstruction* root =
-          inst->fused_expression_root();
+          inst->to_apply()->root_instruction();
   const HloInstruction* mean1 =
           root->operand(1);
   const HloInstruction* sd1 =
@@ -67,13 +67,13 @@ TruncatedNormalScale(poplar::Graph &graph,
   return seq;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 TruncatedNormal(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,
                 const xla::Shape& output_shape,
                 TensorMap& tensor_map) {
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* mean = root->operand(0)->operand(0);
   const HloInstruction* sd = root->operand(0)->operand(1);
 
@@ -93,13 +93,13 @@ TruncatedNormal(poplar::Graph &graph,
   return seq;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 RandomNormalScale(poplar::Graph &graph,
                   CompilerResources& res,
                   const HloInstruction *inst,
                   const xla::Shape& output_shape,
                   TensorMap& tensor_map) {
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* mean1 = root->operand(1);
   const HloInstruction* sd1 = root->operand(0)->operand(1);
   const HloInstruction* mean2 = root->operand(0)->operand(0)->operand(0);
@@ -125,13 +125,13 @@ RandomNormalScale(poplar::Graph &graph,
   return seq;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 RandomUniformScale(poplar::Graph &graph,
                    CompilerResources& res,
                    const HloInstruction *inst,
                    const xla::Shape& output_shape,
                    TensorMap& tensor_map) {
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* shift = root->operand(1);
   const HloInstruction* scale = root->operand(0)->operand(1);
   const HloInstruction* lower = root->operand(0)->operand(0)->operand(0);
@@ -157,13 +157,13 @@ RandomUniformScale(poplar::Graph &graph,
   return seq;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 RandomNormal(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
              const xla::Shape& output_shape,
              TensorMap& tensor_map) {
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* mean = root->operand(0);
   const HloInstruction* sd = root->operand(1);
 
@@ -182,13 +182,13 @@ RandomNormal(poplar::Graph &graph,
   return seq;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 RandomUniform(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
               const xla::Shape& output_shape,
               TensorMap& tensor_map) {
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* lower = root->operand(0);
   const HloInstruction* upper = root->operand(1);
 
@@ -207,13 +207,13 @@ RandomUniform(poplar::Graph &graph,
   return seq;
 }
 
-static port::StatusOr<poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 Bernoulli(poplar::Graph &graph,
           CompilerResources& res,
           const HloInstruction *inst,
           const xla::Shape& output_shape,
           TensorMap& tensor_map) {
-  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* prob = root->operand(0);
 
   double prob_val;
@@ -227,42 +227,6 @@ Bernoulli(poplar::Graph &graph,
   res.random.bernoulli(graph, out, prob_val, seq, inst->name());
 
   return seq;
-}
-
-port::StatusOr<poplar::program::Program>
-CreateRandomOp(poplar::Graph &graph,
-               CompilerResources& res,
-               const HloInstruction *inst,
-               const xla::Shape& output_shape,
-               TensorMap& tensor_map) {
-
-  if (inst->opcode() == HloOpcode::kFusion) {
-    switch (static_cast<int>(inst->fusion_kind())) {
-      case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
-        return TruncatedNormalScale(graph, res, inst, output_shape, tensor_map);
-      case FUSED_TRUNCATED_NORMAL:
-        return TruncatedNormal(graph, res, inst, output_shape, tensor_map);
-      case FUSED_RANDOM_NORMAL_WITH_SCALE:
-        return RandomNormalScale(graph, res, inst, output_shape, tensor_map);
-      case FUSED_RANDOM_UNIFORM_WITH_SCALE:
-        return RandomUniformScale(graph, res, inst, output_shape, tensor_map);
-      case FUSED_RANDOM_NORMAL:
-        return RandomNormal(graph, res, inst, output_shape, tensor_map);
-      case FUSED_RANDOM_UNIFORM:
-        return RandomUniform(graph, res, inst, output_shape, tensor_map);
-      case FUSED_BERNOULLI:
-        return Bernoulli(graph, res, inst, output_shape, tensor_map);
-      default:
-        return port::Status(port::error::FAILED_PRECONDITION,
-                            port::StrCat("Unrecognized random fusion ",
-                                         inst->name()));
-    }
-  } else {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        port::StrCat("Unrecognized random operation ",
-                                     inst->name()));
-  }
-
 }
 
 }

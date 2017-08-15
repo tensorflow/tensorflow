@@ -40,23 +40,8 @@ public:
       return Status::OK();
     } else if (inst->opcode() == HloOpcode::kSelect) {
       return Status::OK();
-    } else if (inst->opcode() == HloOpcode::kFusion) {
-      switch (static_cast<int>(inst->fusion_kind())) {
-        case FUSED_RELU:
-        case FUSED_SIGMOID:
-        case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
-        case FUSED_TRUNCATED_NORMAL:
-        case FUSED_RANDOM_NORMAL_WITH_SCALE:
-        case FUSED_RANDOM_UNIFORM_WITH_SCALE:
-        case FUSED_RANDOM_NORMAL:
-        case FUSED_RANDOM_UNIFORM:
-        case FUSED_BERNOULLI:
-        case FUSED_WIDE_CONSTANT:
-          return Status::OK();
-        default:
-          _is_ok = false;
-          return Status::OK();
-      }
+    } else if (inst->opcode() == HloOpcode::kCall) {
+      return Status::OK();
     } else {
       LOG(INFO) << "Map didn't have a parallel computation " << inst->name();
       _is_ok = false;

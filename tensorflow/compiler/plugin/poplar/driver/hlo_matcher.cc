@@ -162,6 +162,8 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
         const HloMatcherMatched& matched,
         const std::string& outlined_computation_name) {
 
+  LOG(INFO) << "Replacing instructions " << outlined_computation_name;
+
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
   HloInstruction* root = instructions_to_outline[0];
@@ -183,34 +185,34 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   int64 parameter_count = 0;
 
   for (HloInstruction* instruction_to_outline : to_outline) {
-    // Clone the original instruction.
-    HloInstruction* outlined_instruction =
-            builder.AddInstruction(instruction_to_outline->Clone());
 
-    // Replace its operands to their counterparts in the new function.
-    for (int64 operand_num = 0;
-         operand_num < outlined_instruction->operand_count(); ++operand_num) {
-      HloInstruction* old_operand =
-              outlined_instruction->mutable_operand(operand_num);
+    if (outlined_instructions.find(instruction_to_outline) ==
+        outlined_instructions.end()) {
 
-      HloInstruction** operand_slot = &(outlined_instructions[old_operand]);
-      if (*operand_slot == nullptr) {
-        // Because to_outline is in topological order, if
-        // old_operand is not in outlined_instructions, old_operand must be an
-        // input of the outlined subcomputation and thus should be represented
-        // as a parameter in the new function.
-        arguments.push_back(old_operand);
-        *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-                parameter_count, old_operand->shape(), "arg"));
-        ++parameter_count;
+      HloInstruction* outlined_instruction =
+              builder.AddInstruction(instruction_to_outline->Clone());
+
+      for (int64 operand_num = 0;
+           operand_num < outlined_instruction->operand_count(); ++operand_num) {
+        HloInstruction* old_operand =
+                outlined_instruction->mutable_operand(operand_num);
+
+        HloInstruction** operand_slot = &(outlined_instructions[old_operand]);
+        if (*operand_slot == nullptr) {
+          arguments.push_back(old_operand);
+          *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
+                  parameter_count, old_operand->shape(), "arg"));
+          ++parameter_count;
+        }
+        TF_CHECK_OK(
+                outlined_instruction->ReplaceOperandWith(operand_num,
+                                                         *operand_slot));
       }
-      TF_CHECK_OK(
-              outlined_instruction->ReplaceOperandWith(operand_num, *operand_slot));
-    }
 
-    // Insert the new instruction into the outlined_instructions map.
-    InsertOrDie(&outlined_instructions, instruction_to_outline,
-                outlined_instruction);
+      // Insert the new instruction into the outlined_instructions map.
+      InsertOrDie(&outlined_instructions, instruction_to_outline,
+                  outlined_instruction);
+    }
   }
 
   // Creates a call to the nested computation.
@@ -231,6 +233,8 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
       replaced.push_back(inst);
     }
   }
+
+  LOG(INFO) << "Replaced " << replaced.size();
 
   return replaced;
 }

@@ -82,46 +82,70 @@ static bool IsScalarConstant(HloInstruction* inst) {
   return ShapeUtil::IsScalar(inst->shape());
 }
 
+static const char* names[] = {
+  "const_slice_update",
+  "const_slice",
+  "relu",
+  "sigmoid",
+  "biasadd_broadcast",
+  "biasadd",
+  "zero_pad",
+  "trunc_norm_scale_add",
+  "trunc_norm",
+  "norm_scale_add",
+  "uniform_scale_add",
+  "norm",
+  "uniform",
+  "bernoulli",
+  "avgpool_same",
+  "avgpool_valid",
+  "wide_const",
+};
+
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
  * other nodes that refer to them.
+ *
+ * The parameters of the post-fused call are in the reverse order that '-1'
+ * entries appear in the list.  An op marked include_in_replacement=false
+ * counts as a '-1' on other instructions on which it appears.
  */
 
 static const std::vector<HloMatcherPattern> patterns = {
-  // dynamic update slice with constant coordinate - 0
+  // dynamic update slice with constant coordinate
   {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // dynamic slice with constant coordinate - 1
+  // dynamic slice with constant coordinate
   {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Relu - 2
+  // Relu
   {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
-  // Sigmoid - 3
+  // Sigmoid
   {{HloOpcode::kAdd, true, nullptr, {4, 1}},
    {HloOpcode::kMultiply, true, nullptr, {4, 2}},
    {HloOpcode::kTanh, true, nullptr, {3}},
    {HloOpcode::kMultiply, true, nullptr, {4, -1}},
    {HloOpcode::kConstant, true, IsConstantHalf, {}}},
 
-  // BiasAdd on convolution (explicit broadcast) - 4
-  {{HloOpcode::kAdd, true, nullptr, {1, 2}},
+  // BiasAdd on convolution (explicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}},
    {HloOpcode::kBroadcast, true, nullptr, {-1}}},
 
-  // BiasAdd on convolution (implicit broadcast) - 6
+  // BiasAdd on convolution (implicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {1, -1}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
 
-  // External padding with constant zero - 6
+  // External padding with constant zero
   {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
-  // Random truncated normal with post scale and add - 7
+  // Random truncated normal with post scale and add
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kMultiply, true, nullptr, {4, 3}},
@@ -131,13 +155,13 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random truncated normal without post scale and add - 8
+  // Random truncated normal without post scale and add
   {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
    {HloOpcode::kRng, true, nullptr, {2, 3}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random normal with post scale and add - 9
+  // Random normal with post scale and add
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kMultiply, true, nullptr, {4, 3}},
@@ -146,7 +170,7 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random uniform with post scale and add - 10
+  // Random uniform with post scale and add
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kMultiply, true, nullptr, {4, 3}},
@@ -155,27 +179,27 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random 2-constant without post scale and add - 11
+  // Random 2-constant without post scale and add
   {{HloOpcode::kRng, true, IsRandomNormal, {1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random 2-constant without post scale and add - 12
+  // Random 2-constant without post scale and add
   {{HloOpcode::kRng, true, IsRandomUniform, {1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random bernoulli - 13
+  // Random bernoulli
   {{HloOpcode::kRng, true, IsRandomBernoulli, {1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Average pool (valid) - 14
+  // Average pool (valid)
   {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
    {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Average pool (same) - 15
+  // Average pool (same)
   {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
    {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
@@ -185,7 +209,7 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Broadcast scalar constant - 16
+  // Broadcast scalar constant
   {{HloOpcode::kBroadcast, true, nullptr, {1}},
    {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 };
@@ -194,26 +218,11 @@ FuseOps::FuseOps() : HloMatcher(patterns, false) {}
 
 ReplacedInstructions FuseOps::ReplaceNodes(int pattern,
                                            const HloMatcherMatched& match) {
-  HloInstruction::FusionKind type =
-          static_cast<HloInstruction::FusionKind>(FUSED_BASE + pattern);
 
-  auto* comp = match.computation;
-  comp->CreateFusionInstruction(match.instructions, type);
+  std::string name("_pop_op_");
+  name += names[pattern];
 
-  ReplacedInstructions replaced;
-
-  std::set<HloInstruction*> remaining;
-  for (auto& i : comp->instructions()) {
-    remaining.insert(i.get());
-  }
-
-  for (auto inst : match.instructions) {
-    if (remaining.count(inst) == 0) {
-      replaced.push_back(inst);
-    }
-  }
-
-  return replaced;
+  return OutlineExpressionFromComputation(match, name);
 }
 
 }

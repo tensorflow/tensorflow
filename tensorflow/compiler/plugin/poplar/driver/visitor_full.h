@@ -66,10 +66,6 @@ public:
 
   Status HandleTranspose(HloInstruction* inst) override;
 
-  Status HandleFusion(HloInstruction* fusion) override;
-
-  Status HandleCall(HloInstruction* inst) override;
-
   Status HandleSlice(HloInstruction* inst,
                      HloInstruction* operand) override;
 

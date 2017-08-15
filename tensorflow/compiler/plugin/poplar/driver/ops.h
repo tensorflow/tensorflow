@@ -189,11 +189,53 @@ CreateBiasAddOp(poplar::Graph &graph,
                 TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
-CreateRandomOp(poplar::Graph &graph,
-               CompilerResources& res,
-               const HloInstruction *inst,
-               const xla::Shape& output,
-               TensorMap& tensor_map);
+TruncatedNormalScale(poplar::Graph &graph,
+                     CompilerResources& res,
+                     const HloInstruction *inst,
+                     const xla::Shape& output_shape,
+                     TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+TruncatedNormal(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output_shape,
+                TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+RandomNormalScale(poplar::Graph &graph,
+                  CompilerResources& res,
+                  const HloInstruction *inst,
+                  const xla::Shape& output_shape,
+                  TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+RandomUniformScale(poplar::Graph &graph,
+                   CompilerResources& res,
+                   const HloInstruction *inst,
+                   const xla::Shape& output_shape,
+                   TensorMap& tensor_map) ;
+
+port::StatusOr<poplar::program::Program>
+RandomNormal(poplar::Graph &graph,
+             CompilerResources& res,
+             const HloInstruction *inst,
+             const xla::Shape& output_shape,
+             TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+RandomUniform(poplar::Graph &graph,
+              CompilerResources& res,
+              const HloInstruction *inst,
+              const xla::Shape& output_shape,
+              TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+Bernoulli(poplar::Graph &graph,
+          CompilerResources& res,
+          const HloInstruction *inst,
+          const xla::Shape& output_shape,
+          TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
 CreateSimpleSelectAndScatter(poplar::Graph &graph,
