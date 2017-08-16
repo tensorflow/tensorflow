@@ -87,3 +87,4 @@ CustomCallTest POPLAR // Don't support this
 
 DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR // Bad test
 DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR // Bad test
+DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
