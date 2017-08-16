@@ -761,6 +761,21 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(res0[1].c, res1[1].c)
     self.assertAllClose(res0[1].h, res1[1].h)
 
+  def testDropoutWrapperNotInTraining(self):
+    keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    training = variable_scope.get_variable("training", initializer=False)
+    true_full_output = np.array(
+        [[[0.751109, 0.751109, 0.751109]],
+         [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
+    true_full_final_c = np.array(
+        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
+    # All are not changed because training is True
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep_none, output_keep_prob=keep_none,
+        state_keep_prob=keep_none, training=training)
+    self.assertAllClose(true_full_output, res[0])
+    self.assertAllClose(true_full_output[1], res[1].h)
+    self.assertAllClose(true_full_final_c, res[1].c)
 
 class SlimRNNCellTest(test.TestCase):
 

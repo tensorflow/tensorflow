@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.layers import base as base_layer
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -636,7 +637,7 @@ class DropoutWrapper(RNNCell):
 
   def __init__(self, cell, input_keep_prob=1.0, output_keep_prob=1.0,
                state_keep_prob=1.0, variational_recurrent=False,
-               input_size=None, dtype=None, seed=None):
+               input_size=None, dtype=None, seed=None, training=False):
     """Create a cell with added input, state, and/or output dropout.
 
     If `variational_recurrent` is set to `True` (**NOT** the default behavior),
@@ -666,6 +667,10 @@ class DropoutWrapper(RNNCell):
       dtype: (optional) The `dtype` of the input, state, and output tensors.
         Required and used **iff** `variational_recurrent = True`.
       seed: (optional) integer, the randomness seed.
+      training: (optional) Either a Python boolean, or a TensorFlow boolean
+        scalar tensor (e.g. a placeholder). Whether to return the output in
+        training mode (apply dropout) or in inference mode (return the input
+        untouched).
 
     Raises:
       TypeError: if cell is not an RNNCell.
@@ -694,6 +699,7 @@ class DropoutWrapper(RNNCell):
     self._cell = cell
     self._variational_recurrent = variational_recurrent
     self._seed = seed
+    self._training = training
 
     self._recurrent_input_noise = None
     self._recurrent_state_noise = None
@@ -780,18 +786,30 @@ class DropoutWrapper(RNNCell):
       return (not isinstance(p, float)) or p < 1
 
     if _should_dropout(self._input_keep_prob):
-      inputs = self._dropout(inputs, "input",
+      def dropped_inputs():
+        return self._dropout(inputs, "input",
                              self._recurrent_input_noise,
                              self._input_keep_prob)
+      inputs = utils.smart_cond(self._training,
+                                dropped_inputs,
+                                lambda: array_ops.identity(inputs))
     output, new_state = self._cell(inputs, state, scope)
     if _should_dropout(self._state_keep_prob):
-      new_state = self._dropout(new_state, "state",
-                                self._recurrent_state_noise,
-                                self._state_keep_prob)
+      def dropped_new_state():
+        return self._dropout(new_state, "state",
+                             self._recurrent_state_noise,
+                             self._state_keep_prob)
+      new_state = utils.smart_cond(self._training,
+                                   dropped_new_state,
+                                   lambda: array_ops.identity(new_state))
     if _should_dropout(self._output_keep_prob):
-      output = self._dropout(output, "output",
+      def dropped_output():
+        return self._dropout(output, "output",
                              self._recurrent_output_noise,
                              self._output_keep_prob)
+      output = utils.smart_cond(self._training,
+                                dropped_output,
+                                lambda: array_ops.identity(output))
     return output, new_state
 
 
