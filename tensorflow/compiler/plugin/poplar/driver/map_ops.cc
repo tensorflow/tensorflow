@@ -236,7 +236,15 @@ CreateWhileOp(poplar::Graph &graph,
   // Body
   poplar::program::Sequence body_seq;
   for (unsigned int i=0; i<param_count; i++) {
-    body_seq.add(poplar::program::Copy(body_outputs[i], body_inputs[i]));
+    if (body_outputs[i] != body_inputs[i]) {
+      if (body_outputs[i].intersectsWith(body_inputs[i])) {
+        poplar::Tensor temp = graph.clone(body_outputs[i]);
+        body_seq.add(poplar::program::Copy(body_outputs[i], temp));
+        body_seq.add(poplar::program::Copy(temp, body_inputs[i]));
+      } else {
+        body_seq.add(poplar::program::Copy(body_outputs[i], body_inputs[i]));
+      }
+    }
   }
   body_seq.add(body->second.sequence);
 
