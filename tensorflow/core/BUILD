@@ -1199,6 +1199,27 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_pyclif_proto_library(
+    name = "framework/node_def_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/node_def.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/types_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/types.proto",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
