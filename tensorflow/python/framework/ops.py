@@ -991,8 +991,6 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
-  if context.in_eager_mode():
-    return convert_to_eager_tensor(value, dtype=dtype)
   return internal_convert_to_tensor(
       value=value,
       dtype=dtype,
@@ -1037,8 +1035,6 @@ def internal_convert_to_tensor(value,
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
-  if context.in_eager_mode():
-    return convert_to_eager_tensor(value, dtype=dtype)
   error_prefix = "" if name is None else "%s: " % name
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1070,7 +1066,7 @@ def internal_convert_to_tensor(value,
         if ret is NotImplemented:
           continue
 
-        if not isinstance(ret, Tensor):
+        if not isinstance(ag_core.getval(ret), Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r" %
               (error_prefix, conversion_func, base_type, ret))
@@ -4354,7 +4350,7 @@ def colocate_with(op, ignore_existing=False):
   else:
     if not ignore_existing:
       raise ValueError("ignore_existing must currently be True in EAGER mode.")
-    if op:
+    if op is not None:
       return device(op.device)
     else:
       return _null_contextmanager()

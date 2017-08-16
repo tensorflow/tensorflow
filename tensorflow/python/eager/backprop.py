@@ -28,14 +28,12 @@ import six
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 # Imports TensorNode to enable autograd tracing of TF ops. We don't need to use
 # any symbols here but import the file just to get the right registrations to
 # happen.
 from tensorflow.python.eager import tensor_node  # pylint: disable=unused-import
-from tensorflow.python.eager.graph_only_ops import graph_zeros_like
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as tf_ops
@@ -86,8 +84,6 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
                              *tensors):
   """Calls the gradient function of the op.
 
-  Does so in a way that allows function.defun to cache invocations.
-
   Args:
     op_name: the name of the op to be differentiated.
     attr_tuple: the attrs, as a tuple
@@ -107,7 +103,7 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
   if grad_fn is None:
     return [None] * num_inputs
   out_grads = [
-      o if (o is not None) else graph_zeros_like(outputs[i])
+      o if (o is not None) else array_ops.zeros_like(outputs[i])
       for i, o in enumerate(out_grads)
   ]
   return grad_fn(mock_op, *out_grads)
@@ -115,16 +111,6 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
 
 _gradient_functions = {}
 _gradient_functions_lock = threading.Lock()
-
-
-def _get_gradient_function(op_name):
-  with _gradient_functions_lock:
-    fn = _gradient_functions.get(op_name, None)
-    if fn is None:
-      fn = function.named_defun(_magic_gradient_function,
-                                "_gradient_" + op_name)
-      _gradient_functions[op_name] = fn
-    return fn
 
 
 _tracing = False
@@ -161,10 +147,10 @@ def _record_gradient(op_name, inputs, attrs, results, name):
 
   def grad_fn(*outputs):
     """Generated gradient function."""
-    fn = _get_gradient_function(op_name)
     tensors = inputs + result_copies + list(outputs)
     tensors = [ag_core.getval(x) for x in tensors]
-    result = fn(op_name, attrs, len(inputs), num_outputs, *(tensors))
+    result = _magic_gradient_function(op_name, attrs, len(inputs),
+                                      num_outputs, *(tensors))
     if _tracing:
       print("Gradient for", (name if name else op_name), "inputs", inputs,
             "output_grads", outputs)

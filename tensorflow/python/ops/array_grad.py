@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from math import ceil
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -82,12 +83,12 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     fully_known = True
     for x in inputs:
       input_shape = array_ops.shape(x)
-      if not isinstance(input_shape,
-                        ops.Tensor) or input_shape.op.type != "Const":
-        fully_known = False
-        break
-      else:
-        sizes.append(input_shape)
+      if context.in_graph_mode():
+        if not isinstance(input_shape,
+                          ops.Tensor) or input_shape.op.type != "Const":
+          fully_known = False
+          break
+      sizes.append(input_shape)
 
     if fully_known:
       return sizes

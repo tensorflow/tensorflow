@@ -276,10 +276,3 @@ ag_core.register_vspace(TensorVSpace, tf_ops.Tensor)
 ag_core.register_vspace(TensorVSpace, tensor.IndexedSlices)
 ag_core.register_vspace(TensorVSpace, tensor.LazyZero)
 ag_core.register_node(TensorNode, tensor.LazyZero)
-
-
-def _node_to_tensor(value, dtype=None, name=None, as_ref=False):
-  del as_ref
-  return tf_ops.convert_to_tensor(value.value, dtype=dtype, name=name)
-
-tf_ops.register_tensor_conversion_function(TensorNode, _node_to_tensor)

@@ -283,8 +283,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/eager:tensor",
         "//tensorflow/python/eager:tensor_node",

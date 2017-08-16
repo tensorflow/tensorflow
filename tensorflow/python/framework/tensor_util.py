@@ -408,7 +408,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
 
   if dtype is not None and (not hasattr(dtype, "base_dtype") or
                             dtype.base_dtype != numpy_dtype.base_dtype):
-    raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
+    raise TypeError("Incompatible types: %s vs. %s. Value is %s"
+                    % (dtype, nparray.dtype, values))
 
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
