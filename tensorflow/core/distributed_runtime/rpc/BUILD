@@ -306,11 +306,12 @@ tf_cc_binary(
     deps = [
         ":grpc_server_lib",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
         "@grpc//:grpc++_unsecure",
-        "@protobuf_archive//:protobuf",
     ],
 )
 
@@ -336,6 +337,8 @@ tf_cc_binary(
         ":grpc_server_lib",
         ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
