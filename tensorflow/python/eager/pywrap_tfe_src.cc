@@ -50,10 +50,28 @@ PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLong)
 PARSE_VALUE(ParseIntValue, int, PyInt_Check, PyInt_AsLong)
 PARSE_VALUE(ParseInt64Value, int64_t, PyInt_Check, PyInt_AsLong)
 #endif
-PARSE_VALUE(ParseStringValue, const char*, PyBytes_Check, PyBytes_AsString)
 PARSE_VALUE(ParseFloatValue, float, PyFloat_Check, PyFloat_AsDouble)
-
 #undef PARSE_VALUE
+
+bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
+                      const char** value) {
+  if (PyBytes_Check(py_value)) {
+    *value = PyBytes_AsString(py_value);
+    return true;
+  }
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(py_value)) {
+    *value = PyUnicode_AsUTF8(py_value);
+    return true;
+  }
+#endif
+  TF_SetStatus(
+      status, TF_INVALID_ARGUMENT,
+      tensorflow::strings::StrCat("Expecting a const char* value for attr ",
+                                  key, ", got ", py_value->ob_type->tp_name)
+          .c_str());
+  return false;
+}
 
 bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
                     unsigned char* value) {
@@ -66,22 +84,23 @@ const char* ParseProtoValue(const string& key, const char* proto_name,
                             TF_Status* status) {
   char* output = nullptr;
   Py_ssize_t py_size;
-#if PY_MAJOR_VERSION >= 3
-  if (!PyUnicode_Check(py_value) ||
-      (output = PyUnicode_AsUTF8AndSize(py_value, &py_size)) == nullptr) {
-#else
-  if (!PyString_Check(py_value) ||
-      (PyString_AsStringAndSize(py_value, &output, &py_size) < 0)) {
-#endif
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat("Expecting a string (serialized ",
-                                    proto_name, ") value for attr ", key)
-            .c_str());
-    return nullptr;
+  if (PyBytes_Check(py_value) &&
+      PyBytes_AsStringAndSize(py_value, &output, &py_size) >= 0) {
+    *size = static_cast<size_t>(py_size);
+    return output;
   }
-  *size = static_cast<size_t>(py_size);
-  return output;
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(py_value) &&
+      (output = PyUnicode_AsUTF8AndSize(py_value, &py_size)) != nullptr) {
+    *size = static_cast<size_t>(py_size);
+    return output;
+  }
+#endif
+  TF_SetStatus(status, TF_INVALID_ARGUMENT,
+               tensorflow::strings::StrCat("Expecting a string (serialized ",
+                                           proto_name, ") value for attr ", key)
+                   .c_str());
+  return nullptr;
 }
 
 bool SetOpAttrList(TFE_Op* op, const char* key, PyObject* py_list,
@@ -255,9 +274,10 @@ void SetOpAttrs(TFE_Op* op, PyObject* attrs, TF_Status* out_status) {
     PyObject* py_key = PyTuple_GET_ITEM(attrs, i);
     PyObject* py_value = PyTuple_GET_ITEM(attrs, i + 1);
 #if PY_MAJOR_VERSION >= 3
-    const char* key = PyUnicode_AsUTF8(py_key);
+    const char* key = PyBytes_Check(py_key) ? PyBytes_AsString(py_key)
+                                            : PyUnicode_AsUTF8(py_key);
 #else
-    const char* key = PyString_AsString(py_key);
+    const char* key = PyBytes_AsString(py_key);
 #endif
     unsigned char is_list = 0;
     const TF_AttrType type = TFE_OpGetAttrType(op, key, &is_list, out_status);
