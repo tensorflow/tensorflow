@@ -49,17 +49,6 @@ class ProfilerTest(test.TestCase):
     r = lib.BuildFullModel()
     sess.run(variables.global_variables_initializer())
 
-    profiler = model_analyzer.Profiler(sess.graph)
-    profiler.profile_name_scope(opts)
-    with gfile.Open(outfile, 'r') as f:
-      profiler_str = f.read()
-
-    model_analyzer.profile(
-        sess.graph, cmd='scope', options=opts)
-    with gfile.Open(outfile, 'r') as f:
-      pma_str = f.read()
-    self.assertEqual(pma_str, profiler_str)
-
     # Test the output with run_meta.
     run_meta = config_pb2.RunMetadata()
     _ = sess.run(r,
@@ -67,6 +56,7 @@ class ProfilerTest(test.TestCase):
                      trace_level=config_pb2.RunOptions.FULL_TRACE),
                  run_metadata=run_meta)
 
+    profiler = model_analyzer.Profiler(sess.graph)
     profiler.add_step(1, run_meta)
     profiler.profile_graph(opts)
     with gfile.Open(outfile, 'r') as f:
@@ -74,6 +64,16 @@ class ProfilerTest(test.TestCase):
 
     model_analyzer.profile(
         sess.graph, cmd='graph', run_meta=run_meta, options=opts)
+    with gfile.Open(outfile, 'r') as f:
+      pma_str = f.read()
+    self.assertEqual(pma_str, profiler_str)
+
+    profiler.profile_name_scope(opts)
+    with gfile.Open(outfile, 'r') as f:
+      profiler_str = f.read()
+
+    model_analyzer.profile(
+        sess.graph, cmd='scope', run_meta=run_meta, options=opts)
     with gfile.Open(outfile, 'r') as f:
       pma_str = f.read()
     self.assertEqual(pma_str, profiler_str)
@@ -103,18 +103,6 @@ class ProfilerTest(test.TestCase):
     with gfile.Open(outfile, 'r') as f:
       pma_str = f.read()
     self.assertNotEqual(pma_str, profiler_str)
-
-    opts2 = opts.copy()
-    opts2['select'] = ['params', 'float_ops']
-    profiler.profile_name_scope(opts2)
-    with gfile.Open(outfile, 'r') as f:
-      profiler_str = f.read()
-
-    model_analyzer.profile(
-        sess.graph, cmd='scope', run_meta=run_meta, options=opts2)
-    with gfile.Open(outfile, 'r') as f:
-      pma_str = f.read()
-    self.assertEqual(pma_str, profiler_str)
 
   def testMultiStepProfile(self):
     ops.reset_default_graph()

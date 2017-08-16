@@ -43,6 +43,7 @@ cuda_py_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
     additional_deps = [
+        ":profile_context",
         ":model_analyzer",
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:client",
@@ -94,6 +95,16 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+    ],
+)
+
+py_library(
+    name = "profile_context",
+    srcs = ["profile_context.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":model_analyzer",
+        ":tfprof_logger",
     ],
 )
 
