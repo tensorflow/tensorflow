@@ -2259,7 +2259,8 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
     lengths = ops.convert_to_tensor(lengths)
     if lengths.get_shape().ndims != 1:
-      raise ValueError("lengths must be 1D for sequence_mask")
+      raise ValueError("lengths must be 1D for sequence_mask. Got shape %s" %
+                       lengths.get_shape())
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, [0])
