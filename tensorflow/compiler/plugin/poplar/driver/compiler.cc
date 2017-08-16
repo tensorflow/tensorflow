@@ -320,14 +320,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   if (vertex_graph != NULL) {
     std::ofstream stream;
     stream.open(vertex_graph);
-    graph->outputVertexGraph(stream);
+    graph->outputVertexGraph(stream, progs);
   }
 
   const char *compute_graph = getenv("TF_POPLAR_COMPUTE_GRAPH_FILENAME");
   if (compute_graph != NULL) {
     std::ofstream stream;
     stream.open(compute_graph);
-    graph->outputComputeGraph(stream);
+    graph->outputComputeGraph(stream, progs);
   }
 
   hlo_module->mutable_entry_computation_layout()->SetToDefaultLayout();
