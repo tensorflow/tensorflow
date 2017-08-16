@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/dataset.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/dataset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
@@ -65,11 +65,14 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     ~FileDataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
       if (env_->FileExists(strings::StrCat(filename_, ".index")).ok()) {
-        return std::unique_ptr<IteratorBase>(new FileReaderIterator(this));
+        return std::unique_ptr<IteratorBase>(new FileReaderIterator(
+            {this, strings::StrCat(prefix, "::FileReader")}));
       } else {
-        return std::unique_ptr<IteratorBase>(new FileWriterIterator(this));
+        return std::unique_ptr<IteratorBase>(new FileWriterIterator(
+            {this, strings::StrCat(prefix, "::FileWriter")}));
       }
     }
 
@@ -101,17 +104,18 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     // elements.
     class FileWriterIterator : public DatasetIterator<FileDataset> {
      public:
-      explicit FileWriterIterator(const FileDataset* dataset)
-          : DatasetIterator<FileDataset>(dataset),
+      explicit FileWriterIterator(const Params& params)
+          : DatasetIterator<FileDataset>(params),
             cur_index_(0),
-            input_impl_(dataset->input_->MakeIterator()),
-            writer_(dataset->env_, dataset->filename_),
-            lockfile_(strings::StrCat(dataset->filename_, ".lockfile")),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
+            writer_(params.dataset->env_, params.dataset->filename_),
+            lockfile_(strings::StrCat(params.dataset->filename_, ".lockfile")),
             lockfile_created_(false),
             iteration_completed_(false) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsureLockFileExists());
         TF_RETURN_IF_ERROR(writer_.status());
@@ -206,13 +210,14 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     class FileReaderIterator : public DatasetIterator<FileDataset> {
      public:
-      explicit FileReaderIterator(const FileDataset* dataset)
-          : DatasetIterator<FileDataset>(dataset),
+      explicit FileReaderIterator(const Params& params)
+          : DatasetIterator<FileDataset>(params),
             cur_index_(0),
-            reader_(dataset->env_, dataset->filename_) {}
+            reader_(dataset()->env_, dataset()->filename_) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         *end_of_sequence = false;
         TF_RETURN_IF_ERROR(reader_.status());
@@ -264,17 +269,20 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     ~MemoryDataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
       mutex_lock l(mu_);
       if (cache_) {
-        return std::unique_ptr<IteratorBase>(
-            new MemoryReaderIterator(this, cache_.get()));
+        return std::unique_ptr<IteratorBase>(new MemoryReaderIterator(
+            {this, strings::StrCat(prefix, "::MemoryReader")}, cache_.get()));
       }
       if (!writer_iterator_created_) {
         writer_iterator_created_ = true;
-        return std::unique_ptr<IteratorBase>(new MemoryWriterIterator(this));
+        return std::unique_ptr<IteratorBase>(new MemoryWriterIterator(
+            {this, strings::StrCat(prefix, "::MemoryWriter")}));
       }
-      return std::unique_ptr<IteratorBase>(new DuplicateWriterIterator(this));
+      return std::unique_ptr<IteratorBase>(new DuplicateWriterIterator(
+          {this, strings::StrCat(prefix, "::DuplicateWriter")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -296,13 +304,14 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     // updated into the parent dataset's cache_ pointer.
     class MemoryWriterIterator : public DatasetIterator<MemoryDataset> {
      public:
-      explicit MemoryWriterIterator(const MemoryDataset* dataset)
-          : DatasetIterator<MemoryDataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()),
+      explicit MemoryWriterIterator(const Params& params)
+          : DatasetIterator<MemoryDataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             cache_(new std::vector<std::vector<Tensor>>) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -330,14 +339,14 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     class MemoryReaderIterator : public DatasetIterator<MemoryDataset> {
      public:
       explicit MemoryReaderIterator(
-          const MemoryDataset* dataset,
-          const std::vector<std::vector<Tensor>>* cache)
-          : DatasetIterator<MemoryDataset>(dataset), cache_(cache), index_(0) {
+          const Params& params, const std::vector<std::vector<Tensor>>* cache)
+          : DatasetIterator<MemoryDataset>(params), cache_(cache), index_(0) {
         CHECK(cache);
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (index_ < cache_->size()) {
           const std::vector<Tensor>& cache_tensors = (*cache_)[index_];
@@ -360,11 +369,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     class DuplicateWriterIterator : public DatasetIterator<MemoryDataset> {
      public:
-      explicit DuplicateWriterIterator(const MemoryDataset* dataset)
-          : DatasetIterator<MemoryDataset>(dataset) {}
+      explicit DuplicateWriterIterator(const Params& params)
+          : DatasetIterator<MemoryDataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         return errors::AlreadyExists(
             "There appears to be a concurrent caching iterator running.");
       }
