@@ -42,8 +42,7 @@ class GrpcRemoteMaster : public MasterInterface {
                        const CreateSessionRequest* request,
                        CreateSessionResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->CreateSession(&ctx, *request, response));
   }
 
@@ -51,8 +50,7 @@ class GrpcRemoteMaster : public MasterInterface {
                        const ExtendSessionRequest* request,
                        ExtendSessionResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->ExtendSession(&ctx, *request, response));
   }
 
@@ -60,8 +58,7 @@ class GrpcRemoteMaster : public MasterInterface {
                          const PartialRunSetupRequest* request,
                          PartialRunSetupResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->PartialRunSetup(&ctx, *request, response));
   }
 
@@ -69,8 +66,7 @@ class GrpcRemoteMaster : public MasterInterface {
                  MutableRunStepResponseWrapper* response) override {
     ::grpc::ClientContext ctx;
     auto trace = TraceRpc("RunStep/Client", &ctx);
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(),
                                          get_proto_from_wrapper(response)));
   }
@@ -79,8 +75,7 @@ class GrpcRemoteMaster : public MasterInterface {
                       const CloseSessionRequest* request,
                       CloseSessionResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->CloseSession(&ctx, *request, response));
   }
 
@@ -88,16 +83,14 @@ class GrpcRemoteMaster : public MasterInterface {
                      const ListDevicesRequest* request,
                      ListDevicesResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->ListDevices(&ctx, *request, response));
   }
 
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
+    SetClientContext(&ctx, call_options);
     return FromGrpcStatus(stub_->Reset(&ctx, *request, response));
   }
 
@@ -116,6 +109,11 @@ class GrpcRemoteMaster : public MasterInterface {
     if (time_in_ms > 0) {
       ctx->set_deadline(gpr_time_from_millis(time_in_ms, GPR_TIMESPAN));
     }
+  }
+
+  void SetClientContext(::grpc::ClientContext* ctx, CallOptions* call_options) {
+    ctx->set_fail_fast(false);
+    SetDeadline(ctx, call_options->GetTimeout());
   }
 };
 
