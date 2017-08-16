@@ -324,9 +324,8 @@ PoplarExecutor::RemapArgs(const xla::Shape& shape,
                           const int64 n,
                           const OutputMap& map,
                           const Args& args) {
-  // TODO - should use the map to assure right inputs are mapped to the output
   if (shape.element_type() != xla::TUPLE) {
-    return std::make_tuple(args[n], n+1);
+    return std::make_tuple(args[map.at(n)], n+1);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void *)));
     TensorControl *tc = reinterpret_cast<TensorControl *>(Allocate(size));
@@ -340,7 +339,6 @@ PoplarExecutor::RemapArgs(const xla::Shape& shape,
     }
 
     return std::make_tuple(se::DeviceMemoryBase(tc, size), new_n);
-
   }
 }
 
