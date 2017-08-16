@@ -296,13 +296,35 @@ py_library(
     name = "pip_dependencies",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":backprop",
         ":context",
         ":core",
+        ":custom_gradient",
         ":execute",
         ":graph_only_ops",
         ":tensor",
         ":test",
         "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+py_test(
+    name = "tape_test",
+    srcs = ["tape_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backprop",
+        ":context",
+        ":custom_gradient",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
     ],
 )
 

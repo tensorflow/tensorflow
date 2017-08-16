@@ -621,7 +621,11 @@ class EagerTensor(Tensor):
     self._id = uid()
     if not isinstance(value, np.ndarray):
       npt = None if dtype is None else dtype.as_numpy_dtype
-      value = np.array(value, dtype=npt)
+      try:
+        value = np.array(value, dtype=npt)
+      except ValueError as e:
+        raise ValueError(
+            "Cannot convert %s to array. Error: %s" % (str(value), e))
       if dtype is None:
         value = _maybe_modify_numpy_dtype_determination(value)
     elif dtype is not None:

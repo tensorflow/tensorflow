@@ -61,6 +61,22 @@ limitations under the License.
   }
 }
 
+%typemap(in) const char* serialized_function_def {
+  $1 = TFE_GetPyThonString($input);
+}
+
+%typemap(in) const char* device_name {
+  if ($input == Py_None) {
+    $1 = nullptr;
+  } else {
+    $1 = TFE_GetPyThonString($input);
+  }
+}
+
+%typemap(in) const char* op_name {
+  $1 = TFE_GetPyThonString($input);
+}
+
 %include "tensorflow/c/eager/c_api.h"
 
 %typemap(in) TFE_InputTensorHandles* inputs (TFE_InputTensorHandles temp) {

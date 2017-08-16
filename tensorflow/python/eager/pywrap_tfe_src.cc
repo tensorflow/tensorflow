@@ -394,3 +394,15 @@ int TFE_Py_MayBeRaiseException(TF_Status* status) {
   }
   return -1;
 }
+
+char* TFE_GetPyThonString(PyObject* o) {
+  if (PyBytes_Check(o)) {
+    return PyBytes_AsString(o);
+  }
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(o)) {
+    return PyUnicode_AsUTF8(o);
+  }
+#endif
+  return nullptr;
+}
