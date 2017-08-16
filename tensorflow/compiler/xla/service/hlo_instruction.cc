@@ -2335,6 +2335,32 @@ std::vector<int64> HloInstruction::OperandIndices(
   return result;
 }
 
+bool HloInstruction::IsElementwiseBinary() const {
+  switch (opcode_) {
+    // Binary elementwise operations. If you update this, please update
+    // IsElementwise() accordingly.
+    case HloOpcode::kAdd:
+    case HloOpcode::kDivide:
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kLogicalOr:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool HloInstruction::IsElementwise() const {
   switch (opcode_) {
     // Nullary elementwise operations.
@@ -2359,7 +2385,8 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kTanh:
       return true;
 
-    // Binary elementwise operations.
+    // Binary elementwise operations, the same as in IsElementwiseBinary().
+    // If you update this, please update IsElementwiseBinary() accordingly.
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
