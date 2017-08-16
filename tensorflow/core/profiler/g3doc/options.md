@@ -41,6 +41,32 @@ can vary. For example `-max_depth` in scope view means the depth of
 name scope <b>tree</b>. In op view, it means the length of operation <b>list</b>.
 In graph view, in means the number of hops in the <b>graph</b>.
 
+### Times
+
+Most machines have mutli-core CPUs. Some installs one or more accelerators.
+Each accelerator usually performs massive parallel processing. The profiler
+tracks the accumulated processing times. Hence, the accumulated processing
+time is likely larger than the time of each step.
+
+micros: This is the sum of cpu and accelerator times.
+accelerator_micros: This is the accelerator times.
+cpu_micros: This is the cpu times.
+
+### Memory
+
+Tensor memory are usually ref-counted. The memory is released when there is
+no more reference to it. It will be difficult to track the release of memory.
+Currently, profiler only tracks the allocation of memory. As a result, the
+accumulated memory request is uaually larger than the peak memory of the overall
+model.
+
+bytes: The memory allocations requested by the operation.
+peak_bytes: The peak requested memory (not de-allocated) by the operation.
+residual_bytes: The memory requested by the operation and not de-allocated
+                when Compute finishes.
+output_bytes: The memory output by the operation. It's not necessarily requested
+              by the current operation. For example, it can be a tensor
+              forwarded from input to output, with in-place mutation.
 
 ###Docs
 
