@@ -202,14 +202,13 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 # nodes created by the Python call stack.
 # Nevertheless, it pops critical Python code path for us.
 #
-# `-trim_name_regexes` trims the python call stack, which are always the same
-# for the leaves.
+# `-trim_name_regexes` trims the some traces that have no valuable information.
 # `-select accelerator_micros` pick accelerator time for pprof graph. User
 # can also generate memory profile using `-select bytes`
-tfprof> code -max_depth 100 -trim_name_regexes '^ops.py.*' -select accelerator_micros -output pprof:outfile=<filename>
+tfprof> code -select accelerator_micros -max_depth 100000 -output pprof:outfile=<filename>  -trim_name_regexes .*apply_op.*
 
 # Use pprof to visualize the generated file.
-pprof -png --nodecount=20 --sample_index=1 <filename>
+pprof -png --nodecount=100 --sample_index=1 <filename>
 ```
 
 <left>

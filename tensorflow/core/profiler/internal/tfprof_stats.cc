@@ -177,9 +177,8 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
     fprintf(stderr, "Invalid RunMetadata for step %lld\n", step);
     return;
   }
-  if (steps_.find(step) != steps_.end()) {
-    fprintf(stderr, "The same step %lld has been added before.\n", step);
-    return;
+  if (steps_.find(step) == steps_.end()) {
+    steps_.insert(step);
   }
   steps_.insert(step);
 
