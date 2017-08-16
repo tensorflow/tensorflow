@@ -292,6 +292,8 @@ class Edge {
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
 
+  string DebugString() const;
+
  private:
   Edge() {}
 
@@ -519,7 +521,7 @@ class Graph {
   // TODO(josh11b): uint64 hash() const;
 
  private:
-  bool IsValidNode(Node* node) const;
+  Status IsValidNode(Node* node) const;
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.
