@@ -162,8 +162,6 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
         const HloMatcherMatched& matched,
         const std::string& outlined_computation_name) {
 
-  LOG(INFO) << "Replacing instructions " << outlined_computation_name;
-
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
   HloInstruction* root = instructions_to_outline[0];
@@ -233,8 +231,6 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
       replaced.push_back(inst);
     }
   }
-
-  LOG(INFO) << "Replaced " << replaced.size();
 
   return replaced;
 }
