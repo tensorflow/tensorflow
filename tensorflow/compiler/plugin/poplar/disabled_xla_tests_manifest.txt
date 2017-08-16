@@ -5,6 +5,8 @@ ScalarComputationsTest.TanhDoubleScalar    POPLAR // F64
 ScalarComputationsTest.AddTwoScalarsF64    POPLAR // F64
 DotOperationTest.OneElementVectorDotF64    POPLAR // F64
 DotOperationTest.VectorDotF64    POPLAR // F64
+ConvertTest.ConvertR1F32ToR1F64 POPLAR // F64
+ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
@@ -67,6 +69,9 @@ ParamsTest.ConstantR1U8Param      POPLAR // U8
 ScalarComputationsTest.AddTwoScalarsU8      POPLAR // U8
 ReverseTest.Reverse4DU8ArrayOnDim23 POPLAR // U8
 PadTest.Pad4DU8Array POPLAR // U8
+ConvertTest.ConvertR1U8ToR1F32 POPLAR // U8
+ConvertTest.ConvertR1U8ToR1S32 POPLAR // U8
+ConvertTest.ConvertR1U8ToR1U32 POPLAR // U8
 
 ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
 
