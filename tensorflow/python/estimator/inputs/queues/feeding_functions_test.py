@@ -297,7 +297,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     ff._fill_array(actual, a)
     expected = np.ones(shape=[64, 36], dtype=np.int32)
     expected[:32, 32:] = 0
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testFillArrayLarge(self):
     a = (np.ones(shape=[8, 8, 8, 8, 32], dtype=np.int32).tolist() +
@@ -306,7 +306,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     ff._fill_array(actual, a)
     expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
     expected[:8, ..., 32:] = 0
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testFillArraySmallWithSpecifiedValue(self):
     fill_value = 8
@@ -316,7 +316,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     ff._fill_array(actual, a, fill_value)
     expected = np.ones(shape=[64, 36], dtype=np.int32)
     expected[:32, 32:] = fill_value
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testFillArrayLargeWithSpecifiedValue(self):
     fill_value = 8
@@ -326,7 +326,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     ff._fill_array(actual, a, fill_value)
     expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
     expected[:8, ..., 32:] = fill_value
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testPadIfNeededSmall(self):
     a = (np.ones(shape=[32, 32], dtype=np.int32).tolist() +
@@ -335,7 +335,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = ff._pad_if_needed(a)
     expected = np.ones(shape=[64, 36], dtype=np.int32)
     expected[:32, 32:] = 0
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testPadIfNeededLarge(self):
     a = (np.ones(shape=[8, 8, 8, 8, 32], dtype=np.int32).tolist() +
@@ -344,7 +344,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = ff._pad_if_needed(a)
     expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
     expected[:8, ..., 32:] = 0
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testPadIfNeededSmallWithSpecifiedValue(self):
     fill_value = 8
@@ -354,7 +354,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = ff._pad_if_needed(a, fill_value)
     expected = np.ones(shape=[64, 36], dtype=np.int32)
     expected[:32, 32:] = fill_value
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testPadIfNeededLargeWithSpecifiedValue(self):
     fill_value = 8
@@ -364,7 +364,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = ff._pad_if_needed(a, fill_value)
     expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.int32)
     expected[:8, ..., 32:] = fill_value
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testPadIfNeededSmallWithSpecifiedNonNumericValue(self):
     fill_value = False
@@ -374,7 +374,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = ff._pad_if_needed(a, fill_value)
     expected = np.ones(shape=[64, 36], dtype=np.bool)
     expected[:32, 32:] = fill_value
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
   def testPadIfNeededLargeWithSpecifiedNonNumericValue(self):
     fill_value = False
@@ -384,7 +384,7 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = ff._pad_if_needed(a, fill_value)
     expected = np.ones(shape=[16, 8, 8, 8, 36], dtype=np.bool)
     expected[:8, ..., 32:] = fill_value
-    self.assertEqual(expected, actual)
+    self.assertEqual(expected.tolist(), actual.tolist())
 
 
 if __name__ == "__main__":
