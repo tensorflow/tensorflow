@@ -31,6 +31,8 @@ from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
 
+from tensorflow.core.protobuf import config_pb2
+
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import util
@@ -238,7 +240,8 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
   def after_create_session(self, session, coord):
     logging.info('Init TPU system')
-    session.run(self._init_op)
+    session.run(self._init_op,
+                options=config_pb2.RunOptions(timeout_in_ms=5*60*1000))
 
     logging.info('Start infeed thread controller')
     self._infeed_thd_controller = _InfeedThreadController(
