@@ -713,7 +713,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
   // Load data from input memory to shared memory tile.
   emit_cp_tile(
       // tile[y, x] = input_array[index]
-      [builder, tile, &input, num_rows, logical_x, logical_y](
+      [builder, tile, &input, logical_x](
           const llvm_ir::IrArray::Index& index, llvm::Value* y) {
         builder->CreateStore(
             input.EmitReadArrayElement(index, builder, "input_element"),
@@ -737,7 +737,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
   // Store data from shared memory tile to output memory.
   emit_cp_tile(
       // output_array[index] = tile[x, y]
-      [builder, tile, &output, num_rows, logical_x, logical_y](
+      [builder, tile, &output, logical_x](
           const llvm_ir::IrArray::Index& index, llvm::Value* y) {
         output.EmitWriteArrayElement(
             index,
