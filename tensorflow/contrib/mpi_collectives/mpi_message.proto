@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tensorflow.contrib.mpi_collectives;
+package tensorflow.contrib.mpi;
 
 // We would like to just use DataType here, but since this
 // is a contrib package, linking directly to TensorFlow protos seems to be
