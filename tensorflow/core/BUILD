@@ -3053,6 +3053,9 @@ filegroup(
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
+        # JPEG data for jpeg benchmark.
+        "lib/jpeg/testdata/small.jpg",
+        "lib/jpeg/testdata/medium.jpg",
         # Corrupted JPEG files for tests
         "lib/jpeg/testdata/bad_huffman.jpg",
         "lib/jpeg/testdata/corrupt.jpg",
