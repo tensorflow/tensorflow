@@ -240,7 +240,15 @@ Status BaseVisitor::HandleTranspose(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleFusion(HloInstruction* inst) {
-  return Unimplemented(inst);
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateFusionOp(*graph_,
+                                     resources_,
+                                     inst,
+                                     GetOutputShape(inst),
+                                     tensor_map));
+  sequence.add(prog);
+  return Status::OK();
 };
 
 
@@ -447,6 +455,20 @@ Status BaseVisitor::HandleMap(
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* function,
         tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
+  bool simple_parallel;
+  TF_ASSIGN_OR_RETURN(simple_parallel,
+                      IsParallelMap(inst, function));
+  if (simple_parallel) {
+    poplar::program::Program prog;
+    TF_ASSIGN_OR_RETURN(prog,
+                        CreateParallelMap(*graph_,
+                                          resources_,
+                                          inst,
+                                          GetOutputShape(inst),
+                                          tensor_map));
+    sequence.add(prog);
+    return Status::OK();
+  }
   return Unimplemented(inst);
 }
 

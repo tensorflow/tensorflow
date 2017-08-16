@@ -197,7 +197,7 @@ public:
 
 private:
   void CallSiteFound(HloComputation* comp, int count) {
-    if (done.find(comp) != done.end()) {
+    if (done.find(comp) == done.end()) {
       todo.insert(comp);
     }
     targets[comp] += count;
@@ -269,18 +269,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
   resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
 
-  for (const auto& it : call_finder.targets) {
-    auto& comp = it.first;
-
-    if (comp != entry && it.second > 1) {
-      // If this computation is a target of a call or while then compile
-      // it and store in compiler resources
-      VLOG(1) << "Compiling sub-computation " << comp->name();
-      resources.computation_map.emplace(
-              std::piecewise_construct,
-              std::forward_as_tuple(comp),
-              std::forward_as_tuple(graph, resources, comp->num_parameters()));
-      TF_RETURN_IF_ERROR(comp->Accept(&(resources.computation_map.at(comp))));
+  for (const auto comp : hlo_module->MakeComputationPostOrder()) {
+    if (call_finder.targets.count(comp) > 0) {
+      if (comp != entry && call_finder.targets.at(comp) > 1) {
+        // If this computation is a target of a call or while then compile
+        // it and store in compiler resources
+        VLOG(1) << "Compiling sub-computation " << comp->name();
+        resources.computation_map.emplace(
+                std::piecewise_construct,
+                std::forward_as_tuple(comp),
+                std::forward_as_tuple(graph, resources, comp->num_parameters()));
+        TF_RETURN_IF_ERROR(comp->Accept(&(resources.computation_map.at(comp))));
+      }
     }
   }
 
