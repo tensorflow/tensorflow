@@ -2708,7 +2708,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   should return the same result for any parallel_iterations > 0.
 
   For training, TensorFlow stores the tensors that are produced in the
-  forward inference and needed in back propagation. These tensors are a
+  forward inference and are needed in back propagation. These tensors are a
   main source of memory consumption and often cause OOM errors when training
   on GPUs. When the flag swap_memory is true, we swap out these tensors from
   GPU to CPU. This for example allows us to train RNN models with very long
