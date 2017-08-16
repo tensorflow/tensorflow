@@ -154,7 +154,7 @@ def global_norm(t_list, name=None):
     half_squared_norms = []
     for v in values:
       if v is not None:
-        with ops.colocate_with(v):
+        with ops.colocate_with(v, ignore_existing=True):
           half_squared_norms.append(gen_nn_ops.l2_loss(v))
 
     half_squared_norm = math_ops.reduce_sum(array_ops.stack(half_squared_norms))
@@ -235,7 +235,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
       if v is None:
         values_clipped.append(None)
       else:
-        with ops.colocate_with(v):
+        with ops.colocate_with(v, ignore_existing=True):
           values_clipped.append(
               array_ops.identity(v * scale, name="%s_%d" % (name, i)))
 

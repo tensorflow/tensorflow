@@ -30,53 +30,6 @@ from tensorflow.python.framework.ops import EagerTensor as Tensor
 # pylint: enable=unused-import
 
 
-class IndexedSlices(object):
-  """A sparse representation of a set of tensor slices at given indices.
-
-  This class is a simple wrapper for a pair of `Tensor` objects:
-
-  * `values`: A `Tensor` of any dtype with shape `[D0, D1, ..., Dn]`.
-  * `indices`: A 1-D integer `Tensor` with shape `[D0]`.
-
-  An `IndexedSlices` is typically used to represent a subset of a larger
-  tensor `dense` of shape `[LARGE0, D1, .. , DN]` where `LARGE0 >> D0`.
-  The values in `indices` are the indices in the first dimension of
-  the slices that have been extracted from the larger tensor.
-
-  The dense tensor `dense` represented by an `IndexedSlices` `slices` has
-
-  ```python
-  dense[slices.indices[i], :, :, :, ...] = slices.values[i, :, :, :, ...]
-  ```
-
-  The `IndexedSlices` class is used principally in the definition of
-  gradients for operations that have sparse gradients
-  (e.g. @{tf.gather}).
-  """
-
-  def __init__(self, values, indices, dense_shape):
-    """Creates an `IndexedSlices`."""
-    self._values = values
-    self._indices = indices
-    assert indices.shape[0] == values.shape[0]
-    self._dense_shape = dense_shape
-
-  @property
-  def values(self):
-    """A `Tensor` containing the values of the slices."""
-    return self._values
-
-  @property
-  def indices(self):
-    """A 1-D `Tensor` containing the indices of the slices."""
-    return self._indices
-
-  @property
-  def dense_shape(self):
-    """A 1-D `Tensor` containing the shape of the corresponding dense tensor."""
-    return self._dense_shape
-
-
 class _Op(object):
   """Fake op for _LazyZero to make its python API tf.Tensor-like."""
 
@@ -100,6 +53,3 @@ class LazyZero(object):
 
   def numpy(self):
     return np.zeros(self.shape, self.dtype)
-
-
-

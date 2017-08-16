@@ -384,7 +384,7 @@ def _GatherV2Grad(op, grad):
   # int32. params_shape is not used in optimizer apply_sparse gradients,
   # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
-  with ops.colocate_with(params):
+  with ops.colocate_with(params, ignore_existing=True):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
     params_shape = math_ops.to_int32(params_shape)
 
@@ -395,7 +395,11 @@ def _GatherV2Grad(op, grad):
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
-    values_shape = array_ops.concat([indices_size, params_shape[1:]], 0)
+    if context.in_eager_mode():
+      params_tail_shape = params_shape.as_cpu_tensor()[1:]
+    else:
+      params_tail_shape = params_shape[1:]
+    values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
     values = array_ops.reshape(grad, values_shape)
     indices = array_ops.reshape(indices, indices_size)
     return [ops.IndexedSlices(values, indices, params_shape), None, None]
