@@ -258,14 +258,14 @@ if __name__ == '__main__':
       '--input_data_dir',
       type=str,
       default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                           'tensorflow/mnist/input_data'),
+                           '/tensorflow/mnist/input_data'),
       help='Directory to put the input data.'
   )
   parser.add_argument(
       '--log_dir',
       type=str,
       default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                           'tensorflow/mnist/logs/fully_connected_feed'),
+                           '/tensorflow/mnist/logs/fully_connected_feed'),
       help='Directory to put the log data.'
   )
   parser.add_argument(
