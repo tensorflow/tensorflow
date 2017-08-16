@@ -74,9 +74,6 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
         port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, 0, 0));
         i_next = 0;
       }
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
       const Index index = internal::SubtleMustCopy(indices(indices_idx));
       if (!FastBoundsCheck(index, limit)) {
         mutex_lock l(mu);
