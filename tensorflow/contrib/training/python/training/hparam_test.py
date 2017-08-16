@@ -277,6 +277,39 @@ class HParamsTest(test.TestCase):
     self.assertEqual('relu4', hparams2.c_c)
     self.assertEqual(False, hparams2.d)
 
+  def testSetHParam(self):
+    hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True)
+    self.assertDictEqual({
+        'aaa': 1,
+        'b': 2.0,
+        'c_c': 'relu6',
+        'd': True
+    }, hparams.values())
+    self.assertEqual(1, hparams.aaa)
+    self.assertEqual(2.0, hparams.b)
+    self.assertEqual('relu6', hparams.c_c)
+
+    hparams.set_hparam('aaa', 12)
+    hparams.set_hparam('b', 3.0)
+    hparams.set_hparam('c_c', 'relu4')
+    hparams.set_hparam('d', False)
+    self.assertDictEqual({
+        'aaa': 12,
+        'b': 3.0,
+        'c_c': 'relu4',
+        'd': False
+    }, hparams.values())
+    self.assertEqual(12, hparams.aaa)
+    self.assertEqual(3.0, hparams.b)
+    self.assertEqual('relu4', hparams.c_c)
+
+  def testSetHParamTypeMismatch(self):
+    hparams = hparam.HParams(a=1, b=[2.0, 3.0])
+    with self.assertRaisesRegexp(ValueError, r'Must not pass a list'):
+      hparams.set_hparam('a', [1.0])
+    with self.assertRaisesRegexp(ValueError, r'Must pass a list'):
+      hparams.set_hparam('b', 1.0)
+
   def testNonProtoFails(self):
     with self.assertRaisesRegexp(AssertionError, ''):
       hparam.HParams(hparam_def=1)
