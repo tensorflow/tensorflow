@@ -2140,6 +2140,7 @@ tf_cc_test(
     srcs = ["platform/setround_test.cc"],
     tags = [
         "noasan",
+        "noclang",
         "nomsan",
         "notsan",
     ],
