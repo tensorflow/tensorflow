@@ -76,7 +76,7 @@ class _MockOp(object):
 
   def get_attr(self, attr):
     typ = op_attr_type(self.type, attr)
-    for i in xrange(0, len(self.attrs), 2):
+    for i in range(0, len(self.attrs), 2):
       if self.attrs[i] == attr:
         return make_attr(typ, self.attrs[i + 1])
     raise KeyError(attr)
