@@ -605,10 +605,11 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
   //     emit_cp_element(index + {0, i, 0}, y + logical_y);
   //   }
   // } else if (x < tile_width) {
+  //   tile_height_upperbound = cdiv(tile_height, num_rows) * num_rows;
   //   for (i in range(0, tile_height_upperbound, num_rows)) {
   //     y_loc = i + logical_y;
   //     if (y_loc < tile_height)
-  //      emit_cp_element(index + {0, i, 0}, y + logical_y);
+  //      emit_cp_element(index + {0, i, 0}, y_loc);
   //   }
   // }
   //
@@ -767,7 +768,7 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
     thunk_sequence_->emplace_back(BuildKernelThunk(copy));
     VLOG(3) << "Emitting tiled 0-2-1 transposition";
     constexpr int64 tile_size = 32;
-    constexpr int64 num_rows = 4;
+    constexpr int64 num_rows = 8;
     int64 num_tiles = EmitTranspose021Tiled(
         GetIrArray(*(copy->operand(0)))
             .CastToShape(reduced_input_shape, &ir_builder_),
