@@ -326,6 +326,27 @@ py_test(
     ],
 )
 
+py_test(
+    name = "ops_test",
+    srcs = ["ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":context",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.
 
