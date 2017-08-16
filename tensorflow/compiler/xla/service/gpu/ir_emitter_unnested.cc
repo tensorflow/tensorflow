@@ -537,7 +537,6 @@ bool AreShapesForTranspose021(const Shape& a, const Shape& b) {
                  ShapeUtil::NormalizeShapeToMonotonicDim0MajorLayout(b)));
 }
 
-
 // Emits a tiled 0-2-1 transpose, assuming both input and output lain out from
 // major to minor. The x- and y- dimensions are tiled in square tiles of edge
 // length `tile_size`. Each thread block of `tile_size` x `num_rows` threads
@@ -781,7 +780,6 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
 
   return IrEmitter::HandleCopy(copy);
 }
-
 
 Status IrEmitterUnnested::EmitColumnReduction(
     int64 height, int64 width, HloInstruction* reduce, const Shape& input_shape,
