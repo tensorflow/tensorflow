@@ -32,14 +32,14 @@ tf_cc_binary(
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/internal:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
         "@linenoise//:linenoise",
-        "@protobuf_archive//:protobuf",
     ],
 )
 

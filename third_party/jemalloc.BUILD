@@ -44,7 +44,8 @@ cc_library(
         "src/tsd.c",
         "src/util.c",
         "src/witness.c",
-    ] + [
+    ],
+    hdrs = [
         "include/jemalloc/internal/arena.h",
         "include/jemalloc/internal/assert.h",
         "include/jemalloc/internal/atomic.h",

@@ -20,7 +20,6 @@ exports_files([
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_generate_proto_text_sources",
-    "tf_cc_binary",
     "tf_cc_test",
 )
 
