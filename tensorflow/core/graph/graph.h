@@ -259,6 +259,19 @@ class Node {
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
 };
 
+// Represents an output of a node, i.e., the `index`-th output of `node`. Note
+// that a single `OutputTensor` can correspond to multiple `Edge`s if the output
+// is consumed by multiple destination nodes.
+struct OutputTensor {
+  Node* node;
+  int index;
+
+  OutputTensor(Node* n, int i) : node(n), index(i) {}
+  OutputTensor() : node(nullptr), index(0) {}
+};
+
+// TODO(skyewm): add InputTensor if/when necessary
+
 class Edge {
  public:
   Node* src() const { return src_; }
