@@ -457,12 +457,6 @@ tf_cuda_library(
 )
 
 cc_library(
-    name = "safe_framework_dep",
-    visibility = ["//visibility:public"],
-    deps = [":framework"],
-)
-
-cc_library(
     name = "overflow",
     hdrs = ["util/overflow.h"],
     deps = [

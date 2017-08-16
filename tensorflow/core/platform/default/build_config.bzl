@@ -1,5 +1,6 @@
 # Platform-specific build configurations.
 
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
@@ -423,3 +424,15 @@ def tf_additional_gdr_lib_defines():
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):
   pass
+
+def tf_additional_binary_deps():
+  return if_cuda(
+      [
+          "//tensorflow/stream_executor:cuda_platform",
+          "//tensorflow/core/platform/default/build_config:cuda",
+      ],
+  ) + select({
+      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
+      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
+      "//conditions:default": [],
+  })

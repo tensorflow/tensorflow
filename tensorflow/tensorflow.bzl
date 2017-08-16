@@ -244,7 +244,7 @@ def tf_cc_shared_object(name,
   native.cc_binary(
     name=name,
     srcs=srcs + framework_so,
-    deps=deps + ["//tensorflow/core:safe_framework_dep"],
+    deps=deps,
     linkshared = 1,
     linkopts=linkopts + _rpath_linkopts(name) + select({
       clean_dep("//tensorflow:darwin"): [
@@ -270,7 +270,7 @@ def tf_cc_binary(name,
   native.cc_binary(
       name=name,
       srcs=srcs + _binary_additional_srcs(),
-      deps=deps + ["//tensorflow/core:safe_framework_dep"],
+      deps=deps,
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
 
@@ -484,7 +484,7 @@ def tf_cc_test(name,
       srcs=srcs + _binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
       linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
-      deps=deps + ["//tensorflow/core:safe_framework_dep"],
+      deps=deps,
       # Nested select() statements seem not to be supported when passed to 
       # linkstatic, and we already have a cuda select() passed in to this
       # function.
