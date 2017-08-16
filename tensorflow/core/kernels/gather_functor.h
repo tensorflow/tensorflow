@@ -52,6 +52,7 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
   const size_t slice_bytes = slice_elems * sizeof(T);
   auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
   mutex mu;
+  // Store the value of invalidate index for printing error information, it's a shared variable.
   SliceIndex result = -1 GUARDED_BY(mu);
   auto work = [&] (int64 start, int64 end) {
     SliceIndex batch_idx = static_cast<SliceIndex>(start / indices_size);
