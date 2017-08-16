@@ -147,7 +147,6 @@ class _Head(object):
     """Returns `EstimatorSpec` that a model_fn can return.
 
     Please note that,
-    + Exactly one of `logits` and `logits_input` must be provided.
     + All args must be passed via name.
 
     Args:
