@@ -76,6 +76,8 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
   Raises:
     ValueError: if called outside a defun context.
   """
+  if context.in_eager_mode():
+    return value
   _ = as_ref
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:

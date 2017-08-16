@@ -29,6 +29,7 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops as ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -187,11 +188,11 @@ def args_to_matching_eager(l, default_dtype=None):
     # remaining values.
     ret = []
     for t in l:
-      ret.append(tensor.convert_to_eager_tensor(t, dtype))
+      ret.append(ops.convert_to_tensor(t, dtype))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [tensor.convert_to_eager_tensor(t, dtype) for t in l]
+    ret = [ops.convert_to_tensor(t, dtype) for t in l]
 
   return dtype, ret
 
@@ -227,15 +228,15 @@ def args_to_mixed_eager_tensors(lists):
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(tensor.convert_to_eager_tensor(lists[0][i]))
+      lists_ret[0].append(ops.convert_to_tensor(lists[0][i]))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            tensor.convert_to_eager_tensor(lists[j][i], dtype=dtype))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype))
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            tensor.convert_to_eager_tensor(lists[j][i], dtype=dtype))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype))
     types.append(dtype)
   return types, lists_ret
