@@ -197,6 +197,10 @@ RandomUniform(poplar::Graph &graph,
   double upper_val;
   TF_ASSIGN_OR_RETURN(upper_val, DoubleValueOfScalarLiteral(upper->literal()));
 
+  if (ShapeUtil::ElementIsIntegral(output_shape)) {
+    upper_val -= 1.0;
+  }
+
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
