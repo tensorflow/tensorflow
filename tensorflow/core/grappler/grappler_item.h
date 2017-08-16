@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -65,6 +66,8 @@ struct GrapplerItem {
   std::vector<const NodeDef*> InitOpsFanin() const;
   // Return the set of variables accessed during a regular train/inference step.
   std::vector<const NodeDef*> MainVariables() const;
+  // Return a set of node names that must be preserved.
+  std::unordered_set<string> NodesToPreserve() const;
 };
 
 // Return the transitive fanin of a set of terminal nodes.
