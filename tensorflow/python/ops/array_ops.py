@@ -1635,8 +1635,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
           shape=[None],
           name=(name + "/values") if name is not None else None),
       indices=placeholder(
-          dtypes.int64,
-          shape=[None, None],
+          dtypes.int64, shape=[None, rank],
           name=(name + "/indices") if name is not None else None),
       dense_shape=shape)
 
