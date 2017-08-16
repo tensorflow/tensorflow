@@ -299,6 +299,7 @@ class LayoutAssignment : public HloPassInterface {
   // added, then propagated until all LogicalBuffers in the computation are
   // constrained.
   Status RunOnComputation(const ComputationLayout& computation_layout,
+                          const TuplePointsToAnalysis& points_to_analysis,
                           HloComputation* computation);
 
   // Assign layouts to the instructions of a computation which satisfy the given
