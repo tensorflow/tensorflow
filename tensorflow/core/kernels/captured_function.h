@@ -60,7 +60,8 @@ class CapturedFunction {
                        std::unique_ptr<CapturedFunction>* out_function);
 
   Status Run(FunctionLibraryRuntime::Options f_opts,
-             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets);
+             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+             const string& prefix);
 
   Device* device() const { return device_.get(); }
 

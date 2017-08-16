@@ -44,8 +44,10 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::IgnoreErrors")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -60,12 +62,13 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         while (!s.ok()) {
           out_tensors->clear();
