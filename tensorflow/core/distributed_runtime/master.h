@@ -94,6 +94,9 @@ class Master {
   // Cleanup unused session.
   void GC();
 
+  // Find master session.
+  MasterSession* FindMasterSession(const string& handle);
+
   TF_DISALLOW_COPY_AND_ASSIGN(Master);
 };
 
