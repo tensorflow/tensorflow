@@ -44,7 +44,6 @@ py_library(
     deps = [
         ":context",
         ":memory_trace",
-        ":tape",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -88,6 +87,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
     ],
 )
@@ -144,7 +144,6 @@ py_library(
     deps = [
         ":context",
         ":core",
-        ":tape",
         ":tensor",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dtypes",

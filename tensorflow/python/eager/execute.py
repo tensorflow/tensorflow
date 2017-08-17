@@ -26,10 +26,9 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
-from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops as ops
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -77,7 +76,7 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
     for t in tensors:
       # pylint: disable=protected-access
       core.active_trace().record_tensor(trace_name,
-                                        tape.tensor_id(t),
+                                        ops.tensor_id(t),
                                         t._device_name(),
                                         t.shape.num_elements())
       # pylint: enable=protected-access

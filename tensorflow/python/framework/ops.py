@@ -69,7 +69,7 @@ from tensorflow.python.util import tf_contextlib
 _USE_C_API = False
 
 
-def _tensor_id(t):
+def tensor_id(t):
   """Returns a unique identifier for this Tensor."""
   t = ag_core.getval(t)
   return t._id  # pylint: disable=protected-access
@@ -682,7 +682,7 @@ class EagerTensor(Tensor):
     self._handle_data = None
     if core.active_trace() is not None:
       core.active_trace().record_tensor("MANUAL",
-                                        _tensor_id(self), self.device,
+                                        tensor_id(self), self.device,
                                         self.shape.num_elements())
 
   def __del__(self):
@@ -690,7 +690,7 @@ class EagerTensor(Tensor):
       if c_api is not None and c_api.TFE_DeleteTensorHandle is not None:
         c_api.TFE_DeleteTensorHandle(self._handle)
       if core.active_trace() is not None:
-        core.active_trace().delete_tensor(_tensor_id(self))
+        core.active_trace().delete_tensor(tensor_id(self))
     except (AttributeError, TypeError):
       # Sometimes deletion during program shutdown throws exception as other
       # modules are no longer available.
@@ -751,7 +751,7 @@ class EagerTensor(Tensor):
     new_tensor = _tensor_from_handle(h)
     if core.active_trace() is not None:
       core.active_trace().record_tensor("COPY",
-                                        _tensor_id(new_tensor),
+                                        tensor_id(new_tensor),
                                         new_tensor.device,
                                         new_tensor.shape.num_elements())
     return new_tensor
