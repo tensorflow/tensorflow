@@ -80,13 +80,3 @@ new_http_archive(
         "http://download.tensorflow.org/models/stylize_v1.zip",
     ],
 )
-
-new_http_archive(
-    name = "speech_commands",
-    build_file = "models.BUILD",
-    sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
-    urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
-        "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
-    ],
-)

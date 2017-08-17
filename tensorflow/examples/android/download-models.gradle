@@ -11,8 +11,7 @@
 // LINT.IfChange
 def models = ['inception5h.zip',
               'object_detection/ssd_mobilenet_v1_android_export.zip',
-              'stylize_v1.zip',
-              'speech_commands_conv_actions.zip']
+              'stylize_v1.zip']
 // LINT.ThenChange(//tensorflow/examples/android/BUILD)
 
 // Root URL for model archives
