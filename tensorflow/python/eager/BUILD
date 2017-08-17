@@ -18,6 +18,24 @@ cc_library(
     ],
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "eager_pip",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":backprop",
+        ":context",
+        ":core",
+        ":custom_gradient",
+        ":execute",
+        ":function",
+        ":graph_only_ops",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
 py_library(
     name = "core",
     srcs = ["core.py"],
@@ -290,29 +308,13 @@ py_library(
     ],
 )
 
-py_library(
-    name = "pip_dependencies",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":backprop",
-        ":context",
-        ":core",
-        ":custom_gradient",
-        ":execute",
-        ":graph_only_ops",
-        ":tensor",
-        ":test",
-        "//tensorflow/python:pywrap_tensorflow",
-    ],
-)
-
 py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "function",
         ":context",
+        ":function",
         ":tensor",
         ":test",
         "//tensorflow/python:math_ops",
