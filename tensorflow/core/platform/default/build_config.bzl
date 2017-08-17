@@ -435,4 +435,16 @@ def tf_additional_binary_deps():
       "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
       "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
       "//conditions:default": [],
-  })
+  }) + [
+      # TODO(allenlavoie): Split these out into their own shared objects (they
+      # are here because they are shared between contrib/ op shared objects
+      # and core).
+      "//tensorflow/core/kernels:lookup_util",
+      "//tensorflow/core/util/tensor_bundle",
+  ]
+
+def proto_impl():
+  return ["@protobuf_archive//:protobuf"]
+
+def if_static(extra_deps):
+  return []

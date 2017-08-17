@@ -27,6 +27,7 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library_cc",
+    "proto_impl",
 )
 
 cc_binary(
@@ -36,8 +37,7 @@ cc_binary(
     deps = [
         ":gen_proto_text_functions_lib",
         "//tensorflow/core:lib_internal",
-        "@protobuf_archive//:protobuf",
-    ],
+    ] + proto_impl(),
 )
 
 cc_library(
