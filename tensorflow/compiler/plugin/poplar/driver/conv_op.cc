@@ -144,10 +144,10 @@ CreateConv2D(poplar::Graph &graph,
   poplar::program::Sequence prog;
 
   std::vector<unsigned int> shuffle(4);
-  shuffle[d.batch_dimension()] = 0;
-  shuffle[d.spatial_dimensions(0)] = 1;
-  shuffle[d.spatial_dimensions(1)] = 2;
-  shuffle[d.feature_dimension()] = 3;
+  shuffle[0] = d.batch_dimension();
+  shuffle[1] = d.spatial_dimensions(0);
+  shuffle[2] = d.spatial_dimensions(1);
+  shuffle[3] = d.feature_dimension();
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
