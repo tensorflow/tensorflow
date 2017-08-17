@@ -742,9 +742,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     # Check whether all capabilities from the input is valid
     all_valid = True
     for compute_capability in tf_cuda_compute_capabilities.split(','):
-      if not re.match('[0-9]+.[0-9]+', compute_capability):
+      m = re.match('[0-9]+.[0-9]+', compute_capability)
+      if not m:
         print('Invalid compute capability: ' % compute_capability)
         all_valid = False
+      else:
+        ver = int(m.group(0).split('.')[0])
+        if int < 3:
+          print('Only compute capabilities 3.0 or higher are supported.')
+          all_valid = False
 
     if all_valid:
       break
