@@ -75,9 +75,8 @@ def _tensor_id(t):
   return t._id  # pylint: disable=protected-access
 
 
-# TODO(ashankar): use actual device type.
 def _in_gpu_device():
-  return context.get_default_context()._device_index > 0  # pylint: disable=protected-access
+  return "GPU" == context.get_default_context().device_spec.device_type
 
 
 @tf_contextlib.contextmanager
