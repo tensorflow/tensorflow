@@ -118,6 +118,7 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -510,6 +511,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -901,6 +903,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
 )
