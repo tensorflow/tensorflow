@@ -174,7 +174,7 @@ CreateConv2D(poplar::Graph &graph,
 
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
-                                            false, prog, "", opts);
+                                            false, prog, inst->name(), opts);
 
   shuffle[d.batch_dimension()] = 0;
   shuffle[d.spatial_dimensions(0)] = 1;
