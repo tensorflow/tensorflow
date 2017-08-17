@@ -307,6 +307,22 @@ py_library(
 )
 
 py_test(
+    name = "benchmarks_test",
+    srcs = ["benchmarks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "function",
+        ":context",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
     srcs_version = "PY2AND3",
