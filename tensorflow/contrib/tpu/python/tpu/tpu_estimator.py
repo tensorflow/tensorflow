@@ -41,10 +41,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
+from tensorflow.python.training import evaluation
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
@@ -79,6 +81,21 @@ def _sync_variables_ops():
                                'Gradient for %s is NaN' % v.name).op
       for v in variables.trainable_variables()
   ]
+
+
+def _increase_eval_step_op(iterations_per_loop):
+  """Returns an op to increase the eval step for TPU evaluation.
+
+  Args:
+    iterations_per_loop: Int. The number of eval steps runnining in TPU
+        system before returning to CPU host for each `Session.run`.
+
+  Returns:
+    An operation
+  """
+  eval_step = evaluation._get_or_create_eval_step()  # pylint: disable=protected-access
+  # Estimator evaluate increases 1 by default. So, we increase the difference.
+  return state_ops.assign_add(eval_step, iterations_per_loop - 1)
 
 
 def _tpu_job(run_config):
@@ -1256,7 +1273,12 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
     # real metric update_ops are invoked in a separated thread. So, here give
     # Estimator the dummy op for all metrics.
     with ops.control_dependencies([loss]):
-      with ops.control_dependencies(_sync_variables_ops()):
+      # After TPU evaluation computation is done (the loss tensor), reads all
+      # variables back from TPU and updates the eval step counter properly.
+      internal_ops_to_run = _sync_variables_ops()
+      internal_ops_to_run.append(
+          _increase_eval_step_op(config.tpu_config.iterations_per_loop))
+      with ops.control_dependencies(internal_ops_to_run):
         dummy_update_op = control_flow_ops.no_op()
 
     eval_metric_ops, eval_update_ops = (
