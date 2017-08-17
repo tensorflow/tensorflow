@@ -341,32 +341,31 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
   TensorProto* t = attr_tensor.mutable_tensor();
   bool optimized = false;
   // Use the packed representation whenever possible to avoid generating large
-  // graphdefs
+  // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)         \
+  optimized = true;                                          \
+  TYPE last = tensor->flat<TYPE>()(0);                       \
+  int last_index = 0;                                        \
+  for (int i = 0; i < tensor->NumElements(); ++i) {          \
+    TYPE cur = tensor->flat<TYPE>()(i);                      \
+    t->add_##NAME##_val(cur);                                \
+    if (cur != last) {                                       \
+      last = cur;                                            \
+      last_index = i;                                        \
+    }                                                        \
+  }                                                          \
+  /* Remove all identical trailing values to save memory. */ \
+  t->mutable_##NAME##_val()->Truncate(last_index + 1);
+
     if (tensor->dtype() == DT_FLOAT) {
-      optimized = true;
-      for (int i = 0; i < tensor->NumElements(); ++i) {
-        float cur = tensor->flat<float>()(i);
-        t->add_float_val(cur);
-      }
+      POPULATE_TENSOR_PROTO(tensor, t, float, float)
     } else if (tensor->dtype() == DT_DOUBLE) {
-      optimized = true;
-      for (int i = 0; i < tensor->NumElements(); ++i) {
-        double cur = tensor->flat<double>()(i);
-        t->add_double_val(cur);
-      }
+      POPULATE_TENSOR_PROTO(tensor, t, double, double)
     } else if (tensor->dtype() == DT_INT64) {
-      optimized = true;
-      for (int i = 0; i < tensor->NumElements(); ++i) {
-        int64 cur = tensor->flat<int64>()(i);
-        t->add_int64_val(cur);
-      }
+      POPULATE_TENSOR_PROTO(tensor, t, int64, int64)
     } else if (tensor->dtype() == DT_INT32) {
-      optimized = true;
-      for (int i = 0; i < tensor->NumElements(); ++i) {
-        int32 cur = tensor->flat<int32>()(i);
-        t->add_int_val(cur);
-      }
+      POPULATE_TENSOR_PROTO(tensor, t, int32, int)
     }
   }
   if (optimized) {
