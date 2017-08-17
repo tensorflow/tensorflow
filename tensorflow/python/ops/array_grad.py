@@ -384,7 +384,7 @@ def _GatherV2Grad(op, grad):
   # int32. params_shape is not used in optimizer apply_sparse gradients,
   # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
-  with ops.colocate_with(params, ignore_existing=True):
+  with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
     params_shape = math_ops.to_int32(params_shape)
 
