@@ -307,6 +307,7 @@ filegroup(
         "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
+        "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
