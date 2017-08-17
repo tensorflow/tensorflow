@@ -332,12 +332,6 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
   NodeDef node;
   node.set_name(name);
   node.set_op("Const");
-  AttrValue attr_output_shape;
-  auto output_shape = attr_output_shape.mutable_list()->add_shape();
-  TensorShapeProto shape;
-  tensor->shape().AsProto(&shape);
-  *output_shape = shape;
-  node.mutable_attr()->insert({"_output_shapes", attr_output_shape});
 
   AttrValue attr_type;
   attr_type.set_type(tensor->dtype());
