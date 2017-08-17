@@ -1,5 +1,7 @@
 # Release 1.3.0
 
+See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/tag/0.1.4) release notes.
+
 ## Major Features and Improvements
 * Added canned estimators to Tensorflow library. List of added estimators:
   * `DNNClassifier`
