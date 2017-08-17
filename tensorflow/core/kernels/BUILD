@@ -2255,7 +2255,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_solve_op",
     prefix = "matrix_solve_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
