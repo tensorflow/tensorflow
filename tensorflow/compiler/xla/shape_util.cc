@@ -258,14 +258,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return primitive_util::IsFloatingPointType(shape.element_type());
 }
 
-/* static */ bool ShapeUtil::IsTuple(const Shape& shape) {
-  return shape.element_type() == TUPLE;
-}
-
-/* static */ bool ShapeUtil::IsArray(const Shape& shape) {
-  return !IsTuple(shape) && !IsOpaque(shape);
-}
-
 /* static */ bool ShapeUtil::IsNestedTuple(const Shape& shape) {
   return IsTuple(shape) && std::any_of(shape.tuple_shapes().begin(),
                                        shape.tuple_shapes().end(), IsTuple);
@@ -302,10 +294,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
   return MakeTupleShape(new_elements);
-}
-
-/* static */ bool ShapeUtil::IsOpaque(const Shape& shape) {
-  return shape.element_type() == OPAQUE;
 }
 
 /* static */ bool ShapeUtil::ShapeIs(const Shape& shape,
