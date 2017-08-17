@@ -20,10 +20,14 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
@@ -445,6 +449,56 @@ class FunctionalOpsTest(test.TestCase):
       # smoke test to ensure they all evaluate
       sess.run([result, result_t, result_grad, result_t_grad],
                feed_dict={x: [[1.0, 2.0]]})
+
+  def testRemoteFunction(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+    worker, _ = test_util.create_local_cluster(
+        1, 1, worker_config=worker_config)
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/job:ps/task:0"):
+      a = variables.Variable(2, dtype=dtypes.int32)
+      b = variables.Variable(3, dtype=dtypes.int32)
+
+    with ops.device("/job:worker/replica:0/task:0/cpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b],
+          Tout=[dtypes.int32],
+          f=_remote_fn,
+          target="/job:worker/replica:0/task:0/cpu:1")
+
+    with session.Session(worker[0].target) as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, [6])
+
+  def testRemoteFunctionDirectSession(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      a = variables.Variable(2, dtype=dtypes.int32)
+      b = variables.Variable(3, dtype=dtypes.int32)
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b],
+          Tout=[dtypes.int32],
+          f=_remote_fn,
+          target="/job:localhost/replica:0/task:0/cpu:1")
+
+    with self.test_session(config=worker_config) as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, [6])
 
 
 if __name__ == "__main__":
