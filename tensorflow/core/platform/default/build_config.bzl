@@ -443,6 +443,9 @@ def tf_additional_binary_deps():
       "//tensorflow/core/util/tensor_bundle",
   ]
 
+def proto_headers():
+  return ["@protobuf_archive//:protobuf_headers"]
+
 def proto_impl():
   return ["@protobuf_archive//:protobuf"]
 

@@ -131,6 +131,8 @@ load(
     "tf_additional_gpu_tracer_cuda_deps",
     "tf_pyclif_proto_library",
     "tf_jspb_proto_library",
+    "proto_headers",
+    "proto_impl",
     "if_static",
 )
 load(
@@ -1394,14 +1396,13 @@ cc_library(
     ),
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
-    deps = tf_additional_lib_deps() + [
+    deps = tf_additional_lib_deps() + proto_impl() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_internal",
         ":lib_proto_parsing",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf",
         "@snappy",
         "@zlib_archive//:zlib",
     ],
@@ -1597,24 +1598,26 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = glob(
     ],
 })
 
+FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
+    "framework/op_segment.h",
+    "framework/rendezvous.h",  # only needed for tests
+    "framework/tensor_reference.h",
+    "framework/tracking_allocator.h",  # only needed for tests
+    "framework/unique_tensor_references.h",
+    "framework/variant.h",
+    "platform/variant_coding.h",
+    "util/command_line_flags.h",
+    "util/env_var.h",
+    "util/equal_graph_def.h",
+    "util/presized_cuckoo_map.h",
+    "util/tensor_slice_set.h",
+    "util/tensor_slice_util.h",
+] + tf_additional_framework_hdrs()
+
 tf_cuda_library(
     name = "framework_internal",
     srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS,
-    hdrs = [
-        "framework/op_segment.h",
-        "framework/rendezvous.h",  # only needed for tests
-        "framework/tensor_reference.h",
-        "framework/tracking_allocator.h",  # only needed for tests
-        "framework/unique_tensor_references.h",
-        "framework/variant.h",
-        "platform/variant_coding.h",
-        "util/command_line_flags.h",
-        "util/env_var.h",
-        "util/equal_graph_def.h",
-        "util/presized_cuckoo_map.h",
-        "util/tensor_slice_set.h",
-        "util/tensor_slice_util.h",
-    ],
+    hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1625,8 +1628,7 @@ tf_cuda_library(
     deps = [
         ":framework_internal_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
-    ] + if_static([":framework_internal_impl"]),
+    ] + proto_headers() + if_static([":framework_internal_impl"]),
 )
 
 cc_header_only_library(
@@ -1673,7 +1675,8 @@ tf_cuda_library(
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + proto_text_hdrs_and_srcs.srcs,
+    }) + proto_text_hdrs_and_srcs.srcs + tf_additional_framework_srcs(),
+    hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     deps = [
         ":lib",
         ":lib_internal",
@@ -1683,7 +1686,9 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
-    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+    ] + proto_headers() + if_mkl(
+        ["//third_party/mkl:intel_binary_blob"],
+    ),
     alwayslink = 1,
 )
 
@@ -1862,43 +1867,45 @@ tf_cuda_library(
     ],
 )
 
+CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
+    "common_runtime/allocator_retry.h",
+    "common_runtime/bfc_allocator.h",
+    "common_runtime/build_graph_options.h",
+    "common_runtime/constant_folding.h",
+    "common_runtime/copy_tensor.h",
+    "common_runtime/costmodel_manager.h",
+    "common_runtime/debugger_state_interface.h",
+    "common_runtime/device_factory.h",
+    "common_runtime/device_mgr.h",
+    "common_runtime/device_set.h",
+    "common_runtime/dma_helper.h",
+    "common_runtime/eigen_thread_pool.h",
+    "common_runtime/executor.h",
+    "common_runtime/function.h",
+    "common_runtime/graph_optimizer.h",
+    "common_runtime/local_device.h",
+    "common_runtime/memory_types.h",
+    "common_runtime/mkl_cpu_allocator.h",
+    "common_runtime/optimization_registry.h",
+    "common_runtime/pending_counts.h",
+    "common_runtime/process_function_library_runtime.h",
+    "common_runtime/process_util.h",
+    "common_runtime/profile_handler.h",
+    "common_runtime/renamed_device.h",
+    "common_runtime/rendezvous_mgr.h",
+    "common_runtime/session_factory.h",
+    "common_runtime/simple_placer.h",
+    "common_runtime/stats_publisher_interface.h",
+    "common_runtime/step_stats_collector.h",
+    "common_runtime/threadpool_device.h",
+    "common_runtime/visitable_allocator.h",
+    "graph/gradients.h",
+    "graph/quantize_training.h",
+]
+
 tf_cuda_library(
     name = "core_cpu_lib",
-    hdrs = CORE_CPU_BASE_HDRS + [
-        "common_runtime/allocator_retry.h",
-        "common_runtime/bfc_allocator.h",
-        "common_runtime/build_graph_options.h",
-        "common_runtime/constant_folding.h",
-        "common_runtime/copy_tensor.h",
-        "common_runtime/costmodel_manager.h",
-        "common_runtime/debugger_state_interface.h",
-        "common_runtime/device_factory.h",
-        "common_runtime/device_mgr.h",
-        "common_runtime/device_set.h",
-        "common_runtime/dma_helper.h",
-        "common_runtime/eigen_thread_pool.h",
-        "common_runtime/executor.h",
-        "common_runtime/function.h",
-        "common_runtime/graph_optimizer.h",
-        "common_runtime/local_device.h",
-        "common_runtime/memory_types.h",
-        "common_runtime/mkl_cpu_allocator.h",
-        "common_runtime/optimization_registry.h",
-        "common_runtime/pending_counts.h",
-        "common_runtime/process_function_library_runtime.h",
-        "common_runtime/process_util.h",
-        "common_runtime/profile_handler.h",
-        "common_runtime/renamed_device.h",
-        "common_runtime/rendezvous_mgr.h",
-        "common_runtime/session_factory.h",
-        "common_runtime/simple_placer.h",
-        "common_runtime/stats_publisher_interface.h",
-        "common_runtime/step_stats_collector.h",
-        "common_runtime/threadpool_device.h",
-        "common_runtime/visitable_allocator.h",
-        "graph/gradients.h",
-        "graph/quantize_training.h",
-    ],
+    hdrs = CORE_CPU_LIB_HEADERS,
     deps = [
         ":core_cpu_base",
         ":proto_text",
@@ -1914,7 +1921,7 @@ tf_cuda_library(
     ],
     hdrs = [
         "common_runtime/simple_graph_execution_state.h",
-    ],
+    ] + CORE_CPU_LIB_HEADERS,
     copts = tf_copts(),
     deps = [
                ":core_cpu_lib",
@@ -2040,10 +2047,17 @@ tf_cuda_library(
     hdrs = GPU_RUNTIME_HEADERS,
     copts = tf_copts(),
     deps = [
+        ":core_cpu_impl",
+        ":core_cpu_lib",
+        ":framework",
+        ":framework_internal",
         ":gpu_init",
         ":gpu_lib",
-        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
         ":stream_executor",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
