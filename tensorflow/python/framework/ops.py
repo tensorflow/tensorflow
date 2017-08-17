@@ -4347,8 +4347,6 @@ def colocate_with(op, ignore_existing=False):
   if context.in_graph_mode():
     return get_default_graph().colocate_with(op, ignore_existing)
   else:
-    if not ignore_existing:
-      raise ValueError("ignore_existing must currently be True in EAGER mode.")
     if op is not None:
       return device(op.device)
     else:
