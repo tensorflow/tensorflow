@@ -444,6 +444,9 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
   *graph_def->mutable_library() = ops_.ToProto();
+
+  graph_def->mutable_node()->Reserve(std::max(1, num_nodes() - from_node_id));
+
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
   for (auto id = from_node_id; id < num_node_ids(); ++id) {
@@ -477,6 +480,8 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
       }
     }
     node_def->clear_input();
+    node_def->mutable_input()->Reserve(inputs.size());
+
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
