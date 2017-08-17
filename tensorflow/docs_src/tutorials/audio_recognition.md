@@ -214,41 +214,6 @@ of the other .wav files in that same folder to see how well it does.
 The scores are between zero and one, and higher values mean the model is more
 confident in its prediction.
 
-## Running the Model in an Android App
-
-The easiest way to see how this model works in a real application is to download
-[the prebuilt Android demo
-applications](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#prebuilt-components)
-and install them on your phone. You'll see 'TF Speech' appear in your app list,
-and opening it will show you the same list of action words we've just trained
-our model on, starting with "Yes" and "No". Once you've given the app permission
-to use the microphone, you should be able to try saying those words and see them
-highlighted in the UI when the model recognizes one of them.
-
-You can also build this application yourself, since it's open source and
-[available as part of the TensorFlow repository on
-github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#building-in-android-studio-using-the-tensorflow-aar-from-jcenter).
-By default it downloads [a pretrained model from
-tensorflow.org](http://download.tensorflow.org/models/speech_commands_v0.01.zip),
-but you can easily [replace it with a model you've trained
-yourself](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#install-model-files-optional).
-If you do this, you'll need to make sure that the constants in [the main
-SpeechActivity Java source
-file](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/src/org/tensorflow/demo/SpeechActivity.java)
-like `SAMPLE_RATE` and `SAMPLE_DURATION` match any changes you've made to the
-defaults while training. You'll also see that there's a [Java version of the
-RecognizeCommands
-module](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/src/org/tensorflow/demo/RecognizeCommands.java)
-that's very similar to the C++ version in this tutorial. If you've tweaked
-parameters for that, you can also update them in SpeechActivity to get the same
-results as in your server testing.
-
-The demo app updates its UI list of results automatically based on the labels
-text file you copy into assets alongside your frozen graph, which means you can
-easily try out different models without needing to make any code changes. You
-will need to updaye `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
-you've added if you change the paths though.
-
 ## How does this Model Work?
 
 The architecture used in this tutorial is based on some described in the paper
@@ -376,14 +341,13 @@ aren't detected (high precision). The numbers from the tool give you an idea of
 how your model will perform in an application, and you can try tweaking the
 signal averaging parameters to tune it to give the kind of performance you want.
 To understand what the right parameters are for your application, you can look
-at generating an [ROC
-curve](https://en.wikipedia.org/wiki/Receiver_operating_characteristic) to help
-you understand the tradeoffs.
+at generating an [ROC curve](https://en.wikipedia.org/wiki/Receiver_operating_characteristic)
+to help you understand the tradeoffs.
 
 ## RecognizeCommands
 
-The streaming accuracy tool uses a simple decoder contained in a small C++ class
-called
+The streaming accuracy tool uses a simple decoder contained in a small
+C++ class called
 [RecognizeCommands](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/speech_commands/recognize_commands.h).
 This class is fed the output of running the TensorFlow model over time, it
 averages the signals, and returns information about a label when it has enough
@@ -516,8 +480,7 @@ variations in starting time in the training data, and is controlled with the
 `--time_shift_ms` flag, which defaults to 100ms. Increasing this value will
 provide more variation, but at the risk of cutting off important parts of the
 audio. A related way of augmenting the data with realistic distortions is by
-using [time stretching and pitch
-scaling](https://en.wikipedia.org/wiki/Audio_time_stretching_and_pitch_scaling),
+using [time stretching and pitch scaling](https://en.wikipedia.org/wiki/Audio_time_stretching_and_pitch_scaling),
 but that's outside the scope of this tutorial.
 
 ## Customizing the Model
