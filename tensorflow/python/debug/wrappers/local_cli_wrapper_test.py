@@ -40,6 +40,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import monitored_session
 
 
 class LocalCLIDebuggerWrapperSessionForTest(
@@ -600,6 +601,20 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess)
     del wrapped_sess
+
+  def testCallingShouldStopMethodOnNonWrappedNonMonitoredSessionErrors(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess)
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"The wrapped session .* does not have a method .*should_stop.*"):
+      wrapped_sess.should_stop()
+
+  def testLocalCLIDebugWrapperSessionWorksOnMonitoredSession(self):
+    monitored_sess = monitored_session.MonitoredSession()
+    wrapped_monitored_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], monitored_sess)
+    self.assertFalse(wrapped_monitored_sess.should_stop())
 
 
 if __name__ == "__main__":
