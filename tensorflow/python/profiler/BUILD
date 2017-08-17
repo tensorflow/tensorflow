@@ -13,7 +13,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":model_analyzer",
+        ":option_builder",
         ":tfprof_logger",
+        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:util",
     ],
 )
@@ -35,7 +37,9 @@ py_library(
         ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
+        "@six_archive//:six",
     ],
 )
 
@@ -124,10 +128,11 @@ py_test(
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
         ":pprof_profiler",
-        "//tensorflow/python:client",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:math_ops",
         "@com_google_pprof//:pprof_proto_py",
     ],
 )
