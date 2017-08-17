@@ -290,6 +290,21 @@ class VariablesTestCase(test.TestCase):
                        variables.global_variables())
       self.assertEqual([var_x, var_z, var_t], variables.trainable_variables())
 
+  def testCollectionsWithScope(self):
+    with self.test_session():
+      with ops.name_scope("scope_1"):
+        var_x = variables.Variable(2.0)
+      with ops.name_scope("scope_2"):
+        var_y = variables.Variable(2.0)
+
+      self.assertEqual([var_x, var_y], variables.global_variables())
+      self.assertEqual([var_x], variables.global_variables("scope_1"))
+      self.assertEqual([var_y], variables.global_variables("scope_2"))
+
+      self.assertEqual([var_x, var_y], variables.trainable_variables())
+      self.assertEqual([var_x], variables.trainable_variables("scope_1"))
+      self.assertEqual([var_y], variables.trainable_variables("scope_2"))
+
   def testOperators(self):
     with self.test_session():
       var_f = variables.Variable([2.0])
@@ -410,6 +425,19 @@ class VariablesTestCase(test.TestCase):
         v2.eval()
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
+
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = variables.Variable(
+        lambda: constant_op.constant(1.),
+        constraint=constraint)
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = variables.Variable(
+          lambda: constant_op.constant(1.),
+          constraint=constraint)
 
   def testNoRefDataRace(self):
     with self.test_session():

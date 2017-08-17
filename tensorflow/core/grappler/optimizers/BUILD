@@ -109,6 +109,7 @@ cc_test(
     name = "constant_folding_test",
     size = "small",
     srcs = ["constant_folding_test.cc"],
+    shard_count = 5,
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
@@ -134,6 +135,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",

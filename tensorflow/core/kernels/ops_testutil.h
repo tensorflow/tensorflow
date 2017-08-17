@@ -83,6 +83,14 @@ class OpsTestBase : public ::testing::Test {
     params_.reset(nullptr);
   }
 
+  // Allow kernel unit tests to run on GPU
+  void SetDevice(const DeviceType& device_type,
+                 std::unique_ptr<Device> device) {
+    CHECK(device_.get()) << "No device provided";
+    device_type_ = device_type;
+    device_ = std::move(device);
+  }
+
   void set_node_def(const NodeDef& node_def) { node_def_.CopyFrom(node_def); }
 
   // Clients can manipulate the underlying NodeDef via this accessor.

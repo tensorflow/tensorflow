@@ -45,6 +45,9 @@ import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
+// Explicit import needed for internal Google builds.
+import org.tensorflow.demo.R;
+
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.
         PreviewCallback {
   private static final Logger LOGGER = new Logger();
@@ -154,13 +157,12 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
           yuvBytes[0],
           yuvBytes[1],
           yuvBytes[2],
-          rgbBytes,
           previewWidth,
           previewHeight,
           yRowStride,
           uvRowStride,
           uvPixelStride,
-          false);
+          rgbBytes);
       image.close();
 
     } catch (final Exception e) {

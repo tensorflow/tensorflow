@@ -284,8 +284,9 @@ class ListScheduler {
   std::unordered_set<const HloInstruction*> scheduled_instructions_;
 };
 
-int64 SumLogicalBufferSizes(const std::vector<const LogicalBuffer*>& buffers,
-                            const LogicalBuffer::SizeFunction& size_function) {
+int64 SumLogicalBufferSizes(
+    const TuplePointsToAnalysis::BufferDefinitionVector& buffers,
+    const LogicalBuffer::SizeFunction& size_function) {
   int64 size = 0;
   for (const LogicalBuffer* buffer : buffers) {
     size += size_function(*buffer);
@@ -400,6 +401,9 @@ CreateMemoryMinimizingSequence(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
   for (const auto& computation : module.computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(sequence[computation.get()],
                         CreateMemoryMinimizingSequence(
                             *computation, *points_to_analysis, size_function));
@@ -410,6 +414,7 @@ CreateMemoryMinimizingSequence(
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function) {
+  CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
   return CreateMemoryMinimizingSequence(computation, *points_to_analysis,

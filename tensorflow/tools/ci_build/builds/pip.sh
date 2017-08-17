@@ -23,7 +23,7 @@
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
-# NO_TEST_ON_INSTALL, PIP_TEST_ROOT
+# NO_TEST_ON_INSTALL, PIP_TEST_ROOT, TF_NIGHTLY
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -43,6 +43,9 @@
 #
 # If PIP_TEST_ROOT has a non-empty and a non-0 value, the whl files will be
 # placed in that directory.
+#
+# If TF_NIGHTLY has a non-empty and a non-0 value, the name of the project will
+# be changed to tf_nightly or tf_nightly_gpu.
 #
 # Any flags not listed in the usage above will be passed directly to Bazel.
 #
@@ -142,8 +145,10 @@ if [[ $(uname) == "Darwin" ]]; then
 fi
 
 
+# Check if in a virtualenv
+IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
 # If still in a virtualenv, deactivate it first
-if [[ -n "$(which deactivate)" ]]; then
+if [[ "$IN_VENV" == "1" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || die "FAILED: Unable to deactivate from existing virtualenv"
 fi
@@ -167,6 +172,14 @@ fi
 echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
+# Create a TF_NIGHTLY argument if this is a nightly build
+PROJECT_NAME="tensorflow"
+NIGHTLY_FLAG=""
+if [ -n "$TF_NIGHTLY" ]; then
+  PROJECT_NAME="tf_nightly"
+  NIGHTLY_FLAG="--nightly_flag"
+fi
+
 # Build PIP Wheel file
 # Set default pip file folder unless specified by env variable
 if [ -z "$PIP_TEST_ROOT" ]; then
@@ -175,10 +188,10 @@ fi
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
-bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} || \
+bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} || \
     die "build_pip_package FAILED"
 
-WHL_PATH=$(ls ${PIP_WHL_DIR}/tensorflow*.whl)
+WHL_PATH=$(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl)
 if [[ $(echo ${WHL_PATH} | wc -w) -ne 1 ]]; then
   die "ERROR: Failed to find exactly one built TensorFlow .whl file in "\
 "directory: ${PIP_WHL_DIR}"
@@ -299,7 +312,7 @@ create_activate_virtualenv_and_install_tensorflow() {
 
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
-  pip install --upgrade pip==8.1.2
+  pip install --upgrade pip==9.0.1
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
@@ -354,7 +367,7 @@ do_virtualenv_pip_test() {
   # Create virtualenv directory for install test
   VENV_DIR="${PIP_TEST_ROOT}/venv"
   create_activate_virtualenv_and_install_tensorflow \
-    "${CLEAN_VENV_DIR}" "${WHL_PATH}"
+    "${VENV_DIR}" "${WHL_PATH}"
 
   # Install extra pip packages required by the test-on-install
   for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
@@ -489,10 +502,10 @@ while [[ ${COUNTER} -lt "${#PIP_TASKS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
-  echo ""
-  echo "=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
-"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ==="
-  echo ""
+  echo
+  printf "${COLOR_BOLD}=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
+"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ===${COLOR_NC}"
+  echo
 
   ${PIP_TASKS[COUNTER]}
   RESULT=$?

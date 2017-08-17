@@ -109,6 +109,15 @@ Status FailedPrecondition(const char* format, ...) {
   return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
 }
 
+Status Cancelled(const char* format, ...) {
+  string message;
+  va_list args;
+  va_start(args, format);
+  tensorflow::strings::Appendv(&message, format, args);
+  va_end(args);
+  return WithLogBacktrace(tensorflow::errors::Cancelled(message));
+}
+
 Status ResourceExhausted(const char* format, ...) {
   string message;
   va_list args;
@@ -210,9 +219,11 @@ bool HasInteriorPadding(const PaddingConfig& config) {
   return false;
 }
 
-string HumanReadableNumFlops(double flops, double nanoseconds) {
+namespace {
+string HumanReadableNumOps(double flops, double nanoseconds,
+                           tensorflow::StringPiece op_prefix) {
   if (nanoseconds == 0) {
-    return "NaN FLOP/s";
+    return tensorflow::strings::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
@@ -223,8 +234,17 @@ string HumanReadableNumFlops(double flops, double nanoseconds) {
       sp.ends_with("b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += "FLOP/s";
+  throughput += tensorflow::strings::StrCat(op_prefix, "OP/s");
   return throughput;
+}
+}  // namespace
+
+string HumanReadableNumFlops(double flops, double nanoseconds) {
+  return HumanReadableNumOps(flops, nanoseconds, "FL");
+}
+
+string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
+  return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
 void LogLines(int sev, tensorflow::StringPiece text, const char* fname,

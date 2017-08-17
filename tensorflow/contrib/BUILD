@@ -47,6 +47,7 @@ py_library(
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
+        "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
@@ -54,6 +55,7 @@ py_library(
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
+        "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
         "//tensorflow/contrib/rnn:rnn_py",
@@ -88,6 +90,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/batching:batch_ops_kernels",
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
+        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/framework:generate_vocab_remapping_kernel",
         "//tensorflow/contrib/framework:load_and_remap_matrix_kernel",
@@ -108,6 +111,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/batching:batch_ops_op_lib",
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
+        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",

@@ -85,6 +85,8 @@ class CpuExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
+
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer

@@ -21,11 +21,11 @@ limitations under the License.
 #include <list>
 #include <utility>
 
-#include "external/llvm/include/llvm/ExecutionEngine/ExecutionEngine.h"
-#include "external/llvm/include/llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "external/llvm/include/llvm/IR/Mangler.h"
-#include "external/llvm/include/llvm/Support/CodeGen.h"
-#include "external/llvm/include/llvm/Support/Host.h"
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/IR/Mangler.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
@@ -93,10 +93,8 @@ class JITSymbolTable {
     ADD_JIT_SYMBOL_TO_TABLE(ReleaseOutfeedBufferAfterPopulation);
     ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32);
     ADD_JIT_SYMBOL_TO_TABLE(LogV8F32);
-    ADD_JIT_SYMBOL_TO_TABLE(TanhV8F32);
     ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32);
     ADD_JIT_SYMBOL_TO_TABLE(LogV4F32);
-    ADD_JIT_SYMBOL_TO_TABLE(TanhV4F32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenConvF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF64);
@@ -173,8 +171,9 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
-                           CompilerFunctor::ModuleHook pre_optimization_hook,
-                           CompilerFunctor::ModuleHook post_optimization_hook)
+                           bool optimize_for_size, bool enable_fast_math,
+                           LLVMCompiler::ModuleHook pre_optimization_hook,
+                           LLVMCompiler::ModuleHook post_optimization_hook)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
@@ -189,7 +188,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, GetAvailableIntrinsics(),
+                                     opt_level, optimize_for_size,
+                                     enable_fast_math, GetAvailableIntrinsics(),
                                      std::move(pre_optimization_hook),
                                      std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()

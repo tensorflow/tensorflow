@@ -60,7 +60,7 @@ class SparsifyGatherTest : public ::testing::Test {
     }
   }
 
-  void TestSinglePartitionConst(bool gather_v2) {
+  void TestSinglePartitionConst(bool gather_v2, bool include_group_deps) {
     GraphDef graph_def;
 
     // Build the graph.
@@ -75,7 +75,9 @@ class SparsifyGatherTest : public ::testing::Test {
     NodeDef* identity_node =
         CreateNode("const/read", "Identity", {const_node}, &graph_def);
     MakeGather("gather", gather_v2, identity_node, input_node, &graph_def);
-    CreateNode("group_deps", "NoOp", {}, &graph_def);
+    if (include_group_deps) {
+      CreateNode("group_deps", "NoOp", {}, &graph_def);
+    }
 
     // Run the op.
     GraphDef result;
@@ -166,7 +168,7 @@ class SparsifyGatherTest : public ::testing::Test {
               node_lookup.at("group_deps")->input().end());
   }
 
-  void TestMultiPartitionConst(bool gather_v2) {
+  void TestMultiPartitionConst(bool gather_v2, bool include_group_deps) {
     // The 'ids' node is served input for two 'Gather's.
     GraphDef graph_def;
 
@@ -174,7 +176,9 @@ class SparsifyGatherTest : public ::testing::Test {
     // Shared input node
     NodeDef* input_node = CreateNode("ids", "Const", {}, &graph_def);
     // Shared init node
-    CreateNode("group_deps", "NoOp", {}, &graph_def);
+    if (include_group_deps) {
+      CreateNode("group_deps", "NoOp", {}, &graph_def);
+    }
 
     // Two partitions
     NodeDef* const_node1 = CreateNode("const1", "Const", {}, &graph_def);
@@ -356,13 +360,17 @@ class SparsifyGatherTest : public ::testing::Test {
 };
 
 TEST_F(SparsifyGatherTest, TestSinglePartitionConst) {
-  TestSinglePartitionConst(false);
-  TestSinglePartitionConst(true);
+  TestSinglePartitionConst(false, false);
+  TestSinglePartitionConst(false, true);
+  TestSinglePartitionConst(true, false);
+  TestSinglePartitionConst(true, true);
 }
 
 TEST_F(SparsifyGatherTest, TestMultiPartitionConst) {
-  TestMultiPartitionConst(false);
-  TestMultiPartitionConst(true);
+  TestMultiPartitionConst(false, false);
+  TestMultiPartitionConst(false, true);
+  TestMultiPartitionConst(true, false);
+  TestMultiPartitionConst(true, true);
 }
 
 }  // namespace graph_transforms

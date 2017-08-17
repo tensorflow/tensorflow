@@ -311,10 +311,12 @@ class CholeskyBenchmark(test.Benchmark):
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
             session.Session() as sess, \
-            ops.device("/gpu:0"):
+            ops.device("/device:GPU:0"):
           l = linalg_ops.cholesky(data)
           self.run_op_benchmark(
-              sess, l,
+              sess,
+              control_flow_ops.group(
+                  l,),
               min_iters=25,
               name="cholesky_gpu_{size}".format(size=size))
 
@@ -336,11 +338,11 @@ class CholeskyBenchmark(test.Benchmark):
 
     if test.is_gpu_available(True):
       _BenchmarkGrad(
-          MatrixInverseCompositeGrad, "composite_matrix_inverse", "/gpu:0")
+          MatrixInverseCompositeGrad, "composite_matrix_inverse", "/device:GPU:0")
       _BenchmarkGrad(
-          TriAngInvCompositeGrad, "composite_tri_ang_inverse", "/gpu:0")
+          TriAngInvCompositeGrad, "composite_tri_ang_inverse", "/device:GPU:0")
       _BenchmarkGrad(
-          TriAngSolveCompositeGrad, "composite_triangular_solve", "/gpu:0")
+          TriAngSolveCompositeGrad, "composite_triangular_solve", "/device:GPU:0")
 
     _BenchmarkGrad(
         MatrixInverseCompositeGrad, "composite_matrix_inverse", "/cpu:0")

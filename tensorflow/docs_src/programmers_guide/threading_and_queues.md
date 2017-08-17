@@ -51,21 +51,89 @@ and @{tf.RandomShuffleQueue},
 are important TensorFlow objects that aid in computing tensors asynchronously
 in a graph.
 
-For example, a typical input pipeline uses a `RandomShuffleQueue` to
-prepare inputs for training a model:
+For example, a typical queue-based input pipeline uses a `RandomShuffleQueue` to
+prepare inputs for training a model as follows:
 
-* Multiple threads prepare training examples and enqueue them in the queue.
+* Multiple threads prepare training examples and enqueue them.
 * A training thread executes a training op that dequeues mini-batches from the
   queue
 
-This architecture has many benefits, as highlighted in the
-@{$reading_data$Reading data how to}, which also gives an overview of
-functions that simplify the construction of input pipelines.
+We recommend using the @{tf.contrib.data.Dataset.shuffle$`shuffle`}
+and @{tf.contrib.data.Dataset.batch$`batch`} methods of a
+@{tf.contrib.data.Dataset$`Dataset`} to acomplish this. However, if you'd prefer
+to use a queue-based version instead, you can find a full implementation in the
+@{tf.train.shuffle_batch} function.
 
-The TensorFlow `Session` object is multithreaded and thread-safe, so multiple
-threads can
+For demonstration purposes a simplified implementation is given below.
+
+This function takes a source tensor, a capacity, and a batch size as arguments
+and returns a tensor that dequeues a shuffled batch when executed.
+
+``` python
+def simple_shuffle_batch(source, capacity, batch_size=10):
+  # Create a random shuffle queue.
+  queue = tf.RandomShuffleQueue(capacity=capacity,
+                                min_after_dequeue=int(0.9*capacity),
+                                shapes=source.shape, dtypes=source.dtype)
+
+  # Create an op to enqueue one item.
+  enqueue = queue.enqueue(source)
+
+  # Create a queue runner that, when started, will launch 4 threads applying
+  # that enqueue op.
+  num_threads = 4
+  qr = tf.train.QueueRunner(queue, [enqueue] * num_threads)
+
+  # Register the queue runner so it can be found and started by
+  # `tf.train.start_queue_runners` later (the threads are not launched yet).
+  tf.train.add_queue_runner(qr)
+
+  # Create an op to dequeue a batch
+  return queue.dequeue_many(batch_size)
+```
+
+Once started by @{tf.train.start_queue_runners}, or indirectly through
+@{tf.train.MonitoredSession}, the `QueueRunner` will launch the
+threads in the background to fill the queue. Meanwhile the main thread will
+execute the `dequeue_many` op to pull data from it. Note how these ops do not
+depend on each other, except indirectly through the internal state of the queue.
+
+The simplest possible use of this function might be something like this:
+
+``` python
+# create a dataset that counts from 0 to 99
+input = tf.constant(list(range(100)))
+input = tf.contrib.data.Dataset.from_tensor_slices(input)
+input = input.make_one_shot_iterator().get_next()
+
+# Create a slightly shuffled batch from the sorted elements
+get_batch = simple_shuffle_batch(input, capacity=20)
+
+# `MonitoredSession` will start and manage the `QueueRunner` threads.
+with tf.train.MonitoredSession() as sess:
+  # Since the `QueueRunners` have been started, data is available in the
+  # queue, so the `sess.run(get_batch)` call will not hang.
+  while not sess.should_stop():
+    print(sess.run(get_batch))
+```
+
+```
+[ 8 10  7  5  4 13 15 14 25  0]
+[23 29 28 31 33 18 19 11 34 27]
+[12 21 37 39 35 22 44 36 20 46]
+...
+```
+
+For most use cases, the automatic thread startup and management provided
+by @{tf.train.MonitoredSession} is sufficient. In the rare case that it is not,
+TensorFlow provides tools for manually managing your threads and queues.
+
+## Manual Thread Management
+
+As we have seen, the TensorFlow `Session` object is multithreaded and
+thread-safe, so multiple threads can
 easily use the same session and run ops in parallel.  However, it is not always
-easy to implement a Python program that drives threads as described above.  All
+easy to implement a Python program that drives threads as required.  All
 threads must be able to stop together, exceptions must be caught and
 reported, and queues must be properly closed when stopping.
 
@@ -77,7 +145,7 @@ stop together and report exceptions to a program that waits for them to stop.
 The `QueueRunner` class is used to create a number of threads cooperating to
 enqueue tensors in the same queue.
 
-## Coordinator
+### Coordinator
 
 The @{tf.train.Coordinator} class manages background threads in a TensorFlow
 program and helps multiple threads stop together.
@@ -124,7 +192,7 @@ Obviously, the coordinator can manage threads doing very different things.
 They don't have to be all the same as in the example above.  The coordinator
 also has support to capture and report exceptions.  See the @{tf.train.Coordinator} documentation for more details.
 
-## QueueRunner
+### QueueRunner
 
 The @{tf.train.QueueRunner} class creates a number of threads that repeatedly
 run an enqueue op.  These threads can use a coordinator to stop together.  In
@@ -152,7 +220,7 @@ threads to process and enqueue examples.  Create a `Coordinator` and ask the
 queue runner to start its threads with the coordinator.  Write a training loop
 that also uses the coordinator.
 
-```
+```python
 # Create a queue runner that will run 4 threads in parallel to enqueue
 # examples.
 qr = tf.train.QueueRunner(queue, [enqueue_op] * 4)
@@ -164,20 +232,21 @@ coord = tf.train.Coordinator()
 enqueue_threads = qr.create_threads(sess, coord=coord, start=True)
 # Run the training loop, controlling termination with the coordinator.
 for step in xrange(1000000):
-    if coord.should_stop():
-        break
-    sess.run(train_op)
+  if coord.should_stop():
+    break
+  sess.run(train_op)
 # When done, ask the threads to stop.
 coord.request_stop()
 # And wait for them to actually do it.
 coord.join(enqueue_threads)
 ```
 
-## Handling exceptions
+### Handling exceptions
 
 Threads started by queue runners do more than just run the enqueue ops.  They
 also catch and handle exceptions generated by queues, including the
-`tf.errors.OutOfRangeError` exception, which is used to report that a queue was closed.
+`tf.errors.OutOfRangeError` exception, which is used to report that a queue was
+closed.
 
 A training program that uses a coordinator must similarly catch and report
 exceptions in its main loop.
@@ -186,15 +255,15 @@ Here is an improved version of the training loop above.
 
 ```python
 try:
-    for step in xrange(1000000):
-        if coord.should_stop():
-            break
-        sess.run(train_op)
+  for step in xrange(1000000):
+    if coord.should_stop():
+      break
+    sess.run(train_op)
 except Exception, e:
-    # Report exceptions to the coordinator.
-    coord.request_stop(e)
+  # Report exceptions to the coordinator.
+  coord.request_stop(e)
 finally:
-    # Terminate as usual. It is safe to call `coord.request_stop()` twice.
-    coord.request_stop()
-    coord.join(threads)
+  # Terminate as usual. It is safe to call `coord.request_stop()` twice.
+  coord.request_stop()
+  coord.join(threads)
 ```

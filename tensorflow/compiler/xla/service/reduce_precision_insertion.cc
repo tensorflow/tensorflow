@@ -26,6 +26,9 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
   VLOG(1) << "Running ReducePrecisionInsertion pass on " << module->name();
 
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     std::vector<HloInstruction*> instructions_to_suffix;
 
     for (auto& instruction : computation->instructions()) {
@@ -38,6 +41,11 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
       // equivalent behavior can be obtained by adding ReducePrecision
       // instructions after the instructions that pull the F32 arrays out of
       // the tuples.
+      //
+      // TODO(b/64093391): Remove the IsScalar check once this won't cause
+      // failures on the GPU backend if the ReducePrecision instruction ends up
+      // inserted between a scalar constant and the init_value argument of a
+      // Reduce operation.
       if (instruction->shape().element_type() == PrimitiveType::F32 &&
           !ShapeUtil::IsScalar(instruction->shape()) &&
           should_reduce_output_precision_(instruction->opcode())) {
@@ -87,6 +95,20 @@ HloReducePrecisionOptions ReducePrecisionInsertion::make_options_proto(
     }
   }
   return options;
+}
+
+bool ReducePrecisionInsertion::AddPasses(
+    HloPassPipeline* pipeline, const DebugOptions& debug_options,
+    const HloReducePrecisionOptions::PassTiming pass_timing) {
+  bool passes_added = false;
+  for (const auto& pass_options :
+       debug_options.hlo_reduce_precision_options()) {
+    if (pass_options.pass_timing() == pass_timing) {
+      pipeline->AddPass<ReducePrecisionInsertion>(pass_options);
+      passes_added = true;
+    }
+  }
+  return passes_added;
 }
 
 }  // namespace xla

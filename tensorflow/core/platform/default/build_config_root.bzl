@@ -39,3 +39,11 @@ def tf_additional_mpi_deps():
       ],
       "//conditions:default": [],
   })
+
+def tf_additional_gdr_deps():
+  return select({
+      "//tensorflow:with_gdr_support": [
+          "//tensorflow/contrib/gdr:gdr_server_lib",
+      ],
+      "//conditions:default": [],
+  })

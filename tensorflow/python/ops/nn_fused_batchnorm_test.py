@@ -123,7 +123,8 @@ class BatchNormalizationTest(test.TestCase):
                      x_shape,
                      scale_shape,
                      use_gpu=True,
-                     data_format='NHWC'):
+                     data_format='NHWC',
+                     is_training=True):
     np.random.seed(1)
     x_val = np.random.random_sample(x_shape).astype(np.float32)
     scale_val = np.random.random_sample(scale_shape).astype(np.float32)
@@ -133,8 +134,20 @@ class BatchNormalizationTest(test.TestCase):
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
+      if is_training:
+        pop_mean = None
+        pop_var = None
+      else:
+        pop_mean = np.random.random_sample(scale_shape).astype(np.float32)
+        pop_var = np.random.random_sample(scale_shape).astype(np.float32)
       y, _, _ = nn_impl.fused_batch_norm(
-          x, scale, offset, data_format=data_format)
+          x,
+          scale,
+          offset,
+          mean=pop_mean,
+          variance=pop_var,
+          data_format=data_format,
+          is_training=is_training)
       err_x = gradient_checker.compute_gradient_error(x, x_shape, y, x_shape)
       err_scale = gradient_checker.compute_gradient_error(scale, scale_shape, y,
                                                           x_shape)
@@ -190,26 +203,63 @@ class BatchNormalizationTest(test.TestCase):
     self._test_training(x_shape, [6], use_gpu=False, data_format='NHWC')
 
   def testBatchNormGrad(self):
-    x_shape = [1, 1, 6, 1]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [1], use_gpu=True, data_format='NHWC')
-      self._test_gradient(x_shape, [1], use_gpu=True, data_format='NCHW')
-    self._test_gradient(x_shape, [1], use_gpu=False, data_format='NHWC')
+    for is_training in [True, False]:
+      x_shape = [1, 1, 6, 1]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [1],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training)
+        self._test_gradient(
+            x_shape, [1],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training)
+      self._test_gradient(
+          x_shape, [1],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training)
 
-    x_shape = [1, 1, 6, 2]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [2], use_gpu=True, data_format='NHWC')
-    self._test_gradient(x_shape, [2], use_gpu=False, data_format='NHWC')
+      x_shape = [1, 1, 6, 2]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [2],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training)
+      self._test_gradient(
+          x_shape, [2],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training)
 
-    x_shape = [1, 2, 1, 6]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [2], use_gpu=True, data_format='NCHW')
+      x_shape = [1, 2, 1, 6]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [2],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training)
 
-    x_shape = [7, 9, 13, 6]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [9], use_gpu=True, data_format='NCHW')
-      self._test_gradient(x_shape, [6], use_gpu=True, data_format='NHWC')
-    self._test_gradient(x_shape, [6], use_gpu=False, data_format='NHWC')
+      x_shape = [7, 9, 13, 6]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [9],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training)
+        self._test_gradient(
+            x_shape, [6],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training)
+      self._test_gradient(
+          x_shape, [6],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training)
 
 
 if __name__ == '__main__':

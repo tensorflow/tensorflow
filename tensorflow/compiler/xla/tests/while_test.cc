@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -254,6 +253,70 @@ TEST_F(WhileTest, WhileWithVectorResult) {
   // have all reached 2.0.
   std::vector<float> expected = {2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
+// Tests a while node when the result type is a vector which is part
+// of the result tuple.
+//
+// All constants are chosen to produce exact results.
+// vector<float> result(8, 0.0f);
+// while (result.sum() < 15.5f) {
+//   result = result + vector<float>(8, 0.125f);
+// }
+// tuple = tuple { while }
+TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
+  Shape result_shape = ShapeUtil::MakeShape(F32, {8});
+
+  // Create a computation for the reduction.
+  Computation add;
+  {
+    ComputationBuilder builder(client_, "add");
+    auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
+    builder.Add(x, y);
+    add = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the condition.
+  // Repeat until the sum of the result vector is less than 5.5f.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto sum = builder.Reduce(prev, builder.ConstantR0<float>(0.0f), add,
+                              /*dimensions_to_reduce=*/{0});
+    auto test = builder.Gt(builder.ConstantR0<float>(15.5f), sum);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add a constant vector of 1.f to the result vector.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR1<float>(8, 0.125f);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.ConstantR1<float>(8, 0.f);
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "while = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+  builder.Tuple({result});
+
+  // Individual elements with increase by 1/8 each time through the loop, so
+  // the sum will increase by 1.0.  It will first be >15.5 when the elements
+  // have all reached 2.0.
+  auto expected_data =
+      Literal::CreateR1<float>({2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f});
+  auto expected = Literal::MakeTuple({expected_data.get()});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests a while node when the result type T is a Tuple.
@@ -785,8 +848,10 @@ void BM_WhileLoop(int num_iters) {
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
 
+  const int64 seq_len = 100;
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {10})});
+      {ShapeUtil::MakeShape(S32, {}),
+       ShapeUtil::MakeShape(F32, {seq_len, 1024, 1024})});
 
   // Create while condition computation with 'loop_limit'.
   const int32 loop_limit = 100;
@@ -804,20 +869,27 @@ void BM_WhileLoop(int num_iters) {
   {
     ComputationBuilder builder(client, "body");
     auto prev = builder.Parameter(0, loop_state_shape, "prev");
+    // TupleElement 0
     auto iteration = builder.GetTupleElement(prev, 0);
-    auto weights = builder.GetTupleElement(prev, 1);
-    auto one = builder.ConstantR0<int32>(1);
-    auto next_iteration = builder.Add(iteration, one);
-    auto one_vec = builder.ConstantR1<float>(10, 1.f);
-    auto new_weights = builder.Add(weights, one_vec);
-    auto result = builder.Tuple({next_iteration, new_weights});
+    auto out0 = builder.Add(iteration, builder.ConstantR0<int32>(1));
+    // TupleElement 1
+    auto input = builder.GetTupleElement(prev, 1);
+    // Update.
+    auto one = builder.ConstantR0<float>(1.0);
+    auto update = builder.Broadcast(one, {1, 1024, 1024});
+    // Starts = iteration * 2;
+    auto starts = builder.ConstantR1<int32>({0, 0, 0});
+    // UpdateSlice.
+    auto out1 = builder.DynamicUpdateSlice(input, update, starts);
+    auto result = builder.Tuple({out0, out1});
     body = builder.Build().ConsumeValueOrDie();
   }
 
   // Create a While instruction.
   ComputationBuilder builder(client, "while");
-  auto init = builder.Tuple(
-      {builder.ConstantR0<int32>(0), builder.ConstantR1<float>(10, 0.f)});
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto input = builder.Broadcast(zero, {seq_len, 1024, 1024});
+  auto init = builder.Tuple({builder.ConstantR0<int32>(0), input});
   builder.While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
@@ -849,21 +921,3 @@ BENCHMARK(BM_WhileLoop);
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  tensorflow::testing::RunBenchmarks();
-  return RUN_ALL_TESTS();
-}

@@ -158,13 +158,15 @@ TensorArrayWriteV3
 SymbolicGradient
 
 # image_ops
+AdjustContrastv2
+NonMaxSuppression
+NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
 ResizeNearestNeighborGrad
-AdjustContrastv2
-ScaleImageGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2
+ScaleImageGrad
 
 # io_ops
 FixedLengthRecordReader
@@ -300,6 +302,7 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad

@@ -60,6 +60,7 @@ def model_builder(features, labels, mode, params, config):
   feature_columns = params["feature_columns"]
   weight_column_name = params["weight_column_name"]
   num_trees = params["num_trees"]
+  logits_modifier_function = params["logits_modifier_function"]
   if features is None:
     raise ValueError("At least one feature must be specified.")
 
@@ -67,6 +68,9 @@ def model_builder(features, labels, mode, params, config):
     raise ValueError("Missing estimator RunConfig.")
 
   center_bias = params["center_bias"]
+
+  if isinstance(features, ops.Tensor):
+    features = {features.name: features}
 
   # Make a shallow copy of features to ensure downstream usage
   # is unaffected by modifications in the model function.
@@ -92,6 +96,8 @@ def model_builder(features, labels, mode, params, config):
   with ops.name_scope("gbdt", "gbdt_optimizer"):
     predictions_dict = gbdt_model.predict(mode)
     logits = predictions_dict["predictions"]
+    if logits_modifier_function:
+      logits = logits_modifier_function(logits, features, mode)
 
     def _train_op_fn(loss):
       """Returns the op to optimize the loss."""

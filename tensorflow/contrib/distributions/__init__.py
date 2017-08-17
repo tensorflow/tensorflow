@@ -30,6 +30,7 @@ from tensorflow.contrib.distributions.python.ops.conditional_transformed_distrib
 from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
+from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
@@ -43,10 +44,12 @@ from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.poisson import *
+from tensorflow.contrib.distributions.python.ops.poisson_lognormal import *
 from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_exponential_diag import *
 from tensorflow.contrib.distributions.python.ops.vector_laplace_diag import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
@@ -116,6 +119,7 @@ _allowed_symbols = [
     'Normal',
     'NormalWithSoftplusScale',
     'Poisson',
+    'PoissonLogNormalQuadratureCompound',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',
@@ -147,6 +151,7 @@ _allowed_symbols = [
     'percentile',
     'assign_exponential_moving_mean_variance',
     'exponential_moving_mean_variance',
+    'estimator_head_distribution_regression',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

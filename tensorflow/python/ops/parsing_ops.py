@@ -417,7 +417,7 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   then the output will look like:
 
-  ```
+  ```python
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
                       dense_shape=(3, 2)) }
@@ -426,7 +426,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   If instead a `FixedLenSequenceFeature` with `default_value = -1.0` and
   `shape=[]` is used then the output will look like:
 
-  ```
+  ```python
   {"ft": [[1.0, 2.0], [3.0, -1.0]]}
   ```
 

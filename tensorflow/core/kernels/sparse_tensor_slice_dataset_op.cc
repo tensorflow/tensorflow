@@ -208,7 +208,7 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
                               .TypeConstraint<type>("Tvalues"), \
                           SparseTensorSliceDatasetOp<type>);
 
-TF_CALL_ALL_TYPES(REGISTER_DATASET_KERNEL);
+TF_CALL_DATASET_TYPES(REGISTER_DATASET_KERNEL);
 #undef REGISTER_DATASET_KERNEL
 
 }  // namespace

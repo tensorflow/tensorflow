@@ -49,9 +49,6 @@ message DebugOptions {
   // Show addresses of HLO ops in graph dump.
   bool xla_hlo_graph_addresses = 2;
 
-  // Show layout of HLO ops in graph dump.
-  bool xla_hlo_graph_layout = 3;
-
   // Path to dump HLO graphs to.
   string xla_hlo_graph_path = 4;
 
@@ -353,7 +350,9 @@ message ComputeConstantRequest {
 }
 
 message ComputeConstantResponse {
-  GlobalDataHandle output = 1;
+  // A LiteralProto is returned directly for this request, instead of a
+  // ComputationDataHandle.
+  LiteralProto literal = 1;
 }
 
 message DeconstructTupleRequest {

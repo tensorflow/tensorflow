@@ -112,8 +112,8 @@ class HloComputation {
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
-  // the result of the computation.
-  void set_root_instruction(HloInstruction* instruction);
+  // the result of the computation for non fusion computations.
+  void set_root_instruction(HloInstruction* new_root_instruction);
 
   // Return the root instruction of the computation. The root instruction is the
   // instruction which produces the output of the computation.
@@ -161,7 +161,7 @@ class HloComputation {
   // reachability. Trivially an instruction is reachable from itself.
   std::unique_ptr<HloReachabilityMap> ComputeReachability() const;
 
-  // Updates the given reachabilty map after the immediate predecessor set
+  // Updates the given reachability map after the immediate predecessor set
   // (operands and control predecessors) of 'instruction' has changed.
   void UpdateReachabilityThroughInstruction(
       const HloInstruction* instruction, HloReachabilityMap* reachability_map);
@@ -258,6 +258,10 @@ class HloComputation {
   // module with the exception of fusion computation.  A parameter instruction
   // is removable for a fusion computation.
   bool IsRemovable(const HloInstruction* instruction);
+
+  // Returns true if this computation has a side effect. A computation has a
+  // side effect if it contains one or more instructions with a side effect.
+  bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
   bool IsFusionComputation() const { return is_fusion_computation_; }

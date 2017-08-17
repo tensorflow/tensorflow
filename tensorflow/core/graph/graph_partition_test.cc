@@ -50,7 +50,7 @@ extern Status TopologicalSortNodesWithTimePriority(
 
 namespace {
 
-const char gpu_device[] = "/job:a/replica:0/task:0/gpu:0";
+const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
 string SplitByDevice(const Node* node) { return node->assigned_device_name(); }
 
@@ -443,6 +443,41 @@ TEST_F(GraphPartitionTest, Functions) {
   string b = "/job:a/replica:0/task:0/cpu:1";
   ExpectFunctions(partitions_[a].library(), {"XTimesTwo", "XTimesFour"});
   ExpectFunctions(partitions_[b].library(), {"XTimesTwo", "XTimesFour"});
+}
+
+TEST_F(GraphPartitionTest, SetIncarnation) {
+  GraphDef gdef;
+  const char* const kSendRecvAttrs = R"proto(
+  attr { key: 'T' value { type: DT_FLOAT  }  }
+  attr { key: 'client_terminated' value {  b: false } }
+  attr { key: 'recv_device' value { s: 'B' } }
+  attr { key: 'send_device' value { s: 'A' } }
+  attr { key: 'send_device_incarnation' value { i: 0 }  }
+  attr { key: 'tensor_name' value { s: 'test' } }
+)proto";
+  CHECK(protobuf::TextFormat::ParseFromString(
+      StrCat("node { name: 'A/Pi' op: 'Const' ",
+             "  attr { key: 'dtype' value { type: DT_FLOAT } } ",
+             "  attr { key: 'value' value { tensor { ",
+             "    dtype: DT_FLOAT tensor_shape {} float_val: 3.14 } } } }",
+             "node { name: 'A' op: '_Send' input: 'A/Pi' ", kSendRecvAttrs, "}",
+             "node { name: 'B' op: '_Recv' ", kSendRecvAttrs,
+             "  attr { key: 'tensor_type' value { type:DT_FLOAT}}}"),
+      &gdef));
+  gdef.mutable_versions()->set_producer(TF_GRAPH_DEF_VERSION);
+  Partition(gdef, &partitions_);
+  EXPECT_EQ(2, partitions_.size());
+
+  for (const auto& kv : partitions_) {
+    const GraphDef& gdef = kv.second;
+    for (const NodeDef& ndef : gdef.node()) {
+      if (ndef.name() == "A" || ndef.name() == "B") {
+        int64 val;
+        TF_CHECK_OK(GetNodeAttr(ndef, "send_device_incarnation", &val));
+        EXPECT_EQ(val, 100);  // Send device is "A".
+      }
+    }
+  }
 }
 
 TEST(TopologicalSortNodesWithTimePriorityTest, NoDependencies) {
