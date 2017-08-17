@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
-
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -79,48 +79,40 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
-  def testDefaultContext(self):
-    orig = context.get_default_context()
-    self.assertIs(context.get_default_context(), orig)
-    c0 = context.Context()
-    self.assertIs(context.get_default_context(), orig)
-    context_manager_0 = c0.as_default()
-    self.assertIs(context.get_default_context(), orig)
-    with context_manager_0 as c0:
-      self.assertIs(context.get_default_context(), c0)
-      with context.Context().as_default() as c1:
-        self.assertIs(context.get_default_context(), c1)
-      self.assertIs(context.get_default_context(), c0)
-    self.assertIs(context.get_default_context(), orig)
-
-  def testContextWithThreads(self):
-
-    def run_fn(c):
-      c.append(context.get_default_context())
-
-    contexts = []
-    t = threading.Thread(target=run_fn, args=(contexts,))
+  def _runInThread(self, target, args):
+    t = threading.Thread(target=target, args=args)
     try:
       t.start()
       t.join()
-      ctx1 = contexts[0]
     except Exception as e:
       raise e
 
-    self.assertIsNotNone(ctx1)
-    ctx2 = context.get_default_context()
-    # Default context created in different threads are different.
-    self.assertIsNot(ctx1, ctx2)
-    # Check that default values of the context created in a different thread
-    # are set correctly.
-    self.assertEqual(ctx1.in_graph_mode(), ctx2.in_graph_mode())
-    self.assertEqual(ctx1.in_eager_mode(), ctx2.in_eager_mode())
-    self.assertEqual(ctx1.scope_name, ctx2.scope_name)
-    self.assertEqual(ctx1.device_name, ctx2.device_name)
-    self.assertEqual(ctx1.device_spec.to_string(), ctx2.device_spec.to_string())
-    self.assertFalse(ctx1.recording_summaries, ctx2.recording_summaries)
-    self.assertIsNone(ctx1.summary_writer_resource,
-                      ctx2.summary_writer_resource)
+  # Test that different thread local values are initialized to the same values
+  # in different threads.
+  def testContextThreadLocalMembers(self):
+
+    def get_context_values(ctx):
+      return [
+          ctx.in_graph_mode(),
+          ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
+          ctx.recording_summaries, ctx.device_name,
+          ctx.num_gpus()
+      ]
+
+    def get_values(ctx, values):
+      values.extend(get_context_values(ctx))
+
+    context_values = []
+    ctx = context.Context()
+    self._runInThread(get_values, (ctx, context_values))
+    self.assertAllEqual(context_values, get_context_values(ctx))
+
+  def testContextConfig(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    ctx = context.Context(config=config_pb2.ConfigProto(
+        device_count={'GPU': 0}))
+    self.assertEquals(0, ctx.num_gpus())
 
   def testTensorPlacement(self):
     if not context.context().num_gpus():

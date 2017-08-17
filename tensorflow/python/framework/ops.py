@@ -76,7 +76,7 @@ def _tensor_id(t):
 
 
 def _in_gpu_device():
-  return "GPU" == context.get_default_context().device_spec.device_type
+  return "GPU" == context.context().device_spec.device_type
 
 
 @tf_contextlib.contextmanager
@@ -664,7 +664,7 @@ class EagerTensor(Tensor):
     # eager execution and TensorFlow graphs. However, as of July 2017, there
     # were no known GPU kernels that kept int32 tensors in device memory.
     if _in_gpu_device() and value.dtype != np.int32:
-      ctx = context.get_default_context()
+      ctx = context.context()
       # pylint: disable=protected-access
       device_name = ctx.device_name
       with errors.raise_exception_on_not_ok_status() as status:
@@ -742,7 +742,7 @@ class EagerTensor(Tensor):
     # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
-      ctx = context.get_default_context()
+      ctx = context.context()
     if device_name is None:
       device_name = ctx.device_name
     with errors.raise_exception_on_not_ok_status() as status:
@@ -812,7 +812,7 @@ class EagerTensor(Tensor):
 
   def as_cpu_tensor(self):
     """A copy of this Tensor with contents backed by host memory."""
-    return self._copy(context.get_default_context(), "CPU:0")
+    return self._copy(context.context(), "CPU:0")
 
   def as_gpu_tensor(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
@@ -825,7 +825,7 @@ class EagerTensor(Tensor):
       A GPU-memory backed Tensor object initialized with the same contents
       as this Tensor.
     """
-    return self._copy(context.get_default_context(), "GPU:" + str(gpu_index))
+    return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
     if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
@@ -4375,7 +4375,48 @@ def control_dependencies(control_inputs):
     return _null_contextmanager()
 
 
-_default_session_stack = context._DefaultStack()  # pylint: disable=protected-access
+class _DefaultStack(threading.local):
+  """A thread-local stack of objects for providing implicit defaults."""
+
+  def __init__(self):
+    super(_DefaultStack, self).__init__()
+    self._enforce_nesting = True
+    self.stack = []
+
+  def get_default(self):
+    return self.stack[-1] if len(self.stack) >= 1 else None
+
+  def reset(self):
+    self.stack = []
+
+  def is_cleared(self):
+    return not self.stack
+
+  @property
+  def enforce_nesting(self):
+    return self._enforce_nesting
+
+  @enforce_nesting.setter
+  def enforce_nesting(self, value):
+    self._enforce_nesting = value
+
+  @tf_contextlib.contextmanager
+  def get_controller(self, default):
+    """A context manager for manipulating a default stack."""
+    try:
+      self.stack.append(default)
+      yield default
+    finally:
+      if self._enforce_nesting:
+        if self.stack[-1] is not default:
+          raise AssertionError(
+              "Nesting violated for default stack of %s objects" %
+              type(default))
+        self.stack.pop()
+      else:
+        self.stack.remove(default)
+
+_default_session_stack = _DefaultStack()  # pylint: disable=protected-access
 
 
 def default_session(session):
@@ -4518,7 +4559,7 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
   session.run(operation, feed_dict)
 
 
-class _DefaultGraphStack(context._DefaultStack):  # pylint: disable=protected-access
+class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   """A thread-local stack of objects for providing an implicit default graph."""
 
   def __init__(self):
@@ -4915,7 +4956,7 @@ def name_scope(name, default_name=None, values=None):
       raise ValueError(
           "At least one of name (%s) and default_name (%s) should be provided" %
           (name, default_name))
-    ctx = context.get_default_context()
+    ctx = context.context()
     old_name = ctx.scope_name
     scope_name = "%s/%s" % (old_name, name) if old_name else name
     ctx.scope_name = scope_name

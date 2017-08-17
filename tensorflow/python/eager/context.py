@@ -54,46 +54,83 @@ class _EagerContext(threading.local):
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self):
-    self._eager_context = _EagerContext()
-    # Create a handle
-    opts = pywrap_tensorflow.TF_NewSessionOptions(
-        target=compat.as_bytes(""), config=None)
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._handle = pywrap_tensorflow.TFE_NewContext(opts, status)
-      pywrap_tensorflow.TF_DeleteSessionOptions(opts)
-    # Store list of devices
-    self._devices = []
-    with errors.raise_exception_on_not_ok_status() as status:
-      device_list = pywrap_tensorflow.TFE_ContextListDevices(
-          self._handle, status)
-    try:
-      for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
-        with errors.raise_exception_on_not_ok_status() as status:
-          dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i, status)
-        self._devices.append(pydev.canonical_name(dev_name))
-    finally:
-      pywrap_tensorflow.TF_DeleteDeviceList(device_list)
+  def __init__(self, config=None):
+    """Creates a new Context.
 
+    Args:
+      config: (Optional.) A `ConfigProto` protocol buffer with configuration
+      options for the Context. Note that a lot of these options may be
+      currently unimplemented or irrelevant for EAGER mode.
+    """
+    self._eager_context = _EagerContext()
+    self._context_handle = None
+    self._context_devices = None
     self._summary_writer_resource = None
+    self._config = config
+    self._initialize_lock = threading.Lock()
+
+  def _initialize_handle_and_devices(self):
+    """Initialize handle and devices."""
+    with self._initialize_lock:
+      if self._context_handle is not None:
+        return
+      assert self._context_devices is None
+      opts = pywrap_tensorflow.TF_NewSessionOptions(
+          target=compat.as_bytes(""), config=self._config)
+      with errors.raise_exception_on_not_ok_status() as status:
+        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
+        pywrap_tensorflow.TF_DeleteSessionOptions(opts)
+      # Store list of devices
+      self._context_devices = []
+      with errors.raise_exception_on_not_ok_status() as status:
+        device_list = pywrap_tensorflow.TFE_ContextListDevices(
+            self._context_handle, status)
+      try:
+        for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
+          with errors.raise_exception_on_not_ok_status() as status:
+            dev_name = pywrap_tensorflow.TF_DeviceListName(
+                device_list, i, status)
+          self._context_devices.append(pydev.canonical_name(dev_name))
+      finally:
+        pywrap_tensorflow.TF_DeleteDeviceList(device_list)
+
+  @property
+  def _handle(self):
+    ctx = self._context_handle
+    if ctx is None:
+      self._initialize_handle_and_devices()
+      return self._context_handle
+    else:
+      return ctx
+
+  @property
+  def _devices(self):
+    devices = self._context_devices
+    if devices is None:
+      self._initialize_handle_and_devices()
+      return self._context_devices
+    else:
+      return devices
 
   def __del__(self):
     try:
-      if self._handle is not None:
+      if self._context_handle is not None:
         with errors.raise_exception_on_not_ok_status() as status:
-          pywrap_tensorflow.TFE_DeleteContext(self._handle, status)
+          pywrap_tensorflow.TFE_DeleteContext(self._context_handle, status)
     except (AttributeError, TypeError):
       # Sometimes deletion during program shutdown throws exception as other
       # modules are no longer available.
       pass
 
   def __str__(self):
-    lines = [
-        "Eager TensorFlow environment with %d devices" % (len(self._devices))
-    ]
-    for i, d in enumerate(self._devices):
-      lines.append("   Device %d: %s" % (i, d))
-    return "\n".join(lines)
+    if self._context_handle is None:
+      return "Eager TensorFlow Context. Devices currently uninitialized."
+    else:
+      devices = self._devices
+      lines = ["Eager TensorFlow Context with %d devices" % (len(devices))]
+      for i, d in enumerate(devices):
+        lines.append("   Device %d: %s" % (i, d))
+      return "\n".join(lines)
 
   @tf_contextlib.contextmanager
   def _mode(self, mode):
@@ -200,116 +237,58 @@ class Context(object):
     # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
     return len(self._devices) - 1
 
-  def as_default(self):
-    """Returns a context manager to make self the default for this thread."""
-    return _default_context_stack.get_controller(self)
+
+_context = None
+_context_lock = threading.Lock()
 
 
-# TODO(agarwal): make this public and move into its own file.
-class _DefaultStack(threading.local):
-  """A thread-local stack of objects for providing implicit defaults."""
-
-  def __init__(self):
-    super(_DefaultStack, self).__init__()
-    self._enforce_nesting = True
-    self.stack = []
-
-  def get_default(self):
-    return self.stack[-1] if len(self.stack) >= 1 else None
-
-  def reset(self):
-    self.stack = []
-
-  def is_cleared(self):
-    return not self.stack
-
-  @property
-  def enforce_nesting(self):
-    return self._enforce_nesting
-
-  @enforce_nesting.setter
-  def enforce_nesting(self, value):
-    self._enforce_nesting = value
-
-  @tf_contextlib.contextmanager
-  def get_controller(self, default):
-    """A context manager for manipulating a default stack."""
-    try:
-      self.stack.append(default)
-      yield default
-    finally:
-      if self._enforce_nesting:
-        if self.stack[-1] is not default:
-          raise AssertionError(
-              "Nesting violated for default stack of %s objects" %
-              type(default))
-        self.stack.pop()
-      else:
-        self.stack.remove(default)
+def _initialize_context():
+  global _context
+  with _context_lock:
+    if _context is None:
+      _context = Context()
 
 
-class _DefaultContextStack(_DefaultStack):  # pylint: disable=protected-access
-  """A thread-local stack of Context objects."""
-
-  def __init__(self):
-    super(_DefaultContextStack, self).__init__()
-    self._global_default_context = None
-
-  def get_default(self):
-    """Returns a thread local object if present, else a global default."""
-    return (super(_DefaultContextStack, self).get_default() or
-            self.global_default_context)
-
-  @property
-  def global_default_context(self):
-    if self._global_default_context is None:
-      self._global_default_context = Context()
-    return self._global_default_context
-
-  def reset(self):
-    super(_DefaultContextStack, self).reset()
-    self._global_default_context = None
-
-
-_default_context_stack = _DefaultContextStack()
-
-
-def get_default_context():
-  """Returns a default Context object."""
-  return _default_context_stack.get_default()
-
-
-# TODO(agarwal): switch users to get_default_context and get rid of this
-# function.
 def context():
-  return get_default_context()
+  """Returns a singleton Context object."""
+  if _context is None:
+    _initialize_context()
+  return _context
+
+
+# TODO(agarwal): remove this.
+def get_default_context():
+  """Same as context."""
+  if _context is None:
+    _initialize_context()
+  return _context
 
 
 def in_graph_mode():
   """Returns True if current thread is in GRAPH mode for default context."""
-  return get_default_context().in_graph_mode()
+  return context().in_graph_mode()
 
 
 def in_eager_mode():
   """Returns True if current thread is in EAGER mode for default context."""
-  return get_default_context().in_eager_mode()
+  return context().in_eager_mode()
 
 
 def graph_mode():
   """Context-manager to enable GRAPH mode for current thread."""
-  return get_default_context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
+  return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
 
 
 def eager_mode():
   """Context-manager to enable EAGER mode for current thread."""
-  return get_default_context()._mode(EAGER_MODE)  # pylint: disable=protected-access
+  return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
 
 
 # TODO(agarwal): get rid of this and use ops.name_scope instead.
 @contextlib.contextmanager
 def namescope(name):
   """ContextManager for creating hierarchical name scopes."""
-  ctx = get_default_context()
+  ctx = context()
   old_name = ctx.scope_name
   ctx.scope_name = "%s/%s" % (old_name, name) if old_name else name
   try:
@@ -320,7 +299,7 @@ def namescope(name):
 
 def scope_name():
   """Name of the current scope."""
-  return get_default_context().scope_name
+  return context().scope_name
 
 
 def device(name):
@@ -337,19 +316,19 @@ def device(name):
   operation runs on GPU 0.
 
   Args:
-    name: Name of the device (see get_default_context().devices()), or None to
+    name: Name of the device (see context().devices()), or None to
       perform automatic placement.
 
   Returns:
     Context manager for setting the device.
   """
-  return get_default_context().device(name)
+  return context().device(name)
 
 
 @contextlib.contextmanager
 def record_summaries():
   """Context-manager to enable recording of summaries."""
-  ctx = get_default_context()
+  ctx = context()
   old = ctx.recording_summaries
   ctx.recording_summaries = True
   try:
@@ -360,7 +339,7 @@ def record_summaries():
 
 def should_record_summary():
   """True if a summary should be recorded now."""
-  c = get_default_context()
+  c = context()
   return c.recording_summaries and c.summary_writer_resource is not None
 
 
