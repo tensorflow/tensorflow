@@ -76,6 +76,10 @@ CONSOLE_SCRIPTS = [
 ]
 # pylint: enable=line-too-long
 
+# remove the tensorboard console script if building tf_nightly
+if 'tf_nightly' in project_name:
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:main')
+
 TEST_PACKAGES = [
     'scipy >= 0.15.1',
 ]
