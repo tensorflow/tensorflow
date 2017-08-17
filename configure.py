@@ -140,15 +140,38 @@ def cygpath(path):
 
 def get_python_path(environ_cp):
   """Get the python site package paths."""
-  python_paths = []
-  if environ_cp.get('PYTHONPATH'):
-    python_paths = environ_cp.get('PYTHONPATH').split(':')
-  try:
-    library_paths = site.getsitepackages()
-  except AttributeError:
-    from distutils.sysconfig import get_python_lib  # pylint: disable=g-import-not-at-top
-    library_paths = [get_python_lib()]
-  all_paths = set(python_paths + library_paths)
+  # Check if target python is current running python
+  if environ_cp['PYTHON_BIN_PATH'] == sys.executable:
+    python_paths = []
+    if environ_cp.get('PYTHONPATH'):
+      python_paths = environ_cp.get('PYTHONPATH').split(':')
+    try:
+      library_paths = site.getsitepackages()
+    except AttributeError:
+      from distutils.sysconfig import get_python_lib  # pylint: disable=g-import-not-at-top
+      library_paths = [get_python_lib()]
+    all_paths = set(python_paths + library_paths)
+  else:
+    all_paths = run_shell([environ_cp['PYTHON_BIN_PATH'], '-c', '''
+from __future__ import print_function
+import site
+import os
+python_paths = []
+if os.getenv('PYTHONPATH') is not None:
+  python_paths = os.getenv('PYTHONPATH').split(':')
+try:
+  library_paths = site.getsitepackages()
+except AttributeError:
+ from distutils.sysconfig import get_python_lib
+ library_paths = [get_python_lib()]
+all_paths = set(python_paths + library_paths)
+paths = []
+for path in all_paths:
+  if os.path.isdir(path):
+    paths.append(path)
+print(",".join(paths))
+'''])
+    all_paths = all_paths.split(',')
 
   paths = []
   for path in all_paths:
@@ -170,6 +193,7 @@ def setup_python(environ_cp, bazel_version):
     # Check if the path is valid
     if (os.path.isfile(python_bin_path) and os.access(
         python_bin_path, os.X_OK)) or (os.path.isdir(python_bin_path)):
+      environ_cp['PYTHON_BIN_PATH'] = python_bin_path
       break
     elif not os.path.exists(python_bin_path):
       print('Invalid python path: %s cannot be found.' % python_bin_path)
@@ -184,12 +208,12 @@ def setup_python(environ_cp, bazel_version):
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
       python_lib_path = python_lib_paths[0]
     else:
-      print('Found possible Python library paths:\n%s' %
-            '\n'.join(python_lib_paths))
+      print('Found possible Python library paths:\n  %s' %
+            '\n  '.join(python_lib_paths))
       default_python_lib_path = python_lib_paths[0]
       python_lib_path = get_input(
-          'Please input the desired Python library path to use.  Default is %s'
-          % python_lib_paths[0])
+          'Please input the desired Python library path to use.  '
+          'Default is [%s]\n' % python_lib_paths[0])
       if not python_lib_path:
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
