@@ -4035,6 +4035,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["manual"],
 )
 
 py_library(
