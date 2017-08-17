@@ -59,6 +59,7 @@ if 'tf_nightly' in project_name:
   for package in REQUIRED_PACKAGES:
     if 'tensorflow-tensorboard' in package:
       REQUIRED_PACKAGES.remove(package)
+      break
 
 # weakref.finalize was introduced in Python 3.4
 if sys.version_info < (3, 4):
