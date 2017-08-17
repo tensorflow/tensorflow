@@ -297,9 +297,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
   if (TF_GetCode(out_status) != TF_OK) return;
-  if (device_name != nullptr) {
-    TFE_OpSetDevice(op, ctx, device_name, out_status);
-  }
+  TFE_OpSetDevice(op, ctx, device_name, out_status);
   if (TF_GetCode(out_status) == TF_OK) {
     for (int i = 0; i < inputs->size() && TF_GetCode(out_status) == TF_OK;
          ++i) {

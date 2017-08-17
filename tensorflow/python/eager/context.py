@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import copy
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -41,7 +42,8 @@ class _EagerContext(threading.local):
 
   def __init__(self):
     super(_EagerContext, self).__init__()
-    self.device_index = -1
+    self.device_spec = pydev.DeviceSpec.from_string("")
+    self.device_name = self.device_spec.to_string()
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
@@ -141,21 +143,53 @@ class Context(object):
     """Enables recording summaries is enabled in current thread.."""
     self._eager_context.recording_summaries = val
 
-  # TODO(agarwal): remove?
-  @property
-  def _device_index(self):
-    return self._eager_context.device_index
-
-  # TODO(agarwal): remove?
-  @_device_index.setter
-  def _device_index(self, val):
-    self._eager_context.device_index = val
-
   @property
   def device_name(self):
     """Returns the device name for the current thread."""
-    index = self._device_index
-    return "CPU:0" if index < 0 else self._devices[index]
+    return self._eager_context.device_name
+
+  @property
+  def device_spec(self):
+    """Returns the device spec for the current thread."""
+    return self._eager_context.device_spec
+
+  @tf_contextlib.contextmanager
+  def device(self, name):
+    """Context-manager to force placement of operations and Tensors on a device.
+
+    Args:
+      name: Name of the device or None to get default placement.
+
+    Yields:
+      Nothing.
+
+    Raises:
+      ValueError: If name is not a string or is an invalid device name.
+    """
+    eager_context = self._eager_context
+    old_device_name = eager_context.device_name
+    old_device_spec = eager_context.device_spec
+    if name is not None:
+      if not isinstance(name, str):
+        raise ValueError("Expecting a string device name. Got %s(%s)" %
+                         (type(name), name))
+      device_spec = pydev.DeviceSpec.from_string(name)
+      if old_device_name:
+        new_device_spec = copy.copy(old_device_spec)
+      else:
+        new_device_spec = pydev.DeviceSpec.from_string(
+            "/job:localhost/replica:0/task:0/device:CPU:0")
+      new_device_spec.merge_from(device_spec)
+    else:
+      new_device_spec = pydev.DeviceSpec.from_string("")
+
+    try:
+      eager_context.device_name = new_device_spec.to_string()
+      eager_context.device_spec = new_device_spec
+      yield
+    finally:
+      eager_context.device_name = old_device_name
+      eager_context.device_spec = old_device_spec
 
   def devices(self):
     """List of the names of devices available to execute operations."""
@@ -289,7 +323,6 @@ def scope_name():
   return get_default_context().scope_name
 
 
-@tf_contextlib.contextmanager
 def device(name):
   """Context-manager to force placement of operations and Tensors on a device.
 
@@ -301,40 +334,16 @@ def device(name):
     x = ops.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
-  operation
-  runs on GPU 0.
+  operation runs on GPU 0.
 
   Args:
     name: Name of the device (see get_default_context().devices()), or None to
-      enable automatic placement.
+      perform automatic placement.
 
-  Yields:
-    Nothing.
-
-  Raises:
-    ValueError: If name does not correspond to a valid device.
+  Returns:
+    Context manager for setting the device.
   """
-  device_index = -1
-  ctx = get_default_context()
-  if name is not None:
-    name = pydev.canonical_name(name)
-    all_devices = ctx.devices()
-    for i, d in enumerate(all_devices):
-      # TODO(ashankar): This will change when we have distributed support.
-      # At that point, should not look for a string suffix but be able to
-      # do a full string comparison.
-      if d.endswith(name):
-        device_index = i
-        break
-    if device_index < 0:
-      raise ValueError("device {} does not match the available devices ({})".
-                       format(name, all_devices))
-  old_device_index = ctx._device_index  # pylint: disable=protected-access
-  try:
-    ctx._device_index = device_index  # pylint: disable=protected-access
-    yield
-  finally:
-    ctx._device_index = old_device_index  # pylint: disable=protected-access
+  return get_default_context().device(name)
 
 
 @contextlib.contextmanager
