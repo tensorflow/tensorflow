@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.python.estimator import run_config as run_config_lib
 
 
 class TPUConfig(
@@ -70,9 +70,20 @@ class TPUConfig(
 class RunConfig(run_config_lib.RunConfig):
   """RunConfig with TPU support."""
 
-  def __init__(self, tpu_config=None, **kwargs):
+  def __init__(self, tpu_config=None, evaluation_master='', master='',
+               **kwargs):
     super(RunConfig, self).__init__(**kwargs)
     self._tpu_config = tpu_config or TPUConfig()
+    self._evaluation_master = evaluation_master
+    self._master = master
+
+  @property
+  def evaluation_master(self):
+    return self._evaluation_master
+
+  @property
+  def master(self):
+    return self._master
 
   @property
   def tpu_config(self):
