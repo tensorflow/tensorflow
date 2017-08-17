@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -420,6 +421,26 @@ class VariableScopeTest(test.TestCase):
 
       with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
         self.assertFalse(jump_no_reuse.reuse)
+
+  def testVarScopeGetOrCreateReuse(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    with variable_scope.variable_scope("bar",
+                                       reuse=variable_scope.AUTO_REUSE):
+      v_assign = state_ops.assign(variable_scope.get_variable("var", []), x)
+
+    with variable_scope.variable_scope("bar",
+                                       reuse=variable_scope.AUTO_REUSE):
+      v = variable_scope.get_variable("var", [])
+
+    with self.test_session() as sess:
+      def test_value(value):
+        sess.run(v_assign, feed_dict={x: value})
+        self.assertEqual(value, v.eval())
+
+      test_value(42)  # Variable is created.
+      test_value(13)  # Variable is reused hereafter.
+      test_value(17)
 
   def testVarOpScope(self):
     with self.test_session():
