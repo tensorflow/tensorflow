@@ -338,7 +338,44 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
   node.mutable_attr()->insert({"dtype", attr_type});
 
   AttrValue attr_tensor;
-  tensor->AsProtoTensorContent(attr_tensor.mutable_tensor());
+  TensorProto* t = attr_tensor.mutable_tensor();
+  bool optimized = false;
+  // Use the packed representation whenever possible to avoid generating large
+  // graphdefs
+  if (tensor->NumElements() > 4) {
+    if (tensor->dtype() == DT_FLOAT) {
+      optimized = true;
+      for (int i = 0; i < tensor->NumElements(); ++i) {
+        float cur = tensor->flat<float>()(i);
+        t->add_float_val(cur);
+      }
+    } else if (tensor->dtype() == DT_DOUBLE) {
+      optimized = true;
+      for (int i = 0; i < tensor->NumElements(); ++i) {
+        double cur = tensor->flat<double>()(i);
+        t->add_double_val(cur);
+      }
+    } else if (tensor->dtype() == DT_INT64) {
+      optimized = true;
+      for (int i = 0; i < tensor->NumElements(); ++i) {
+        int64 cur = tensor->flat<int64>()(i);
+        t->add_int64_val(cur);
+      }
+    } else if (tensor->dtype() == DT_INT32) {
+      optimized = true;
+      for (int i = 0; i < tensor->NumElements(); ++i) {
+        int32 cur = tensor->flat<int32>()(i);
+        t->add_int_val(cur);
+      }
+    }
+  }
+  if (optimized) {
+    // Also specify type and shape.
+    t->set_dtype(tensor->dtype());
+    tensor->shape().AsProto(t->mutable_tensor_shape());
+  } else {
+    tensor->AsProtoTensorContent(t);
+  }
   node.mutable_attr()->insert({"value", attr_tensor});
   return node;
 }
@@ -397,8 +434,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
-    Tensor* value = new Tensor(input_node->attr().at("dtype").type());
-    CHECK(value->FromProto(input_node->attr().at("value").tensor()));
+    const TensorProto& raw_val = input_node->attr().at("value").tensor();
+    Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
+    CHECK(value->FromProto(raw_val));
     inputs.emplace_back(value);
   }
 
