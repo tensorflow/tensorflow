@@ -14,7 +14,7 @@ package_group(
     ],
 )
 
-load(":build_defs.bzl", "runtime_copts")
+load(":build_defs.bzl", "runtime_copts", "runtime_logging_deps")
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -382,12 +382,23 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_matvec",
+    srcs = ["runtime_matvec.cc"],
+    hdrs = ["runtime_matvec.h"],
+    copts = runtime_copts(),
+    deps = [
+        "//third_party/eigen3",
+    ] + runtime_logging_deps(),
+)
+
+cc_library(
     name = "runtime_matmul",
     srcs = ["runtime_matmul.cc"],
     hdrs = ["runtime_matmul.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_matvec",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
@@ -417,6 +428,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_matvec",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -428,6 +440,7 @@ cc_test(
     deps = [
         ":cpu_runtime",
         ":runtime_matmul",
+        ":runtime_single_threaded_matmul",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
