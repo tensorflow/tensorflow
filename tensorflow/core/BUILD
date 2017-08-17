@@ -67,6 +67,7 @@ load(
     "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
+    "if_mobile",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -514,8 +515,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps =
         [
-            "//tensorflow/core/platform/default/build_config:minimal",
+            "@nsync//:nsync_cpp",
+        ] + [
             "//third_party/eigen3",
+            "//tensorflow/core/platform/default/build_config:minimal",
         ],
 )
 
@@ -954,6 +957,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -976,6 +980,7 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1058,6 +1063,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1620,10 +1626,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    includes = ["../../external/nsync/public"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
         ":reader_base",
+        "@nsync//:nsync_headers",
     ],
 )
 

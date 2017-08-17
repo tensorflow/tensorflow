@@ -232,7 +232,7 @@ def tf_additional_lib_defines():
   })
 
 def tf_additional_lib_deps():
-  return select({
+  return ["@nsync//:nsync_cpp"] + select({
       "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc"],
       "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc"],
       "//conditions:default": [],

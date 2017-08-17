@@ -120,6 +120,7 @@ filegroup(
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@grpc//third_party/nanopb:LICENSE.txt",
+        "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
