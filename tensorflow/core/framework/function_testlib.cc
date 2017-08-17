@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -171,12 +170,6 @@ FunctionDef Swap() {
       // Nodes
       {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
        {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
-}
-
-void FunctionTestSchedClosure(std::function<void()> fn) {
-  static thread::ThreadPool* w =
-      new thread::ThreadPool(Env::Default(), "Test", 8);
-  w->Schedule(std::move(fn));
 }
 
 }  // end namespace function

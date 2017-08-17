@@ -176,11 +176,8 @@ Status FindCompilationCandidates(
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
     std::unordered_set<Node*>* candidates) {
   OptimizerOptions opts;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
-                                        flib_def, opts));
-  FunctionLibraryRuntime* lib_runtime =
-      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  std::unique_ptr<FunctionLibraryRuntime> lib_runtime(NewFunctionLibraryRuntime(
+      nullptr, env, nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts));
 
   for (Node* node : graph.op_nodes()) {
     DeviceType device_type("");
@@ -194,7 +191,7 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
               << ": " << node->type_string();
       continue;
@@ -206,7 +203,7 @@ Status FindCompilationCandidates(
       continue;
     }
     if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
+        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime.get())) {
       continue;
     }
     candidates->insert(node);
