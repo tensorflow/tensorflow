@@ -7,6 +7,8 @@ DotOperationTest.OneElementVectorDotF64    POPLAR // F64
 DotOperationTest.VectorDotF64    POPLAR // F64
 ConvertTest.ConvertR1F32ToR1F64 POPLAR // F64
 ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
+SliceR1Test.DoIt_double POPLAR // F64
+
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
@@ -55,7 +57,6 @@ DynamicUpdateSliceTest.Int64R1 POPLAR // S64
 DynamicSliceTest.Int64R3 POPLAR // S64
 DynamicSliceTest.Int64R2 POPLAR // S64
 DynamicSliceTest.Int64R1 POPLAR // S64
-
 
 ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
 DynamicUpdateSliceTest.UInt64R3 POPLAR // U64
