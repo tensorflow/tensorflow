@@ -122,13 +122,20 @@ def write_action_env_to_bazelrc(var_name, var):
   write_to_bazelrc('build --action_env %s="%s"' % (var_name, str(var)))
 
 
-def run_shell(cmd):
-  return subprocess.check_output(cmd, shell=True).decode('UTF-8').strip()
+def run_shell(cmd, shell=False, allow_non_zero=False):
+  if allow_non_zero:
+    try:
+      output = subprocess.check_output(cmd, shell=shell)
+    except subprocess.CalledProcessError as e:
+      output = e.output
+  else:
+    output = subprocess.check_output(cmd, shell=shell)
+  return output.decode('UTF-8').strip()
 
 
 def cygpath(path):
   """Convert path from posix to windows."""
-  return run_shell('cygpath  -m "%s"' % path)
+  return run_shell(['cygpath', '-m', path])
 
 
 def get_python_path(environ_cp):
@@ -413,7 +420,7 @@ def check_bazel_version(min_version):
     The bazel version detected.
   """
   try:
-    curr_version = run_shell('bazel --batch version')
+    curr_version = run_shell(['bazel', '--batch', 'version'])
   except subprocess.CalledProcessError:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)
@@ -508,7 +515,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = run_shell('which clang || true')
+  default_clang_path = run_shell(['which', 'clang'], allow_non_zero=True)
   ask_clang_path = ('Please specify which clang should be used as device and '
                     'host compiler. [Default is %s]: ') % default_clang_path
 
@@ -531,12 +538,13 @@ def set_clang_cuda_compiler_path(environ_cp):
 
 def set_gcc_host_compiler_path(environ_cp):
   """Set GCC_HOST_COMPILER_PATH."""
-  default_gcc_host_compiler_path = run_shell('which gcc || true')
+  default_gcc_host_compiler_path = run_shell(['which', 'gcc'],
+                                             allow_non_zero=True)
   cuda_bin_symlink = '%s/bin/gcc' % environ_cp.get('CUDA_TOOLKIT_PATH')
 
   if os.path.islink(cuda_bin_symlink):
     # os.readlink is only available in linux
-    default_gcc_host_compiler_path = run_shell('readlink %s' % cuda_bin_symlink)
+    default_gcc_host_compiler_path = run_shell(['readlink', cuda_bin_symlink])
 
   ask_gcc_path = (
       'Please specify which gcc should be used by nvcc as the '
@@ -658,7 +666,8 @@ def set_tf_cunn_version(environ_cp):
       else:
         ldconfig_bin = 'ldconfig'
       cudnn_path_from_ldconfig = run_shell(
-          r'%s -p | sed -n "s/.*libcudnn.so .* => \(.*\)/\\1/p"' % ldconfig_bin)
+          r'%s -p | sed -n "s/.*libcudnn.so .* => \(.*\)/\\1/p"' % ldconfig_bin,
+          shell=True)
       if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
         cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
         break
@@ -694,7 +703,7 @@ def get_native_cuda_compute_capabilities(environ_cp):
   cmd = (r'"%s" | grep "Capability" | grep -o "[0-9]*\.[0-9]*" | sed '
          '":a;{N;s/\\n/,/};ba"') % device_query_bin
   try:
-    output = run_shell(cmd)
+    output = run_shell(cmd, shell=True)
   except subprocess.CalledProcessError:
     output = ''
   return output
@@ -770,7 +779,7 @@ def set_other_cuda_vars(environ_cp):
 
 def set_host_cxx_compiler(environ_cp):
   """Set HOST_CXX_COMPILER."""
-  default_cxx_host_compiler = run_shell('which g++ || true')
+  default_cxx_host_compiler = run_shell(['which', 'g++'], allow_non_zero=True)
   ask_cxx_host_compiler = (
       'Please specify which C++ compiler should be used as'
       ' the host C++ compiler. [Default is %s]: ') % default_cxx_host_compiler
@@ -793,7 +802,7 @@ def set_host_cxx_compiler(environ_cp):
 
 def set_host_c_compiler(environ_cp):
   """Set HOST_C_COMPILER."""
-  default_c_host_compiler = run_shell('which gcc || true')
+  default_c_host_compiler = run_shell(['which', 'gcc'], allow_non_zero=True)
   ask_c_host_compiler = (
       'Please specify which C compiler should be used as the'
       ' host C compiler. [Default is %s]: ') % default_c_host_compiler
@@ -849,7 +858,7 @@ def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
   cmd = ('dirname $(dirname $(which mpirun)) || dirname $(dirname $(which '
          'mpiexec))  || true')
-  default_mpi_home = run_shell(cmd)
+  default_mpi_home = run_shell(cmd, shell=True)
   ask_mpi_home = ('Please specify the MPI toolkit folder. [Default is %s]: '
                  ) % default_mpi_home
   while True:
