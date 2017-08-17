@@ -44,6 +44,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
@@ -1222,6 +1223,7 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu):
                'step': training.get_global_step()},
               every_n_secs=30)
       ]
+      summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
       with ops.control_dependencies([loss]):
         update_ops = _sync_variables_ops()
       return model_fn_lib.EstimatorSpec(
