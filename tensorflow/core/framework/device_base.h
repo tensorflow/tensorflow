@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"  // TODO(b/62899350): Remove
@@ -198,6 +199,7 @@ class DeviceBase {
 
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;
+  virtual const string& name() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.
