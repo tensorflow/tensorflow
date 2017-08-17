@@ -748,7 +748,7 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         all_valid = False
       else:
         ver = int(m.group(0).split('.')[0])
-        if int < 3:
+        if ver < 3:
           print('Only compute capabilities 3.0 or higher are supported.')
           all_valid = False
 
