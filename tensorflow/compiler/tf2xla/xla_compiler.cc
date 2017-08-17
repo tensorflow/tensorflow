@@ -88,18 +88,15 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-
                                                       FunctionDefLibrary{}));
-  local_pflr_.reset(new ProcessFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), options.graph_def_version,
+  local_flib_runtime_ = NewFunctionLibraryRuntime(
+      &device_mgr_, Env::Default(), device_, options.graph_def_version,
       local_flib_def_.get(), OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
-  pflr_.reset(new ProcessFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
-      OptimizerOptions(), nullptr /* custom_kernel_creator */));
-
-  local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
-  flib_runtime_ = pflr_->GetFLR(device_->name());
+      nullptr /* custom_kernel_creator */);
+  flib_runtime_ = NewFunctionLibraryRuntime(
+      &device_mgr_, Env::Default(), device_, options.graph_def_version,
+      options.flib_def, OptimizerOptions(),
+      nullptr /* custom_kernel_creator */);
 }
 
 XlaCompiler::~XlaCompiler() = default;
@@ -140,8 +137,8 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  if (!GetFunctionBody(function, local_flib_runtime_, &fbody).ok()) {
-    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_, &fbody));
+  if (!GetFunctionBody(function, local_flib_runtime_.get(), &fbody).ok()) {
+    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_.get(), &fbody));
   }
 
   TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
@@ -162,7 +159,7 @@ Status XlaCompiler::CompileFunction(
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
+  optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
                      /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
 
   VLOG(1) << "====================================================";
@@ -467,7 +464,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   context->set_args(std::move(context_args));
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
-                                  flib_runtime_, NextStepId()));
+                                  flib_runtime_.get(), NextStepId()));
 
   int num_nonconst_outputs;
   int num_computation_outputs;
