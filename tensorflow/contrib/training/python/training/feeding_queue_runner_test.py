@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions as ff
 from tensorflow.python.client import session
+from tensorflow.python.estimator.inputs.queues.feeding_functions import _enqueue_data as enqueue_data
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
@@ -46,7 +46,7 @@ class FeedingQueueRunnerTestCase(test.TestCase):
   def testArrayFeeding(self):
     with ops.Graph().as_default():
       array = np.arange(32).reshape([16, 2])
-      q = ff.enqueue_data(array, capacity=100)
+      q = enqueue_data(array, capacity=100)
       batch_size = 3
       dq_op = q.dequeue_many(batch_size)
       with session.Session() as sess:
@@ -67,7 +67,7 @@ class FeedingQueueRunnerTestCase(test.TestCase):
   def testArrayFeedingMultiThread(self):
     with ops.Graph().as_default():
       array = np.arange(256).reshape([128, 2])
-      q = ff.enqueue_data(array, capacity=128, num_threads=8, shuffle=True)
+      q = enqueue_data(array, capacity=128, num_threads=8, shuffle=True)
       batch_size = 3
       dq_op = q.dequeue_many(batch_size)
       with session.Session() as sess:
@@ -88,7 +88,7 @@ class FeedingQueueRunnerTestCase(test.TestCase):
       array1 = np.arange(32)
       array2 = np.arange(32, 64)
       df = pd.DataFrame({"a": array1, "b": array2}, index=np.arange(64, 96))
-      q = ff.enqueue_data(df, capacity=100)
+      q = enqueue_data(df, capacity=100)
       batch_size = 5
       dq_op = q.dequeue_many(5)
       with session.Session() as sess:
@@ -116,7 +116,7 @@ class FeedingQueueRunnerTestCase(test.TestCase):
       array1 = np.arange(128, 256)
       array2 = 2 * array1
       df = pd.DataFrame({"a": array1, "b": array2}, index=np.arange(128))
-      q = ff.enqueue_data(df, capacity=128, num_threads=8, shuffle=True)
+      q = enqueue_data(df, capacity=128, num_threads=8, shuffle=True)
       batch_size = 5
       dq_op = q.dequeue_many(batch_size)
       with session.Session() as sess:
