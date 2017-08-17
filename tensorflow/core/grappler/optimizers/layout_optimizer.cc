@@ -1138,6 +1138,7 @@ class DataLayoutOptimizer {
     std::unordered_set<string> nodes_removable;
     for (int i = 0; i < graph_->node_size(); i++) {
       auto node = graph_->mutable_node(i);
+      node->mutable_attr()->erase("_output_shapes");
       if (IsNodeNHWCToNCHW(node->name())) {
         if (IsNodeNCHWToNHWC(node->input(0))) {
           const string& trans_first = node->input(0);
