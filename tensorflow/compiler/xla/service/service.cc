@@ -1211,6 +1211,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddBatchNormTrainingInstruction(
           arg->batch_norm_training_request());
       break;
+    case OpRequest::kBatchNormInferenceRequest:
+      handle_status = computation->AddBatchNormInferenceInstruction(
+          arg->batch_norm_inference_request());
+      break;
     case OpRequest::kBatchNormGradRequest:
       handle_status = computation->AddBatchNormGradInstruction(
           arg->batch_norm_grad_request());
