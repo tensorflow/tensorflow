@@ -19,6 +19,7 @@ package_group(
 )
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 
 # Filegroup used to collect source files for dependency checking.
@@ -105,7 +106,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "status_macros_test",
     size = "small",
     srcs = ["status_macros_test.cc"],
@@ -144,7 +145,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "statusor_test",
     size = "small",
     srcs = ["statusor_test.cc"],
@@ -191,7 +192,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
@@ -231,7 +232,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "shape_util_test",
     size = "small",
     srcs = ["shape_util_test.cc"],
@@ -246,7 +247,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "layout_util_test",
     size = "small",
     srcs = ["layout_util_test.cc"],
@@ -258,7 +259,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "index_util_test",
     size = "small",
     srcs = ["index_util_test.cc"],
@@ -288,7 +289,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "literal_util_test",
     size = "small",
     srcs = ["literal_util_test.cc"],
@@ -339,7 +340,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "array2d_test",
     size = "small",
     srcs = ["array2d_test.cc"],
@@ -360,7 +361,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "array3d_test",
     size = "small",
     srcs = ["array3d_test.cc"],
@@ -383,7 +384,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "array4d_test",
     size = "small",
     srcs = ["array4d_test.cc"],
@@ -451,7 +452,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "text_literal_reader_test",
     size = "small",
     srcs = ["text_literal_reader_test.cc"],
@@ -482,7 +483,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "text_literal_writer_test",
     size = "small",
     srcs = ["text_literal_writer_test.cc"],
@@ -511,7 +512,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "shape_tree_test",
     size = "small",
     srcs = ["shape_tree_test.cc"],
@@ -572,7 +573,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "reference_util_test",
     size = "small",
     srcs = ["reference_util_test.cc"],

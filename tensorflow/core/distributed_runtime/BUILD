@@ -27,6 +27,7 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
@@ -56,7 +57,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "partial_run_mgr_test",
     size = "small",
     srcs = ["partial_run_mgr_test.cc"],
@@ -82,7 +83,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "message_wrappers_test",
     size = "small",
     srcs = ["message_wrappers_test.cc"],
@@ -121,7 +122,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "session_mgr_test",
     size = "small",
     srcs = ["session_mgr_test.cc"],
@@ -185,7 +186,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "call_options_test",
     size = "small",
     srcs = ["call_options_test.cc"],
@@ -196,7 +197,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tensor_coding_test",
     size = "small",
     srcs = ["tensor_coding_test.cc"],

@@ -9,6 +9,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_tests_tags")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 exports_files(["LICENSE"])
 
@@ -130,7 +131,7 @@ py_test(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "attr_examples",
     srcs = ["attr_examples.cc"],
     deps = [

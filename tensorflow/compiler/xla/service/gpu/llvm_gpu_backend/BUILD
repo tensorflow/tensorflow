@@ -11,6 +11,8 @@ package_group(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
@@ -51,7 +53,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],

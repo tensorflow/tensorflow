@@ -1,6 +1,8 @@
 # Experimental extensions to the C API for eager execution of kernels.
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "c_api",
     srcs = ["c_api.cc"],
@@ -22,7 +24,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "c_api_test",
     srcs = ["c_api_test.cc"],
     deps = [
@@ -51,7 +53,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "runtime_test",
     srcs = ["runtime_test.cc"],
     deps = [

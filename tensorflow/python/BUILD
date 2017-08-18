@@ -20,6 +20,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
@@ -268,7 +269,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
     copts = if_not_windows(["-Wno-sign-compare"]),
@@ -278,7 +279,6 @@ cc_binary(
         ],
         "//tensorflow:darwin": [],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@protobuf_archive//:protobuf_headers",
@@ -292,7 +292,10 @@ py_test(
     data = [":framework/test_file_system.so"],
     main = "framework/file_system_test.py",
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_pip",  # Odd path issues
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":data_flow_ops",
@@ -2689,6 +2692,7 @@ tf_proto_library(
         ],
     ),
     go_api_version = 2,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(

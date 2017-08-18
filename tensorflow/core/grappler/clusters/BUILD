@@ -14,6 +14,11 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 config_setting(
     name = "xsmm",
     licenses = ["notice"],
@@ -72,7 +77,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "virtual_cluster_test",
     srcs = ["virtual_cluster_test.cc"],
     deps = [
@@ -106,7 +111,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory

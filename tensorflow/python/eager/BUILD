@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -168,7 +169,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "python_eager_op_gen_demo",
     deps = [
         ":python_eager_op_gen_main",

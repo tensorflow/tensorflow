@@ -1,6 +1,7 @@
 # Platform-specific build configurations.
 
-load("@protobuf_archive//:protobuf.bzl", "cc_proto_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
@@ -22,15 +23,132 @@ def tf_deps(deps, suffix):
 
   return tf_deps
 
+
+def _CcHdrs(srcs, use_grpc_plugin=False):
+  ret = [s[:-len(".proto")] + ".pb.h" for s in srcs]
+  if use_grpc_plugin:
+    ret += [s[:-len(".proto")] + ".grpc.pb.h" for s in srcs]
+  return ret
+
+def _CcSrcs(srcs, use_grpc_plugin=False):
+  ret = [s[:-len(".proto")] + ".pb.cc" for s in srcs]
+  if use_grpc_plugin:
+    ret += [s[:-len(".proto")] + ".grpc.pb.cc" for s in srcs]
+  return ret
+
+def cc_proto_library(
+        name,
+        srcs=[],
+        deps=[],
+        cc_libs=[],
+        include=None,
+        protoc="@protobuf_archive//:protoc",
+        internal_bootstrap_hack=False,
+        use_grpc_plugin=False,
+        default_runtime="@protobuf_archive//:protobuf",
+        default_header=False,
+        **kargs):
+  """Bazel rule to create a C++ protobuf library from proto source files
+  NOTE: the rule is only an internal workaround to generate protos. The
+  interface may change and the rule may be removed when bazel has introduced
+  the native rule.
+  Args:
+    name: the name of the cc_proto_library.
+    srcs: the .proto files of the cc_proto_library.
+    deps: a list of dependency labels; must be cc_proto_library.
+    cc_libs: a list of other cc_library targets depended by the generated
+        cc_library.
+    include: a string indicating the include path of the .proto files.
+    protoc: the label of the protocol compiler to generate the sources.
+    internal_bootstrap_hack: a flag indicate the cc_proto_library is used only
+        for bootstraping. When it is set to True, no files will be generated.
+        The rule will simply be a provider for .proto files, so that other
+        cc_proto_library can depend on it.
+    use_grpc_plugin: a flag to indicate whether to call the grpc C++ plugin
+        when processing the proto files.
+    default_runtime: the implicitly default runtime which will be depended on by
+        the generated cc_library target.
+    **kargs: other keyword arguments that are passed to cc_library.
+  """
+
+  includes = []
+  if include != None:
+    includes = [include]
+
+  if internal_bootstrap_hack:
+    # For pre-checked-in generated files, we add the internal_bootstrap_hack
+    # which will skip the codegen action.
+    proto_gen(
+        name=name + "_genproto",
+        srcs=srcs,
+        deps=[s + "_genproto" for s in deps],
+        includes=includes,
+        protoc=protoc,
+        visibility=["//visibility:public"],
+    )
+    # An empty cc_library to make rule dependency consistent.
+    native.cc_library(
+        name=name,
+        **kargs)
+    return
+
+  grpc_cpp_plugin = None
+  if use_grpc_plugin:
+    grpc_cpp_plugin = "//external:grpc_cpp_plugin"
+
+  gen_srcs = _CcSrcs(srcs, use_grpc_plugin)
+  gen_hdrs = _CcHdrs(srcs, use_grpc_plugin)
+  outs = gen_srcs + gen_hdrs
+
+  proto_gen(
+      name=name + "_genproto",
+      srcs=srcs,
+      deps=[s + "_genproto" for s in deps],
+      includes=includes,
+      protoc=protoc,
+      plugin=grpc_cpp_plugin,
+      plugin_language="grpc",
+      gen_cc=1,
+      outs=outs,
+      visibility=["//visibility:public"],
+  )
+
+  if default_runtime and not default_runtime in cc_libs:
+    cc_libs += [default_runtime]
+  if use_grpc_plugin:
+    cc_libs += ["//external:grpc_lib"]
+
+  if default_header:
+    header_only_name = name
+    impl_name = name + "_impl"
+  else:
+    header_only_name = name + "_headers_only"
+    impl_name = name
+    
+  native.cc_library(
+      name=impl_name,
+      srcs=gen_srcs,
+      hdrs=gen_hdrs,
+      deps=cc_libs + deps,
+      includes=includes,
+      **kargs)
+  native.cc_library(
+      name=header_only_name,
+      deps=["@protobuf_archive//:protobuf_headers"],
+      hdrs=gen_hdrs,
+      **kargs)
+
 def tf_proto_library_cc(name, srcs = [], has_services = None,
-                        protodeps = [], visibility = [], testonly = 0,
+                        protodeps = [],
+                        visibility = [], testonly = 0,
                         cc_libs = [],
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
                         j2objc_api_version = 1,
                         cc_api_version = 2, go_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
-                        js_api_version = 2, js_codegen = "jspb"):
+                        js_api_version = 2, js_codegen = "jspb",
+                        default_header = False):
   native.filegroup(
       name = name + "_proto_srcs",
       srcs = srcs + tf_deps(protodeps, "_proto_srcs"),
@@ -45,17 +163,18 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       name = name + "_cc",
       srcs = srcs,
       deps = tf_deps(protodeps, "_cc") + ["@protobuf_archive//:cc_wkt_protos"],
-      cc_libs = cc_libs + ["@protobuf_archive//:protobuf"],
+      cc_libs = cc_libs + ["@protobuf_archive//:protobuf_headers"],
       copts = if_not_windows([
           "-Wno-unknown-warning-option",
           "-Wno-unused-but-set-variable",
           "-Wno-sign-compare",
       ]),
       protoc = "@protobuf_archive//:protoc",
-      default_runtime = "@protobuf_archive//:protobuf",
+      default_runtime = "@protobuf_archive//:protobuf_headers",
       use_grpc_plugin = use_grpc_plugin,
       testonly = testonly,
       visibility = visibility,
+      default_header = default_header,
   )
 
 def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
@@ -76,13 +195,15 @@ def tf_jspb_proto_library(**kwargs):
   pass
 
 def tf_proto_library(name, srcs = [], has_services = None,
-                     protodeps = [], visibility = [], testonly = 0,
+                     protodeps = [],
+                     visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, cc_grpc_version = None,
                      go_api_version = 2,
                      j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
-                     js_api_version = 2, js_codegen = "jspb"):
+                     js_api_version = 2, js_codegen = "jspb",
+                     default_header = False):
   """Make a proto library, possibly depending on other proto libraries."""
   tf_proto_library_cc(
       name = name,
@@ -92,6 +213,7 @@ def tf_proto_library(name, srcs = [], has_services = None,
       cc_libs = cc_libs,
       testonly = testonly,
       visibility = visibility,
+      default_header = default_header,
   )
 
   tf_proto_library_py(
@@ -233,8 +355,8 @@ def tf_additional_lib_defines():
 
 def tf_additional_lib_deps():
   return select({
-      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc"],
-      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc"],
+      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_headers"],
+      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_headers"],
       "//conditions:default": [],
   })
 
@@ -302,3 +424,30 @@ def tf_additional_gdr_lib_defines():
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):
   pass
+
+def tf_additional_binary_deps():
+  return if_cuda(
+      [
+          "//tensorflow/stream_executor:cuda_platform",
+          "//tensorflow/core/platform/default/build_config:cuda",
+      ],
+  ) + select({
+      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
+      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
+      "//conditions:default": [],
+  }) + [
+      # TODO(allenlavoie): Split these out into their own shared objects (they
+      # are here because they are shared between contrib/ op shared objects
+      # and core).
+      "//tensorflow/core/kernels:lookup_util",
+      "//tensorflow/core/util/tensor_bundle",
+  ]
+
+def proto_headers():
+  return ["@protobuf_archive//:protobuf_headers"]
+
+def proto_impl():
+  return ["@protobuf_archive//:protobuf"]
+
+def if_static(extra_deps):
+  return []

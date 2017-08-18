@@ -13,6 +13,8 @@ package_group(
 )
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 xla_proto_library(
     name = "session_proto",
@@ -52,7 +54,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "shape_inference_test",
     size = "small",
     srcs = ["shape_inference_test.cc"],
@@ -67,7 +69,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_opcode_test",
     size = "small",
     srcs = ["hlo_opcode_test.cc"],
@@ -98,7 +100,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_evaluator_test",
     size = "small",
     srcs = ["hlo_evaluator_test.cc"],
@@ -172,7 +174,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_reachability_test",
     srcs = ["hlo_reachability_test.cc"],
     deps = [
@@ -197,7 +199,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_matchers_test",
     size = "small",
     srcs = ["hlo_matchers_test.cc"],
@@ -218,7 +220,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_instruction_test",
     size = "small",
     srcs = ["hlo_instruction_test.cc"],
@@ -246,7 +248,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "call_graph_test",
     size = "small",
     srcs = ["call_graph_test.cc"],
@@ -290,7 +292,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "call_inliner_test",
     size = "small",
     srcs = ["call_inliner_test.cc"],
@@ -311,7 +313,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "flatten_call_graph_test",
     size = "small",
     srcs = ["flatten_call_graph_test.cc"],
@@ -352,7 +354,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "user_computation_test",
     size = "small",
     srcs = ["user_computation_test.cc"],
@@ -717,7 +719,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "liveness_util_test",
     size = "small",
     srcs = ["liveness_util_test.cc"],
@@ -752,7 +754,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "buffer_liveness_test",
     size = "small",
     srcs = ["buffer_liveness_test.cc"],
@@ -795,7 +797,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "buffer_assignment_test",
     size = "small",
     srcs = ["buffer_assignment_test.cc"],
@@ -837,7 +839,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_ordering_test",
     size = "small",
     srcs = ["hlo_ordering_test.cc"],
@@ -869,7 +871,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "heap_simulator_test",
     size = "small",
     srcs = ["heap_simulator_test.cc"],
@@ -906,7 +908,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_scheduling_test",
     size = "small",
     srcs = ["hlo_scheduling_test.cc"],
@@ -944,7 +946,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "instruction_fusion_test",
     size = "small",
     srcs = ["instruction_fusion_test.cc"],
@@ -975,7 +977,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "batchnorm_rewriter_test",
     size = "small",
     srcs = ["batchnorm_rewriter_test.cc"],
@@ -1015,7 +1017,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "algebraic_simplifier_test",
     size = "small",
     srcs = ["algebraic_simplifier_test.cc"],
@@ -1049,7 +1051,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "reshape_mover_test",
     size = "small",
     srcs = ["reshape_mover_test.cc"],
@@ -1083,7 +1085,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "inliner_test",
     size = "small",
     srcs = ["inliner_test.cc"],
@@ -1195,7 +1197,7 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
-cc_test(
+tf_cc_test(
     name = "transfer_manager_test",
     size = "small",
     srcs = ["transfer_manager_test.cc"],
@@ -1229,7 +1231,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_cost_analysis_test",
     size = "small",
     srcs = ["hlo_cost_analysis_test.cc"],
@@ -1271,7 +1273,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_computation_test",
     size = "small",
     srcs = ["hlo_computation_test.cc"],
@@ -1287,7 +1289,7 @@ cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "graphviz_example",
     srcs = ["graphviz_example.cc"],
     deps = [
@@ -1302,7 +1304,7 @@ cc_binary(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_module_test",
     size = "small",
     srcs = ["hlo_module_test.cc"],
@@ -1369,7 +1371,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_dataflow_analysis_test",
     size = "small",
     srcs = ["hlo_dataflow_analysis_test.cc"],
@@ -1426,7 +1428,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
     deps = [
@@ -1464,7 +1466,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tuple_points_to_analysis_test",
     size = "small",
     srcs = ["tuple_points_to_analysis_test.cc"],
@@ -1544,7 +1546,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "copy_insertion_test",
     size = "small",
     srcs = ["copy_insertion_test.cc"],
@@ -1612,7 +1614,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_rematerialization_test",
     size = "small",
     srcs = ["hlo_rematerialization_test.cc"],
@@ -1629,7 +1631,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_dce_test",
     size = "small",
     srcs = ["hlo_dce_test.cc"],
@@ -1649,7 +1651,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "layout_assignment_test",
     size = "small",
     srcs = ["layout_assignment_test.cc"],
@@ -1722,7 +1724,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_cse_test",
     size = "small",
     srcs = ["hlo_cse_test.cc"],
@@ -1758,7 +1760,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_constant_folding_test",
     size = "small",
     srcs = ["hlo_constant_folding_test.cc"],
@@ -1850,7 +1852,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_subcomputation_unification_test",
     size = "small",
     srcs = ["hlo_subcomputation_unification_test.cc"],
@@ -1879,7 +1881,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_tfgraph_builder_test",
     size = "small",
     srcs = ["hlo_tfgraph_builder_test.cc"],
@@ -1927,7 +1929,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "transpose_folding_test",
     size = "small",
     srcs = ["transpose_folding_test.cc"],
@@ -1956,7 +1958,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "pool_test",
     size = "small",
     srcs = ["pool_test.cc"],
@@ -1993,7 +1995,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "reduce_precision_insertion_test",
     size = "small",
     srcs = ["reduce_precision_insertion_test.cc"],

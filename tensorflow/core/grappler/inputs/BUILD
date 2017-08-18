@@ -12,6 +12,11 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 cc_library(
     name = "utils",
     srcs = [
@@ -27,7 +32,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     size = "small",
     srcs = [

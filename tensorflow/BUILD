@@ -11,6 +11,12 @@ exports_files([
     "ACKNOWLEDGMENTS",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_binary_deps",
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -447,10 +453,38 @@ filegroup(
     data = glob(["docs_src/**/*.md"]),
 )
 
+# A shared object which includes registration mechanisms for ops and
+# kernels. Does not include the implementations of any ops or kernels. Instead,
+# the library which loads libtfframework.so (e.g. _pywrap_tensorflow_internal.so
+# for Python, libtensorflow.so for the C API) is responsible for registering ops
+# with libtfframework.so. In addition to this core set of ops, user libraries
+# which are loaded (via TF_LoadLibrary/tf.load_op_library) register their ops
+# and kernels with this shared object directly.
+#
+# For example, from Python tf.load_op_library loads a custom op library (via
+# dlopen() on Linux), the library finds libtfframework.so and registers its ops
+# and kernels via REGISTER_OP and REGISTER_KERNEL_BUILDER (which use symbols
+# from libtfframework.so), and pywrap_tensorflow can then use these ops. Since
+# other languages use the same libtfframework.so, op libraries are language
+# agnostic.
+tf_cc_shared_object(
+    name = "libtfframework.so",
+    framework_so = [],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/core:gpu_runtime_impl",
+    ] + tf_additional_binary_deps(),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
-cc_binary(
+tf_cc_shared_object(
     name = "libtensorflow.so",
     linkopts = select({
         "//tensorflow:darwin": [
@@ -466,7 +500,6 @@ cc_binary(
             "//tensorflow/c:version_script.lds",
         ],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:exported_symbols.lds",
@@ -475,9 +508,8 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "libtensorflow_cc.so",
-    linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",

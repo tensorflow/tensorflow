@@ -4,6 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -26,6 +27,8 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # ---------------------------------- V2 ops ------------------------------------------#
 filegroup(
@@ -86,10 +89,13 @@ tf_gen_op_wrapper_py(
 tf_custom_op_library(
     name = "python/ops/_tensor_forest_ops.so",
     srcs = [
+        ":libforestprotos.so",
         ":v2_op_defs",
         ":v2_op_sources",
     ],
-    deps = [":tree_utils"],
+    deps = [
+        ":tree_utils",
+    ],
 )
 
 py_library(
@@ -142,7 +148,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tensor_forest_ops_test",
     size = "small",
     srcs = [
@@ -190,14 +196,16 @@ py_library(
 # Model Ops.
 cc_library(
     name = "model_ops_lib",
-    srcs = ["kernels/model_ops.cc"],
+    srcs = [
+        "kernels/model_ops.cc",
+    ],
     deps = [
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc_headers_only",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource",
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_data",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -227,7 +235,10 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_model_ops.so",
-    srcs = ["ops/model_ops.cc"],
+    srcs = [
+        "ops/model_ops.cc",
+        ":libforestprotos.so",
+    ],
     deps = [":model_ops_lib"],
 )
 
@@ -248,7 +259,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "model_ops_test",
     size = "small",
     srcs = [
@@ -256,7 +267,9 @@ cc_test(
         "ops/model_ops.cc",
     ],
     deps = [
+        ":forest_proto_impl",
         ":model_ops_lib",
+        "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -277,7 +290,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_data",
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_target",
         "//tensorflow/contrib/tensor_forest/kernels/v4:params",
-        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -307,7 +320,10 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_stats_ops.so",
-    srcs = ["ops/stats_ops.cc"],
+    srcs = [
+        "ops/stats_ops.cc",
+        "//tensorflow/contrib/tensor_forest:libforestprotos.so",
+    ],
     deps = [":stats_ops_lib"],
 )
 
@@ -327,7 +343,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "stats_ops_test",
     size = "small",
     srcs = [
@@ -335,7 +351,9 @@ cc_test(
         "ops/stats_ops.cc",
     ],
     deps = [
+        ":forest_proto_impl",
         ":stats_ops_lib",
+        "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -357,6 +375,30 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
+    name = "forest_proto_impl",
+    deps = [
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
+    ],
+)
+
+# Protocol buffer dependencies shared between multiple op shared objects. This
+# avoids attempting to register the same protocol buffer multiple times.
+tf_cc_shared_object(
+    name = "libforestprotos.so",
+    # This object does not depend on TensorFlow.
+    framework_so = [],
+    linkstatic = 1,
+    deps = [
+        ":forest_proto_impl",
+        "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
+        "@protobuf_archive//:protobuf",
     ],
 )
 

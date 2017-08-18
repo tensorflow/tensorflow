@@ -49,3 +49,14 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "proto_impl",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+    ],
+)

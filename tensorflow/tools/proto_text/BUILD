@@ -20,12 +20,14 @@ exports_files([
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_generate_proto_text_sources",
+    "tf_cc_test",
 )
 
 # For platform specific build config
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library_cc",
+    "proto_impl",
 )
 
 cc_binary(
@@ -35,7 +37,7 @@ cc_binary(
     deps = [
         ":gen_proto_text_functions_lib",
         "//tensorflow/core:lib_internal",
-    ],
+    ] + proto_impl(),
 )
 
 cc_library(
@@ -75,7 +77,7 @@ tf_generate_proto_text_sources(
     srcs_relative_dir = "tensorflow/tools/proto_text/",
 )
 
-cc_test(
+tf_cc_test(
     name = "gen_proto_text_functions_lib_test",
     size = "small",
     srcs = [

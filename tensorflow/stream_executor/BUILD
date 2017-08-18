@@ -3,7 +3,7 @@ licenses(["restricted"])
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 
 cc_library(
-    name = "stream_executor",
+    name = "stream_executor_impl",
     srcs = glob(
         [
             "*.cc",
@@ -16,6 +16,13 @@ cc_library(
             "**/*_test.cc",
         ],
     ),
+    visibility = ["//visibility:public"],
+    deps = [":stream_executor"],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "stream_executor",
     hdrs = glob([
         "*.h",
         "cuda/*.h",
@@ -33,7 +40,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@local_config_cuda//cuda:cuda_headers",
     ],
-    alwayslink = 1,
 )
 
 cc_library(

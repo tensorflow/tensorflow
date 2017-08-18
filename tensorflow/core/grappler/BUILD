@@ -14,6 +14,11 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 cc_library(
     name = "op_types",
     srcs = ["op_types.cc"],
@@ -36,7 +41,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],
@@ -97,7 +102,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_test",
     size = "small",
     srcs = ["grappler_item_test.cc"],
@@ -110,7 +115,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_builder_test",
     size = "small",
     srcs = ["grappler_item_builder_test.cc"],

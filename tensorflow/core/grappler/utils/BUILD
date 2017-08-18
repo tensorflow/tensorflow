@@ -12,6 +12,11 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 cc_library(
     name = "scc",
     srcs = ["scc.cc"],
@@ -24,7 +29,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "scc_test",
     size = "small",
     srcs = ["scc_test.cc"],
@@ -53,7 +58,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "topological_sort_test",
     size = "small",
     srcs = ["topological_sort_test.cc"],

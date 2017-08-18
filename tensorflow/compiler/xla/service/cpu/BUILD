@@ -15,6 +15,8 @@ package_group(
 )
 
 load(":build_defs.bzl", "runtime_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -238,7 +240,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "sample_harness",
     srcs = ["sample_harness.cc"],
     deps = [
@@ -422,7 +424,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
     deps = [
@@ -440,7 +442,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "cpu_instruction_fusion_test",
     size = "small",
     srcs = ["cpu_instruction_fusion_test.cc"],
@@ -452,7 +454,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "xfeed_manager_test",
     size = "small",
     srcs = ["xfeed_manager_test.cc"],
@@ -551,7 +553,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "conv_canonicalization_test",
     size = "small",
     srcs = ["conv_canonicalization_test.cc"],
@@ -574,7 +576,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "shape_partition_test",
     srcs = ["shape_partition_test.cc"],
     deps = [

@@ -42,6 +42,14 @@ pkg_tar(
     # are resolved, otherwise these rules break when built
     # with Python 3.
     tags = ["manual"],
+    deps = [":common_deps"],
+)
+
+# Shared objects that all TensorFlow libraries depend on.
+pkg_tar(
+    name = "common_deps",
+    files = ["//tensorflow:libtfframework.so"],
+    tags = ["manual"],
 )
 
 pkg_tar(
@@ -66,6 +74,7 @@ pkg_tar(
     # are resolved, otherwise these rules break when built
     # with Python 3.
     tags = ["manual"],
+    deps = [":common_deps"],
 )
 
 pkg_tar(

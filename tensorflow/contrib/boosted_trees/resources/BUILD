@@ -26,6 +26,15 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
+    name = "stamped_resource_impl",
+    srcs = ["stamped_resource.cc"],
+    deps = [
+        ":stamped_resource",
     ],
 )
 
@@ -35,7 +44,7 @@ cc_library(
     deps = [
         ":stamped_resource",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
-        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
@@ -47,5 +56,14 @@ cc_library(
         ":stamped_resource",
         "//tensorflow/contrib/boosted_trees/lib:trees",
         "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_library(
+    name = "decision_tree_ensemble_resource_impl",
+    srcs = ["decision_tree_ensemble_resource.cc"],
+    deps = [
+        ":decision_tree_ensemble_resource",
+        ":stamped_resource_impl",
     ],
 )

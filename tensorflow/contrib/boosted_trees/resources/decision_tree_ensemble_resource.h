@@ -29,15 +29,9 @@ namespace models {
 class DecisionTreeEnsembleResource : public StampedResource {
  public:
   // Constructor.
-  explicit DecisionTreeEnsembleResource()
-      : decision_tree_ensemble_(
-            protobuf::Arena::CreateMessage<
-                boosted_trees::trees::DecisionTreeEnsembleConfig>(&arena_)) {}
+  explicit DecisionTreeEnsembleResource();
 
-  string DebugString() override {
-    return strings::StrCat("GTFlowDecisionTreeEnsemble[size=",
-                           decision_tree_ensemble_->trees_size(), "]");
-  }
+  string DebugString() override;
 
   const boosted_trees::trees::DecisionTreeEnsembleConfig&
   decision_tree_ensemble() const {
@@ -51,16 +45,7 @@ class DecisionTreeEnsembleResource : public StampedResource {
 
   // Resets the resource and frees the protos in arena.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
-    // Reset stamp.
-    set_stamp(-1);
-
-    // Clear tree ensemle.
-    arena_.Reset();
-    CHECK_EQ(0, arena_.SpaceAllocated());
-    decision_tree_ensemble_ = protobuf::Arena::CreateMessage<
-        boosted_trees::trees::DecisionTreeEnsembleConfig>(&arena_);
-  }
+  void Reset();
 
   mutex* get_mutex() { return &mu_; }
 

@@ -177,6 +177,7 @@ sh_binary(
             "//tensorflow/python:spectral_ops_test_util",
             "//tensorflow/python/eager:pip_dependencies",
             "//tensorflow/python/tools:tools_pip",
+            "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
