@@ -8,6 +8,7 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
         "//tensorflow/contrib/xla_tf_graph/...",
+        "//tensorflow/contrib/xlagen/...",
     ],
 )
 
