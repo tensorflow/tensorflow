@@ -231,6 +231,16 @@ class DatasetConstructorTest(test.TestCase):
                        dtypes.int64), dataset.output_types)
     self.assertEquals(([], ([], []), []), dataset.output_shapes)
 
+  def testNestedDict(self):
+    components = {"a": {"aa": 1, "ab": [2.0, 2.0]}, "b": [3, 3, 3]}
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    self.assertEquals(dtypes.int32, dataset.output_types["a"]["aa"])
+    self.assertEquals(dtypes.float32, dataset.output_types["a"]["ab"])
+    self.assertEquals(dtypes.int32, dataset.output_types["b"])
+    self.assertEquals([], dataset.output_shapes["a"]["aa"])
+    self.assertEquals([2], dataset.output_shapes["a"]["ab"])
+    self.assertEquals([3], dataset.output_shapes["b"])
+
   def testNonSequenceNestedStructure(self):
     components = np.array([1, 2, 3])
 
