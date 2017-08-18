@@ -116,21 +116,29 @@ class MklAddNOp : public OpKernel {
              E_SUCCESS);
 
     Tensor* output = nullptr;
-    TensorShape tf_shape;
-    mkl_context.output_shape.SetMklTensor(true);
-    mkl_context.output_shape.SetMklLayout(mkl_context.Eltwise, dnnResourceDst);
+    if (input1_in_mkl_format || input2_in_mkl_format) {
+     TensorShape tf_shape;
+     mkl_context.output_shape.SetMklTensor(true);
+     mkl_context.output_shape.SetMklLayout(mkl_context.Eltwise, dnnResourceDst);
 
-    mkl_context.output_shape.SetTfLayout(
+     mkl_context.output_shape.SetTfLayout(
         mkl_context.in_dims, mkl_context.in1_sizes, mkl_context.in1_strides);
 
-    mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims);
+     mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims);
 
-    tf_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
+     tf_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                         mkl_context.output_shape.GetMklLayout())) /
                     sizeof(T));
 
-    AllocateOutputSetMklShape(ctx, 0, &output, tf_shape,
+     AllocateOutputSetMklShape(ctx, 0, &output, tf_shape,
                               mkl_context.output_shape);
+    } else {
+     const TensorShape& o_shape = input0.shape();
+     mkl_context.output_shape.SetMklTensor(false);
+     AllocateOutputSetMklShape(ctx, 0, &output, o_shape,
+                                mkl_context.output_shape);
+    }
+
 
     mkl_context.Eltwise_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -249,8 +257,16 @@ class MklAddNOp : public OpKernel {
       bool input1_in_mkl_format = input1_shape.IsMklTensor();
       bool input2_in_mkl_format = input2_shape.IsMklTensor();
       dnnDelete_F32(Eltwise);
-      if (!input1_in_mkl_format) dnnLayoutDelete_F32(lt_input1);
-      if (!input2_in_mkl_format) dnnLayoutDelete_F32(lt_input2);
+      if (!input1_in_mkl_format) {
+         dnnLayoutDelete_F32(lt_input1);
+         delete [] in1_sizes;
+         delete [] in1_strides;
+      }
+      if (!input2_in_mkl_format) {
+         dnnLayoutDelete_F32(lt_input2);
+         delete [] in2_sizes;
+         delete [] in2_strides;
+      }
     }
   } MklAddNOpContext;
 };
