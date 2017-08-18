@@ -95,7 +95,7 @@ class PrintModelAnalysisTest(test.TestCase):
             # Make sure time is profiled.
             gap = 1 if test.is_gpu_available() else 2
             for i in range(3, 6, gap):
-              mat = re.search('(.*)us/(.*)us', metrics[i])
+              mat = re.search('(.*)[um]s/(.*)[um]s', metrics[i])
               self.assertGreater(float(mat.group(1)), 0.0)
               self.assertGreater(float(mat.group(2)), 0.0)
             # Make sure device is profiled.
