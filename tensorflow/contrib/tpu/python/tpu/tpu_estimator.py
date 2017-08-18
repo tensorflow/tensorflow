@@ -95,7 +95,8 @@ def _increase_eval_step_op(iterations_per_loop):
   """
   eval_step = evaluation._get_or_create_eval_step()  # pylint: disable=protected-access
   # Estimator evaluate increases 1 by default. So, we increase the difference.
-  return state_ops.assign_add(eval_step, iterations_per_loop - 1)
+  return state_ops.assign_add(eval_step, iterations_per_loop - 1,
+                              use_locking=True)
 
 
 def _tpu_job(run_config):
