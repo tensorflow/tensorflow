@@ -22,7 +22,6 @@ import errno
 import os
 import platform
 import re
-import site
 import subprocess
 import sys
 
@@ -138,46 +137,33 @@ def cygpath(path):
   return run_shell(['cygpath', '-m', path])
 
 
-def get_python_path(environ_cp):
+def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
-  # Check if target python is current running python
-  if environ_cp['PYTHON_BIN_PATH'] == sys.executable:
-    python_paths = []
-    if environ_cp.get('PYTHONPATH'):
-      python_paths = environ_cp.get('PYTHONPATH').split(':')
-    try:
-      library_paths = site.getsitepackages()
-    except AttributeError:
-      from distutils.sysconfig import get_python_lib  # pylint: disable=g-import-not-at-top
-      library_paths = [get_python_lib()]
-    all_paths = set(python_paths + library_paths)
-  else:
-    all_paths = run_shell([environ_cp['PYTHON_BIN_PATH'], '-c', '''
-from __future__ import print_function
-import site
-import os
-python_paths = []
-if os.getenv('PYTHONPATH') is not None:
-  python_paths = os.getenv('PYTHONPATH').split(':')
-try:
-  library_paths = site.getsitepackages()
-except AttributeError:
- from distutils.sysconfig import get_python_lib
- library_paths = [get_python_lib()]
-all_paths = set(python_paths + library_paths)
-paths = []
-for path in all_paths:
-  if os.path.isdir(path):
-    paths.append(path)
-print(",".join(paths))
-'''])
-    all_paths = all_paths.split(',')
+  python_paths = []
+  if environ_cp.get('PYTHONPATH'):
+    python_paths = environ_cp.get('PYTHONPATH').split(':')
+  try:
+    library_paths = run_shell(
+        [python_bin_path, '-c',
+         'import site; print("\\n".join(site.getsitepackages()))']).split("\n")
+  except subprocess.CalledProcessError:
+    library_paths = [run_shell(
+        [python_bin_path, '-c',
+         'from distutils.sysconfig import get_python_lib;'
+         'print(get_python_lib())'])]
+
+  all_paths = set(python_paths + library_paths)
 
   paths = []
   for path in all_paths:
     if os.path.isdir(path):
       paths.append(path)
   return paths
+
+
+def get_python_major_version(python_bin_path):
+  """Get the python major version."""
+  return run_shell([python_bin_path, '-c', 'import sys; print(sys.version[0])'])
 
 
 def setup_python(environ_cp, bazel_version):
@@ -193,7 +179,6 @@ def setup_python(environ_cp, bazel_version):
     # Check if the path is valid
     if (os.path.isfile(python_bin_path) and os.access(
         python_bin_path, os.X_OK)) or (os.path.isdir(python_bin_path)):
-      environ_cp['PYTHON_BIN_PATH'] = python_bin_path
       break
     elif not os.path.exists(python_bin_path):
       print('Invalid python path: %s cannot be found.' % python_bin_path)
@@ -201,10 +186,14 @@ def setup_python(environ_cp, bazel_version):
       print('%s is not executable.  Is it the python binary?' % python_bin_path)
     environ_cp['PYTHON_BIN_PATH'] = ''
 
+  # Convert python path to Windows style before checking lib and version
+  if is_windows():
+    python_bin_path = cygpath(python_bin_path)
+
   # Get PYTHON_LIB_PATH
   python_lib_path = environ_cp.get('PYTHON_LIB_PATH')
   if not python_lib_path:
-    python_lib_paths = get_python_path(environ_cp)
+    python_lib_paths = get_python_path(environ_cp, python_bin_path)
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
       python_lib_path = python_lib_paths[0]
     else:
@@ -218,10 +207,10 @@ def setup_python(environ_cp, bazel_version):
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  python_major_version = sys.version_info[0]
+  python_major_version = get_python_major_version(python_bin_path)
+
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows():
-    python_bin_path = cygpath(python_bin_path)
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -759,9 +748,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     # Check whether all capabilities from the input is valid
     all_valid = True
     for compute_capability in tf_cuda_compute_capabilities.split(','):
-      if not re.match('[0-9]+.[0-9]+', compute_capability):
+      m = re.match('[0-9]+.[0-9]+', compute_capability)
+      if not m:
         print('Invalid compute capability: ' % compute_capability)
         all_valid = False
+      else:
+        ver = int(m.group(0).split('.')[0])
+        if ver < 3:
+          print('Only compute capabilities 3.0 or higher are supported.')
+          all_valid = False
 
     if all_valid:
       break
