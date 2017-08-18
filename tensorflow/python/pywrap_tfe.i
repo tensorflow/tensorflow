@@ -18,6 +18,7 @@ limitations under the License.
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_NumpyToTensorHandle;
 %rename("%s") TFE_NewContext;
+%rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_TensorHandleDataType;
 %rename("%s") TFE_TensorHandleNumDims;
@@ -58,6 +59,22 @@ limitations under the License.
     PyList_SetItem(list, 0, $result);
     $result = list;
   }
+}
+
+%typemap(in) const char* serialized_function_def {
+  $1 = TFE_GetPyThonString($input);
+}
+
+%typemap(in) const char* device_name {
+  if ($input == Py_None) {
+    $1 = nullptr;
+  } else {
+    $1 = TFE_GetPyThonString($input);
+  }
+}
+
+%typemap(in) const char* op_name {
+  $1 = TFE_GetPyThonString($input);
 }
 
 %include "tensorflow/c/eager/c_api.h"

@@ -104,8 +104,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::GroupByWindow")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -120,12 +122,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           if (current_group_iterator_) {
@@ -173,7 +176,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Run(
-                  opts, next_input_element, &key_func_output));
+                  opts, next_input_element, &key_func_output, prefix()));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -266,8 +269,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
 
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_reduce_func_->Run(opts, args, &return_values));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
+            opts, args, &return_values, prefix()));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_RESOURCE &&
@@ -294,7 +297,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         // Create an iterator for the dataset that was returned by
         // `f`. This transfers ownership of the dataset to the
         // iterator.
-        current_group_iterator_ = returned_dataset->MakeIterator();
+        current_group_iterator_ = returned_dataset->MakeIterator(prefix());
         return Status::OK();
       }
 

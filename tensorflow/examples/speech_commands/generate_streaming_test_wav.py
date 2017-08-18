@@ -84,14 +84,14 @@ def mix_in_audio_sample(track_data, track_offset, sample_data, sample_offset,
 
 
 def main(_):
-  audio_processor = input_data.AudioProcessor(
-      '', FLAGS.data_dir, FLAGS.silence_percentage, 10,
-      FLAGS.wanted_words.split(','), FLAGS.validation_percentage,
-      FLAGS.testing_percentage)
   words_list = input_data.prepare_words_list(FLAGS.wanted_words.split(','))
   model_settings = models.prepare_model_settings(
       len(words_list), FLAGS.sample_rate, FLAGS.clip_duration_ms,
       FLAGS.window_size_ms, FLAGS.window_stride_ms, FLAGS.dct_coefficient_count)
+  audio_processor = input_data.AudioProcessor(
+      '', FLAGS.data_dir, FLAGS.silence_percentage, 10,
+      FLAGS.wanted_words.split(','), FLAGS.validation_percentage,
+      FLAGS.testing_percentage, model_settings)
 
   output_audio_sample_count = FLAGS.sample_rate * FLAGS.test_duration_seconds
   output_audio = np.zeros((output_audio_sample_count,), dtype=np.float32)

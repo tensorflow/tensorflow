@@ -51,6 +51,10 @@ LossAndLabels = collections.namedtuple('LossAndLabels',
                                        ['unweighted_loss', 'processed_labels'])
 
 
+def _summary_key(head_name, val):
+  return '%s/%s' % (val, head_name) if head_name else val
+
+
 class _Head(object):
   """Interface for the head/top of a model.
 
@@ -147,7 +151,6 @@ class _Head(object):
     """Returns `EstimatorSpec` that a model_fn can return.
 
     Please note that,
-    + Exactly one of `logits` and `logits_input` must be provided.
     + All args must be passed via name.
 
     Args:
@@ -309,7 +312,8 @@ def _recall_at_threshold(labels, predictions, weights, threshold, name=None):
 
 def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
                                                       weight_column=None,
-                                                      label_vocabulary=None):
+                                                      label_vocabulary=None,
+                                                      head_name=None):
   """Creates a '_Head' for multi class classification.
 
   This head expects to be fed integer labels specifying the class index.
@@ -326,6 +330,8 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       [0, n_classes). If given, labels must be string type and have any value in
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
+    head_name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + head_name`.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -339,18 +345,23 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
         type(label_vocabulary)))
 
   return _MultiClassHeadWithSoftmaxCrossEntropyLoss(n_classes, weight_column,
-                                                    label_vocabulary)
+                                                    label_vocabulary, head_name)
 
 
 class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   """See `_multi_class_head_with_softmax_cross_entropy_loss`."""
 
-  def __init__(self, n_classes, weight_column=None, label_vocabulary=None):
+  def __init__(self,
+               n_classes,
+               weight_column=None,
+               label_vocabulary=None,
+               head_name=None):
     if (n_classes is None) or (n_classes <= 2):
       raise ValueError('n_classes must be > 2: %s.' % n_classes)
     self._n_classes = n_classes
     self._weight_column = weight_column
     self._label_vocabulary = label_vocabulary
+    self._head_name = head_name
 
   @property
   def logits_dimension(self):
@@ -366,11 +377,15 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       metric_ops = {
           # Estimator already adds a metric for loss.
           # TODO(xiejw): Any other metrics?
-          keys.LOSS_MEAN: metrics_lib.mean(
-              unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
-          keys.ACCURACY: metrics_lib.accuracy(
-              labels=labels, predictions=class_ids, weights=weights,
-              name=keys.ACCURACY),
+          _summary_key(self._head_name, keys.LOSS_MEAN):
+              metrics_lib.mean(
+                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
+          _summary_key(self._head_name, keys.ACCURACY):
+              metrics_lib.accuracy(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.ACCURACY),
       }
     return metric_ops
 
@@ -472,12 +487,14 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
     with ops.name_scope(''):
-      summary.scalar(metric_keys.MetricKeys.LOSS, training_loss)
-      summary.scalar(metric_keys.MetricKeys.LOSS_MEAN,
-                     losses.compute_weighted_loss(
-                         unweighted_loss,
-                         weights=weights,
-                         reduction=losses.Reduction.MEAN))
+      summary.scalar(
+          _summary_key(self._head_name, metric_keys.MetricKeys.LOSS),
+          training_loss)
+      summary.scalar(
+          _summary_key(self._head_name, metric_keys.MetricKeys.LOSS_MEAN),
+          losses.compute_weighted_loss(
+              unweighted_loss, weights=weights,
+              reduction=losses.Reduction.MEAN))
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
@@ -486,7 +503,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
-    weight_column=None, thresholds=None, label_vocabulary=None):
+    weight_column=None, thresholds=None, label_vocabulary=None, head_name=None):
   """Creates a `Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -508,6 +525,8 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       given, labels must be string type and have any value in
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
+    head_name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + head_name`.
 
   Returns:
     An instance of `Head` for binary classification.
@@ -527,17 +546,22 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
       weight_column=weight_column,
       thresholds=thresholds,
-      label_vocabulary=label_vocabulary)
+      label_vocabulary=label_vocabulary,
+      head_name=head_name)
 
 
 class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   """See `_binary_logistic_head_with_sigmoid_cross_entropy_loss`."""
 
-  def __init__(self, weight_column=None, thresholds=None,
-               label_vocabulary=None):
+  def __init__(self,
+               weight_column=None,
+               thresholds=None,
+               label_vocabulary=None,
+               head_name=None):
     self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
+    self._head_name = head_name
 
   @property
   def logits_dimension(self):
@@ -558,31 +582,31 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
       metric_ops = {
           # Estimator already adds a metric for loss.
-          keys.LOSS_MEAN:
+          _summary_key(self._head_name, keys.LOSS_MEAN):
               metrics_lib.mean(
                   unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
-          keys.ACCURACY:
+          _summary_key(self._head_name, keys.ACCURACY):
               metrics_lib.accuracy(
                   labels=labels,
                   predictions=class_ids,
                   weights=weights,
                   name=keys.ACCURACY),
-          keys.PREDICTION_MEAN:
+          _summary_key(self._head_name, keys.PREDICTION_MEAN):
               _predictions_mean(
                   predictions=logistic,
                   weights=weights,
                   name=keys.PREDICTION_MEAN),
-          keys.LABEL_MEAN:
+          _summary_key(self._head_name, keys.LABEL_MEAN):
               labels_mean,
-          keys.ACCURACY_BASELINE:
+          _summary_key(self._head_name, keys.ACCURACY_BASELINE):
               _accuracy_baseline(labels_mean),
-          keys.AUC:
+          _summary_key(self._head_name, keys.AUC):
               _auc(
                   labels=labels,
                   predictions=logistic,
                   weights=weights,
                   name=keys.AUC),
-          keys.AUC_PR:
+          _summary_key(self._head_name, keys.AUC_PR):
               _auc(
                   labels=labels,
                   predictions=logistic,
@@ -592,19 +616,31 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       }
       for threshold in self._thresholds:
         accuracy_key = keys.ACCURACY_AT_THRESHOLD % threshold
-        metric_ops[accuracy_key] = _accuracy_at_threshold(
-            labels=labels, predictions=logistic, weights=weights,
-            threshold=threshold, name=accuracy_key)
+        metric_ops[_summary_key(self._head_name,
+                                accuracy_key)] = _accuracy_at_threshold(
+                                    labels=labels,
+                                    predictions=logistic,
+                                    weights=weights,
+                                    threshold=threshold,
+                                    name=accuracy_key)
         # Precision for positive examples.
         precision_key = keys.PRECISION_AT_THRESHOLD % threshold
-        metric_ops[precision_key] = _precision_at_threshold(
-            labels=labels, predictions=logistic, weights=weights,
-            threshold=threshold, name=precision_key)
+        metric_ops[_summary_key(self._head_name,
+                                precision_key)] = _precision_at_threshold(
+                                    labels=labels,
+                                    predictions=logistic,
+                                    weights=weights,
+                                    threshold=threshold,
+                                    name=precision_key)
         # Recall for positive examples.
         recall_key = keys.RECALL_AT_THRESHOLD % threshold
-        metric_ops[recall_key] = _recall_at_threshold(
-            labels=labels, predictions=logistic, weights=weights,
-            threshold=threshold, name=recall_key)
+        metric_ops[_summary_key(self._head_name,
+                                recall_key)] = _recall_at_threshold(
+                                    labels=labels,
+                                    predictions=logistic,
+                                    weights=weights,
+                                    threshold=threshold,
+                                    name=recall_key)
       return metric_ops
 
   def create_loss(self, features, mode, logits, labels):
@@ -696,12 +732,14 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
     with ops.name_scope(''):
-      summary.scalar(metric_keys.MetricKeys.LOSS, training_loss)
-      summary.scalar(metric_keys.MetricKeys.LOSS_MEAN,
-                     losses.compute_weighted_loss(
-                         unweighted_loss,
-                         weights=weights,
-                         reduction=losses.Reduction.MEAN))
+      summary.scalar(
+          _summary_key(self._head_name, metric_keys.MetricKeys.LOSS),
+          training_loss)
+      summary.scalar(
+          _summary_key(self._head_name, metric_keys.MetricKeys.LOSS_MEAN),
+          losses.compute_weighted_loss(
+              unweighted_loss, weights=weights,
+              reduction=losses.Reduction.MEAN))
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
@@ -710,7 +748,8 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
 
 
 def _regression_head_with_mean_squared_error_loss(weight_column=None,
-                                                  label_dimension=1):
+                                                  label_dimension=1,
+                                                  head_name=None):
   """Creates a `_Head` for regression using the mean squared loss.
 
   Args:
@@ -721,23 +760,28 @@ def _regression_head_with_mean_squared_error_loss(weight_column=None,
     label_dimension: Number of regression labels per example. This is the size
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
+    head_name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + head_name`.
 
   Returns:
     An instance of `_Head` for linear regression.
   """
   return _RegressionHeadWithMeanSquaredErrorLoss(
-      weight_column=weight_column, label_dimension=label_dimension)
+      weight_column=weight_column,
+      label_dimension=label_dimension,
+      head_name=head_name)
 
 
 class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   """`Head` for regression using the mean squared loss."""
 
-  def __init__(self, label_dimension, weight_column=None):
+  def __init__(self, label_dimension, weight_column=None, head_name=None):
     """`Head` for regression."""
     if label_dimension < 1:
       raise ValueError('Invalid label_dimension %s.' % label_dimension)
     self._logits_dimension = label_dimension
     self._weight_column = weight_column
+    self._head_name = head_name
 
   @property
   def logits_dimension(self):
@@ -788,12 +832,14 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
     with ops.name_scope(''):
-      summary.scalar(metric_keys.MetricKeys.LOSS, training_loss)
-      summary.scalar(metric_keys.MetricKeys.LOSS_MEAN,
-                     losses.compute_weighted_loss(
-                         unweighted_loss,
-                         weights=weights,
-                         reduction=losses.Reduction.MEAN))
+      summary.scalar(
+          _summary_key(self._head_name, metric_keys.MetricKeys.LOSS),
+          training_loss)
+      summary.scalar(
+          _summary_key(self._head_name, metric_keys.MetricKeys.LOSS_MEAN),
+          losses.compute_weighted_loss(
+              unweighted_loss, weights=weights,
+              reduction=losses.Reduction.MEAN))
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,

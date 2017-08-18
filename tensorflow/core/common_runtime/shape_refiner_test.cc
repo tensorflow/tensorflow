@@ -882,7 +882,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_Shape) {
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
   Node* scalar_non_const;
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
                    .Finalize(root.graph(), &scalar_non_const));
@@ -914,7 +914,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
   Node* scalar_non_const;
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt64")
                    .Finalize(root.graph(), &scalar_non_const));
@@ -997,7 +997,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
   Graph* g = root.graph();
   Node* partial_1;
   Node* partial_2;
@@ -1034,7 +1034,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
   Graph* g = root.graph();
   Node* scalar_non_const;
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
@@ -1077,7 +1077,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
   Graph* g = root.graph();
   Node* scalar_non_const;
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")

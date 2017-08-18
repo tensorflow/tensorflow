@@ -1,6 +1,10 @@
 path: "tensorflow"
 tf_module {
   member {
+    name: "AUTO_REUSE"
+    mtype: "<enum \'_ReuseMode\'>"
+  }
+  member {
     name: "AggregationMethod"
     mtype: "<type \'type\'>"
   }

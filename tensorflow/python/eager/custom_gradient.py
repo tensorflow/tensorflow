@@ -28,7 +28,7 @@ from tensorflow.python.util import nest
 
 def _watch_value_from_tape(tensor):
   for t in tape._tape_stack.stack:  # pylint: disable=protected-access
-    w = t.value.tensors.get(tape.tensor_id(tensor), None)
+    w = t.value.tensors.get(tf_ops.tensor_id(tensor), None)
     if w is not None:
       return w
   return tensor
