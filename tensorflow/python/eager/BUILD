@@ -307,6 +307,7 @@ py_test(
     srcs = ["benchmarks_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":backprop",
         ":context",
         ":function",
         ":tensor",
