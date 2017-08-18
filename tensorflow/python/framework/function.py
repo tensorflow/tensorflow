@@ -835,8 +835,14 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
     attrs["_XlaSeparateCompiledGradients"] = attr_value_pb2.AttrValue(
         b=bool(separate_compiled_gradients))
-    attrs["_XlaScope"] = attr_value_pb2.AttrValue(
-        s=("function_%s" % func_name).encode())
+    # Forward _XlaScope from enclosing context (if set), otherwise create new.
+    # pylint: disable=protected-access
+    if "_XlaScope" in ops.get_default_graph()._attr_scope_map:
+      attrs["_XlaScope"] = ops.get_default_graph()._attr_scope_map["_XlaScope"]
+    else:
+      attrs["_XlaScope"] = attr_value_pb2.AttrValue(
+          s=("function_%s" % func_name).encode())
+    # pylint: enable=protected-access
 
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())

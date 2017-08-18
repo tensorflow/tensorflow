@@ -22,6 +22,7 @@ BZL_FILE_PATH=tensorflow/workspace.bzl
 EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 GEMMLOWP_URL="$(grep -o 'http.*github.com/google/gemmlowp/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
+NSYNC_URL="$(grep -o 'http.*github.com/google/nsync/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 PROTOBUF_URL="$(grep -o 'http.*github.com/google/protobuf/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 RE2_URL="$(grep -o 'http.*github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 
@@ -56,6 +57,7 @@ download_and_extract() {
 download_and_extract "${EIGEN_URL}" "${DOWNLOADS_DIR}/eigen"
 download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp"
 download_and_extract "${GOOGLETEST_URL}" "${DOWNLOADS_DIR}/googletest"
+download_and_extract "${NSYNC_URL}" "${DOWNLOADS_DIR}/nsync"
 download_and_extract "${PROTOBUF_URL}" "${DOWNLOADS_DIR}/protobuf"
 download_and_extract "${RE2_URL}" "${DOWNLOADS_DIR}/re2"
 
