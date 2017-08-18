@@ -39,9 +39,53 @@ from tensorflow.python.util import compat
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  TODO(apassos): fill this out explaining the semantics and Variable
-  compatibility when the API has settled more.
+  See the ${variables} documentation for more details.
 
+  A `ResourceVariable` allows you to maintain state across subsequent calls to
+  session.run.
+
+  The `ResourceVariable` constructor requires an initial value for the variable,
+  which can be a `Tensor` of any type and shape. The initial value defines the
+  type and shape of the variable. After construction, the type and shape of
+  the variable are fixed. The value can be changed using one of the assign
+  methods.
+
+  Just like any `Tensor`, variables created with `ResourceVariable()` can be
+  used as inputs for other Ops in the graph. Additionally, all the operators
+  overloaded for the `Tensor` class are carried over to variables, so you can
+  also add nodes to the graph by just doing arithmetic on variables.
+
+  Unlike tf.Variable, a tf.ResourceVariable has well-defined semantics. Each
+  usage of a ResourceVariable in a TensorFlow graph adds a read_value operation
+  to the graph. The Tensors returned by a read_value operation are guaranteed
+  to see all modifications to the value of the variable which happen in any
+  operation on which the read_value depends on (either directly, indirectly, or
+  via a control dependency) and guaranteed to not see any modification to the
+  value of the variable on which the read_value operation does not depend on.
+
+  For example, if there is more than one assignment to a ResourceVariable in
+  a single session.run call there is a well-defined value for each operation
+  which uses the variable's value if the assignments and the read are connected
+  by edges in the graph. Consider the following example, in which two writes
+  can cause tf.Variable and tf.ResourceVariable to behave differently:
+
+   ```python
+    a = tf.ResourceVariable(1.0)
+    a.initializer.run()
+
+    assign = a.assign(2.0)
+    with tf.control_dependencies([assign]):
+      b = a.read_value()
+
+    other_assign = a.assign(3.0)
+    with tf.control_dependencies([other_assign]):
+      tf.Print(b, [b]).run()  # Will print 2.0 because the value was read before
+                              # other_assign ran.
+  ```
+
+  To enforce these consistency properties tf.ResourceVariable might make more
+  copies than an equivalent tf.Variable under the hood, so tf.Variable is still
+  not deprecated.
   """
 
   def __init__(self,
