@@ -202,9 +202,11 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::Device* dstd = nullptr;
-  status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
-  if (!status->status.ok()) return nullptr;
+  tensorflow::Device* dstd = ctx->devices()[0];
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
+    if (!status->status.ok()) return nullptr;
+  }
 
   tensorflow::Device* srcd = h->d == nullptr ? ctx->devices()[0] : h->d;
   bool is_same_device =
@@ -293,8 +295,10 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
 void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
                      TF_Status* status) {
   tensorflow::Device* d = nullptr;
-  status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
-  if (!status->status.ok()) return;
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    if (!status->status.ok()) return;
+  }
   TFE_OpSetDeviceHelper(op, d, status);
 }
 

@@ -28,9 +28,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+namespace {
 
-std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
-                                              Client* client) {
+std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
+                                                       Client* client) {
   ComputationBuilder b(
       client,
       tensorflow::strings::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
@@ -43,6 +44,46 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
   *execution_options.mutable_shape_with_output_layout() = shape;
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
+}
+
+}  // namespace
+
+std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
+                                              Client* client) {
+  if (ShapeUtil::ByteSizeOf(shape) < (1LL << 30)) {
+    std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
+    std::minstd_rand0 engine;
+    switch (shape.element_type()) {
+      case F32: {
+        std::uniform_real_distribution<float> generator(0.0f, 1.0f);
+        TF_CHECK_OK(literal->Populate<float>(
+            [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+              return generator(engine);
+            }));
+        break;
+      }
+      case S32: {
+        std::uniform_int_distribution<int32> generator(
+            std::numeric_limits<int32>::lowest(),
+            std::numeric_limits<int32>::max());
+        TF_CHECK_OK(literal->Populate<int32>(
+            [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+              return generator(engine);
+            }));
+        break;
+      }
+      default:
+        LOG(WARNING)
+            << "Unsupported type for host-side fake data generation: "
+            << ShapeUtil::HumanString(shape)
+            << "; falling back to making small amount of fake data via device.";
+        return MakeFakeDataViaDeviceOrDie(shape, client);
+    }
+    return client->TransferToServer(*literal).ValueOrDie();
+  }
+
+  // If the data is large, generate it on-device.
+  return MakeFakeDataViaDeviceOrDie(shape, client);
 }
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(

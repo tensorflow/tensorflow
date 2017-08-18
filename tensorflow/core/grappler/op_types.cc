@@ -40,6 +40,11 @@ bool IsDequeueOp(const NodeDef& node) {
          op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
+bool IsEnter(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Enter" || op == "RefEnter";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Identity" || op == "RefIdentity";

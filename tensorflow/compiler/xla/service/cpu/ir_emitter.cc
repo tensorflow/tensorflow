@@ -1993,9 +1993,12 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
 
   // The memcpy will copy elements that are logically this shape (allowed to be
   // scalar).
-  const Shape element_shape = ShapeUtil::FilterDimensions(
+  const Shape logical_element_shape = ShapeUtil::FilterDimensions(
       [&inner_dims](int64 dim) -> bool { return inner_dims.count(dim); },
       operand->shape());
+
+  const int64 primitive_elements_per_logical_element =
+      ShapeUtil::ElementsIn(logical_element_shape);
 
   // memcpy_dim is the innermost (in terms of layout) dimension for which the
   // slice does *not* just copy all the elements along the dimension.
@@ -2005,17 +2008,10 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
   // The number of logical elements that can be copied in a single call
   // to memcpy. We can only copy 1 element at a time if there is a non-trivial
   // stride.
-  const int64 memcpy_elements =
+  const int64 memcpy_logical_elements =
       memcpy_is_contiguous
           ? slice->slice_limits(memcpy_dim) - slice->slice_starts(memcpy_dim)
           : 1;
-
-  if (memcpy_elements == 1 && ShapeUtil::IsEffectiveScalar(element_shape)) {
-    // Avoid using memcpy for copying element by element at a time. This does
-    // not buy us anything and may actually cause LLVM's load/store optimization
-    // to be less effective.
-    return DefaultAction(slice);
-  }
 
   // Determine the dimensions that get lowered as loops.
   std::vector<int64> outer_dims;
@@ -2040,11 +2036,9 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
   // Only the indices for the outer dimensions have been initialized in
   // target_index. The rest of the indices should get initialized to 0, since
   // for the rest of the dimensions the copy writes to the full dimension.
-  for (llvm::Value*& index : target_index) {
-    if (index == nullptr) {
-      index = ir_builder_.getInt64(0);
-    }
-  }
+  std::replace(target_index.begin(), target_index.end(),
+               static_cast<llvm::Value*>(nullptr),
+               static_cast<llvm::Value*>(ir_builder_.getInt64(0)));
 
   if (num_outer_loops > 0) {
     SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
@@ -2060,15 +2054,20 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
       target_index, &ir_builder_, "slice.dest");
   llvm::Value* memcpy_source = source_array.EmitArrayElementAddress(
       source_index, &ir_builder_, "slice.source");
-  const int64 memcpy_bytes =
-      ShapeUtil::ByteSizeOf(element_shape) * memcpy_elements;
-  // TODO(b/63762267): Be more aggressive with `align` by using the GCD of the
-  // element size and buffer alignment.
-  ir_builder_.CreateMemCpy(memcpy_dest, memcpy_source, memcpy_bytes,
-                           /*align=*/1);
 
-  VLOG(2) << "  emitted memcpy of " << memcpy_bytes << " bytes inside "
-          << num_outer_loops << " loops";
+  const int64 memcpy_elements =
+      primitive_elements_per_logical_element * memcpy_logical_elements;
+
+  EmitTransferElements(memcpy_dest, memcpy_source, memcpy_elements,
+                       slice->shape().element_type(), target_array,
+                       source_array);
+
+  if (VLOG_IS_ON(2)) {
+    const int64 memcpy_bytes =
+        ShapeUtil::ByteSizeOf(logical_element_shape) * memcpy_elements;
+    VLOG(2) << "  emitted copy of " << memcpy_bytes << " bytes inside "
+            << num_outer_loops << " loops";
+  }
 
   if (num_outer_loops > 0) {
     SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &ir_builder_);
@@ -3086,6 +3085,7 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   llvm::Value* source_value = GetEmittedValueFor(&source);
   llvm::Value* destination_value = GetEmittedValueFor(&destination);
   int64 source_size = ByteSizeOf(source.shape());
+  // TODO(b/63762267): Be more aggressive about specifying alignment.
   ir_builder_.CreateMemCpy(destination_value, source_value, source_size, 1);
   return Status::OK();
 }

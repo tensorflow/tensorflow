@@ -1761,6 +1761,7 @@ py_library(
     deps = [
         ":array_ops",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":math_ops",
         ":nn_ops",
         ":nn_ops_gen",
@@ -2428,6 +2429,7 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":nn",
         ":nn_grad",
         "//third_party/py/numpy",

@@ -584,6 +584,26 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
   EXPECT_EQ(4, found);
 }
 
+TEST_F(ConstantFoldingTest, Packing) {
+  // Build a simple graph with a large constant that can be folded.
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(scope.WithOpName("c"), 3.14f, {1000});
+  Output i1 = ops::Identity(scope.WithOpName("i1"), c);
+  Output i2 = ops::Identity(scope.WithOpName("i2"), c);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // Make sure that the representation of the folded constant is space
+  // efficient: in particular, the whole message should be smaller than 8k (the
+  // size needed to naively encode 1000 floats folded twice).
+  EXPECT_GT(8000, output.ByteSizeLong());
+}
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

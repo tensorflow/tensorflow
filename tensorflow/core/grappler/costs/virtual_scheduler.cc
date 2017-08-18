@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -119,6 +120,12 @@ Status VirtualScheduler::Init() {
 
   const auto& graph = grappler_item_->graph;
   const auto& fetch_nodes = grappler_item_->fetch;
+  std::set<string> feed_nodes;
+  for (const auto& f : grappler_item_->feed) {
+    auto iter_and_inserted_flag = feed_nodes.insert(f.first);
+    QCHECK(iter_and_inserted_flag.second)
+        << "Duplicate feed node found: " << f.first;
+  }
 
   // Get the nodes that would run to output fetch_nodes.
   std::vector<const NodeDef*> nodes =
@@ -193,11 +200,20 @@ Status VirtualScheduler::Init() {
       }
     }
 
-    if (curr_node->input().empty()) {
-      // Node without input: ready at time 0.
+    // Special case: given feed nodes are ready at time 0.
+    const bool given_as_feed =
+        feed_nodes.find(curr_node->name()) != feed_nodes.end();
+
+    // Default case: node without inputs are ready at time 0.
+    const bool has_no_inputs = curr_node->input().empty();
+
+    if (given_as_feed || has_no_inputs) {
       curr_node_state.time_ready = Costs::Duration();
       ready_nodes_->AddNode(curr_node);
+      VLOG(1) << "Added ready node: " << curr_node->name();
     }
+
+    feed_nodes.erase(curr_node->name());
 
     if (IsPersistentNode(curr_node)) {
       auto& device_state = device_[curr_node_device];
@@ -212,6 +228,9 @@ Status VirtualScheduler::Init() {
   if (ready_nodes_->Empty()) {
     return Status(error::UNAVAILABLE, "No ready nodes in the graph.");
   }
+
+  CHECK(feed_nodes.empty()) << "Some feed nodes were not found in the graph: "
+                            << str_util::Join(feed_nodes, ",");
 
   initialized_ = true;
   return Status::OK();

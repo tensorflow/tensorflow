@@ -379,7 +379,23 @@ class HloInstruction {
       std::function<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
       std::function<bool(const HloComputation*, const HloComputation*)>
-          eq_computations = std::equal_to<const HloComputation*>()) const;
+          eq_computations = std::equal_to<const HloComputation*>()) const {
+    // An instruction is always identical to itself.
+    if (this == &other) {
+      return true;
+    }
+
+    // Identical instruction must have the same opcode and identical operands.
+    // In general, there is no need to check shape because shape is inferred
+    // from the shape of the operands.
+    if (opcode() != other.opcode() ||
+        !ContainersEqual(operands(), other.operands(),
+                         std::move(eq_operands))) {
+      return false;
+    }
+
+    return IdenticalSlowPath(other, eq_computations);
+  }
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -809,6 +825,9 @@ class HloInstruction {
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
 
+  // Returns true if this instruction is binary and elementwise.
+  bool IsElementwiseBinary() const;
+
   // Returns whether this instruction may reuse elements of its `i`th operand.
   bool ReusesOperandElements(int64 i) const {
     return OperandElementUse(i) == UseKind::kReuse;
@@ -895,6 +914,12 @@ class HloInstruction {
 
   // Helper class for computing OperandElementUse for kFusion.
   class FusionReusesParamElements;
+
+  // See comments on Identical().
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      std::function<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

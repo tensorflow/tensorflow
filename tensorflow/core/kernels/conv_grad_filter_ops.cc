@@ -598,8 +598,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                                             ", n=", n, ", k=", k));
       }
       return;
-    } else if (!cudnn_disable_conv_1x1_optimization_ &&
-               dims.spatial_dims[0].filter_size ==
+    } else if (dims.spatial_dims[0].filter_size ==
                    dims.spatial_dims[0].input_size &&
                dims.spatial_dims[1].filter_size ==
                    dims.spatial_dims[1].input_size &&
