@@ -48,8 +48,11 @@ except ImportError:
   yaml = None
 # pylint: enable=g-import-not-at-top
 
-InputSpec = tf_base_layers.InputSpec  # pylint: disable=invalid-name
-Node = tf_base_layers.Node  # pylint: disable=invalid-name
+# pylint: disable=invalid-name
+InputSpec = tf_base_layers.InputSpec
+Node = tf_base_layers.Node
+TFBaseLayer = tf_base_layers.Layer
+# pylint: enable=invalid-name
 
 
 class Layer(tf_base_layers.Layer):
@@ -155,7 +158,6 @@ class Layer(tf_base_layers.Layer):
 
     # Add properties that are Keras-only for now.
     self.supports_masking = False
-    self._constraints = {}  # dict {tensor: constraint instance}
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -176,14 +178,6 @@ class Layer(tf_base_layers.Layer):
       self._initial_weights = kwargs['weights']
     else:
       self._initial_weights = None
-
-  @property
-  def constraints(self):
-    return self._constraints
-
-  @constraints.setter
-  def constraints(self, constraints):
-    self._constraints = constraints
 
   def add_weight(self,
                  name,
@@ -211,11 +205,12 @@ class Layer(tf_base_layers.Layer):
     """
     if dtype is None:
       dtype = K.floatx()
-    weight = self.add_variable(
-        name, shape, dtype=dtype,
-        initializer=initializer, regularizer=regularizer, trainable=trainable)
-    if constraint is not None:
-      self.constraints[weight] = constraint
+    weight = self.add_variable(name, shape,
+                               dtype=dtype,
+                               initializer=initializer,
+                               regularizer=regularizer,
+                               constraint=constraint,
+                               trainable=trainable)
     return weight
 
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
@@ -478,26 +473,6 @@ class Layer(tf_base_layers.Layer):
     """
     return cls(**config)
 
-  def count_params(self):
-    """Count the total number of scalars composing the weights.
-
-    Returns:
-        An integer count.
-
-    Raises:
-        RuntimeError: if the layer isn't yet built
-            (in which case its weights aren't yet defined).
-    """
-    if not self.built:
-      if self.__class__.__name__ == 'Sequential':
-        self.build()  # pylint: disable=no-value-for-parameter
-      else:
-        raise RuntimeError('You tried to call `count_params` on ' + self.name +
-                           ', but the layer isn\'t built. '
-                           'You can build it manually via: `' + self.name +
-                           '.build(batch_input_shape)`.')
-    return sum([K.count_params(p) for p in self.weights])
-
 
 class InputLayer(tf_base_layers.InputLayer, Layer):
   """Layer to be used as an entry point into a graph.
@@ -550,13 +525,6 @@ class InputLayer(tf_base_layers.InputLayer, Layer):
                                      input_tensor=input_tensor,
                                      sparse=sparse,
                                      name=name)
-
-    if input_tensor is not None:
-      self.is_placeholder = False
-      self.batch_input_shape = tuple(input_tensor.get_shape().as_list())
-    else:
-      self.is_placeholder = True
-      self.batch_input_shape = (batch_size,) + tuple(input_shape)
 
   def get_config(self):
     config = {
@@ -735,7 +703,8 @@ class Network(tf_base_layers.Network, Layer):
 
   @property
   def uses_learning_phase(self):
-    return any([x._uses_learning_phase for x in self.outputs])
+    return any(
+        [getattr(x, '_uses_learning_phase', False) for x in self.outputs])
 
   @property
   def stateful(self):

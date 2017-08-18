@@ -39,11 +39,11 @@ namespace {
 TEST(RendezvousTest, Key) {
   const string key = Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/CPU:0", 7890,
-      "/job:mnist/replica:1/task:2/GPU:0", "var0", FrameAndIter(0, 0));
+      "/job:mnist/replica:1/task:2/device:GPU:0", "var0", FrameAndIter(0, 0));
   EXPECT_EQ(key,
             "/job:mnist/replica:1/task:2/CPU:0;"
             "0000000000001ed2;"  // 7890 = 0x1ed2
-            "/job:mnist/replica:1/task:2/GPU:0;"
+            "/job:mnist/replica:1/task:2/device:GPU:0;"
             "var0;"
             "0:0");
   Rendezvous::ParsedKey parsed;
@@ -51,12 +51,12 @@ TEST(RendezvousTest, Key) {
   EXPECT_EQ(parsed.src_device, "/job:mnist/replica:1/task:2/CPU:0");
   EXPECT_EQ(parsed.src_incarnation, 7890);
   EXPECT_EQ(parsed.src.type, "CPU");
-  EXPECT_EQ(parsed.dst_device, "/job:mnist/replica:1/task:2/GPU:0");
+  EXPECT_EQ(parsed.dst_device, "/job:mnist/replica:1/task:2/device:GPU:0");
   EXPECT_EQ(parsed.dst.type, "GPU");
 
   EXPECT_FALSE(Rendezvous::ParseKey("foo;bar;baz", &parsed).ok());
   EXPECT_FALSE(Rendezvous::ParseKey("/job:mnist/replica:1/task:2/CPU:0;"
-                                    "/job:mnist/replica:1/task:2/GPU:0;",
+                                    "/job:mnist/replica:1/task:2/device:GPU:0;",
                                     &parsed)
                    .ok());
   EXPECT_FALSE(
@@ -99,7 +99,7 @@ string V(const Tensor& tensor) {
 
 Rendezvous::ParsedKey MakeKey(const string& name) {
   string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
-                                   "/job:mnist/replica:1/task:2/GPU:0", name,
+                                   "/job:mnist/replica:1/task:2/device:GPU:0", name,
                                    FrameAndIter(0, 0));
   Rendezvous::ParsedKey k;
   TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));

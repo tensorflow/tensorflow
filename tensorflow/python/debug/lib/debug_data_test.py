@@ -237,11 +237,11 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     gpu_0_dir = os.path.join(
         self._dump_root,
         debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
-        ",job_localhost,replica_0,task_0,gpu_0")
+        ",job_localhost,replica_0,task_0,device_GPU_0")
     gpu_1_dir = os.path.join(
         self._dump_root,
         debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
-        ",job_localhost,replica_0,task_0,gpu_1")
+        ",job_localhost,replica_0,task_0,device_GPU_1")
     os.makedirs(cpu_0_dir)
     os.makedirs(gpu_0_dir)
     os.makedirs(gpu_1_dir)
@@ -281,12 +281,12 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     node = graph_gpu_0.node.add()
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:0"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:0"
     graph_gpu_1 = graph_pb2.GraphDef()
     node = graph_gpu_1.node.add()
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:1"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:1"
 
     dump_dir = debug_data.DebugDumpDir(
         self._dump_root,
@@ -294,14 +294,14 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
 
     self.assertItemsEqual(
         ["/job:localhost/replica:0/task:0/cpu:0",
-         "/job:localhost/replica:0/task:0/gpu:0",
-         "/job:localhost/replica:0/task:0/gpu:1"], dump_dir.devices())
+         "/job:localhost/replica:0/task:0/device:GPU:0",
+         "/job:localhost/replica:0/task:0/device:GPU:1"], dump_dir.devices())
     self.assertEqual(1472563253536385, dump_dir.t0)
     self.assertEqual(3, dump_dir.size)
 
     with self.assertRaisesRegexp(
         ValueError, r"Invalid device name: "):
-      dump_dir.nodes("/job:localhost/replica:0/task:0/gpu:2")
+      dump_dir.nodes("/job:localhost/replica:0/task:0/device:GPU:2")
     self.assertItemsEqual(["node_foo_1", "node_foo_1", "node_foo_1"],
                           dump_dir.nodes())
     self.assertItemsEqual(
@@ -319,16 +319,16 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     node = graph_gpu_0.node.add()
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:0"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:0"
     graph_gpu_1 = graph_pb2.GraphDef()
     node = graph_gpu_1.node.add()
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:1"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:1"
     node = graph_gpu_1.node.add()  # Here is the duplicate.
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:1"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:1"
 
     with self.assertRaisesRegexp(
         ValueError, r"Duplicate node name on device "):

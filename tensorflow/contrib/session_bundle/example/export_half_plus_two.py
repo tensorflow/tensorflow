@@ -152,7 +152,7 @@ if __name__ == "__main__":
   )
   parser.add_argument(
       "--use_checkpoint_v2",
-      "bool",
+      type="bool",
       nargs="?",
       const=True,
       default=False,

@@ -50,7 +50,7 @@ extern Status TopologicalSortNodesWithTimePriority(
 
 namespace {
 
-const char gpu_device[] = "/job:a/replica:0/task:0/gpu:0";
+const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
 string SplitByDevice(const Node* node) { return node->assigned_device_name(); }
 

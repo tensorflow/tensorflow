@@ -62,7 +62,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
 Status EncodeWavShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   c->set_output(0, c->Scalar());
   return Status::OK();
 }
@@ -104,7 +104,7 @@ Status MfccShapeFn(InferenceContext* c) {
   ShapeHandle spectrogram;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &spectrogram));
   ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
   int32 dct_coefficient_count;
   TF_RETURN_IF_ERROR(

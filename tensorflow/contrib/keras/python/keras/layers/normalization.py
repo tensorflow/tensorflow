@@ -99,19 +99,10 @@ class BatchNormalization(tf_normalization_layers.BatchNormalization, Layer):
             moving_variance_initializer),
         beta_regularizer=regularizers.get(beta_regularizer),
         gamma_regularizer=regularizers.get(gamma_regularizer),
+        beta_constraint=constraints.get(beta_constraint),
+        gamma_constraint=constraints.get(gamma_constraint),
         **kwargs
     )
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.beta_constraint = constraints.get(beta_constraint)
-    self.gamma_constraint = constraints.get(gamma_constraint)
-
-  def build(self, input_shape):
-    super(BatchNormalization, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.center and self.beta_constraint:
-      self.constraints[self.beta] = self.beta_constraint
-    if self.scale and self.gamma_constraint:
-      self.constraints[self.gamma] = self.gamma_constraint
 
   def call(self, inputs, training=None):
     if training is None:

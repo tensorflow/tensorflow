@@ -100,6 +100,7 @@ See the @{$python/math_ops} guide.
 @@complex
 @@conj
 @@imag
+@@angle
 @@real
 @@fft
 @@ifft
@@ -622,10 +623,9 @@ def imag(input, name=None):
   r"""Returns the imaginary part of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the imaginary part of each element in
-  `input`. All elements in `input` must be complex numbers of the form \\(a +
-  bj\\), where *a* is the real part and *b* is the imaginary part returned by
-  this operation.
+  type `float` that is the argument of each element in `input`. All elements in
+  `input` must be complex numbers of the form \\(a + bj\\), where *a*
+  is the real part and *b* is the imaginary part returned by the operation.
 
   For example:
 
@@ -644,6 +644,35 @@ def imag(input, name=None):
   """
   with ops.name_scope(name, "Imag", [input]) as name:
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
+
+
+def angle(input, name=None):
+  r"""Returns the argument of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float32` or `float64` that is the argument of each element in `input`.
+  All elements in `input` must be complex numbers of the form \\(a + bj\\),
+  where *a* is the real part and *b* is the imaginary part.
+
+  The argument returned by this function is of the form \\(atan2(b, a)\\).
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.angle(input) ==> [2.0132, 1.056]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`,
+      `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32` or `float64`.
+  """
+  with ops.name_scope(name, "Angle", [input]) as name:
+    return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin
@@ -2027,10 +2056,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   for input_tensor in inputs:
     if isinstance(input_tensor, ops.Tensor):
       shape = shape.merge_with(input_tensor.get_shape())
-  if len(inputs) == 1:
-    return inputs[0]
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
+  if tensor_dtype != inputs[0].dtype:
+    raise TypeError("tensor_dtype is {}, but input is of type {}"
+                     .format(tensor_dtype, inputs[0].dtype))
+  if len(inputs) == 1:
+    return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:
     var = gen_state_ops._temporary_variable(
         shape=tensor_shape.vector(0), dtype=tensor_dtype)

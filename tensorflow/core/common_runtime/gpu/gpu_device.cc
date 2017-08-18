@@ -588,7 +588,7 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
   for (int i = 0; i < n; i++) {
     BaseGPUDevice* gpu_device;
     TF_RETURN_IF_ERROR(CreateGPUDevice(options,
-                                       strings::StrCat(name_prefix, "/gpu:", i),
+                                       strings::StrCat(name_prefix, "/device:GPU:", i),
                                        valid_gpu_ids[i], &gpu_device));
     TF_RETURN_IF_ERROR(gpu_device->Init(options));
     devices->push_back(gpu_device);
@@ -1049,7 +1049,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     size_t new_id = ids->size();
     ids->push_back(visible_gpu_id);
 
-    LOG(INFO) << "Creating TensorFlow device (/gpu:" << new_id << ") -> "
+    LOG(INFO) << "Creating TensorFlow device (/device:GPU:" << new_id << ") -> "
               << "(" << GetShortDeviceDescription(visible_gpu_id, desc) << ")";
   }
 

@@ -47,7 +47,7 @@ def build_graph(device, n, m, k, transpose_a, transpose_b, dtype):
   Returns:
     A matmul operation to run()
   """
-  with ops.device('/%s:0' % device):
+  with ops.device('%s' % device):
     if not transpose_a:
       x = variables.Variable(random_ops.random_uniform([n, m], dtype=dtype))
     else:
@@ -112,7 +112,7 @@ class MatmulBenchmark(test.Benchmark):
     return duration
 
   def run_test_gpu(self, n, m, k, transpose_a, transpose_b, dtype, num_iters):
-    self.run_graph('gpu', n, m, k, transpose_a, transpose_b, num_iters, dtype)
+    self.run_graph(test.gpu_device_name(), n, m, k, transpose_a, transpose_b, num_iters, dtype)
 
   def test_round(self, num_iters):
     dtypes = [np.float32, np.float64]

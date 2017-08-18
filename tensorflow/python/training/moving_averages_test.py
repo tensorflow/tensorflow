@@ -58,6 +58,30 @@ class MovingAveragesTest(test.TestCase):
           1.0 * (1.0 - 0.25) / (1 - 0.25), 2.0 * (1.0 - 0.25) / (1 - 0.25)
       ], var.eval())
 
+  def testAssignMovingAverageNewNamingMultipleCalls(self):
+    with variable_scope.variable_scope("scope1") as vs1:
+      with variable_scope.variable_scope("scope2"):
+        var = variables.Variable(1.0, name="Var")
+        moving_averages.assign_moving_average(var, 0.0, 0.99)
+        moving_averages.assign_moving_average(var, 0.0, 0.99)
+    expected_names = ["scope1/scope2/Var:0",
+                      "scope1/scope2/scope1/scope2/Var/biased:0",
+                      "scope1/scope2/scope1/scope2/Var/local_step:0",
+                      "scope1/scope2/scope1/scope2/Var/biased_1:0",
+                      "scope1/scope2/scope1/scope2/Var/local_step_1:0"]
+    actual_names = [v.name for v in vs1.global_variables()]
+    self.assertSetEqual(set(expected_names), set(actual_names))
+
+  def testAssignMovingAverageNewNamingMultipleCallsWithReuse(self):
+    with variable_scope.variable_scope("scope1") as vs1:
+      var = variable_scope.get_variable("Var", shape=[])
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+    with variable_scope.variable_scope(vs1, reuse=True):
+      var = variable_scope.get_variable("Var", shape=[])
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+
   def testWeightedMovingAverage(self):
     with self.test_session() as sess:
       decay = 0.5
@@ -288,7 +312,7 @@ class ExponentialMovingAverageTest(test.TestCase):
         self.assertEqual("scope2/scope1/add/foo", ema.average_name(tensor2))
         ema.apply([v0, v1, tensor2])
         vars_to_restore = ema.variables_to_restore()
-        # vars_to_restore should contain the following:
+        # `vars_to_restore` should contain the following:
         # {scope2/scope1/v0/foo : v0,
         #  scope2/scope1/v1/foo : v1,
         #  scope2/scope1/add/foo : add/foo,
@@ -298,7 +322,7 @@ class ExponentialMovingAverageTest(test.TestCase):
             ema.average_name(tensor2), v2.op.name
         ]
         if zero_debias:
-          # vars_to_restore should also contain the following:
+          # `vars_to_restore` should also contain the following:
           # {scope2/scope2/scope1/add/foo/biased: add/foo/biased,
           #  scope2/scope2/scope1/add/foo/local_step: add/foo/local_step}
           sc = "scope2/"

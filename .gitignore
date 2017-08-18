@@ -13,4 +13,5 @@ node_modules
 __pycache__
 *.swp
 .vscode/
+cmake_build/
 .idea/**
