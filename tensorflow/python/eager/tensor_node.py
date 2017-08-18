@@ -60,6 +60,7 @@ class TensorNode(ag_core.Node):
 
   shape = property(lambda self: self.value.shape)
   dtype = property(lambda self: self.value.dtype)
+  device = property(lambda self: self.value.device)
 
   def get_shape(self):
     return self.shape
