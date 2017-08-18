@@ -19608,6 +19608,44 @@ op {
   summary: "Computes rectified linear gradients for a Relu operation."
 }
 op {
+  name: "RemoteCall"
+  input_arg {
+    name: "target"
+    description: "A fully specified device name where we want to run the function."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "args"
+    description: "A list of arguments for the function."
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    description: "A list of return values."
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    description: "The type list for the arguments."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    description: "The type list for the return values."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "The function to run remotely."
+  }
+  summary: "Runs function `f` on a remote device indicated by `target`."
+}
+op {
   name: "RemoteFusedGraphExecute"
   input_arg {
     name: "inputs"
