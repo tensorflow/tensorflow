@@ -189,11 +189,18 @@ Status SymbolicGradientBuilder::Initialize() {
         // Internal node: continue BFS along connected outputs.
         for (const Edge* e : n->out_edges()) {
           if (e->IsControlEdge()) continue;
-          ++num_expected_backprops;
           if (visited.find(e->dst()) == visited.end()) {
             queue.push_back(e->dst());
             visited.insert(e->dst());
           }
+          // if the node hasn't at least one out edge we don't
+          // count it as expected to be backpropagated because we
+          // will not be able to reach it when doing BFS on ready_
+          if (e->dst()->out_edges().size() == 0 &&
+              output_nodes_.find(e->dst()->id()) == output_nodes_.end()) {
+            continue;
+          }
+          ++num_expected_backprops;
         }
       } else {
         // Output node: stop BFS and update `num_expected_backprops` for

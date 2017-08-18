@@ -26,8 +26,20 @@ namespace test {
 void GetTensors(const Scope& scope, OutputList tensors,
                 std::vector<Tensor>* out);
 
+// Computes the outputs listed in 'tensors', returns the tensors in 'out'.
+// Take a vector of Output as extra parameters if some Variable should
+// be assigned before the session run call.
+void GetTensors(const Scope& scope, const std::vector<Output>& assign_vars,
+                OutputList tensors, std::vector<Tensor>* out);
+
 /// Computes the output 'tensor', returning the resulting tensor in 'out'.
 void GetTensor(const Scope& scope, Output tensor, Tensor* out);
+
+// Computes the output 'tensor', returning the resulting tensor in 'out'.
+// Take a vector of Output as extra parameters if some Variable should
+// be assigned before the session run call.
+void GetTensor(const Scope& scope, const std::vector<Output>& assign_vars,
+               Output tensor, Tensor* out);
 
 }  // namespace test
 }  // namespace tensorflow
