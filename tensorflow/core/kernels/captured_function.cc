@@ -40,9 +40,9 @@ Status CapturedFunction::Create(
   // NOTE(mrry): We need to assign a name to the device, and we choose
   // the same name as the calling context's device so that we do not
   // need to rewrite resource handles that are found in `captured_inputs`.
-  std::unique_ptr<Device> device(new ThreadPoolDevice(
-      SessionOptions(), ctx->device()->attributes().name(), Bytes(256 << 20),
-      DeviceLocality(), cpu_allocator()));
+  Device* device =
+      new ThreadPoolDevice(SessionOptions(), ctx->device()->attributes().name(),
+                           Bytes(256 << 20), DeviceLocality(), cpu_allocator());
 
 // TODO(mrry): Handle arbitrary resource types, which might require a
 // redesign (or opening up access to `ResourceMgr::DoLookup()` and
@@ -82,20 +82,24 @@ Status CapturedFunction::Create(
   }
 #undef HANDLE_RESOURCE_TYPE
 
+  std::unique_ptr<DeviceMgr> device_mgr(new DeviceMgr({device}));
   std::unique_ptr<FunctionLibraryDefinition> flib_def(
       new FunctionLibraryDefinition(
           *ctx->function_library()->GetFunctionLibraryDefinition()));
-  std::unique_ptr<FunctionLibraryRuntime> lib(NewFunctionLibraryRuntime(
-      nullptr /* device_mgr */, ctx->env(), device.get(), graph_def_version,
-      flib_def.get(), {} /* TODO(mrry): OptimizerOptions? */));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(
+          device_mgr.get(), ctx->env(), graph_def_version, flib_def.get(),
+          {} /* TODO(mrry): OptimizerOptions? */));
+
+  FunctionLibraryRuntime* lib = pflr->GetFLR(device->name());
 
   FunctionLibraryRuntime::Handle f_handle;
   TF_RETURN_IF_ERROR(
       lib->Instantiate(func->name(), AttrSlice(&func->attr()), &f_handle));
 
   out_function->reset(new CapturedFunction(
-      std::move(device), std::move(flib_def), std::move(lib), f_handle,
-      std::move(captured_inputs)));
+      device, std::move(device_mgr), std::move(flib_def), std::move(pflr), lib,
+      f_handle, std::move(captured_inputs)));
   return Status::OK();
 }
 
@@ -136,14 +140,16 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
 }
 
 CapturedFunction::CapturedFunction(
-    std::unique_ptr<Device> device,
+    Device* device, std::unique_ptr<DeviceMgr> device_mgr,
     std::unique_ptr<FunctionLibraryDefinition> flib_def,
-    std::unique_ptr<FunctionLibraryRuntime> lib,
-    FunctionLibraryRuntime::Handle f_handle,
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     std::vector<Tensor> captured_inputs)
-    : device_(std::move(device)),
+    : device_(device),
+      device_mgr_(std::move(device_mgr)),
       flib_def_(std::move(flib_def)),
-      lib_(std::move(lib)),
+      pflr_(std::move(pflr)),
+      lib_(lib),
       f_handle_(f_handle),
       captured_inputs_(std::move(captured_inputs)) {}
 
