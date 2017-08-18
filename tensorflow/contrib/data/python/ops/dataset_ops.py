@@ -1991,6 +1991,19 @@ class MapDataset(Dataset):
       else:
         ret = map_func(nested_args)
 
+      # If `map_func` returns a list of tensors, `nest.flatten()` and
+      # `ops.convert_to_tensor()` would conspire to attempt to stack
+      # those tensors into a single tensor, because the customized
+      # version of `nest.flatten()` does not recurse into lists. Since
+      # it is more likely that the list arose from returning the
+      # result of an operation (such as `tf.py_func()`) that returns a
+      # list of not-necessarily-stackable tensors, we treat the
+      # returned value is a `tuple` instead. A user wishing to pack
+      # the return value into a single tensor can use an explicit
+      # `tf.stack()` before returning.
+      if isinstance(ret, list):
+        ret = tuple(ret)
+
       # Extract shape information from the returned values.
       flattened_ret = [ops.convert_to_tensor(t) for t in nest.flatten(ret)]
       self._output_shapes = nest.pack_sequence_as(
