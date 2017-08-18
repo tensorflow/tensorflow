@@ -113,5 +113,13 @@ TEST_F(NNGradTest, SeluGrad) {
   RunTest(x, x_init_value, y, shape);
 }
 
+TEST_F(NNGradTest, L2LossGrad) {
+  TensorShape x_shape({5, 2});
+  TensorShape y_shape({1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = L2Loss(scope_, x);
+  RunTest(x, x_shape, y, y_shape);
+}
+
 }  // namespace
 }  // namespace tensorflow
