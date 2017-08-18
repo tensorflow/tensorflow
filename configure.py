@@ -715,7 +715,7 @@ def get_native_cuda_compute_capabilities(environ_cp):
       environ_cp.get('CUDA_TOOLKIT_PATH'), 'extras/demo_suite/deviceQuery')
   try:
     output = run_shell(device_query_bin).split('\n')
-    pattern = re.compile('[0-9]*\.[0-9]*')
+    pattern = re.compile('[0-9]*\\.[0-9]*')
     output = [pattern.search(x) for x in output if 'Capability' in x]
     output = ','.join(x.group() for x in output if x is not None)
   except subprocess.CalledProcessError:
