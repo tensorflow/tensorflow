@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
   string input_rate_name = "decoded_sample_data:1";
   string output_name = "labels_softmax";
   int32 clip_duration_ms = 1000;
-  int32 sample_stride_ms = 30;
+  int32 clip_stride_ms = 30;
   int32 average_window_ms = 500;
   int32 time_tolerance_ms = 750;
   int32 suppression_ms = 1500;
@@ -165,8 +165,7 @@ int main(int argc, char* argv[]) {
            "maximum gap allowed between a recognition and ground truth"),
       Flag("suppression_ms", &suppression_ms,
            "how long to ignore others for after a recognition"),
-      Flag("sample_stride_ms", &sample_stride_ms,
-           "how often to run recognition"),
+      Flag("clip_stride_ms", &clip_stride_ms, "how often to run recognition"),
       Flag("detection_threshold", &detection_threshold,
            "what score is required to trigger detection of a word"),
       Flag("verbose", &verbose, "whether to log extra debugging information"),
@@ -232,7 +231,7 @@ int main(int argc, char* argv[]) {
   }
 
   const int64 clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
-  const int64 sample_stride_samples = (sample_stride_ms * sample_rate) / 1000;
+  const int64 sample_stride_samples = (clip_stride_ms * sample_rate) / 1000;
   Tensor audio_data_tensor(tensorflow::DT_FLOAT,
                            tensorflow::TensorShape({clip_duration_samples, 1}));
 
