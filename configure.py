@@ -121,14 +121,14 @@ def write_action_env_to_bazelrc(var_name, var):
   write_to_bazelrc('build --action_env %s="%s"' % (var_name, str(var)))
 
 
-def run_shell(cmd, shell=False, allow_non_zero=False):
+def run_shell(cmd, allow_non_zero=False):
   if allow_non_zero:
     try:
-      output = subprocess.check_output(cmd, shell=shell)
+      output = subprocess.check_output(cmd)
     except subprocess.CalledProcessError as e:
       output = e.output
   else:
-    output = subprocess.check_output(cmd, shell=shell)
+    output = subprocess.check_output(cmd)
   return output.decode('UTF-8').strip()
 
 
@@ -678,9 +678,9 @@ def set_tf_cunn_version(environ_cp):
         ldconfig_bin = '/sbin/ldconfig'
       else:
         ldconfig_bin = 'ldconfig'
-      cudnn_path_from_ldconfig = run_shell(
-          r'%s -p | sed -n "s/.*libcudnn.so .* => \(.*\)/\\1/p"' % ldconfig_bin,
-          shell=True)
+      cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
+                                           cudnn_path_from_ldconfig).group(1)
       if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
         cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
         break
@@ -713,10 +713,11 @@ def get_native_cuda_compute_capabilities(environ_cp):
   """
   device_query_bin = os.path.join(
       environ_cp.get('CUDA_TOOLKIT_PATH'), 'extras/demo_suite/deviceQuery')
-  cmd = (r'"%s" | grep "Capability" | grep -o "[0-9]*\.[0-9]*" | sed '
-         '":a;{N;s/\\n/,/};ba"') % device_query_bin
   try:
-    output = run_shell(cmd, shell=True)
+    output = run_shell(device_query_bin).split('\n')
+    pattern = re.compile('[0-9]*\.[0-9]*')
+    output = [pattern.search(x) for x in output if 'Capability' in x]
+    output = ','.join(x.group() for x in output if x is not None)
   except subprocess.CalledProcessError:
     output = ''
   return output
@@ -875,9 +876,16 @@ def set_computecpp_toolkit_path(environ_cp):
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
-  cmd = ('dirname $(dirname $(which mpirun)) || dirname $(dirname $(which '
-         'mpiexec))  || true')
-  default_mpi_home = run_shell(cmd, shell=True)
+  try:
+    default_mpi_home = run_shell(['which', 'mpirun'])
+    default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
+  except subprocess.CalledProcessError:
+    try:
+      default_mpi_home = run_shell(['which', 'mpiexec'])
+      default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
+    except subprocess.CalledProcessError as e:
+      default_mpi_home = e.output
+
   ask_mpi_home = ('Please specify the MPI toolkit folder. [Default is %s]: '
                  ) % default_mpi_home
   while True:
