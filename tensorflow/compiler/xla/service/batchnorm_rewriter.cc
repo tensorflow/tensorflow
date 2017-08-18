@@ -56,11 +56,14 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
 
+  Status HandleBatchNormInference(HloInstruction* batch_norm) override;
+
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
-                  bool rewrite_grad_op, bool use_fusion);
+                  bool rewrite_inference_op, bool rewrite_grad_op,
+                  bool use_fusion);
 
   // Returns whether any batch norm ops were rewritten.
   const bool changed() const { return changed_; }
@@ -70,9 +73,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
  private:
   explicit BatchNormRewriterVisitor(HloComputation* computation,
                                     bool rewrite_training_op,
+                                    bool rewrite_inference_op,
                                     bool rewrite_grad_op, bool use_fusion)
       : computation_(computation),
         rewrite_training_op_(rewrite_training_op),
+        rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op),
         use_fusion_(use_fusion) {}
 
@@ -94,6 +99,7 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
   HloComputation* computation_;
 
   bool rewrite_training_op_;
+  bool rewrite_inference_op_;
   bool rewrite_grad_op_;
   bool use_fusion_;
 
@@ -126,11 +132,14 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
 bool BatchNormRewriterVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
+                                   bool rewrite_inference_op,
                                    bool rewrite_grad_op, bool use_fusion) {
-  BatchNormRewriterVisitor visitor(computation,
-                                   /*rewrite_training_op=*/rewrite_training_op,
-                                   /*rewrite_grad_op=*/rewrite_grad_op,
-                                   /*use_fusion=*/use_fusion);
+  BatchNormRewriterVisitor visitor(
+      computation,
+      /*rewrite_training_op=*/rewrite_training_op,
+      /*rewrite_inference_op=*/rewrite_inference_op,
+      /*rewrite_grad_op=*/rewrite_grad_op,
+      /*use_fusion=*/use_fusion);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -265,6 +274,82 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
   TF_CHECK_OK(ReplaceWithNewInstruction(
       batch_norm,
       HloInstruction::CreateTuple({shifted_normalized, mean, var})));
+  return Status::OK();
+}
+
+Status BatchNormRewriterVisitor::HandleBatchNormInference(
+    HloInstruction* batch_norm) {
+  if (!rewrite_inference_op_) {
+    return Status::OK();
+  }
+  // Expand batch norm inference into smaller HLO ops.
+  HloInstruction* operand = batch_norm->mutable_operand(0);
+  const Shape operand_shape = operand->shape();
+  int64 feature_index = batch_norm->feature_index();
+
+  HloInstruction* scale = batch_norm->mutable_operand(1);
+  HloInstruction* offset = batch_norm->mutable_operand(2);
+  HloInstruction* mean = batch_norm->mutable_operand(3);
+  HloInstruction* var = batch_norm->mutable_operand(4);
+  const Shape feature_shape = scale->shape();
+
+  auto epsilon = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+
+  std::vector<int64> dimensions_without_feature;
+
+  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+    if (i != feature_index) {
+      dimensions_without_feature.push_back(i);
+    }
+  }
+
+  auto scale_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
+
+  auto offset_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
+
+  auto mean_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
+
+  auto var_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
+
+  // Var[X] + epsilon.
+  auto var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
+
+  auto neg_half = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+
+  // 1 / Sqrt[Var[X] + epsilon].
+  auto rsqrt_var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kPower, var_add_epsilon, neg_half));
+
+  // X - E[X].
+  auto operand_minus_mean =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kSubtract, operand, mean_broadcasted));
+
+  // (X - E[X]) / Sqrt[Var[X] + epsilon].
+  auto normalized = computation_->AddInstruction(
+      HloInstruction::CreateBinary(operand_shape, HloOpcode::kMultiply,
+                                   operand_minus_mean, rsqrt_var_add_epsilon));
+
+  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale.
+  auto scaled_normalized =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kMultiply, normalized, scale_broadcasted));
+
+  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale + offset.
+  auto shifted_normalized = HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kAdd, scaled_normalized, offset_broadcasted);
+
+  TF_CHECK_OK(
+      ReplaceWithNewInstruction(batch_norm, std::move(shifted_normalized)));
   return Status::OK();
 }
 
@@ -457,7 +542,8 @@ StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
   }
   for (auto& comp : computations) {
     if (BatchNormRewriterVisitor::Run(comp, rewrite_training_op_,
-                                      rewrite_grad_op_, use_fusion_)) {
+                                      rewrite_inference_op_, rewrite_grad_op_,
+                                      use_fusion_)) {
       changed = true;
     }
   }
