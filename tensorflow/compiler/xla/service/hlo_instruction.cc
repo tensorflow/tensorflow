@@ -743,7 +743,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     // If this is already a multioutput fusion instruction, expand the root
     // tuple by 1.
     HloInstruction* fused_root = fused_expression_root();
-    std::vector<HloInstruction*> tuple_elements;
+    HloInstruction::InstructionVector tuple_elements;
     bool newly_created_tuple_instr = false;
     if (fused_root->opcode() == HloOpcode::kTuple) {
       tuple_elements = fused_root->operands();
@@ -752,10 +752,9 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       newly_created_tuple_instr = true;
     }
     if (clone->opcode() == HloOpcode::kTuple) {
-      const auto& tuple_elements_to_fuse = clone->operands();
-      tuple_elements.insert(tuple_elements.end(),
-                            tuple_elements_to_fuse.begin(),
-                            tuple_elements_to_fuse.end());
+      for (auto inst : clone->operands()) {
+        tuple_elements.push_back(inst);
+      }
     } else {
       tuple_elements.push_back(clone);
     }
@@ -1964,8 +1963,8 @@ HloInstruction::fused_instructions() const {
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
-      shape_(shape),
       opcode_(opcode),
+      shape_(shape),
       name_("%" + HloOpcodeString(opcode)) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
@@ -2118,12 +2117,13 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
+using DFSStack =
+    tensorflow::gtl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.
-inline bool PushDFSChild(
-    DfsHloVisitor* visitor,
-    std::vector<std::pair<int, HloInstruction*>>* dfs_stack,
-    HloInstruction* child) {
+inline bool PushDFSChild(DfsHloVisitor* visitor, DFSStack* dfs_stack,
+                         HloInstruction* child) {
   const int id = child->unique_id();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
@@ -2146,13 +2146,15 @@ using InternalCompareFunction =
 static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
+  visitor->ReserveVisitStates(root->GetModule()->NumUniqueInstructionIds());
+
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
   // We need to keep track of both the id and the instruction because
   // instructions can get deleted while they are on the stack, so we
   // can't always use the (potentiall dead) instruction object to grab
   // its id.
-  std::vector<std::pair<int, HloInstruction*>> dfs_stack;
+  DFSStack dfs_stack;
   dfs_stack.emplace_back(root->unique_id(), root);
 
   do {

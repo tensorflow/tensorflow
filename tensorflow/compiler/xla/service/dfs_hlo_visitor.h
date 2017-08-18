@@ -248,6 +248,11 @@ class DfsHloVisitor {
   VisitState GetVisitState(int id) { return visit_state_.GetState(id); }
   VisitState GetVisitState(const HloInstruction& instruction);
 
+  // Resize internal state if necessary to hold state for ids <= num.
+  // This call is purely a performance hint and can be omitted without
+  // affecting correctness.
+  void ReserveVisitStates(int num) { visit_state_.Reserve(num); }
+
   void SetVisitState(int id, VisitState state) {
     visit_state_.SetState(id, state);
   }
@@ -301,35 +306,35 @@ class DfsHloVisitor {
  private:
   class DFSVisitStates {
    public:
-    DFSVisitStates() {
-      // Avoid frequent resizes of the visited bits array
-      states_.reserve(512);
+    DFSVisitStates() {}
+    void Reserve(uint64 num) {
+      states_.reserve((num + kStatesPerWord - 1) / kStatesPerWord);
     }
-    VisitState GetState(int id) {
-      int word_index = id / kStatesPerWord;
+    VisitState GetState(uint64 id) {
+      uint64 word_index = id / kStatesPerWord;
       if (word_index >= states_.size()) {
         return VisitState::kNotVisited;
       }
       static_assert(static_cast<int>(VisitState::kVisited) < 3,
                     "VisitState must fit in two bits");
       uint64 w = states_[word_index];
-      int shift = 2 * (id % kStatesPerWord);  // 2 bits per state
+      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
       return static_cast<VisitState>((w >> shift) & 0x3);
     }
-    void SetState(int id, VisitState state) {
-      int word_index = id / kStatesPerWord;
+    void SetState(uint64 id, VisitState state) {
+      uint64 word_index = id / kStatesPerWord;
       if (word_index >= states_.size()) {
         states_.resize(word_index + 1, 0);
       }
       uint64* w = &states_[word_index];
-      int shift = 2 * (id % kStatesPerWord);  // 2 bits per state
+      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
       uint64 mask = 0x3ull << shift;
       *w = (*w & ~mask) | (static_cast<uint64>(state) << shift);
       DCHECK_EQ(GetState(id), state);
     }
 
    private:
-    static const int kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;
+    static const uint32 kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;
     // Map from id to two-bit states.  We store 32 such states per 64-bit
     // value
     std::vector<uint64> states_;
