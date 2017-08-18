@@ -106,7 +106,7 @@ Status CapturedFunction::Create(
 Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
                              gtl::ArraySlice<Tensor> args,
                              std::vector<Tensor>* rets, const string& prefix) {
-  port::Tracing::TraceMe activity(strings::StrCat(prefix, "::Run"));
+  port::Tracing::TraceMe activity(prefix, "::Run");
   Notification n;
   Status s;
   auto done_callback = [&n, &s](Status func_status) {
