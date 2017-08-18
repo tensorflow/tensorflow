@@ -65,9 +65,12 @@ def BatchRegularizedLeastSquares(matrices, rhss, l2_regularization=0.0):
 class MatrixSolveLsOpTest(test.TestCase):
 
   def _verifySolve(self, x, y):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [np.float32, np.float64, np.complex64, np.complex128]:
       a = x.astype(np_type)
       b = y.astype(np_type)
+      if np_type in [np.complex64, np.complex128]:
+        a.imag = a.real
+        b.imag = b.real
       np_ans, _, _, _ = np.linalg.lstsq(a, b)
       for fast in [True, False]:
         with self.test_session():
