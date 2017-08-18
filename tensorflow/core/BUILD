@@ -981,6 +981,8 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
         "@nsync//:nsync_cpp",
     ],

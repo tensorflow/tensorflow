@@ -1,6 +1,5 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
- Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+<?xml version="1.0" encoding="utf-8"?><!--
+ Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -14,11 +13,7 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
-
-<resources>
-    <string name="app_name">TensorFlow Demo</string>
-    <string name="activity_name_classification">TF Classify</string>
-    <string name="activity_name_detection">TF Detect</string>
-    <string name="activity_name_stylize">TF Stylize</string>
-    <string name="activity_name_speech">TF Speech</string>
-</resources>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle" >
+  <solid android:color="#00000000" />
+  <stroke android:width="1dip" android:color="#cccccc" />
+</shape>
