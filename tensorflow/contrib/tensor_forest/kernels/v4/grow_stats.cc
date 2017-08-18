@@ -207,7 +207,8 @@ void ClassificationStats::AddExample(
 }
 
 void ClassificationStats::CheckPrune() {
-  if (IsFinished() || weight_sum_ < prune_sample_epoch_ * prune_check_every_) {
+  if (params_.pruning_type().type() == SPLIT_PRUNE_NONE || IsFinished() ||
+      weight_sum_ < prune_sample_epoch_ * prune_check_every_) {
     return;
   }
   ++prune_sample_epoch_;

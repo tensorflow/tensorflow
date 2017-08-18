@@ -22,7 +22,7 @@ To learn about the high-level API, read the following guides:
 
   * @{$get_started/estimator$tf.estimator Quickstart}, which introduces this
     API.
-  * @{$get_started/input_fn$Building Input Functions with tf.contrib.learn},
+  * @{$get_started/input_fn$Building Input Functions},
     which takes you into a somewhat more sophisticated use of this API.
   * @{$get_started/monitors$Logging and Monitoring Basics with tf.contrib.learn},
     which explains how to audit the progress of model training.
@@ -32,9 +32,6 @@ The following guides explain how to use TensorBoard:
 
   * @{$get_started/summaries_and_tensorboard$TensorBoard: Visualizing Learning},
     which gets you started.
-  * @{$get_started/embedding_viz$TensorBoard: Embedding Visualization}, which
-    demonstrates how to view and interact with high-dimensional data, such as
-    embeddings.
   * @{$get_started/graph_viz$TensorBoard: Graph Visualization}, which explains
     how to visualize the computational graph.  Graph visualization is typically
     more useful for programmers using the low-level API.

@@ -585,6 +585,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         cls._analyzer.list_source,
         cls._analyzer.get_help("list_source"),
         prefix_aliases=["ls"])
+    cls._registry.register_command_handler(
+        "eval",
+        cls._analyzer.evaluate_expression,
+        cls._analyzer.get_help("eval"),
+        prefix_aliases=["ev"])
 
   @classmethod
   def tearDownClass(cls):
@@ -1001,6 +1006,34 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_inputs_node_name=node_name,
         list_outputs_node_name=node_name)
 
+  def testPrintTensorHighlightingRangesAndIncludingNumericSummary(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command(
+        "print_tensor", [tensor_name, "--ranges", "[-inf, 0.0]", "-s"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"%s:DebugIdentity\": " % tensor_name +
+        "Highlighted([-inf, 0.0]): 1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "Numeric summary:",
+        "| - + | total |",
+        "| 1 1 |     2 |",
+        "|  min  max mean  std |",
+        "| -2.0  7.0  2.5  4.5 |",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(10, out.annotations)
+    self.assertIn(11, out.annotations)
+    self.assertEqual([(8, 11, "bold")], out.font_attr_segs[11])
+
   def testPrintTensorWithSlicing(self):
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
@@ -1105,6 +1138,29 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "graphs"
     ], out.lines)
     check_main_menu(self, out, list_tensors_enabled=True)
+
+  def testEvalExpression(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command(
+        "eval", ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name)],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"from eval of expression "
+        "'np.matmul(`simple_mul_add/matmul:0`, "
+        "`simple_mul_add/matmul:0`.T)'\":",
+        "  dtype: float64",
+        "  shape: (2, 2)",
+        "",
+        "Numeric summary:",
+        "| - + | total |",
+        "| 2 2 |     4 |",
+        "|           min           max          mean           std |",
+        "|         -14.0          49.0          6.25 25.7524270701 |",
+        "",
+        "array([[ 49., -14.],",
+        "       [-14.,   4.]])"], out.lines)
 
   def testAddGetTensorFilterLambda(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)

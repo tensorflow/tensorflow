@@ -54,6 +54,17 @@ inline int GetTensorSpatialDims(int num_dims, TensorFormat format) {
   }
 }
 
+// Returns the rank of a tensor with 'num_spatial_dims' spatial dimensions and
+// tensor format 'format'. This is the inverse of GetTensorSpatialDims.
+inline int GetTensorDimsFromSpatialDims(int num_spatial_dims,
+                                        TensorFormat format) {
+  if (format == FORMAT_NCHW_VECT_C) {
+    return num_spatial_dims + 3;  // Include N,C,InnerC.
+  } else {
+    return num_spatial_dims + 2;  // Include N,C.
+  }
+}
+
 // Returns the index of the batch dimension.
 inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
   switch (format) {

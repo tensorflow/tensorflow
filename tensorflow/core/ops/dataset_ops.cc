@@ -75,6 +75,17 @@ REGISTER_OP("ZipDataset")
 Creates a dataset that zips together `input_datasets`.
 )doc");
 
+REGISTER_OP("ConcatenateDataset")
+    .Input("input_dataset: resource")
+    .Input("another_dataset: resource")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that concatenates `input_dataset` with `another_dataset`.
+)doc");
+
 REGISTER_OP("RepeatDataset")
     .Input("input_dataset: resource")
     .Input("count: int64")
@@ -166,6 +177,20 @@ output_buffer_size: The maximum number of output elements to buffer in an
   iterator over this dataset.
 )doc");
 
+REGISTER_OP("PrefetchDataset")
+    .Input("input_dataset: resource")
+    .Input("buffer_size: int64")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that asynchronously prefetches elements from `input_dataset`.
+
+buffer_size: The maximum number of elements to buffer in an iterator over
+  this dataset.
+)doc");
+
 REGISTER_OP("FlatMapDataset")
     .Input("input_dataset: resource")
     .Input("other_arguments: Targuments")
@@ -181,6 +206,31 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
 Unlike MapDataset, the `f` in FlatMapDataset is expected to return a
 Dataset resource, and FlatMapDataset will flatten successive results
 into a single Dataset.
+
+f: A function mapping elements of `input_dataset`, concatenated with
+  `other_arguments`, to a Dataset resource that contains elements matching
+  `output_types` and `output_shapes`.
+)doc");
+
+REGISTER_OP("InterleaveDataset")
+    .Input("input_dataset: resource")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Output("handle: resource")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that applies `f` to the outputs of `input_dataset`.
+
+Unlike MapDataset, the `f` in InterleaveDataset is expected to return
+a Dataset resource, and InterleaveDataset will flatten successive
+results into a single Dataset. Unlike FlatMapDataset,
+InterleaveDataset will interleave sequences of up to `block_length`
+consecutive elements from `cycle_length` input elements.
 
 f: A function mapping elements of `input_dataset`, concatenated with
   `other_arguments`, to a Dataset resource that contains elements matching
@@ -357,6 +407,7 @@ filename: A path on the filesystem where we should cache the dataset. Note: this
 
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
+    .Input("compression_type: string")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): validate
                                                // that `filenames` is
@@ -367,6 +418,8 @@ Creates a dataset that emits the lines of one or more text files.
 
 filenames: A scalar or a vector containing the name(s) of the file(s) to be
   read.
+compression_type: A scalar containing either (i) the empty string (no
+  compression), (ii) "ZLIB", or (iii) "GZIP".
 )doc");
 
 REGISTER_OP("FixedLengthRecordDataset")
@@ -495,6 +548,34 @@ REGISTER_OP("IteratorDispose")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Releases any resources used by the given iterator.
+)doc");
+
+REGISTER_OP("IteratorToStringHandle")
+    .Input("resource_handle: resource")
+    .Output("string_handle: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given `resource_handle` representing an iterator to a string.
+
+resource_handle: A handle to an iterator resource.
+string_handle: A string representation of the given handle.
+)doc");
+
+REGISTER_OP("IteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("resource_handle: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given string representing a handle to an iterator to a resource.
+
+string_handle: A string representation of the given handle.
+resource_handle: A handle to an iterator resource.
+output_types: If specified, defines the type of each tuple component in an
+  element produced by the resulting iterator.
+output_shapes: If specified, defines the shape of each tuple component in an
+  element produced by the resulting iterator.
 )doc");
 
 }  // namespace tensorflow

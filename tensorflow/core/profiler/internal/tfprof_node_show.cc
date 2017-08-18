@@ -38,6 +38,10 @@ void ShowNode::ReInit(int64 step) {
   mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros(step));
 
   mutable_proto()->set_requested_bytes(node->requested_bytes(step));
+  mutable_proto()->set_peak_bytes(node->peak_bytes(step));
+  mutable_proto()->set_residual_bytes(node->residual_bytes(step));
+  mutable_proto()->set_output_bytes(node->output_bytes(step));
+
   mutable_proto()->set_float_ops(node->float_ops(step));
 
   mutable_proto()->clear_input_shapes();
@@ -45,33 +49,15 @@ void ShowNode::ReInit(int64 step) {
     (*mutable_proto()->mutable_input_shapes())[inp.first].MergeFrom(
         VecToShapeProto(inp.second));
   }
-
-  proto_.clear_parameters();
-  if (!node->shape().empty()) {
-    int64 params = 1;
-    bool complete_shape = true;
-    for (int64 d : node->shape()) {
-      // Sometimes parameters could be <0 when a dim is unknown.
-      if (d < 0) {
-        complete_shape = false;
-        break;
-      }
-      params *= d;
-    }
-    if (complete_shape) {
-      mutable_proto()->set_parameters(proto_.parameters() + params);
-    } else {
-      fprintf(stderr, "Incomplete shape.");
-    }
-  }
+  proto_.set_parameters(node->parameters());
 }
 
-TFGraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
+GraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
 
-const TFGraphNodeProto& ShowNode::proto() const { return proto_; }
+const GraphNodeProto& ShowNode::proto() const { return proto_; }
 
 void ShowNode::AggregateTotalStats(ShowNode* node) {
-  TFGraphNodeProto* node_pb = node->mutable_proto();
+  GraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_run_count(proto().total_run_count() +
                                        node_pb->total_run_count());
   mutable_proto()->set_total_definition_count(
@@ -86,6 +72,12 @@ void ShowNode::AggregateTotalStats(ShowNode* node) {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              node_pb->total_requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        node_pb->total_peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            node_pb->total_residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          node_pb->total_output_bytes());
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         node_pb->total_parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -107,6 +99,13 @@ void ShowNode::AddSelfToTotalStats() {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              proto().requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        proto().peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            proto().residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          proto().output_bytes());
+
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         proto().parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -114,6 +113,8 @@ void ShowNode::AddSelfToTotalStats() {
 }
 
 void ShowNode::ResetTotalStats() {
+  formatted_str.clear();
+
   mutable_proto()->set_total_definition_count(0);
   mutable_proto()->set_total_run_count(0);
   mutable_proto()->set_total_exec_micros(0);
@@ -121,6 +122,10 @@ void ShowNode::ResetTotalStats() {
   mutable_proto()->set_total_cpu_exec_micros(0);
 
   mutable_proto()->set_total_requested_bytes(0);
+  mutable_proto()->set_total_peak_bytes(0);
+  mutable_proto()->set_total_residual_bytes(0);
+  mutable_proto()->set_total_output_bytes(0);
+
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);
   mutable_proto()->mutable_children()->Clear();
@@ -151,37 +156,22 @@ bool ShowMultiNode::ReInit(int64 step,
   mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros());
 
   mutable_proto()->set_requested_bytes(node->requested_bytes());
+  mutable_proto()->set_peak_bytes(node->peak_bytes());
+  mutable_proto()->set_residual_bytes(node->residual_bytes());
+  mutable_proto()->set_output_bytes(node->output_bytes());
+
   mutable_proto()->set_float_ops(node->float_ops());
 
-  mutable_proto()->clear_parameters();
-  if (!node->shapes().empty()) {
-    for (const std::vector<int64>& shape : node->shapes()) {
-      int64 params = 1;
-      bool complete_shape = true;
-      for (int64 d : shape) {
-        // Sometimes parameters could be <0 when a dim is unknown.
-        if (d < 0) {
-          complete_shape = false;
-          break;
-        }
-        params *= d;
-      }
-      if (complete_shape) {
-        mutable_proto()->set_parameters(proto().parameters() + params);
-      } else {
-        fprintf(stderr, "Incomplete shape.");
-      }
-    }
-  }
+  mutable_proto()->set_parameters(node->parameters());
   return has_matched_type;
 }
 
-TFMultiGraphNodeProto* ShowMultiNode::mutable_proto() { return &proto_; }
+MultiGraphNodeProto* ShowMultiNode::mutable_proto() { return &proto_; }
 
-const TFMultiGraphNodeProto& ShowMultiNode::proto() const { return proto_; }
+const MultiGraphNodeProto& ShowMultiNode::proto() const { return proto_; }
 
 void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
-  TFMultiGraphNodeProto* node_pb = node->mutable_proto();
+  MultiGraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
   mutable_proto()->set_total_accelerator_exec_micros(
@@ -192,6 +182,13 @@ void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              node_pb->total_requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        node_pb->total_peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            node_pb->total_residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          node_pb->total_output_bytes());
+
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         node_pb->total_parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -209,6 +206,13 @@ void ShowMultiNode::AddSelfToTotalStats() {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              proto().requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        proto().peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            proto().residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          proto().output_bytes());
+
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         proto().parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -216,11 +220,16 @@ void ShowMultiNode::AddSelfToTotalStats() {
 }
 
 void ShowMultiNode::ResetTotalStats() {
+  formatted_str.clear();
   mutable_proto()->set_total_exec_micros(0);
   mutable_proto()->set_total_accelerator_exec_micros(0);
   mutable_proto()->set_total_cpu_exec_micros(0);
 
   mutable_proto()->set_total_requested_bytes(0);
+  mutable_proto()->set_total_peak_bytes(0);
+  mutable_proto()->set_total_residual_bytes(0);
+  mutable_proto()->set_total_output_bytes(0);
+
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);
   mutable_proto()->mutable_children()->Clear();

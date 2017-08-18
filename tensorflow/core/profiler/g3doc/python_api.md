@@ -11,21 +11,24 @@
 ### Parameters and Shapes.
 ```python
 # Print trainable variable parameter statistics to stdout.
+ProfileOptionBuilder = tf.profiler.ProfileOptionBuilder
+
 param_stats = tf.profiler.profile(
     tf.get_default_graph(),
-    options=tf.contrib.tfprof.model_analyzer.
-        TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
+    options=ProfileOptionBuilder.trainable_variables_parameter())
 
 # Use code view to associate statistics with Python codes.
-opts = tf.contrib.tfprof.model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS
-opts['show_name_regexes'] = ['.*my_code1.py.*', '.*my_code2.py.*']
+opts = ProfileOptionBuilder(
+    ProfileOptionBuilder.trainable_variables_parameter()
+    ).with_node_names(show_name_regexes=['.*my_code1.py.*', '.*my_code2.py.*']
+    ).build()
 param_stats = tf.profiler.profile(
     tf.get_default_graph(),
-    cmd='code'
+    cmd='code',
     options=opts)
 
-# param_stats can be tensorflow.tfprof.TFGraphNodeProto or
-# tensorflow.tfprof.TFMultiGraphNodeProto, depending on the view.
+# param_stats can be tensorflow.tfprof.GraphNodeProto or
+# tensorflow.tfprof.MultiGraphNodeProto, depending on the view.
 # Let's print the root below.
 sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 ```
@@ -38,7 +41,7 @@ sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 # model broken down by individual operations.
 tf.profiler.profile(
     tf.get_default_graph(),
-    options=tf.contrib.tfprof.model_analyzer.FLOAT_OPS_OPTIONS)
+    options=tf.profiler.ProfileOptionBuilder.float_operation())
 ```
 
 ### Time and Memory
@@ -48,8 +51,11 @@ compute the memory and timing statistics.
 ```python
 # Generate the RunMetadata that contains the memory and timing information.
 #
-# Note: When run on GPU, a kernel is first scheduled (enqueued) and then
-#       executed asynchronously. tfprof only tracks the execution time.
+# Note: When run on accelerator (e.g. GPU), an operation might perform some
+#       cpu computation, enqueue the accelerator computation. The accelerator
+#       computation is then run asynchronously. The profiler considers 3
+#       times: 1) accelerator computation. 2) cpu computation (might wait on
+#       accelerator). 3) the sum of 1 and 2.
 #
 run_metadata = tf.RunMetadata()
 with tf.Session() as sess:
@@ -58,16 +64,16 @@ with tf.Session() as sess:
                run_metadata=run_metadata)
 ```
 
-Finally, you may run `print_model_analysis` to explore the timing and memory
+Finally, you may run `tf.profiler.profile` to explore the timing and memory
 information of the model.
 
 ``` python
-# See model_analyzer_test.py for more examples.
-#
 # Print to stdout an analysis of the memory usage and the timing information
 # broken down by python codes.
-opts = tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY.copy()
-opts['show_name_regexes'] = ['.*my_code.py.*']
+ProfileOptionBuilder = tf.profiler.ProfileOptionBuilder
+opts = ProfileOptionBuilder(ProfileOptionBuilder.time_and_memory()
+    ).with_node_names(show_name_regexes=['.*my_code.py.*']).build()
+
 tf.profiler.profile(
     tf.get_default_graph(),
     run_meta=run_metadata,
@@ -75,22 +81,23 @@ tf.profiler.profile(
     options=opts)
 
 # Print to stdout an analysis of the memory usage and the timing information
-# broken down by operations.
+# broken down by operation types.
 tf.profiler.profile(
     tf.get_default_graph(),
     run_meta=run_metadata,
-    options=tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY)
+    cmd='op',
+    options=tf.profiler.ProfileOptionBuilder.time_and_memory())
 ```
 
 ### Visualize
 
 ```
 To visualize the result of Python API results:
-Set opts['output'] = 'timeline:outfile=<filename>' to generate a timeline json file.
-Open a Chrome Browser, open URL chrome://tracing, and load the json file.
+Call `with_step(0).with_timeline_output(filename)` to generate a timeline json file.
+Open a Chrome Browser, type URL `chrome://tracing`, and load the json file.
 ```
 
-Below are 2 examples of graph view and scope view. See code view example in later examples.
+Below are 2 examples of graph view and scope view.
 
 <left>
 ![CodeTimeline](graph_timeline.png)

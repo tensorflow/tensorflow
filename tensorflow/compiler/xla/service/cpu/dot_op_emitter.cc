@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -244,14 +244,14 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   switch (type) {
     case F32:
       fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatmulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF32SymbolName;
+                    ? runtime::kEigenMatMulF32SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
       fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatmulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF64SymbolName;
+                    ? runtime::kEigenMatMulF64SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
       float_type = ir_builder_->getDoubleTy();
       break;
     default:
@@ -282,6 +282,10 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // row major, then use the following identity to compute the product:
   //
   //   (A x B)^T = B^T x A^T
+  //
+  // The connection between this identity and memory layout is that the
+  // transpose operation can also be considered as an operation that changes the
+  // memory layout of a matrix from row-major to column-major or vice versa.
   //
   // Effectively this involves swapping the 'lhs' with 'rhs' and 'm' with 'n'.
 

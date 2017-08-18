@@ -24,13 +24,13 @@ To try the code for this tutorial:
         # Ubuntu/Linux 64-bit
         $ sudo apt-get install python-pip python-dev
 
-        # Mac OS X
+        # macOS
         $ sudo easy_install pip
         $ sudo easy_install --upgrade six
 
     b. Use `pip` to install pandas:
 
-        $ sudo pip install pandas
+        $ pip install -U pandas
 
     If you have trouble installing pandas, consult the
     [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
@@ -106,8 +106,8 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : military, private, etc.).         :
 | fnlwgt         | Continuous  | The number of people the census   |
 :                :             : takers believe that observation   :
-:                :             : represents (sample weight). This  :
-:                :             : variable will not be used.        :
+:                :             : represents (sample weight). Final :
+:                :             : weight will not be used.          :
 | education      | Categorical | The highest level of education    |
 :                :             : achieved for that individual.     :
 | education_num  | Continuous  | The highest level of education in |
@@ -127,7 +127,7 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : individual.                       :
 | income         | Categorical | ">50K" or "<=50K", meaning        |
 :                :             : whether the person makes more     :
-:                :             : than \$50,000 annually.           :
+:                :             : than $50,000 annually.           :
 
 ## Converting Data into Tensors
 

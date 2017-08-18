@@ -149,7 +149,7 @@ def _train_on_generated_data(
     def tf_random_seed(self):
       return seed
 
-  estimator = estimators._TimeSeriesRegressor(  # pylint: disable=protected-access
+  estimator = estimators.TimeSeriesRegressor(
       model=generative_model,
       config=_RunConfig(),
       state_manager=train_state_manager,

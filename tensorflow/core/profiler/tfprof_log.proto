@@ -10,6 +10,7 @@ message CodeDef {
     int32 lineno = 2;
     string function = 3;
     string line = 4;
+    int32 func_start_line = 5;
   }
 }
 
@@ -27,6 +28,6 @@ message OpLogEntry {
   CodeDef code_def = 4;
 }
 
-message OpLog {
+message OpLogProto {
   repeated OpLogEntry log_entries = 1;
 }

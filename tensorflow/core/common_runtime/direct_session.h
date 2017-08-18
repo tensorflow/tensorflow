@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
@@ -98,19 +99,21 @@ class DirectSession : public Session {
   ::tensorflow::Status ListDevices(
       std::vector<DeviceAttributes>* response) override;
   ::tensorflow::Status Close() override;
+  ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = device_mgr_.get();
+    return ::tensorflow::Status::OK();
+  }
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
     cost_model_manager_.ExportCostModels(cost_models);
   }
 
  private:
-  typedef DirectSession ME;
-
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Graph* graph = nullptr;
-    std::unique_ptr<FunctionLibraryRuntime> flib;
+    Graph* graph = nullptr;                  // not owned.
+    FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
   };
 
@@ -123,6 +126,8 @@ class DirectSession : public Session {
   // 'input_keys' are the rendezvous keys for the feeds and 'output_keys'
   // are rendezvous keys for the fetches.
   // 'flib_def' is the function library used by graphs in 'items'.
+  // 'proc_flr' is the collection of FunctionLibraryRuntime objects, one per
+  // device.
   // TODO(phawkins): currently partitions always share the same function
   // library. Consider giving each partition its own function library to enable
   // per-partition rewrites.
@@ -133,6 +138,7 @@ class DirectSession : public Session {
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
+    std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, size_t> input_name_to_index;
     std::unordered_map<string, string> input_name_to_rendezvous_key;
@@ -188,8 +194,8 @@ class DirectSession : public Session {
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
-      thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
-      gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
+      gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
+      gtl::ArraySlice<string> target_nodes,
       ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates several graphs given the existing graph_def_ and the

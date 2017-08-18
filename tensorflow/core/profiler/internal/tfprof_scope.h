@@ -15,7 +15,7 @@ limitations under the License.
 
 // Build a tree structure based on the TensorFlow op names.
 // For example, 'name1/name2' is a child of 'name1'.
-// Stats are aggregated from descendants from ancestors.
+// Stats are aggregated from descendants to ancestors.
 
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
@@ -64,7 +64,7 @@ class TFScope : public TFShow {
                                   const Options& opts);
 
   void Format(const std::vector<ScopeNode*> roots, string* display_str,
-              TFGraphNodeProto* proto);
+              GraphNodeProto* proto);
 
   ScopeNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;

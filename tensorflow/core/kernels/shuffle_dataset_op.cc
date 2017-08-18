@@ -24,6 +24,8 @@ namespace tensorflow {
 
 namespace {
 
+const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
+
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
@@ -100,14 +102,25 @@ class ShuffleDatasetOp : public UnaryDatasetOpKernel {
       Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                      bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        int64 start_micros = ctx->env()->NowMicros();
+        int64 num_log_entries = 0;
         while (!end_of_input_sequence_ &&
                buffer_.size() < dataset()->buffer_size_) {
+          if (ctx->env()->NowMicros() >
+              ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
+            num_log_entries++;
+            LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
+                      << buffer_.size() << " of " << dataset()->buffer_size_;
+          }
           std::vector<Tensor> input_element;
           TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
                                                   &end_of_input_sequence_));
           if (!end_of_input_sequence_) {
             buffer_.emplace_back(std::move(input_element));
           }
+        }
+        if (num_log_entries > 0) {
+          LOG(INFO) << "Shuffle buffer filled.";
         }
 
         if (!buffer_.empty()) {

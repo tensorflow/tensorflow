@@ -264,6 +264,61 @@ TEST(ArrayOpsTest, Gather_ShapeFn) {
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[1,2,3]");
 }
 
+TEST(ArrayOpsTest, GatherV2_ShapeFn) {
+  ShapeInferenceTestOp op("GatherV2");
+
+  // Tests when axis is unknown.
+  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "[1,2,3];[3];[]", "[?,?,?]");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op,
+              "[];[1,2,3];[]");
+
+  // Non-scalar axis.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];[1,2,3];[1]");
+
+  // Test when axis dim is known.
+  Tensor axis_dim_t;
+  op.input_tensors.resize(3);
+  op.input_tensors[2] = &axis_dim_t;
+
+  // Out of range axis.
+  axis_dim_t = test::AsScalar(1);
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[1];[1,2];[]");
+
+  // Rank 0 indices.
+  axis_dim_t = test::AsScalar(0);
+  INFER_OK(op, "[1,2,3];[];[]", "[d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(1);
+  INFER_OK(op, "[1,2,3];[];[]", "[d0_0,d0_2]");
+  axis_dim_t = test::AsScalar(2);
+  INFER_OK(op, "[1,2,3];[];[]", "[d0_0,d0_1]");
+
+  // Rank 1 indices.
+  axis_dim_t = test::AsScalar(0);
+  INFER_OK(op, "[1,2,3];[5];[]", "[d1_0,d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(1);
+  INFER_OK(op, "[1,2,3];[5];[]", "[d0_0,d1_0,d0_2]");
+  axis_dim_t = test::AsScalar(2);
+  INFER_OK(op, "[1,2,3];[5];[]", "[d0_0,d0_1,d1_0]");
+
+  // Rank 2 indices.
+  axis_dim_t = test::AsScalar(0);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d1_0,d1_1,d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(1);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
+  axis_dim_t = test::AsScalar(2);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+
+  // Negative axis.
+  axis_dim_t = test::AsScalar(-3);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d1_0,d1_1,d0_1,d0_2]");
+  axis_dim_t = test::AsScalar(-2);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
+  axis_dim_t = test::AsScalar(-1);
+  INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+}
+
 TEST(ArrayOpsTest, GatherNd_ShapeFn) {
   ShapeInferenceTestOp op("GatherNd");
 
@@ -347,6 +402,36 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     INFER_OK(op, "?;[3,2]", "[?,?,?]");
     INFER_OK(op, "?;?", "[?,?,?]");
   }
+}
+
+TEST(ArrayOpsTest, PadV2_ShapeFn) {
+  ShapeInferenceTestOp op("PadV2");
+  op.input_tensors.resize(3);
+
+  // Inputs are input, paddings and constant_values.
+
+  INFER_OK(op, "?;?;?", "?");
+
+  // Check shape of paddings.
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;[1,2,3];?");
+  INFER_ERROR("Dimension must be 2 but is 4", op, "?;[1,4];?");
+
+  // input.rank and paddings.dim(0) are equal. This is the number of dims in
+  // output.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];[4,2];[]");
+  INFER_OK(op, "[1,2,3];?;[]", "[?,?,?]");
+  INFER_OK(op, "?;[3,2];[]", "[?,?,?]");
+
+  // Make the paddings tensor known and verify padding values get added.
+  // E.g., if padding is ((1,10),(2,20),(3,30)) then values 11,22,23 are added
+  // to input dims to get output.
+  Tensor paddings_t(DT_INT64, TensorShape{3, 2});
+  test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  op.input_tensors[1] = &paddings_t;
+  INFER_OK(op, "[100,200,300];[3,2];[]", "[111,222,333]");
+  INFER_OK(op, "[100,?,300];[3,2];[]", "[111,?,333]");
+  INFER_OK(op, "?;[3,2];[]", "[?,?,?]");
+  INFER_OK(op, "?;?;[]", "[?,?,?]");
 }
 
 TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {

@@ -26,7 +26,9 @@ load(
 
 tf_custom_op_py_library(
     name = "rnn_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
+        "python/tools/checkpoint_convert.py",
+    ],
     dso = [
         ":python/ops/_gru_ops.so",
         ":python/ops/_lstm_ops.so",
@@ -83,7 +85,10 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = ["notsan"],  # http://b/62135981
+    tags = [
+        "noasan",  # times out b/63678675
+        "notsan",  # http://b/62135981
+    ],
     xla_enabled = True,
 )
 

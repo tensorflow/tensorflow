@@ -13,7 +13,7 @@
 # limitations under the License.
 # ===================================================================
 
-"""TpuEstimator class."""
+"""TPUEstimator class."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,6 +26,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
 
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -43,6 +44,7 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
 
+_INITIAL_LOSS = 1e7
 _BATCH_SIZE_KEY = 'batch_size'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
@@ -53,9 +55,12 @@ def _tpu_job(run_config):
   return None if run_config.master in ['', 'local'] else 'tpu_worker'
 
 
-def _per_shard_batch_size(global_batch_size, run_config):
+def _per_shard_batch_size(global_batch_size, run_config, use_tpu):
   """Returns the batch size for each shard."""
-  return global_batch_size // run_config.tpu_config.num_shards
+  if use_tpu:
+    return global_batch_size // run_config.tpu_config.num_shards
+  else:
+    return global_batch_size
 
 
 class _SIGNAL(object):
@@ -71,15 +76,15 @@ class InfeedThreadController(object):
   stop. It could be the cases that the `max_steps` is reached or some hook
   requests the stop in the monitored_session.
 
-  This controller (with coordination with `TpuInfeedSessionHook`) does the
+  This controller (with coordination with `TPUInfeedSessionHook`) does the
   following:
 
   1) It pre-infeeds one `batch` data for current TPU iterations.
 
-  2) When `before_run` of `TpuInfeedSessionHook` is called, one more `batch`
+  2) When `before_run` of `TPUInfeedSessionHook` is called, one more `batch`
   data will be infed.
 
-  3) When `end` of `TpuInfeedSessionHook` is called, the thread will end
+  3) When `end` of `TPUInfeedSessionHook` is called, the thread will end
   gracefully.
 
   So, we might need to adjust the algorithrm here if the IO is slower than the
@@ -115,7 +120,7 @@ class InfeedThreadController(object):
     self._input_thd.join()
 
 
-class TpuInfeedSessionHook(session_run_hook.SessionRunHook):
+class TPUInfeedSessionHook(session_run_hook.SessionRunHook):
   """A Session hook setting up the TPU initialization and infeed.
 
   This hook does two major things:
@@ -157,8 +162,8 @@ class TpuInfeedSessionHook(session_run_hook.SessionRunHook):
 class _PerShardOutput(object):
   """Wraps input_fn's outputs into per-shard outputs.
 
-  Used so that the wrapped model_fn can distinguish between sharded input and
-  unsharded inputs (e.g., for export_savedmodel()).
+  Used so that the model_fn can distinguish between sharded input and unsharded
+  inputs (e.g., for export_savedmodel()).
   """
 
   def __init__(self, output):
@@ -168,15 +173,437 @@ class _PerShardOutput(object):
     return self.output
 
 
-class TpuEstimator(estimator_lib.Estimator):
+class _InputsHolder(object):
+  """A inputs holder holds the `features` and `labels' for TPU system.
+
+  Model inputs returned by the `input_fn` can have one of the following forms:
+  1. features
+  2. (features, labels)
+
+  Internally, form 1 is reformed to `(features, None)` as features and labels
+  are passed separatedly to underlying methods. For TPU training, TPUEstimator
+  expects multiple `features` and `labels` tuples one for each shard.
+
+  In addition, TPUEstimator allows various different structures for inputs
+  (namely `features` and `labels`).  `features` can be `Tensor` or dict of
+  string name to `Tensor`, and `labels` could be `None`, `Tensor`, or dict of
+  string name to `Tensor`. TPU infeed/outfeed library expects flattened tensor
+  list. So, `features` and `labels` need to be flattened, before infeed enqueue,
+  and the structure of them needs to be recorded, in order to restore them after
+  infeed dequeue.
+
+  `_InputsHolder` could hold the `features` and `labels` tuple for all shards
+  (usually multi-host TPU training) or for one host (usually for single-host TPU
+  evaluation), records the structure details (including presence, dict or single
+  tensor, dict names), validates the structure consistency cross all shards, and
+  encapsulates the flatten/unflatten logic.
+  """
+
+  def __init__(self, features=None, labels=None, num_shards=None):
+    """Constructor.
+
+    Args:
+      features: features for one host or a list of features one for each shard
+        (must be type `_PerShardOutput`). Once provided, the corresponding
+        `labels` should be set also and this `_InputsHolder` is frozen to
+        prevent from future modification. If `None`, it is expected to add
+        features and labels for each shard by calling `append_tuple` later.
+      labels: labels for one host or a list of labels one for each shard
+        (must be type `_PerShardOutput`).
+      num_shards: Number of shards in the TPU system. Must be provided unless it
+        can be deduced from `features`.
+
+    Raises:
+      ValueError: If both `sharded_features` and `num_shards` are `None`.
+    """
+    # Holds the features and labels for all shards.
+    self._feature_list = []
+    self._label_list = []
+
+    # Holds the structure of inputs
+    self._feature_names = []
+    self._label_names = []
+    self._has_labels = False
+
+    # Internal state.
+    self._initialized = False
+    self._frozen = False
+    self._sharded = False
+
+    if features is None:
+      if num_shards is None:
+        raise ValueError(
+            '`features` and `num_shards` cannot be both None')
+      self._num_shards = num_shards
+    elif isinstance(features, _PerShardOutput):
+      self._from_sharded_inputs(features, labels, num_shards)
+    else:
+      if num_shards is None:
+        raise ValueError(
+            '`num_shards` cannot be None for unsharded features.')
+      self._from_unsharded_inputs(features, labels, num_shards)
+
+  def _from_unsharded_inputs(self, features, labels, num_shards):
+    """Initializes the inputs with unsharded features and labels."""
+    self._num_shards = num_shards
+    if labels is not None:
+      self._has_labels = True
+      self.append_tuple((features, labels))
+    else:
+      self.append_tuple(features)
+
+    self._sharded = False
+    self._frozen = True
+
+  def _from_sharded_inputs(self, sharded_features, sharded_labels, num_shards):
+    """Initializes the inputs with sharded features and labels."""
+    if not isinstance(sharded_features, _PerShardOutput):
+      raise ValueError('`sharded_features` must have type `_PerShardOutput`.')
+    features = sharded_features.as_list()
+
+    if num_shards is not None and num_shards != len(features):
+      raise ValueError(
+          '`num_shards` should be same as the length of sharded_features.')
+
+    self._num_shards = len(features)
+    if not self._num_shards:
+      raise ValueError('`sharded_features` should not be empty.')
+
+    if sharded_labels is not None:
+      if not isinstance(sharded_labels, _PerShardOutput):
+        raise ValueError('sharded_labels` must have type `_PerShardOutput`.')
+
+      self._has_labels = True
+      labels = sharded_labels.as_list()
+      if self._num_shards != len(labels):
+        raise ValueError(
+            'Length of `sharded_features` and `sharded_labels` mismatch.')
+
+    if self._has_labels:
+      for (f, l) in zip(features, labels):
+        self.append_tuple((f, l))
+    else:
+      for f in features:
+        self.append_tuple(f)
+
+    self._sharded = True
+    self._frozen = True
+
+  def _extract_key_names(self, tensor_or_dict):
+    if tensor_or_dict is None:
+      return []
+
+    return tensor_or_dict.keys() if isinstance(tensor_or_dict, dict) else []
+
+  def _validate(self, features, labels):
+    has_labels = labels is not None
+    feature_names = self._extract_key_names(features)
+    label_names = self._extract_key_names(labels)
+
+    if self._initialized:
+      self._sharded = True
+      # The following should never happen.
+      assert feature_names == self._feature_names, 'feature keys mismatched'
+      assert label_names == self._label_names, 'label keys mismatched'
+      assert has_labels == self._has_labels, 'label presence mismatched'
+    else:
+      self._initialized = True
+      self._feature_names = feature_names
+      self._label_names = label_names
+      self._has_labels = has_labels
+
+  @property
+  def sharded(self):
+    if not self._frozen:
+      raise RuntimeError('_InputsHolder has not been frozen yet.')
+    return self._sharded
+
+  @property
+  def num_shards(self):
+    if not self._frozen:
+      raise RuntimeError('_InputsHolder has not been frozen yet.')
+    return self._num_shards
+
+  def append_tuple(self, inputs):
+    """Appends `inputs` for one shard into holder.
+
+    Args:
+      inputs: The return from `input_fn`, which could be features or tuple of
+        (features, labels). After the first `inputs` appended into
+        `_InputsHolder`, the structure of `features` and `labels is recorded.
+        Any future invocation should provide the `inputs` with same structure.
+
+    Raises:
+      RuntimeError: If the internal data has been frozen already.
+    """
+    if self._frozen:
+      raise RuntimeError('InputsHolder has frozen, which cannot be mutated.')
+
+    # input_fn may return either features or (features, labels)
+    if isinstance(inputs, tuple):
+      features, labels = inputs
+    else:
+      features, labels = inputs, None
+
+    self._validate(features, labels)
+
+    self._feature_list.append(features)
+    if labels is not None:
+      self._label_list.append(labels)
+
+  def as_features_and_labels_tuple(self):
+    """Returns features and labels as grouped tuple.
+
+    This is intended to be used to pass features and labels for all shards from
+    input_fn to model_fn as the parent class `Estimator` does not have the
+    concept of shards. So, grouped tuple is required.
+
+    Once called, the internal data is frozen and `append_tuple` cannot be
+    invoked anymore.
+
+    Returns:
+      A tuple of features and labels. Both have type `_PerShardOutput`, holding
+      the inputs for all shards. `labels` could be `None`.
+
+    Raises:
+      RuntimeError: If the internal data has not been initialized.
+    """
+    self._frozen = True
+    if not self._initialized:
+      raise RuntimeError('InputsHolder has not been initialized.')
+
+    assert len(self._feature_list) == self._num_shards
+    if not self._label_list or all(l is None for l in self._label_list):
+      return _PerShardOutput(self._feature_list), None
+
+    assert len(self._label_list) == self._num_shards
+    return (_PerShardOutput(self._feature_list),
+            _PerShardOutput(self._label_list))
+
+  def as_sharded_flattened_inputs(self):
+    """Flatten the features and label as tensor lists for all shards.
+
+    Flattened tensor list contains all tensors in `features` (dict) and `labels`
+    (dict). Conceptually, it has the predicated structure like:
+
+    ```python
+    flatten_list = []
+    for name in features:
+      flatten_list.append(features[name])
+    for name in labels:
+      flatten_list.append(labels[name])
+    ```
+
+    This method handles the label is None case and single tensor case nicely.
+
+    Once called, the internal data is frozen and `append_tuple` cannot be
+    invokded anymore.
+
+    Returns:
+      A list of flattened inputs one for each shard.
+
+    Raises:
+      RuntimeError: If the internal data has not been initialized.
+      ValueError: If the inputs are sharded.
+    """
+    self._frozen = True
+    if not self._initialized:
+      raise RuntimeError('InputsHolder has not been initialized.')
+    if not self._sharded:
+      raise ValueError('Inputs are not sharded.')
+
+    sharded_inputs = []
+
+    for shard in range(self._num_shards):
+      flattened_inputs = self._as_flattened_inputs(
+          self._feature_list[shard],
+          self._label_list[shard] if self._has_labels else None)
+      sharded_inputs.append(flattened_inputs)
+
+    return sharded_inputs
+
+  def as_flattened_inputs(self):
+    """Flatten the features and label as a single tensor list for one host."""
+    self._frozen = True
+    if not self._initialized:
+      raise RuntimeError('InputsHolder has not been initialized.')
+    if self._sharded:
+      raise ValueError('Inputs are sharded.')
+
+    return self._as_flattened_inputs(
+        self._feature_list[0],
+        self._label_list[0] if self._has_labels else None)
+
+  def _as_flattened_inputs(self, features, labels):
+    """Flattens the `features` and `labels` to a single tensor list."""
+    flattened_inputs = []
+    if self._feature_names:
+      # We need a fixed ordering for enqueueing and dequeueing.
+      flattened_inputs.extend([features[name] for name in self._feature_names])
+    else:
+      flattened_inputs.append(features)
+
+    if labels is not None:
+      if self._label_names:
+        # We need a fixed ordering for enqueueing and dequeueing.
+        flattened_inputs.extend([labels[name] for name in self._label_names])
+      else:
+        flattened_inputs.append(labels)
+    return flattened_inputs
+
+  def unflatten_features_and_labels(self, flattened_inputs):
+    """Restores the flattened inputs to original features and labels form.
+
+    Once called, the internal data is frozen and `append_tuple` cannot be
+    invokded anymore.
+
+    Args:
+      flattened_inputs: Flattened inputs for one each, which should be created
+      by the `as_sharded_flattened_inputs` API.
+
+    Returns:
+      A tuple of (`features`, `labels`), where `labels` could be None.
+      Each one, if present, should have identical structure (single tensor vs
+      dict) as the one returned by input_fn.
+
+    Raises:
+      RuntimeError: If the internal data has not been initialized.
+      ValueError: If the number of expected tensors from `flattened_inputs`
+        mismatches the recorded structure.
+    """
+    self._frozen = True
+    if not self._initialized:
+      raise RuntimeError('InputsHolder has not been initialized.')
+
+    expected_num_features = (len(self._feature_names) if self._feature_names
+                             else 1)
+    if self._has_labels:
+      expected_num_labels = (len(self._label_names) if self._label_names
+                             else 1)
+    else:
+      expected_num_labels = 0
+
+    expected_num_tensors = expected_num_features + expected_num_labels
+
+    if expected_num_tensors != len(flattened_inputs):
+      raise ValueError(
+          'The number of flattened tensors mismatches expected num. '
+          'Expected {}, got {}'.format(expected_num_tensors,
+                                       len(flattened_inputs)))
+    if self._feature_names:
+      unflattened_features = dict(zip(self._feature_names,
+                                      flattened_inputs[:expected_num_features]))
+    else:
+      # Single tensor case
+      unflattened_features = flattened_inputs[0]
+
+    if expected_num_labels == 0:
+      unflattened_label = None
+    elif self._label_names:
+      unflattened_label = dict(zip(self._label_names,
+                                   flattened_inputs[expected_num_features:]))
+    else:
+      # Single tensor case.
+      unflattened_label = flattened_inputs[expected_num_features]
+
+    return unflattened_features, unflattened_label
+
+
+class _ModelFnWrapper(object):
+  """A `model_fn` wrapper.
+
+  This makes calling model_fn on CPU and TPU easier and more consistent and
+  performs necessary check and mutation required by TPU training.
+
+  In addition, this wrapper manages converting the `model_fn` to a single TPU
+  train step.
+  """
+
+  def __init__(self, model_fn, config, params, mode, train_batch_size):
+    self._model_fn = model_fn
+    self._config = config
+    self._params = params
+    self._mode = mode
+    self._train_batch_size = train_batch_size
+
+  def call_without_tpu(self, features, labels):
+    # Let CrossShardOptimizer be called without TPU in model_fn, since it's
+    # common to set the train_op even when running evaluate() or predict().
+    with tpu_function.tpu_shard_context(1):
+      return self._call_model_fn(features, labels, False)
+
+  def convert_to_single_tpu_train_step(self, dequeue_fn):
+    """Converts the `model_fn` as a single train step on TPU."""
+
+    def train_step(loss):
+      """Training step function for use inside a while loop."""
+      del loss  # unused; required in function signature.
+      features, labels = dequeue_fn()
+
+      # Makes deep copy with `config` and params` in case user mutates them.
+      estimator_spec = self._verify_estimator_spec(
+          self._call_model_fn(features, labels, True))
+      loss, train_op = estimator_spec.loss, estimator_spec.train_op
+      with ops.control_dependencies([train_op]):
+        return array_ops.identity(loss)
+    return train_step
+
+  @property
+  def config(self):
+    return self._config
+
+  def _call_model_fn(self, features, labels, use_tpu):
+    """Calls the model_fn with required parameters."""
+    model_fn_args = util.fn_args(self._model_fn)
+    kwargs = {}
+
+    config = copy.deepcopy(self._config)
+    params = copy.deepcopy(self._params)
+
+    if 'labels' in model_fn_args:
+      kwargs['labels'] = labels
+    else:
+      if labels is not None:
+        raise ValueError(
+            'model_fn does not take labels, but input_fn returns labels.')
+    if 'mode' in model_fn_args:
+      kwargs['mode'] = self._mode
+    if 'config' in model_fn_args:
+      kwargs['config'] = config
+    if 'params' in model_fn_args:
+      kwargs['params'] = params
+
+    if 'params' not in model_fn_args:
+      raise ValueError(
+          'model_fn ({}) does not include params argument, '
+          'required by TPUEstimator to pass batch size as '
+          'params[\'batch_size\']'.format(self._model_fn))
+    if self._mode == model_fn_lib.ModeKeys.TRAIN:
+      # For TPU training. `params` is never `None`.
+      params[_BATCH_SIZE_KEY] = _per_shard_batch_size(
+          self._train_batch_size, config, use_tpu)
+
+    return self._model_fn(features=features, **kwargs)
+
+  def _verify_estimator_spec(self, estimator_spec):
+    """Validates the estimator_spec."""
+    err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
+    if estimator_spec.training_chief_hooks:
+      raise ValueError(err_msg.format('training_chief_hooks'))
+    if estimator_spec.training_hooks:
+      raise ValueError(err_msg.format('training_hooks'))
+    return estimator_spec
+
+
+class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
-  TpuEstimator handles many of the details of running on TPU devices, such as
+  TPUEstimator handles many of the details of running on TPU devices, such as
   replicating inputs and models for each core, and returning to host
   periodically to run hooks.
 
   Note: For training (evaluate and predict support on TPU are not yet
-  implemented), TpuEstimator transforms a global batch size in params to a
+  implemented), TPUEstimator transforms a global batch size in params to a
   per-shard batch size when calling the `input_fn` and `model_fn`. Users should
   specify `train_batch_size` in constructor, and then get the batch size for
   each shard in `input_fn` and `model_fn` by `params['batch_size']`.
@@ -189,7 +616,7 @@ class TpuEstimator(estimator_lib.Estimator):
                params=None,
                use_tpu=True,
                train_batch_size=None):
-    """Constructs an `TpuEstimator` instance.
+    """Constructs an `TPUEstimator` instance.
 
     Args:
       model_fn: Model function as required by `Estimator`. For training, the
@@ -208,7 +635,7 @@ class TpuEstimator(estimator_lib.Estimator):
       use_tpu: A bool indicating whether TPU support is enabled. Currently, only
         applied to training. Evaluate and predict still happen on CPU.
       train_batch_size: An int representing the global training batch size.
-        TpuEstimator transforms this global batch size to a per-shard batch
+        TPUEstimator transforms this global batch size to a per-shard batch
         size, as params['batch_size'], when calling `input_fn` and `model_fn`.
         Cannot be `None` if `use_tpu` is `True`. Must be divisible by
         `config.tpu_config.num_shards`.
@@ -241,17 +668,14 @@ class TpuEstimator(estimator_lib.Estimator):
             'batch size {} must be divisible by number of shards {}'
             .format(train_batch_size, config.tpu_config.num_shards))
 
-    if use_tpu:
-      # Verifies the model_fn signature according to Estimator framework.
-      estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
-      # We cannot store config and params in this constructor as parent
-      # constructor might change them, such as assigning a temp dir for
-      # config.model_dir.
-      model_function = wrapped_model_fn(model_fn, train_batch_size)
-    else:
-      model_function = model_fn
+    # Verifies the model_fn signature according to Estimator framework.
+    estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
+    # We cannot store config and params in this constructor as parent
+    # constructor might change them, such as assigning a temp dir for
+    # config.model_dir.
+    model_function = _augment_model_fn(model_fn, train_batch_size, use_tpu)
 
-    super(TpuEstimator, self).__init__(
+    super(TPUEstimator, self).__init__(
         model_fn=model_function,
         model_dir=model_dir,
         config=config,
@@ -301,9 +725,6 @@ class TpuEstimator(estimator_lib.Estimator):
     Raises:
       ValueError: if input_fn takes invalid arguments or does not have `params`.
     """
-    if not self._use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
-      return super(TpuEstimator, self)._call_input_fn(input_fn, mode)
-
     input_fn_args = util.fn_args(input_fn)
     config = self.config  # a deep copy.
     kwargs = {}
@@ -317,8 +738,15 @@ class TpuEstimator(estimator_lib.Estimator):
       kwargs['config'] = config
 
     # Now for TPU training.
-    per_shard_batch_size = _per_shard_batch_size(self._train_batch_size, config)
-    kwargs['params'][_BATCH_SIZE_KEY] = per_shard_batch_size
+    if mode == model_fn_lib.ModeKeys.TRAIN:
+      kwargs['params'][_BATCH_SIZE_KEY] = (
+          _per_shard_batch_size(self._train_batch_size, config, self._use_tpu)
+          if not config.tpu_config.per_host_input_for_training else
+          self._train_batch_size)
+
+    if not self._use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
+      with ops.device('/cpu:0'):
+        return input_fn(**kwargs)
 
     job = _tpu_job(config)
     def placement_function(index):
@@ -327,138 +755,48 @@ class TpuEstimator(estimator_lib.Estimator):
       else:
         return '/job:%s/replica:0/task:%d/device:CPU:0' % (job, index / 8)
 
-    features = []
-    labels = []
-    for i in range(config.tpu_config.num_shards):
-      with ops.device(placement_function(i)):
-        result = input_fn(**kwargs)
-        # input_fn may return either features or (features, labels)
-        if isinstance(result, tuple):
-          features.append(result[0])
-          labels.append(result[1])
-        else:
-          features.append(result)
+    if not config.tpu_config.per_host_input_for_training:
+      num_shards = config.tpu_config.num_shards
+      inputs = _InputsHolder(num_shards=num_shards)
+      for i in range(config.tpu_config.num_shards):
+        with ops.device(placement_function(i)):
+          inputs.append_tuple(input_fn(**kwargs))
 
-    if not labels or all(l is None for l in labels):
-      return _PerShardOutput(features), None
-
-    return _PerShardOutput(features), _PerShardOutput(labels)
+      return inputs.as_features_and_labels_tuple()
+    else:
+      # TODO(xiejw): Extend this to multi-host support.
+      with ops.device(placement_function(0)):
+        return input_fn(**kwargs)
 
 
-def _verify_estimator_spec(estimator_spec):
-  """Validates the estimator_spec."""
-  err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
-  if estimator_spec.training_chief_hooks:
-    raise ValueError(err_msg.format('training_chief_hooks'))
-  if estimator_spec.training_hooks:
-    raise ValueError(err_msg.format('training_hooks'))
-  return estimator_spec
-
-
-def _call_model_fn(model_fn, features, labels, mode, config, params,
-                   require_params=False):
-  """Calls the model_fn with required parameters."""
-  model_fn_args = util.fn_args(model_fn)
-  kwargs = {}
-  if 'labels' in model_fn_args:
-    kwargs['labels'] = labels
-  else:
-    if labels is not None:
-      raise ValueError(
-          'model_fn does not take labels, but input_fn returns labels.')
-  if 'mode' in model_fn_args:
-    kwargs['mode'] = mode
-  if 'config' in model_fn_args:
-    kwargs['config'] = config
-  if 'params' in model_fn_args:
-    kwargs['params'] = params
-  elif require_params:
-    raise ValueError(
-        'model_fn ({}) does not include params argument, '
-        'required by TPUEstimator to pass batch size as '
-        'params[\'batch_size\']'.format(model_fn))
-  return model_fn(features=features, **kwargs)
-
-
-def _call_model_fn_with_tpu(model_fn, features, labels, mode, config, params):
-  """Calls user provided `model_fn` and verifies the estimator_spec."""
-  # Makes deep copy with `config` and params` in case user mutates them.
-  config = copy.deepcopy(config)
-  params = copy.deepcopy(params)
-  return _verify_estimator_spec(_call_model_fn(
-      model_fn, features, labels, mode, config, params, require_params=True))
-
-
-def _call_model_fn_without_tpu(
-    model_fn, features, labels, mode, config, params):
-  # Deepcopy of config and params is not required in this branch.
-  return _call_model_fn(model_fn, features, labels, mode, config, params)
-
-
-# TODO(xiejw): Improve the structure of this input_fn to infeed converion.
-# The code now looks not like Estimator style. We need to abstract many
-# details.
-def _create_infeed_enqueue_ops_and_dequeue_fn(run_config, features, labels):
+def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config):
   """Utility to convert input_fn to enqueue and dequeue fns for TPU.
 
-  Mainly, three things need to be done here.
-  1. Calls the input_fn many times (`num_shards`) to infeed the data into TPU
-  2. Create a dequeue_fn used by the train_step inside TPU execution to
-  dequeue the tensors.
-  3. Sets up the input thread to infeed.
-
   Args:
-    run_config: run_config
-    features: features
-    labels: labels
+    inputs_holder: An `_InputsHolder` holding features and labels.
+    run_config: A `RunConfig` instance.
 
   Returns:
     A tuple of (dequeue_fn, enqueue_fn)
   """
-  infeed_names = None
-  sharded_inputs = []
-  if isinstance(features[0], dict):
-    # We need a fixed ordering for enqueueing and dequeueing.
-    infeed_names = [name for name in features[0]]
+  if inputs_holder.sharded:
+    sharded_inputs = inputs_holder.as_sharded_flattened_inputs()
 
-  for shard in range(run_config.tpu_config.num_shards):
-    inputs = []
-    if infeed_names is None:
-      inputs.append(features[shard])
-    else:
-      for name in infeed_names:
-        inputs.append(features[shard][name])
-    if labels is not None:
-      inputs.append(labels[shard])
-    sharded_inputs.append(inputs)
-
-  infeed_queue = tpu_feed.InfeedQueue(
-      number_of_tuple_elements=len(sharded_inputs[0]))
-  infeed_queue.set_configuration_from_sharded_input_tensors(sharded_inputs)
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(sharded_inputs[0]))
+    infeed_queue.set_configuration_from_sharded_input_tensors(sharded_inputs)
+  else:
+    unsharded_inputs = inputs_holder.as_flattened_inputs()
+    infeed_queue = tpu_feed.InfeedQueue(
+        tuple_types=[t.dtype for t in unsharded_inputs],
+        tuple_shapes=[t.shape for t in unsharded_inputs],
+        shard_dimensions=run_config.tpu_config.shard_dimensions)
+    infeed_queue.set_number_of_shards(inputs_holder.num_shards)
 
   def dequeue_fn():
     """dequeue_fn is used by the train_step in TPU to retrieve the tensors."""
     values = infeed_queue.generate_dequeue_op()
-
-    expected_num_tensors = 0
-    if labels is not None:
-      expected_num_tensors += 1
-    if infeed_names is None:
-      expected_num_tensors += 1
-    else:
-      expected_num_tensors += len(infeed_names)
-    assert len(values) == expected_num_tensors
-
-    dequeue_label = None
-    if labels is not None:
-      dequeue_label = values[-1]
-    if infeed_names is None:
-      return values[0], dequeue_label
-    # Restore the feature dictionary and label.
-    dequeued_features = {}
-    for i in range(len(infeed_names)):
-      dequeued_features[infeed_names[i]] = values[i]
-    return dequeued_features, dequeue_label
+    return inputs_holder.unflatten_features_and_labels(values)
 
   def tpu_ordinal_function(index):
     """Return the TPU ordinal associated with a shard.
@@ -475,39 +813,41 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(run_config, features, labels):
 
   def enqueue_fn():
     """enqueue_fn is used to add ops to the graph to send tensors."""
-    return infeed_queue.generate_enqueue_ops(
-        sharded_inputs, tpu_ordinal_function=tpu_ordinal_function)
+    if inputs_holder.sharded:
+      return infeed_queue.generate_enqueue_ops(
+          sharded_inputs, tpu_ordinal_function=tpu_ordinal_function)
+    else:
+      job = _tpu_job(run_config)
+      def placement_function(index):
+        if job is None:
+          return '/replica:0/task:0/device:CPU:0'
+        else:
+          return '/job:%s/replica:0/task:%d/device:CPU:0' % (job, index / 8)
+      return infeed_queue.split_inputs_and_generate_enqueue_ops(
+          unsharded_inputs, placement_function=placement_function)
 
   return (dequeue_fn, enqueue_fn)
 
 
-def wrapped_model_fn(model_fn, train_batch_size):
+def _augment_model_fn(model_fn, train_batch_size, use_tpu):
   """Returns a new model_fn, which wraps the TPU support."""
 
   def _model_fn(features, labels, mode, config, params):
-    """model_fn."""
+    """A Estimator `model_fn` for TPUEstimator."""
+    model_fn_wrapper = _ModelFnWrapper(model_fn, config, params, mode,
+                                       train_batch_size)
 
     # TODO(jhseu): Move to EVAL and PREDICT to TPU.
-    if mode != model_fn_lib.ModeKeys.TRAIN:
-      return _call_model_fn_without_tpu(
-          model_fn, features, labels, mode, config, params)
+    if not use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
+      return model_fn_wrapper.call_without_tpu(features, labels)
 
-    # Now for TPU training. `params` is never `None`.
-    params[_BATCH_SIZE_KEY] = _per_shard_batch_size(train_batch_size, config)
+    inputs = _InputsHolder(features=features, labels=labels,
+                           num_shards=config.tpu_config.num_shards)
 
-    assert isinstance(features, _PerShardOutput)
-    features = features.as_list()
-    if labels is not None:
-      assert isinstance(labels, _PerShardOutput)
-      labels = labels.as_list()
+    dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(
+        inputs, config)
 
-    dequeue_fn, enqueue_fn = (
-        _create_infeed_enqueue_ops_and_dequeue_fn(config, features, labels))
-
-    loss = _train_on_tpu_shards(
-        config,
-        train_step=_convert_model_fn_to_train_step(
-            model_fn, dequeue_fn, mode, config, params))
+    loss = _train_on_tpu_system(model_fn_wrapper, dequeue_fn)
 
     # Gets the variables back from TPU nodes. This means the variables updated
     # by TPU will now be *synced* to host memory.
@@ -518,7 +858,7 @@ def wrapped_model_fn(model_fn, train_batch_size):
     ]
 
     hooks = [
-        TpuInfeedSessionHook(config, enqueue_fn),
+        TPUInfeedSessionHook(config, enqueue_fn),
         training.LoggingTensorHook(
             {'loss': array_ops.identity(loss),
              'step': training.get_global_step()},
@@ -533,40 +873,20 @@ def wrapped_model_fn(model_fn, train_batch_size):
   return _model_fn
 
 
-def _convert_model_fn_to_train_step(model_fn, dequeue_fn, mode, run_config,
-                                    params):
-  """Generates a train step based on the model_fn."""
+def _train_on_tpu_system(model_fn_wrapper, dequeue_fn):
+  """Executes `model_fn_wrapper` multiple times on all TPU shards."""
+  config = model_fn_wrapper.config.tpu_config
+  iterations_per_loop = config.iterations_per_loop
+  num_shards = config.num_shards
 
-  def train_step(loss):
-    """Training step function for use inside a while loop."""
-    del loss  # unused; required in function signature.
-    features, labels = dequeue_fn()
+  single_tpu_train_step = model_fn_wrapper.convert_to_single_tpu_train_step(
+      dequeue_fn)
 
-    # TODO(xiejw): how to do we support hook and savers in the original
-    # model_fn. Realistically, the original
-    # model_fn will be executed on TPU chips in a replica way. The hooks
-    # returned by the model_fn cannot be supported at all. If we have to,
-    # the graph construction part in the model_fn should be separated from the
-    # control part (such as hooks and savers). By that the graph construction
-    # could de defered on TPU chip, while the control logic can stay in host.
-    estimator_spec = _call_model_fn_with_tpu(
-        model_fn, features, labels, mode, run_config, params)
-    loss, train_op = estimator_spec.loss, estimator_spec.train_op
-    with ops.control_dependencies([train_op]):
-      return array_ops.identity(loss)
-  return train_step
+  multi_tpu_train_steps_on_single_shard = (lambda: training_loop.repeat(  # pylint: disable=g-long-lambda
+      iterations_per_loop, single_tpu_train_step, [_INITIAL_LOSS], name='loop'))
 
-
-def _train_on_tpu_shards(run_config, train_step):
-  """Executes the `train_step` on all shards."""
-  def train_shard():
-    return training_loop.repeat(run_config.tpu_config.iterations_per_loop,
-                                train_step,
-                                [1e7],  # initial_loss
-                                name='loop')
-
-  (loss,) = tpu.shard(train_shard,
+  (loss,) = tpu.shard(multi_tpu_train_steps_on_single_shard,
                       inputs=[],
-                      num_shards=run_config.tpu_config.num_shards,
+                      num_shards=num_shards,
                       outputs_from_all_shards=False)
   return loss

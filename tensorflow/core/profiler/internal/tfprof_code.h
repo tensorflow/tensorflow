@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Build a tree structure based on the TensorFlow model's python code stacks.
-// Stats are aggregated from descendants from ancestors.
+// Stats are aggregated from descendants to ancestors.
 
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_CODE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_CODE_H_
@@ -32,15 +32,29 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_show_multi.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/profile.pb.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
 
+class PprofProfile {
+ public:
+  virtual ~PprofProfile() {}
+
+  virtual uint64 AddLocation(const CodeNode* callee,
+                             const CodeNode* caller) = 0;
+
+  virtual void AddSample(const CodeNode* leaf,
+                         std::vector<uint64>* call_ids) = 0;
+
+  virtual Status WritePprofProfile(const string& filename) = 0;
+};
+
 class TFCode : public TFMultiShow {
  public:
-  explicit TFCode() : code_root_(nullptr), trace_root_(nullptr) {}
+  TFCode() {}
   ~TFCode() override {}
 
   void AddNode(TFGraphNode* node) override;
@@ -48,8 +62,6 @@ class TFCode : public TFMultiShow {
   void Build() override;
 
  private:
-  CodeNode* BuildCodeNodes(TFMultiGraphNode* root);
-
   const ShowMultiNode* ShowInternal(const Options& opts,
                                     Timeline* timeline) override;
 
@@ -63,16 +75,16 @@ class TFCode : public TFMultiShow {
   std::vector<CodeNode*> Account(const std::vector<CodeNode*>& roots,
                                  const Options& opts);
 
-  void Format(const std::vector<CodeNode*> roots, string* display_str,
-              TFMultiGraphNodeProto* proto);
+  void Format(const CodeNode* root, const std::vector<CodeNode*>& nodes,
+              const Options& opts, string* display_str,
+              MultiGraphNodeProto* proto, std::vector<uint64>* call_ids);
 
-  string FormatNode(CodeNode* node, const Options& opts, int64 indent);
+  string FormatNode(CodeNode* node, const Options& opts, int64 indent) const;
+  string FormatNodeMemory(CodeNode* node, int64 bytes, int64 total_bytes) const;
 
   std::unique_ptr<CodeNode> root_;
-  CodeNode* code_root_;
-  std::unique_ptr<TFMultiGraphNode> trace_root_;
-  std::unique_ptr<TFMultiGraphNode> tfprof_trace_root_;
-  std::set<std::unique_ptr<CodeNode>> code_nodes_;
+  std::unique_ptr<TFMultiGraphNode> graph_root_;
+  std::unique_ptr<PprofProfile> pprof_profile_;
 };
 }  // namespace tfprof
 }  // namespace tensorflow

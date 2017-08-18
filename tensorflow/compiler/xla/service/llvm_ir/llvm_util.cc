@@ -18,14 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
-#include "external/llvm/include/llvm/IR/Operator.h"
-#include "external/llvm/include/llvm/Target/TargetOptions.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -134,6 +135,24 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
     }
   }
   return result_type;
+}
+
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder) {
+  string encoded_shape = shape.SerializeAsString();
+  if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
+    return InternalError("Encoded shape size exceeded int32 size limit.");
+  }
+  *shape_size = static_cast<int32>(encoded_shape.size());
+  return ir_builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+}
+
+StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                  int32 size_bytes) {
+  Shape shape;
+  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  return shape;
 }
 
 namespace {
@@ -443,6 +462,54 @@ void SetTargetOptions(bool fast_math_enabled,
   target_options->NoInfsFPMath = fast_math_enabled;
   target_options->NoNaNsFPMath = fast_math_enabled;
   target_options->NoSignedZerosFPMath = fast_math_enabled;
+}
+
+std::map<int, llvm::MDNode*> MergeMetadata(
+    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
+    const std::map<int, llvm::MDNode*>& b) {
+  // We should extend this as needed to deal with other kinds of metadata like
+  // !dereferenceable and !range.
+
+  std::map<int, llvm::MDNode*> result;
+  for (auto kind_md_pair : a) {
+    if (kind_md_pair.first == llvm::LLVMContext::MD_alias_scope) {
+      llvm::SmallVector<llvm::Metadata*, 8> union_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+        union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (!scope_set.count(llvm::cast<llvm::MDNode>(scope_b.get()))) {
+            union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b.get()));
+          }
+        }
+      }
+      result[llvm::LLVMContext::MD_alias_scope] =
+          llvm::MDNode::get(*context, union_of_scopes);
+    } else if (kind_md_pair.first == llvm::LLVMContext::MD_noalias) {
+      llvm::SmallVector<llvm::Metadata*, 8> intersection_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (scope_set.count(llvm::cast<llvm::MDNode>(scope_b))) {
+            intersection_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b));
+          }
+        }
+      }
+      if (!intersection_of_scopes.empty()) {
+        result[llvm::LLVMContext::MD_noalias] =
+            llvm::MDNode::get(*context, intersection_of_scopes);
+      }
+    }
+  }
+  return result;
 }
 
 }  // namespace llvm_ir

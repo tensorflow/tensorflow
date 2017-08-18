@@ -137,7 +137,8 @@ class Experiment(object):
       self._core_estimator_used = True
       if eval_metrics is not None:
         raise ValueError(
-            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`. "
+            "Use `eval_metric_ops` in `tf.estimator.EstimatorSpec` instead.")
     else:
       self._core_estimator_used = False
       if not isinstance(estimator, evaluable.Evaluable):
@@ -245,6 +246,11 @@ class Experiment(object):
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
     config = self._estimator.config
+    if (config.cluster_spec and config.master and
+        config.environment == run_config.Environment.LOCAL):
+      logging.warn("ClusterSpec and master are provided, but environment is "
+                   "set to 'local'. Set environment to 'cloud' if you intend "
+                   "to use the distributed runtime.")
     if (config.environment != run_config.Environment.LOCAL and
         config.environment != run_config.Environment.GOOGLE and
         config.cluster_spec and config.master):
@@ -274,7 +280,7 @@ class Experiment(object):
                             max_steps=self._train_steps,
                             hooks=self._train_monitors + extra_hooks)
 
-  def evaluate(self, delay_secs=None):
+  def evaluate(self, delay_secs=None, name=None):
     """Evaluate on the evaluation data.
 
     Runs evaluation on the evaluation data and returns the result. Runs for
@@ -286,6 +292,8 @@ class Experiment(object):
     Args:
       delay_secs: Start evaluating after this many seconds. If `None`, defaults
         to using `self._eval_delays_secs`.
+      name: Gives the name to the evauation for the case multiple evaluation is
+        run for the same experiment.
 
     Returns:
       The result of the `evaluate` call to the `Estimator`.
@@ -300,7 +308,7 @@ class Experiment(object):
     return self._call_evaluate(input_fn=self._eval_input_fn,
                                steps=self._eval_steps,
                                metrics=self._eval_metrics,
-                               name="one_pass",
+                               name=(name or "one_pass"),
                                hooks=self._eval_hooks)
 
   @deprecated(
@@ -553,6 +561,7 @@ class Experiment(object):
           "`continuous_eval_predicate_fn` must be a callable, or None.")
 
     eval_result = None
+    export_results = None
 
     # Set the default value for train_steps_per_iteration, which will be
     # overridden by other settings.
@@ -581,8 +590,9 @@ class Experiment(object):
                                         metrics=self._eval_metrics,
                                         name="one_pass",
                                         hooks=self._eval_hooks)
+      export_results = self._maybe_export(eval_result)
 
-    return eval_result, self._maybe_export(eval_result)
+    return eval_result, export_results
 
   def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""

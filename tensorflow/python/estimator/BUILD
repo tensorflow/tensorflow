@@ -2,10 +2,6 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -168,8 +164,10 @@ py_library(
     srcs = ["canned/dnn_linear_combined.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dnn",
         ":estimator",
         ":head",
+        ":linear",
         ":model_fn",
         ":optimizers",
         "//tensorflow/python:control_flow_ops",
@@ -500,7 +498,10 @@ py_test(
     size = "medium",
     srcs = ["canned/linear_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "noasan",  # times out b/63680444
+    ],
     deps = [
         ":estimator",
         ":export_export",

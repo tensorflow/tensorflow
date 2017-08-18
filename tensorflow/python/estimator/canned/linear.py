@@ -42,12 +42,42 @@ def _get_default_optimizer(feature_columns):
   return ftrl.FtrlOptimizer(learning_rate=learning_rate)
 
 
+def _linear_logit_fn_builder(units, feature_columns):
+  """Function builder for a linear logit_fn.
+
+  Args:
+    units: An int indicating the dimension of the logit layer.
+    feature_columns: An iterable containing all the feature columns used by
+      the model.
+
+  Returns:
+    A logit_fn (see below).
+
+  """
+
+  def linear_logit_fn(features):
+    """Linear model logit_fn.
+
+    Args:
+      features: This is the first item returned from the `input_fn`
+                passed to `train`, `evaluate`, and `predict`. This should be a
+                single `Tensor` or `dict` of same.
+
+    Returns:
+      A `Tensor` representing the logits.
+    """
+    return feature_column_lib.linear_model(
+        features=features, feature_columns=feature_columns, units=units)
+
+  return linear_logit_fn
+
+
 def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
                      partitioner, config):
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
-    features: Dict of `Tensor`.
+    features: dict of `Tensor`.
     labels: `Tensor` of shape `[batch_size, logits_dimension]`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -63,8 +93,11 @@ def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
     An `EstimatorSpec` instance.
 
   Raises:
-    ValueError: If mode or params are invalid.
+    ValueError: mode or params are invalid, or features has the wrong type.
   """
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
   optimizer = optimizers.get_optimizer_instance(
       optimizer or _get_default_optimizer(feature_columns),
       learning_rate=_LEARNING_RATE)
@@ -80,10 +113,9 @@ def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner):
 
-    logits = feature_column_lib.linear_model(
-        features=features,
-        feature_columns=feature_columns,
-        units=head.logits_dimension)
+    logit_fn = _linear_logit_fn_builder(
+        units=head.logits_dimension, feature_columns=feature_columns)
+    logits = logit_fn(features=features)
 
     def _train_op_fn(loss):
       """Returns the op to optimize the loss."""

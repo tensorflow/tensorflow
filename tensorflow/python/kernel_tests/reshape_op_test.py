@@ -41,6 +41,10 @@ class ReshapeTest(test.TestCase):
     self._testReshape(x, y, False)
     self._testReshape(x, y, True)
 
+  def testBoolBasic(self):
+    x = np.arange(1., 7.).reshape([1, 6]) > 3
+    self._testBothReshape(x, [2, 3])
+
   def testFloatBasic(self):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.float32)
     self._testBothReshape(x, [2, 3])

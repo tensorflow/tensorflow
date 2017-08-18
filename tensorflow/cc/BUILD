@@ -248,6 +248,7 @@ cc_library(
         ":gradients",
         "//tensorflow/core:lib_proto_parsing",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -273,8 +274,10 @@ cc_library(
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -285,6 +288,7 @@ tf_cc_test(
         ":cc_ops",
         ":grad_op_registry",
         ":grad_testutil",
+        ":gradient_checker",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",
@@ -302,6 +306,7 @@ cc_library(
         ":cc_ops_internal",
         ":grad_op_registry",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(

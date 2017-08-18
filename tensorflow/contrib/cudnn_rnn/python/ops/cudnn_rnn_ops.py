@@ -131,7 +131,8 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
         for param, param_name in zip(params, param_names)
     ]
-    super(RNNParamsSaveable, self).__init__(None, specs, name)
+    super(RNNParamsSaveable, self).__init__(
+        array_ops.identity(param_variables[0]), specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
     if (self._cudnn_rnn.direction == CUDNN_RNN_UNIDIRECTION and
@@ -197,7 +198,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
       prefix = "multi_rnn_cell/cell_%d/cudnn_compatible_lstm_cell" % i
       w_names.append(prefix + "/kernel")
       # Three transformed bias tensors each layer:
-      # the 1st is for CudnnCompatbleLSTM(Block)Cell restore; the latter two
+      # the 1st is for CudnnCompatibleLSTM(Block)Cell restore; the latter two
       # sum up to the 1st, and are used for cuDNN restore.
       b_names.append(prefix + "/bias")
       b_names.extend([prefix + "/bias_cudnn_%d" % j for j in range(2)])
@@ -513,6 +514,7 @@ class _CudnnRNN(object):
   """
   __doc__ += _cudnn_rnn_common_doc_string
 
+  # TODO(jamesqin): support float16 CuDNN RNN
   def __init__(self,
                rnn_mode,
                num_layers,
@@ -520,6 +522,7 @@ class _CudnnRNN(object):
                input_size,
                input_mode="linear_input",
                direction=CUDNN_RNN_UNIDIRECTION,
+               dtype=dtypes.float32,
                dropout=0.,
                seed=0):
     """Creates a CudnnRNN model from model spec.
@@ -541,16 +544,23 @@ class _CudnnRNN(object):
           otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
           'unidirectional' or 'bidirectional'
+      dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
+    Raises:
+      ValueError: if direction is invalid.
     """
+    if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
+      raise ValueError("Invalid direction: %s, expect %s or %s",
+                       direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION)
     self._num_layers = num_layers
     self._num_units = num_units
     self._input_size = input_size
     self._rnn_mode = rnn_mode
     self._input_mode = input_mode
     self._direction = direction
+    self._dtype = dtype
     self._dropout = dropout
     # get graph and op seed.
     self._seed, self._seed2 = random_seed.get_seed(seed)
@@ -587,7 +597,7 @@ class _CudnnRNN(object):
         num_layers=self._num_layers,
         num_units=self._num_units,
         input_size=self._input_size,
-        T=dtypes.float32,
+        T=self._dtype,
         S=dtypes.int32,
         dropout=self._dropout,
         seed=self._seed,
@@ -608,7 +618,6 @@ class _CudnnRNN(object):
         A Tensor of the same shape as input_h.
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
-
     Returns:
       output: the output sequuence.
       output_h: the final state for h.
@@ -616,7 +625,7 @@ class _CudnnRNN(object):
     """
     if self._rnn_mode != CUDNN_LSTM:
       # For model that doesn't take input_c, replace with a dummy tensor.
-      input_c = array_ops.constant([], dtype=dtypes.float32)
+      input_c = array_ops.constant([], dtype=self._dtype)
     output, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
         input=input_data,
         input_h=input_h,
@@ -640,6 +649,9 @@ class _CudnnRNN(object):
     Returns:
       A function for the specific-to-canonical conversion.
     """
+    num_params = self._num_layers * self._NUM_PARAMS_PER_LAYER
+    if self._direction != CUDNN_RNN_UNIDIRECTION:
+      num_params *= 2
     weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -648,7 +660,7 @@ class _CudnnRNN(object):
         dropout=self._dropout,
         seed=self._seed,
         seed2=self._seed2,
-        num_params=self._num_layers * self._NUM_PARAMS_PER_LAYER,
+        num_params=num_params,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
         direction=self._direction)
@@ -691,6 +703,7 @@ class CudnnLSTM(_CudnnRNN):
                input_size,
                input_mode="linear_input",
                direction=CUDNN_RNN_UNIDIRECTION,
+               dtype=dtypes.float32,
                dropout=0.,
                seed=0):
     """Creates a Cudnn LSTM model from model spec.
@@ -708,6 +721,7 @@ class CudnnLSTM(_CudnnRNN):
           otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
           'unidirectional' or 'bidirectional'
+      dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the seed used for initializing dropout.
     """
@@ -718,6 +732,7 @@ class CudnnLSTM(_CudnnRNN):
         input_size,
         input_mode=input_mode,
         direction=direction,
+        dtype=dtype,
         dropout=dropout,
         seed=seed)
 
@@ -733,7 +748,6 @@ class CudnnLSTM(_CudnnRNN):
         input_h.
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
-
     Returns:
       output: the output sequuence.
       output_h: the final state for h.
@@ -754,6 +768,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
                input_size,
                input_mode="linear_input",
                direction=CUDNN_RNN_UNIDIRECTION,
+               dtype=dtypes.float32,
                dropout=0.,
                seed=0):
     """Creates a Cudnn RNN model from model without hidden-state C.
@@ -771,6 +786,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
           otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
           'unidirectional' or 'bidirectional'
+      dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the seed used for initializing dropout.
 
@@ -788,6 +804,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
         input_size,
         input_mode=input_mode,
         direction=direction,
+        dtype=dtype,
         dropout=dropout,
         seed=seed)
 
@@ -801,7 +818,6 @@ class _CudnnRNNNoInputC(_CudnnRNN):
         batch_size, num_units].
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
-
     Returns:
       output: the output sequuence.
       output_h: the final state for h.

@@ -184,6 +184,11 @@ void Node::ClearAttr(const string& name) {
   (*props_->node_def.mutable_attr()).erase(name);
 }
 
+void Node::set_requested_device(const string& device) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_device(device);
+}
+
 Status Node::input_edge(int idx, const Edge** e) const {
   if (idx < 0 || idx >= num_inputs()) {
     return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",

@@ -164,11 +164,9 @@ class TopologyConstructionTest(test.TestCase):
 
     self.assertListEqual(node.inbound_layers, [])
     self.assertListEqual(node.input_tensors, [a])
-    self.assertListEqual(node.input_masks, [None])
     self.assertListEqual(node.input_shapes, [(None, 32)])
     self.assertListEqual(node.output_tensors, [a])
     self.assertListEqual(node.output_shapes, [(None, 32)])
-    self.assertListEqual(node.output_masks, [None])
 
     dense = keras.layers.Dense(16, name='dense_1')
     a_2 = dense(a)
@@ -189,21 +187,8 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(test_layer.kernel.get_shape().as_list(), [32, 16])
     self.assertEqual(test_layer.input, a)
     self.assertEqual(test_layer.output, a_test)
-    self.assertEqual(test_layer.input_mask, None)
-    self.assertEqual(test_layer.output_mask, None)
     self.assertEqual(test_layer.input_shape, (None, 32))
     self.assertEqual(test_layer.output_shape, (None, 16))
-
-    # pylint: disable=pointless-statement
-    with self.assertRaises(Exception):
-      dense.input
-    with self.assertRaises(Exception):
-      dense.output
-    with self.assertRaises(Exception):
-      dense.input_mask
-    with self.assertRaises(Exception):
-      dense.output_mask
-    # pylint: enable=pointless-statement
 
     self.assertEqual(dense.get_input_at(0), a)
     self.assertEqual(dense.get_input_at(1), b)
@@ -256,9 +241,9 @@ class TopologyConstructionTest(test.TestCase):
       # ordering of same-level layers is not fixed
       self.assertListEqual([l.name for l in model.layers][2:],
                            ['dense_1', 'merge', 'dense_2', 'dense_3'])
-      self.assertListEqual([l.name for l in model.input_layers],
+      self.assertListEqual([l.name for l in model._input_layers],
                            ['input_a', 'input_b'])
-      self.assertListEqual([l.name for l in model.output_layers],
+      self.assertListEqual([l.name for l in model._output_layers],
                            ['dense_2', 'dense_3'])
 
       # actually run model
@@ -278,9 +263,9 @@ class TopologyConstructionTest(test.TestCase):
 
       self.assertListEqual([l.name for l in recreated_model.layers][2:],
                            ['dense_1', 'merge', 'dense_2', 'dense_3'])
-      self.assertListEqual([l.name for l in recreated_model.input_layers],
+      self.assertListEqual([l.name for l in recreated_model._input_layers],
                            ['input_a', 'input_b'])
-      self.assertListEqual([l.name for l in recreated_model.output_layers],
+      self.assertListEqual([l.name for l in recreated_model._output_layers],
                            ['dense_2', 'dense_3'])
 
       fn = keras.backend.function(recreated_model.inputs,
@@ -506,6 +491,12 @@ class TopologyConstructionTest(test.TestCase):
 
     x = keras.layers.Input(tensor=x)
     keras.layers.Dense(2)(x)
+
+  def test_basic_masking(self):
+    a = keras.layers.Input(shape=(10, 32), name='input_a')
+    b = keras.layers.Masking()(a)
+    model = keras.models.Model(a, b)
+    self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
 
 
 if __name__ == '__main__':

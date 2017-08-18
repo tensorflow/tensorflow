@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/dataset.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 
@@ -72,7 +71,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
   }
 
   switch (element.dtype()) {
-    TF_CALL_ALL_TYPES(HANDLE_TYPE);
+    TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented(
@@ -116,7 +115,7 @@ Status SetElementZero(Tensor* element, const Tensor& padding) {
     element->flat<T>().setConstant(padding.scalar<T>()()); \
     return Status::OK();                                   \
   }
-  TF_CALL_ALL_TYPES(HANDLE_TYPE);
+  TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
                                element->dtype());

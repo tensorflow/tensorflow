@@ -229,7 +229,13 @@ class WALSModel(object):
         a single number or vice versa.
       col_weights: See row_weights.
       use_factors_weights_cache: When True, the factors and weights will be
-        cached on the workers before the updates start. Defaults to True.
+        cached on the workers before the updates start. Defaults to True. Note
+        that the weights cache is initialized through `worker_init`, and the
+        row/col factors cache is initialized through
+        `initialize_{col/row}_update_op`. In the case where the weights are
+        computed outside and set before the training iterations start, it is
+        important to ensure the `worker_init` op is run afterwards for the
+        weights cache to take effect.
       use_gramian_cache: When True, the Gramians will be cached on the workers
         before the updates start. Defaults to True.
     """
@@ -554,7 +560,14 @@ class WALSModel(object):
 
   @property
   def worker_init(self):
-    """Op to initialize worker state once before starting any updates."""
+    """Op to initialize worker state once before starting any updates.
+
+    Note that specifically this initializes the cache of the row and column
+    weights on workers when `use_factors_weights_cache` is True. In this case,
+    if these weights are being calcualted and reset after the object is created,
+    it is important to ensure this ops is run afterwards so the cache reflects
+    the correct values.
+    """
     return self._worker_init
 
   @property
