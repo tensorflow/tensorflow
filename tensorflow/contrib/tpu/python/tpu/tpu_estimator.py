@@ -283,7 +283,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     if self._dequeue_ops is not None:
       logging.info('Stop output thread controller')
-      self._infeed_thd_controller.join()
+      self._outfeed_thd_controller.join()
 
     logging.info('Shutdown TPU system.')
     session.run(self._finalize_op)
