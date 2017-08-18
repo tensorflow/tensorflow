@@ -493,7 +493,7 @@ MemoryUsageTracker::MemoryUsageTracker(
     const TuplePointsToAnalysis& points_to_analysis,
     const InstructionList& instruction_list)
     : computation_(computation), instruction_list_(instruction_list) {
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> live_out_set =
+  PointsToSet::BufferSet live_out_set =
       points_to_analysis.GetPointsToSet(computation_->root_instruction())
           .CreateFlattenedSet();
   tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferId>

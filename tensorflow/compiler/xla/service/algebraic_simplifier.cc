@@ -1101,7 +1101,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     VLOG(4) << "  old user: " << user->ToString();
     CHECK_EQ(user->operand(reshape_or_broadcast_operand_index),
              reshape_or_broadcast);
-    std::vector<HloInstruction*> new_user_operands = user->operands();
+    auto new_user_operands = user->operands();
     new_user_operands[reshape_or_broadcast_operand_index] = operand;
     auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
         ShapeUtil::MakeShapeWithLayout(
