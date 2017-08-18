@@ -55,13 +55,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
-        ":core",
-        ":tape",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:framework_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -88,6 +82,7 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
     ],
 )
