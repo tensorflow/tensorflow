@@ -90,9 +90,14 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       spectrogram,
       decoded_sample_data.sample_rate,
       dct_coefficient_count=dct_coefficient_count)
+  fingerprint_frequency_size = model_settings['dct_coefficient_count']
+  fingerprint_time_size = model_settings['spectrogram_length']
+  reshaped_input = tf.reshape(fingerprint_input, [
+      -1, fingerprint_time_size * fingerprint_frequency_size
+  ])
 
   logits = models.create_model(
-      fingerprint_input, model_settings, model_architecture, is_training=False)
+      reshaped_input, model_settings, model_architecture, is_training=False)
 
   # Create an output to use for inference.
   tf.nn.softmax(logits, name='labels_softmax')
