@@ -82,9 +82,10 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   return client->ExecuteAndTransfer(computation, execute_arguments);
 }
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
+int RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
   Client* client = ClientLibrary::LocalClientOrDie();
   tensorflow::Env* env = tensorflow::Env::Default();
+  int exit_status = EXIT_SUCCESS;
   for (char* arg : args) {
     SessionModule module;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(env, arg, &module));
@@ -93,6 +94,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
     if (!result_status.ok()) {
       fprintf(stderr, "%s: error: %s\n", arg,
               result_status.status().ToString().c_str());
+      exit_status = EXIT_FAILURE;
       continue;
     }
     std::unique_ptr<Literal> result = result_status.ConsumeValueOrDie();
@@ -105,6 +107,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
               Literal(module.result()).ToString().c_str());
     }
   }
+  return exit_status;
 }
 
 }  // namespace tools
@@ -126,6 +129,5 @@ int main(int argc, char** argv) {
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
   args.pop_front();  // Pop off the binary name, argv[0]
-  xla::tools::RealMain(args, use_fake_data);
-  return 0;
+  return xla::tools::RealMain(args, use_fake_data);
 }
