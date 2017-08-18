@@ -87,7 +87,11 @@ class MatrixSolveLsOpTest(test.TestCase):
         self.assertAllClose(np_r_norm, tf_r_norm)
 
         # Check solution.
-        self.assertAllClose(np_ans, ans, atol=1e-5, rtol=1e-5)
+        if np_type == np.float32 or np_type == np.complex64:
+          tol = 5e-5
+        else:
+          tol = 1e-12
+        self.assertAllClose(np_ans, ans, atol=tol, rtol=tol)
 
   def _verifySolveBatch(self, x, y):
     # Since numpy.linalg.lsqr does not support batch solves, as opposed
