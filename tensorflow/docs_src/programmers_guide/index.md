@@ -35,9 +35,6 @@ The units are now as follows:
     Embedding Projector.
   * @{$programmers_guide/debugger$Debugging TensorFlow Programs}, which
     explains how to use the TensorFlow debugger (tfdbg).
-  * @{$programmers_guide/supervisor$Supervisor: Training Helper for Days-Long Trainings},
-    which explains how to gracefully handle system crashes during lengthy
-    training sessions.  (We have not revised this document for v1.3.)
   * @{$programmers_guide/version_compat$TensorFlow Version Compatibility},
     which explains backward compatibility guarantees and non-guarantees.
   * @{$programmers_guide/faq$FAQ}, which contains frequently asked
