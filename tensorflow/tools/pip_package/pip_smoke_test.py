@@ -112,11 +112,9 @@ def main():
 
       # Check if the dependency is in the pip package, the blacklist, or
       # should be ignored because of its file extension
-      if (ignore or
-          dependency in pip_package_dependencies_list or
-          dependency in BLACKLIST):
-        continue
-      else:
+      if not (ignore or
+              dependency in pip_package_dependencies_list or
+              dependency in BLACKLIST):
         missing_dependencies.append(dependency)
 
   print("Ignored files: %d" % ignored_files)

@@ -24,7 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -60,6 +60,9 @@ class TensorNode(ag_core.Node):
 
   shape = property(lambda self: self.value.shape)
   dtype = property(lambda self: self.value.dtype)
+
+  def get_shape(self):
+    return self.shape
 
   def numpy(self):
     return _tensor_numpy(self)
@@ -169,7 +172,7 @@ class TensorNode(ag_core.Node):
     return math_ops.less_equal(self, other)
 
 ag_core.register_node(TensorNode, tensor.Tensor)
-ag_core.register_node(TensorNode, tf_ops.Tensor)
+ag_core.register_node(TensorNode, ops.Tensor)
 
 
 def _zeros(shape, dtype):
@@ -193,8 +196,8 @@ def _lazy_zero_to_tensor(lazy_zero, dtype=None, name=None, as_ref=False):
   del as_ref, name, dtype
   return _zeros(lazy_zero.shape, lazy_zero.dtype)
 
-tf_ops.register_tensor_conversion_function(tensor.LazyZero,
-                                           _lazy_zero_to_tensor)
+ops.register_tensor_conversion_function(tensor.LazyZero,
+                                        _lazy_zero_to_tensor)
 
 
 def _indexed_slices_to_tensor(value):
@@ -221,7 +224,7 @@ class TensorVSpace(ag_core.VSpace):
   """VSpace for tf/tfe Tensors in autograd."""
 
   def __init__(self, value):
-    if isinstance(value, tensor.IndexedSlices):
+    if isinstance(value, ops.IndexedSlices):
       self.shape = tensor_shape.TensorShape(value.dense_shape.numpy())
       self.dtype = value.values.dtype
     else:
@@ -262,21 +265,14 @@ class TensorVSpace(ag_core.VSpace):
       return y
     if isinstance(ag_core.getval(y), tensor.LazyZero):
       return x
-    if isinstance(x, tensor.IndexedSlices):
+    if isinstance(x, ops.IndexedSlices):
       x = _indexed_slices_to_tensor(x)
-    if isinstance(y, tensor.IndexedSlices):
+    if isinstance(y, ops.IndexedSlices):
       y = _indexed_slices_to_tensor(y)
     return math_ops.add(x, y)
 
 ag_core.register_vspace(TensorVSpace, tensor.Tensor)
-ag_core.register_vspace(TensorVSpace, tf_ops.Tensor)
-ag_core.register_vspace(TensorVSpace, tensor.IndexedSlices)
+ag_core.register_vspace(TensorVSpace, ops.Tensor)
+ag_core.register_vspace(TensorVSpace, ops.IndexedSlices)
 ag_core.register_vspace(TensorVSpace, tensor.LazyZero)
 ag_core.register_node(TensorNode, tensor.LazyZero)
-
-
-def _node_to_tensor(value, dtype=None, name=None, as_ref=False):
-  del as_ref
-  return tf_ops.convert_to_tensor(value.value, dtype=dtype, name=name)
-
-tf_ops.register_tensor_conversion_function(TensorNode, _node_to_tensor)

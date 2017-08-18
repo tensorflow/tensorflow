@@ -723,7 +723,10 @@ def strided_slice(input_,
         new_axis_mask=new_axis_mask,
         shrink_axis_mask=shrink_axis_mask)
 
-  op.assign = assign
+  if context.in_graph_mode():
+    # TODO(apassos) In eager mode assignment will be done by overriding
+    # __setitem__ instead.
+    op.assign = assign
   return op
 
 
@@ -1320,9 +1323,10 @@ def transpose(a, perm=None, name="transpose"):
       ret = gen_array_ops.transpose(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
-      input_shape = ret.op.inputs[0].get_shape().dims
-      if input_shape is not None:
-        ret.set_shape(input_shape[::-1])
+      if context.in_graph_mode():
+        input_shape = ret.op.inputs[0].get_shape().dims
+        if input_shape is not None:
+          ret.set_shape(input_shape[::-1])
     else:
       ret = gen_array_ops.transpose(a, perm, name=name)
     return ret
@@ -1635,8 +1639,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
           shape=[None],
           name=(name + "/values") if name is not None else None),
       indices=placeholder(
-          dtypes.int64,
-          shape=[None, None],
+          dtypes.int64, shape=[None, rank],
           name=(name + "/indices") if name is not None else None),
       dense_shape=shape)
 
@@ -2256,7 +2259,8 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
     lengths = ops.convert_to_tensor(lengths)
     if lengths.get_shape().ndims != 1:
-      raise ValueError("lengths must be 1D for sequence_mask")
+      raise ValueError("lengths must be 1D for sequence_mask. Got shape %s" %
+                       lengths.get_shape())
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, [0])

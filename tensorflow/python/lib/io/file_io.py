@@ -391,7 +391,7 @@ def rename(oldname, newname, overwrite=False):
   Args:
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false its an error for newpath to be occupied by an
+    overwrite: boolean, if false its an error for `newname` to be occupied by an
         existing file.
 
   Raises:

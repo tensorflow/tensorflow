@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -940,6 +941,78 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
                                     shape["num_units"], shape["input_size"],
                                     shape["batch_size"], shape["seq_length"],
                                     dir_count, dropout, dtype, delta, tolerance)
+
+
+class CudnnRNNTestParamsToCanonical(TensorFlowTestCase):
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testLSTMParamsToCanonical(self):
+    """Test ParamsToCanonical kernel returns valid canonical weights."""
+    num_layers = 1
+    dir_count = 1
+
+    num_units = 2
+    input_size = 4
+    batch_size = 3
+
+    lstm = _CreateModel(
+        rnn_mode="lstm",
+        num_layers=num_layers,
+        num_units=num_units,
+        input_size=input_size,
+        input_mode="linear_input",
+        direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+    params_size_t = lstm.params_size()
+    input_data = random_ops.random_uniform([1, batch_size, input_size])
+    input_h = random_ops.random_uniform([num_layers * dir_count, batch_size,
+                                         num_units])
+    input_c = random_ops.random_uniform([num_layers * dir_count, batch_size,
+                                         num_units])
+    cu_params = vs.get_variable(
+        "cu_params", initializer=random_ops.random_uniform([params_size_t]),
+        validate_shape=False)
+    output, _, output_c = lstm(
+        input_data=input_data,
+        input_h=input_h,
+        input_c=input_c,
+        params=cu_params,
+        is_training=False)
+    total_sum = math_ops.reduce_sum(output) + math_ops.reduce_sum(output_c)
+
+    # Subgraph manually computing the LSTM
+    # i_t = σ(w_i * x_t + r_i * h_(t-1) + b_wi + b_ri)
+    # f_t = σ(w_f * x_t + r_f * h_(t-1) + b_wf + b_rf)
+    # o_t = σ(w_o * x_t + r_o h_(t-1) + b_wo + b_ro)
+    # c'_t = tanh(w_c * x_t + r_c * h_(t-1) + b_wc + b_rc)
+    # c_t = f_t ◦ c_(t-1) + i_t ◦ c'_t
+    # h_t = o_t ◦ tanh(c_t)
+    wt, bs = lstm.params_to_canonical(cu_params)
+    # Kernel returned transposed weights.
+    wt = [array_ops.transpose(w) for w in wt]
+
+    wi, wf, wc, wo, ri, rf, rc, ro = wt
+    b_wi, b_wf, b_wc, b_wo, b_ri, b_rf, b_rc, b_ro = bs
+    x = array_ops.squeeze(input_data, 0)
+    h = array_ops.squeeze(input_h, 0)
+    c = array_ops.squeeze(input_c, 0)
+
+    i_g = math_ops.sigmoid(
+        math_ops.matmul(x, wi) + math_ops.matmul(h, ri) + b_wi + b_ri)
+    f_g = math_ops.sigmoid(
+        math_ops.matmul(x, wf) + math_ops.matmul(h, rf) + b_wf + b_rf)
+    c_g = math_ops.tanh(
+        math_ops.matmul(x, wc) + math_ops.matmul(h, rc) + b_wc + b_rc)
+    o_g = math_ops.sigmoid(
+        math_ops.matmul(x, wo) + math_ops.matmul(h, ro) + b_wo + b_ro)
+    c = f_g * c + i_g * c_g
+    h = o_g * math_ops.tanh(c)
+    actual_total_sum = math_ops.reduce_sum(h) + math_ops.reduce_sum(c)
+
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      total_sum_v, actual_total_sum_v = sess.run([total_sum, actual_total_sum])
+      self.assertAllClose(total_sum_v, actual_total_sum_v)
 
 
 class CudnnRNNTestBidirectional(TensorFlowTestCase):
