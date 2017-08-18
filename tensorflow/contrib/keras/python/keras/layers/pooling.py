@@ -23,51 +23,10 @@ from tensorflow.contrib.keras.python.keras.engine import InputSpec
 from tensorflow.contrib.keras.python.keras.engine import Layer
 from tensorflow.contrib.keras.python.keras.utils import conv_utils
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import pooling as tf_pooling_layers
 
 
-class _Pooling1D(Layer):
-  """Abstract class for different pooling 1D layers.
-  """
-
-  def __init__(self, pool_size=2, strides=None, padding='valid', **kwargs):
-    super(_Pooling1D, self).__init__(**kwargs)
-    if strides is None:
-      strides = pool_size
-    self.pool_size = conv_utils.normalize_tuple(pool_size, 1, 'pool_size')
-    self.strides = conv_utils.normalize_tuple(strides, 1, 'strides')
-    self.padding = conv_utils.normalize_padding(padding)
-    self.input_spec = InputSpec(ndim=3)
-
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    length = conv_utils.conv_output_length(input_shape[1], self.pool_size[0],
-                                           self.padding, self.strides[0])
-    return tensor_shape.TensorShape([input_shape[0], length, input_shape[2]])
-
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    raise NotImplementedError
-
-  def call(self, inputs):
-    inputs = K.expand_dims(inputs, 2)  # add dummy last dimension
-    output = self._pooling_function(
-        inputs=inputs,
-        pool_size=self.pool_size + (1,),
-        strides=self.strides + (1,),
-        padding=self.padding,
-        data_format='channels_last')
-    return K.squeeze(output, 2)  # remove dummy last dimension
-
-  def get_config(self):
-    config = {
-        'strides': self.strides,
-        'pool_size': self.pool_size,
-        'padding': self.padding
-    }
-    base_config = super(_Pooling1D, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
-
-
-class MaxPooling1D(_Pooling1D):
+class MaxPooling1D(tf_pooling_layers.MaxPooling1D, Layer):
   """Max pooling operation for temporal data.
 
   Arguments:
@@ -85,15 +44,21 @@ class MaxPooling1D(_Pooling1D):
   """
 
   def __init__(self, pool_size=2, strides=None, padding='valid', **kwargs):
+    if strides is None:
+      strides = pool_size
     super(MaxPooling1D, self).__init__(pool_size, strides, padding, **kwargs)
 
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    output = K.pool2d(
-        inputs, pool_size, strides, padding, data_format, pool_mode='max')
-    return output
+  def get_config(self):
+    config = {
+        'strides': self.strides,
+        'pool_size': self.pool_size,
+        'padding': self.padding
+    }
+    base_config = super(MaxPooling1D, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
-class AveragePooling1D(_Pooling1D):
+class AveragePooling1D(tf_pooling_layers.AveragePooling1D, Layer):
   """Average pooling for temporal data.
 
   Arguments:
@@ -111,78 +76,22 @@ class AveragePooling1D(_Pooling1D):
   """
 
   def __init__(self, pool_size=2, strides=None, padding='valid', **kwargs):
+    if strides is None:
+      strides = pool_size
     super(AveragePooling1D, self).__init__(pool_size, strides, padding,
                                            **kwargs)
 
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    output = K.pool2d(
-        inputs, pool_size, strides, padding, data_format, pool_mode='avg')
-    return output
-
-
-class _Pooling2D(Layer):
-  """Abstract class for different pooling 2D layers.
-  """
-
-  def __init__(self,
-               pool_size=(2, 2),
-               strides=None,
-               padding='valid',
-               data_format=None,
-               **kwargs):
-    super(_Pooling2D, self).__init__(**kwargs)
-    data_format = conv_utils.normalize_data_format(data_format)
-    if strides is None:
-      strides = pool_size
-    self.pool_size = conv_utils.normalize_tuple(pool_size, 2, 'pool_size')
-    self.strides = conv_utils.normalize_tuple(strides, 2, 'strides')
-    self.padding = conv_utils.normalize_padding(padding)
-    self.data_format = conv_utils.normalize_data_format(data_format)
-    self.input_spec = InputSpec(ndim=4)
-
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    if self.data_format == 'channels_first':
-      rows = input_shape[2]
-      cols = input_shape[3]
-    else:
-      rows = input_shape[1]
-      cols = input_shape[2]
-    rows = conv_utils.conv_output_length(rows, self.pool_size[0], self.padding,
-                                         self.strides[0])
-    cols = conv_utils.conv_output_length(cols, self.pool_size[1], self.padding,
-                                         self.strides[1])
-    if self.data_format == 'channels_first':
-      return tensor_shape.TensorShape(
-          [input_shape[0], input_shape[1], rows, cols])
-    else:
-      return tensor_shape.TensorShape(
-          [input_shape[0], rows, cols, input_shape[3]])
-
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    raise NotImplementedError
-
-  def call(self, inputs):
-    output = self._pooling_function(
-        inputs=inputs,
-        pool_size=self.pool_size,
-        strides=self.strides,
-        padding=self.padding,
-        data_format=self.data_format)
-    return output
-
   def get_config(self):
     config = {
-        'pool_size': self.pool_size,
-        'padding': self.padding,
         'strides': self.strides,
-        'data_format': self.data_format
+        'pool_size': self.pool_size,
+        'padding': self.padding
     }
-    base_config = super(_Pooling2D, self).get_config()
+    base_config = super(AveragePooling1D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class MaxPooling2D(_Pooling2D):
+class MaxPooling2D(tf_pooling_layers.MaxPooling2D, Layer):
   """Max pooling operation for spatial data.
 
   Arguments:
@@ -229,16 +138,25 @@ class MaxPooling2D(_Pooling2D):
                padding='valid',
                data_format=None,
                **kwargs):
+    if data_format is None:
+      data_format = K.image_data_format()
+    if strides is None:
+      strides = pool_size
     super(MaxPooling2D, self).__init__(pool_size, strides, padding, data_format,
                                        **kwargs)
 
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    output = K.pool2d(
-        inputs, pool_size, strides, padding, data_format, pool_mode='max')
-    return output
+  def get_config(self):
+    config = {
+        'pool_size': self.pool_size,
+        'padding': self.padding,
+        'strides': self.strides,
+        'data_format': self.data_format
+    }
+    base_config = super(MaxPooling2D, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
-class AveragePooling2D(_Pooling2D):
+class AveragePooling2D(tf_pooling_layers.AveragePooling2D, Layer):
   """Average pooling operation for spatial data.
 
   Arguments:
@@ -285,68 +203,12 @@ class AveragePooling2D(_Pooling2D):
                padding='valid',
                data_format=None,
                **kwargs):
-    super(AveragePooling2D, self).__init__(pool_size, strides, padding,
-                                           data_format, **kwargs)
-
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    output = K.pool2d(
-        inputs, pool_size, strides, padding, data_format, pool_mode='avg')
-    return output
-
-
-class _Pooling3D(Layer):
-  """Abstract class for different pooling 3D layers.
-  """
-
-  def __init__(self,
-               pool_size=(2, 2, 2),
-               strides=None,
-               padding='valid',
-               data_format=None,
-               **kwargs):
-    super(_Pooling3D, self).__init__(**kwargs)
+    if data_format is None:
+      data_format = K.image_data_format()
     if strides is None:
       strides = pool_size
-    self.pool_size = conv_utils.normalize_tuple(pool_size, 3, 'pool_size')
-    self.strides = conv_utils.normalize_tuple(strides, 3, 'strides')
-    self.padding = conv_utils.normalize_padding(padding)
-    self.data_format = conv_utils.normalize_data_format(data_format)
-    self.input_spec = InputSpec(ndim=5)
-
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    if self.data_format == 'channels_first':
-      len_dim1 = input_shape[2]
-      len_dim2 = input_shape[3]
-      len_dim3 = input_shape[4]
-    else:
-      len_dim1 = input_shape[1]
-      len_dim2 = input_shape[2]
-      len_dim3 = input_shape[3]
-    len_dim1 = conv_utils.conv_output_length(len_dim1, self.pool_size[0],
-                                             self.padding, self.strides[0])
-    len_dim2 = conv_utils.conv_output_length(len_dim2, self.pool_size[1],
-                                             self.padding, self.strides[1])
-    len_dim3 = conv_utils.conv_output_length(len_dim3, self.pool_size[2],
-                                             self.padding, self.strides[2])
-    if self.data_format == 'channels_first':
-      return tensor_shape.TensorShape(
-          [input_shape[0], input_shape[1], len_dim1, len_dim2, len_dim3])
-    else:
-      return tensor_shape.TensorShape(
-          [input_shape[0], len_dim1, len_dim2, len_dim3, input_shape[4]])
-
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    raise NotImplementedError
-
-  def call(self, inputs):
-    output = self._pooling_function(
-        inputs=inputs,
-        pool_size=self.pool_size,
-        strides=self.strides,
-        padding=self.padding,
-        data_format=self.data_format)
-    return output
+    super(AveragePooling2D, self).__init__(pool_size, strides, padding,
+                                           data_format, **kwargs)
 
   def get_config(self):
     config = {
@@ -355,11 +217,11 @@ class _Pooling3D(Layer):
         'strides': self.strides,
         'data_format': self.data_format
     }
-    base_config = super(_Pooling3D, self).get_config()
+    base_config = super(AveragePooling2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class MaxPooling3D(_Pooling3D):
+class MaxPooling3D(tf_pooling_layers.MaxPooling3D, Layer):
   """Max pooling operation for 3D data (spatial or spatio-temporal).
 
   Arguments:
@@ -402,16 +264,25 @@ class MaxPooling3D(_Pooling3D):
                padding='valid',
                data_format=None,
                **kwargs):
+    if data_format is None:
+      data_format = K.image_data_format()
+    if strides is None:
+      strides = pool_size
     super(MaxPooling3D, self).__init__(pool_size, strides, padding, data_format,
                                        **kwargs)
 
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    output = K.pool3d(
-        inputs, pool_size, strides, padding, data_format, pool_mode='max')
-    return output
+  def get_config(self):
+    config = {
+        'pool_size': self.pool_size,
+        'padding': self.padding,
+        'strides': self.strides,
+        'data_format': self.data_format
+    }
+    base_config = super(MaxPooling3D, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
-class AveragePooling3D(_Pooling3D):
+class AveragePooling3D(tf_pooling_layers.AveragePooling3D, Layer):
   """Average pooling operation for 3D data (spatial or spatio-temporal).
 
   Arguments:
@@ -454,13 +325,22 @@ class AveragePooling3D(_Pooling3D):
                padding='valid',
                data_format=None,
                **kwargs):
+    if data_format is None:
+      data_format = K.image_data_format()
+    if strides is None:
+      strides = pool_size
     super(AveragePooling3D, self).__init__(pool_size, strides, padding,
                                            data_format, **kwargs)
 
-  def _pooling_function(self, inputs, pool_size, strides, padding, data_format):
-    output = K.pool3d(
-        inputs, pool_size, strides, padding, data_format, pool_mode='avg')
-    return output
+  def get_config(self):
+    config = {
+        'pool_size': self.pool_size,
+        'padding': self.padding,
+        'strides': self.strides,
+        'data_format': self.data_format
+    }
+    base_config = super(AveragePooling3D, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 class _GlobalPooling1D(Layer):

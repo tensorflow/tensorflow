@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
 
+#include <utility>
+
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
@@ -29,7 +33,7 @@ namespace tensorflow {
 // that uses gRPC to talk to the Master service.
 class GrpcRemoteMaster : public MasterInterface {
  public:
-  explicit GrpcRemoteMaster(SharedGrpcChannelPtr client_channel)
+  explicit GrpcRemoteMaster(const SharedGrpcChannelPtr& client_channel)
       : stub_(grpc::MasterService::NewStub(client_channel)) {}
 
   ~GrpcRemoteMaster() override {}
@@ -64,6 +68,7 @@ class GrpcRemoteMaster : public MasterInterface {
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
                  MutableRunStepResponseWrapper* response) override {
     ::grpc::ClientContext ctx;
+    auto trace = TraceRpc("RunStep/Client", &ctx);
     ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(),
@@ -97,6 +102,14 @@ class GrpcRemoteMaster : public MasterInterface {
   }
 
  private:
+  // Start tracing, attaching a unique ID to both the trace and the RPC.
+  port::Tracing::TraceMe TraceRpc(StringPiece name,
+                                  ::grpc::ClientContext* ctx) {
+    string trace_id = strings::StrCat(port::Tracing::UniqueId());
+    ctx->AddMetadata(GrpcIdKey(), trace_id);
+    return port::Tracing::TraceMe(name, trace_id);
+  }
+
   std::unique_ptr<grpc::MasterService::Stub> stub_;
 
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {
@@ -106,7 +119,7 @@ class GrpcRemoteMaster : public MasterInterface {
   }
 };
 
-MasterInterface* NewGrpcMaster(SharedGrpcChannelPtr channel) {
+MasterInterface* NewGrpcMaster(const SharedGrpcChannelPtr& channel) {
   return new GrpcRemoteMaster(channel);
 }
 

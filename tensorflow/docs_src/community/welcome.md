@@ -25,6 +25,25 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Bitfusion's` GPU-enabled AWS EC2 TensorFlow AMI](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow) ([Launch AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0))
 * [Rust language bindings](https://github.com/google/tensorflow-rust)
 * [Operator Vectorization Library](https://github.com/opveclib/opveclib)
+* [Swift language bindings](https://github.com/PerfectlySoft/Perfect-TensorFlow)
+* [Sublime Tensorflow - A plugin for Sublime Text](https://github.com/baptisteArnaud/Sublime-Tensorflow)
+* [Edward - A library for probabilistic modeling, inference, and criticism](http://edwardlib.org) ([Github](https://github.com/blei-lab/edward), [Forum](https://discourse.edwardlib.org))
+* [GPflow - Gaussian processes in TensorFlow](https://github.com/GPflow/GPflow)
+
+## TensorFlow Communities Around the World
+
+Asia:
+
+* [TensorFlow Korea (TF-KR) User Group](https://www.facebook.com/groups/TensorFlowKR/) _(Korean language)_
+* [TensorFlow User Group Tokyo](https://tfug-tokyo.connpass.com/) _(Japanese Language)_
+* [Soleil Data Dojo](https://soleildatadojo.connpass.com/) _(Japanese language)_
+
+
+Europe:
+
+* [TensorFlow Barcelona](https://www.meetup.com/Barcelona-Machine-Learning-Meetup/)
+* [TensorFlow Madrid](https://www.meetup.com/TensorFlow-Madrid/)
+
 
 
 ## Support
@@ -45,3 +64,5 @@ please read the following list carefully:
     [TensorFlow issues tracker](https://github.com/tensorflow/tensorflow/issues)
     on GitHub.  For example, use the issue tracker to request a
     new operation in TensorFlow.
+    
+

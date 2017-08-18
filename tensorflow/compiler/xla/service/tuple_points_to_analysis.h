@@ -48,7 +48,10 @@ namespace xla {
 // the corresponding buffer.
 class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
  public:
-  explicit PointsToSet(const Shape& shape)
+  // Construct our ShapeTree with a pointer rather than a reference to a Shape
+  // because this is very hot code, and copying (and then destroying) all these
+  // Shapes is slow.
+  explicit PointsToSet(const Shape* shape)
       : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
         tuple_sources_(shape) {}
 
@@ -117,29 +120,23 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 // value.
 class BufferAlias {
  public:
-  BufferAlias(const LogicalBuffer& buffer, HloInstruction* instruction,
-              const ShapeIndex& index)
-      : buffer_(&buffer), instruction_(instruction), index_(index) {}
-
-  // Return the logical buffer aliased at the instruction and index.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  BufferAlias(HloInstruction* instruction, const ShapeIndex& index)
+      : instruction_(instruction), index_(index) {}
 
   // Return the instruction/index of the subshape.
   HloInstruction* instruction() const { return instruction_; }
   const ShapeIndex& index() const { return index_; }
 
   bool operator==(const BufferAlias& other) const {
-    return buffer_ == other.buffer_ && instruction_ == other.instruction_ &&
-           index_ == other.index_;
+    return instruction_ == other.instruction_ && index_ == other.index_;
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
   string ToString() const;
 
  private:
-  const LogicalBuffer* buffer_;
   HloInstruction* instruction_;
-  const ShapeIndex index_;
+  ShapeIndex index_;
 };
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
@@ -148,12 +145,9 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
-  // Runs points-to analysis on 'module'. If 'include_loop_fusion_instructions'
-  // is true, includes fused instructions from each loop fusion instruction
-  // in 'module' in the points-to analysis.
+  // Runs points-to analysis on 'module'.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
-      const HloModule* module,
-      const bool include_loop_fusion_instructions = false);
+      const HloModule* module);
 
   // Return the points-to set of an instruction. This describes the potential
   // sources of each buffer in the instruction's output.
@@ -174,19 +168,31 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // buffer alias set is the inverse of the points-to set. That is,
   // LogicalBuffer B is in the points-to set of instruction I at index N iff
   // instruction I, index N is a BufferAlias of B.
-  const std::vector<BufferAlias>& GetBufferAliases(
-      const LogicalBuffer& buffer) const;
+  using BufferAliasVector = tensorflow::gtl::InlinedVector<BufferAlias, 1>;
+  const BufferAliasVector& GetBufferAliases(const LogicalBuffer& buffer) const;
 
-  // Return a vector containing all logical buffers in the module.
-  const std::vector<std::unique_ptr<LogicalBuffer>>& logical_buffers() const {
-    return logical_buffers_;
+  // Returns the number of logical buffers in the module
+  LogicalBuffer::Id num_logical_buffers() const { return next_buffer_id_; }
+
+  // Return a the logical buffer with id "id" in the module. Iteration
+  // over all logical buffers is usually done with something like:
+  //
+  // for (LogicalBuffer:Id id = 0; id < points_to.num_logical_buffers(); id++){
+  //   const auto& buffer = points_to.logical_buffer(id);
+  //   ... do something with buffer ...
+  // }
+  const std::unique_ptr<LogicalBuffer>& logical_buffer(
+      LogicalBuffer::Id id) const {
+    return logical_buffers_[id].logical_buffer;
   }
 
   // Returns a vector of buffers that the instruction produces. Most
   // instructions produce a single buffer (the top-level buffer), some produce
   // no buffers (eg bitcast), and some produce more than one buffer (eg,
   // tuple-shaped parameters).
-  const std::vector<const LogicalBuffer*>& GetBuffersDefinedByInstruction(
+  using BufferDefinitionVector =
+      tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+  const BufferDefinitionVector& GetBuffersDefinedByInstruction(
       const HloInstruction* instruction) const;
 
   // Returns true if the given instruction defines a buffer at the given index.
@@ -209,8 +215,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
-  Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;
@@ -218,10 +223,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   string ToString() const;
 
  private:
-  explicit TuplePointsToAnalysis(const HloModule* module,
-                                 const bool include_loop_fusion_instructions)
-      : module_(module),
-        include_loop_fusion_instructions_(include_loop_fusion_instructions) {}
+  explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
@@ -250,35 +252,55 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
                                        const HloInstruction* src);
 
   // Adds the buffers defined by the given instruction to the given vector.
-  Status GatherBuffersDefinedByInstruction(
-      const HloInstruction* instruction,
-      std::vector<const LogicalBuffer*>* buffers);
+  Status GatherBuffersDefinedByInstruction(const HloInstruction* instruction,
+                                           BufferDefinitionVector* buffers);
 
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,
                            string* output) const;
 
+  // Information kept per instruction
+  struct PerInstruction {
+    std::unique_ptr<PointsToSet> points_to_set;
+    // Empircally, ~92% of instructions have 1
+    // instruction_defined_buffer, and 99% have 0 or 1
+    BufferDefinitionVector instruction_defined_buffers;
+  };
+
+  // Information kept per logical buffer
+  struct PerLogicalBuffer {
+    std::unique_ptr<LogicalBuffer> logical_buffer;
+    // Empircally, ~85% of buffers have 1 buffer_alias
+    BufferAliasVector buffer_aliases;
+  };
+
+  const PerInstruction* PerInst(const HloInstruction* inst) const {
+    int id = inst->unique_id();
+    DCHECK_GE(id, 0);
+    DCHECK_LT(id, per_instruction_.size());
+    return &per_instruction_[id];
+  }
+  PerInstruction* PerInst(const HloInstruction* inst) {
+    int id = inst->unique_id();
+    DCHECK_GE(id, 0);
+    DCHECK_LT(id, per_instruction_.size());
+    return &per_instruction_[id];
+  }
+
+  PerLogicalBuffer* PerBuffer(const LogicalBuffer::Id id) {
+    DCHECK_GE(id, 0);
+    DCHECK_LT(id, logical_buffers_.size());
+    return &logical_buffers_[id];
+  }
+
   // The module this analysis is performed on.
   const HloModule* module_;
 
-  // Whether to run points-to analysis on loop fusion instructions in 'module_'.
-  const bool include_loop_fusion_instructions_;
+  // A map from instruction->unique_id() to
+  std::vector<PerInstruction> per_instruction_;
 
-  // A map containing a PointsToSet for every HLO instruction.
-  tensorflow::gtl::FlatMap<const HloInstruction*, std::unique_ptr<PointsToSet>>
-      points_to_;
-
-  // A map containing the LogicalBuffers defined by each HLO instruction.
-  tensorflow::gtl::FlatMap<const HloInstruction*,
-                           std::vector<const LogicalBuffer*>>
-      instruction_defined_buffers_;
-
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, std::vector<BufferAlias>>
-      buffer_aliases_;
-
-  // All logical buffers in the module, indexed by LogicalBuffer::Id. Keep as
-  // vector of std::unique_ptr to keep the underlying pointer values stable.
-  std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;
+  // A map from LogicalBuffer->id() to information about that logical buffer
+  std::vector<PerLogicalBuffer> logical_buffers_;
 
   // The ID of the next logical buffer created.
   LogicalBuffer::Id next_buffer_id_ = 0;

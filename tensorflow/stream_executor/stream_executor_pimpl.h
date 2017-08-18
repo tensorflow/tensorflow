@@ -205,7 +205,7 @@ class StreamExecutor {
   // This should be done before deallocating the region with delete[]/free/etc.
   bool HostMemoryUnregister(void *location) SE_MUST_USE_RESULT;
 
-  // Synchronizes all activity occuring in the StreamExecutor's context (most
+  // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   bool SynchronizeAllActivity() SE_MUST_USE_RESULT;
 
@@ -238,7 +238,7 @@ class StreamExecutor {
                                     DeviceMemoryBase *gpu_dst);
 
   // Alternative interface for memcpying from host to device that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
   port::Status SynchronousMemcpyH2D(port::ArraySlice<T> host_src,
@@ -253,7 +253,7 @@ class StreamExecutor {
                                     void *host_dst);
 
   // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   port::Status SynchronousMemcpyD2H(const DeviceMemory<T> &gpu_src,
@@ -342,15 +342,18 @@ class StreamExecutor {
   bool SupportsDnn() const;
 
   // Get the list of supported algorithms for the forward convolution opeartion.
-  bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmType> *out_algorithms);
+  bool GetConvolveAlgorithms(bool with_winograd_nonfused,
+                             std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on the
   // filter.
   bool GetConvolveBackwardFilterAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.

@@ -23,7 +23,6 @@ from __future__ import print_function
 import copy
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -33,8 +32,11 @@ from tensorflow.contrib.keras.python.keras import optimizers
 from tensorflow.contrib.keras.python.keras.engine import topology
 from tensorflow.contrib.keras.python.keras.engine.topology import Input
 from tensorflow.contrib.keras.python.keras.engine.topology import Layer
+from tensorflow.contrib.keras.python.keras.engine.topology import TFBaseLayer
 from tensorflow.contrib.keras.python.keras.engine.training import Model
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 # pylint: disable=g-import-not-at-top
@@ -50,7 +52,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-def save_model(model, filepath, overwrite=True):
+def save_model(model, filepath, overwrite=True, include_optimizer=True):
   """Save a model to a HDF5 file.
 
   The saved model contains:
@@ -68,6 +70,7 @@ def save_model(model, filepath, overwrite=True):
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
+      include_optimizer: If True, save optimizer's state together.
 
   Raises:
       ImportError: if h5py is not available.
@@ -95,7 +98,10 @@ def save_model(model, filepath, overwrite=True):
 
     # if obj is any numpy type
     if type(obj).__module__ == np.__name__:
-      return obj.item()
+      if isinstance(obj, np.ndarray):
+        return {'type': type(obj), 'value': obj.tolist()}
+      else:
+        return obj.item()
 
     # misc functions (e.g. loss function)
     if callable(obj):
@@ -129,9 +135,9 @@ def save_model(model, filepath, overwrite=True):
   model_layers = model.layers
   topology.save_weights_to_hdf5_group(model_weights_group, model_layers)
 
-  if hasattr(model, 'optimizer'):
+  if include_optimizer and hasattr(model, 'optimizer'):
     if isinstance(model.optimizer, optimizers.TFOptimizer):
-      warnings.warn(
+      logging.warning(
           'TensorFlow optimizers do not '
           'make it possible to access '
           'optimizer attributes or optimizer state '
@@ -187,7 +193,7 @@ def save_model(model, filepath, overwrite=True):
   f.close()
 
 
-def load_model(filepath, custom_objects=None):
+def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
   Arguments:
@@ -195,12 +201,16 @@ def load_model(filepath, custom_objects=None):
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
           considered during deserialization.
+      compile: Boolean, whether to compile the model
+          after loading.
 
   Returns:
       A Keras model instance. If an optimizer was found
       as part of the saved model, the model is already
       compiled. Otherwise, the model is uncompiled and
-      a warning will be displayed.
+      a warning will be displayed. When `compile` is set
+      to False, the compilation is omitted without any
+      warning.
 
   Raises:
       ImportError: if h5py is not available.
@@ -219,84 +229,86 @@ def load_model(filepath, custom_objects=None):
         obj: object, dict, or list.
 
     Returns:
-        The same structure, where occurences
+        The same structure, where occurrences
             of a custom object name have been replaced
             with the custom object.
     """
     if isinstance(obj, list):
       deserialized = []
       for value in obj:
-        if value in custom_objects:
-          deserialized.append(custom_objects[value])
-        else:
-          deserialized.append(value)
+        deserialized.append(convert_custom_objects(value))
       return deserialized
     if isinstance(obj, dict):
       deserialized = {}
       for key, value in obj.items():
-        if value in custom_objects:
-          deserialized[key] = custom_objects[value]
-        else:
-          deserialized[key] = value
+        deserialized[key] = convert_custom_objects(value)
       return deserialized
     if obj in custom_objects:
       return custom_objects[obj]
     return obj
 
-  f = h5py.File(filepath, mode='r')
+  with h5py.File(filepath, mode='r') as f:
+    # instantiate model
+    model_config = f.attrs.get('model_config')
+    if model_config is None:
+      raise ValueError('No model found in config file.')
+    model_config = json.loads(model_config.decode('utf-8'))
+    model = model_from_config(model_config, custom_objects=custom_objects)
 
-  # instantiate model
-  model_config = f.attrs.get('model_config')
-  if model_config is None:
-    raise ValueError('No model found in config file.')
-  model_config = json.loads(model_config.decode('utf-8'))
-  model = model_from_config(model_config, custom_objects=custom_objects)
+    # set weights
+    topology.load_weights_from_hdf5_group(f['model_weights'], model.layers)
 
-  # set weights
-  topology.load_weights_from_hdf5_group(f['model_weights'], model.layers)
+    # Early return if compilation is not required.
+    if not compile:
+      return model
 
-  # instantiate optimizer
-  training_config = f.attrs.get('training_config')
-  if training_config is None:
-    warnings.warn('No training configuration found in save file: '
-                  'the model was *not* compiled. Compile it manually.')
-    f.close()
-    return model
-  training_config = json.loads(training_config.decode('utf-8'))
-  optimizer_config = training_config['optimizer_config']
-  optimizer = optimizers.deserialize(
-      optimizer_config, custom_objects=custom_objects)
+    # instantiate optimizer
+    training_config = f.attrs.get('training_config')
+    if training_config is None:
+      logging.warning('No training configuration found in save file: '
+                      'the model was *not* compiled. Compile it manually.')
+      return model
+    training_config = json.loads(training_config.decode('utf-8'))
+    optimizer_config = training_config['optimizer_config']
+    optimizer = optimizers.deserialize(
+        optimizer_config, custom_objects=custom_objects)
 
-  # Recover loss functions and metrics.
-  loss = convert_custom_objects(training_config['loss'])
-  metrics = convert_custom_objects(training_config['metrics'])
-  sample_weight_mode = training_config['sample_weight_mode']
-  loss_weights = training_config['loss_weights']
+    # Recover loss functions and metrics.
+    loss = convert_custom_objects(training_config['loss'])
+    metrics = convert_custom_objects(training_config['metrics'])
+    sample_weight_mode = training_config['sample_weight_mode']
+    loss_weights = training_config['loss_weights']
 
-  # Compile model.
-  model.compile(
-      optimizer=optimizer,
-      loss=loss,
-      metrics=metrics,
-      loss_weights=loss_weights,
-      sample_weight_mode=sample_weight_mode)
+    # Compile model.
+    model.compile(
+        optimizer=optimizer,
+        loss=loss,
+        metrics=metrics,
+        loss_weights=loss_weights,
+        sample_weight_mode=sample_weight_mode)
 
-  # Set optimizer weights.
-  if 'optimizer_weights' in f:
-    # Build train function (to get weight updates).
-    if isinstance(model, Sequential):
-      model.model._make_train_function()
-    else:
-      model._make_train_function()
-    optimizer_weights_group = f['optimizer_weights']
-    optimizer_weight_names = [
-        n.decode('utf8') for n in optimizer_weights_group.attrs['weight_names']
-    ]
-    optimizer_weight_values = [
-        optimizer_weights_group[n] for n in optimizer_weight_names
-    ]
-    model.optimizer.set_weights(optimizer_weight_values)
-  f.close()
+    # Set optimizer weights.
+    if 'optimizer_weights' in f:
+      # Build train function (to get weight updates).
+      if isinstance(model, Sequential):
+        model.model._make_train_function()
+      else:
+        model._make_train_function()
+      optimizer_weights_group = f['optimizer_weights']
+      optimizer_weight_names = [
+          n.decode('utf8')
+          for n in optimizer_weights_group.attrs['weight_names']
+      ]
+      optimizer_weight_values = [
+          optimizer_weights_group[n] for n in optimizer_weight_names
+      ]
+      try:
+        model.optimizer.set_weights(optimizer_weight_values)
+      except ValueError:
+        logging.warning('Error in loading the saved optimizer '
+                        'state. As a result, your model is '
+                        'starting with a freshly initialized '
+                        'optimizer.')
   return model
 
 
@@ -311,9 +323,12 @@ def model_from_config(config, custom_objects=None):
 
   Returns:
       A Keras model instance (uncompiled).
+
+  Raises:
+      TypeError: if `config` is not a dictionary.
   """
   if isinstance(config, list):
-    raise TypeError('`model_fom_config` expects a dictionary, not a list. '
+    raise TypeError('`model_from_config` expects a dictionary, not a list. '
                     'Maybe you meant to use '
                     '`Sequential.from_config(config)`?')
   return layer_module.deserialize(config, custom_objects=custom_objects)
@@ -400,6 +415,7 @@ class Sequential(Model):
     self.outputs = []  # List of length 1: the output tensor (unique).
     self._trainable = True
     self._initial_weights = None
+    self._input_layers = []
 
     # Model attributes.
     self.inbound_nodes = []
@@ -411,6 +427,15 @@ class Sequential(Model):
       prefix = 'sequential_'
       name = prefix + str(K.get_uid(prefix))
     self.name = name
+
+    # The following properties are not actually used by Keras;
+    # they exist for compatibility with TF's variable scoping mechanism.
+    self._updates = []
+    self._losses = []
+    self._scope = None
+    self._reuse = None
+    self._base_name = name
+    self._graph = ops.get_default_graph()
 
     # Add to the model any layers passed to the constructor.
     if layers:
@@ -431,7 +456,7 @@ class Sequential(Model):
             multiple output tensors, or is already connected
             somewhere else (forbidden in `Sequential` models).
     """
-    if not isinstance(layer, Layer):
+    if not isinstance(layer, (Layer, TFBaseLayer)):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))
@@ -478,10 +503,7 @@ class Sequential(Model):
           node_indices=[],
           tensor_indices=[],
           input_tensors=self.inputs,
-          output_tensors=self.outputs,
-          # no model-level masking for now
-          input_masks=[None for _ in self.inputs],
-          output_masks=[None])
+          output_tensors=self.outputs)
     else:
       output_tensor = layer(self.outputs[0])
       if isinstance(output_tensor, list):
@@ -555,14 +577,12 @@ class Sequential(Model):
     self._output_mask_cache = self.model._output_mask_cache
     self._output_tensor_cache = self.model._output_tensor_cache
     self._output_shape_cache = self.model._output_shape_cache
-    self.input_layers = self.model.input_layers
-    self.input_layers_node_indices = self.model.input_layers_node_indices
-    self.input_layers_tensor_indices = self.model.input_layers_tensor_indices
-    self.output_layers = self.model.output_layers
-    self.output_layers_node_indices = self.model.output_layers_node_indices
-    self.output_layers_tensor_indices = self.model.output_layers_tensor_indices
-    self.nodes_by_depth = self.model.nodes_by_depth
-    self.container_nodes = self.model.container_nodes
+    self._input_layers = self.model._input_layers
+    self._output_layers = self.model._output_layers
+    self._input_coordinates = self.model._input_coordinates
+    self._output_coordinates = self.model._output_coordinates
+    self._nodes_by_depth = self.model._nodes_by_depth
+    self._network_nodes = self.model._network_nodes
     self.output_names = self.model.output_names
     self.input_names = self.model.input_names
     self._feed_input_names = self.model._feed_input_names
@@ -713,7 +733,7 @@ class Sequential(Model):
         optimizer: str (name of optimizer) or optimizer object.
             See [optimizers](/optimizers).
         loss: str (name of objective function) or objective function.
-            See [objectives](/objectives).
+            See [losses](/losses).
         metrics: list of metrics to be evaluated by the model
             during training and testing.
             Typically you will use `metrics=['accuracy']`.
@@ -722,7 +742,8 @@ class Sequential(Model):
             sample weighting (2D weights), set this to "temporal".
             "None" defaults to sample-wise weights (1D).
         **kwargs: for Theano backend, these are passed into K.function.
-            Ignored for Tensorflow backend.
+            When using the Tensorflow backend, these are passed into
+            `tf.Session.run`.
 
     Example:
         ```python
@@ -745,11 +766,14 @@ class Sequential(Model):
         **kwargs)
     self.optimizer = self.model.optimizer
     self.loss = self.model.loss
+    self.total_loss = self.model.total_loss
     self.loss_weights = self.model.loss_weights
     self.metrics = self.model.metrics
     self.metrics_tensors = self.model.metrics_tensors
     self.metrics_names = self.model.metrics_names
     self.sample_weight_mode = self.model.sample_weight_mode
+    self.sample_weights = self.model.sample_weights
+    self.targets = self.model.targets
 
   def fit(self,
           x,
@@ -949,10 +973,10 @@ class Sequential(Model):
     """
     preds = self.predict(x, batch_size, verbose)
     if preds.min() < 0. or preds.max() > 1.:
-      warnings.warn('Network returning invalid probability values. '
-                    'The last layer might not normalize predictions '
-                    'into probabilities '
-                    '(like softmax or sigmoid would).')
+      logging.warning('Network returning invalid probability values. '
+                      'The last layer might not normalize predictions '
+                      'into probabilities '
+                      '(like softmax or sigmoid would).')
     return preds
 
   def predict_classes(self, x, batch_size=32, verbose=1):
@@ -984,10 +1008,11 @@ class Sequential(Model):
                     validation_data=None,
                     validation_steps=None,
                     class_weight=None,
-                    max_q_size=10,
+                    max_queue_size=10,
                     workers=1,
-                    pickle_safe=False,
-                    initial_epoch=0):
+                    use_multiprocessing=False,
+                    initial_epoch=0,
+                    **kwargs):
     """Fits the model on data generated batch-by-batch by a Python generator.
 
     The generator is run in parallel to the model, for efficiency.
@@ -1001,8 +1026,8 @@ class Sequential(Model):
             - a tuple (inputs, targets, sample_weights).
             All arrays should contain the same number of samples.
             The generator is expected to loop over its data
-            indefinitely. An epoch finishes when `samples_per_epoch`
-            samples have been seen by the model.
+            indefinitely. An epoch finishes when `steps_per_epoch`
+            batches have been seen by the model.
         steps_per_epoch: Total number of steps (batches of samples)
             to yield from `generator` before declaring one epoch
             finished and starting the next epoch. It should typically
@@ -1023,9 +1048,9 @@ class Sequential(Model):
             validation dataset divided by the batch size.
         class_weight: Dictionary mapping class indices to a weight
             for the class.
-        max_q_size: Maximum size for the generator queue
+        max_queue_size: Maximum size for the generator queue
         workers: Maximum number of processes to spin up
-        pickle_safe: Ff True, use process based threading.
+        use_multiprocessing: If True, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
             you should not pass
@@ -1034,12 +1059,15 @@ class Sequential(Model):
             easily to children processes.
         initial_epoch: Epoch at which to start training
             (useful for resuming a previous training run)
+        **kwargs: support for legacy arguments.
 
     Returns:
         A `History` object.
 
     Raises:
         RuntimeError: if the model was never compiled.
+        ValueError: In case the generator yields
+            data in an invalid format.
 
     Example:
 
@@ -1055,9 +1083,22 @@ class Sequential(Model):
                     f.close()
 
         model.fit_generator(generate_arrays_from_file('/my_file.txt'),
-                            samples_per_epoch=10000, epochs=10)
+                            steps_per_epoch=1000, epochs=10)
     ```
     """
+    # Legacy support
+    if 'max_q_size' in kwargs:
+      max_queue_size = kwargs.pop('max_q_size')
+      logging.warning('The argument `max_q_size` has been renamed '
+                      '`max_queue_size`. Update your method calls accordingly.')
+    if 'pickle_safe' in kwargs:
+      use_multiprocessing = kwargs.pop('pickle_safe')
+      logging.warning('The argument `pickle_safe` has been renamed '
+                      '`use_multiprocessing`. '
+                      'Update your method calls accordingly.')
+    if kwargs:
+      raise ValueError('Unrecognized keyword arguments: ' + str(kwargs))
+
     if self.model is None:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.fit_generator(
@@ -1069,17 +1110,18 @@ class Sequential(Model):
         validation_data=validation_data,
         validation_steps=validation_steps,
         class_weight=class_weight,
-        max_q_size=max_q_size,
+        max_queue_size=max_queue_size,
         workers=workers,
-        pickle_safe=pickle_safe,
+        use_multiprocessing=use_multiprocessing,
         initial_epoch=initial_epoch)
 
   def evaluate_generator(self,
                          generator,
                          steps,
-                         max_q_size=10,
+                         max_queue_size=10,
                          workers=1,
-                         pickle_safe=False):
+                         use_multiprocessing=False,
+                         **kwargs):
     """Evaluates the model on a data generator.
 
     The generator should return the same kind of data
@@ -1090,13 +1132,14 @@ class Sequential(Model):
             or (inputs, targets, sample_weights)
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
-        max_q_size: maximum size for the generator queue
+        max_queue_size: maximum size for the generator queue
         workers: maximum number of processes to spin up
-        pickle_safe: if True, use process based threading.
+        use_multiprocessing: if True, use process based threading.
             Note that because this implementation
             relies on multiprocessing, you should not pass
             non picklable arguments to the generator
             as they can't be passed easily to children processes.
+        **kwargs: support for legacy arguments.
 
     Returns:
         Scalar test loss (if the model has no metrics)
@@ -1106,23 +1149,39 @@ class Sequential(Model):
 
     Raises:
         RuntimeError: if the model was never compiled.
+        ValueError: In case the generator yields
+            data in an invalid format.
     """
+    # Legacy support
+    if 'max_q_size' in kwargs:
+      max_queue_size = kwargs.pop('max_q_size')
+      logging.warning('The argument `max_q_size` has been renamed '
+                      '`max_queue_size`. Update your method calls accordingly.')
+    if 'pickle_safe' in kwargs:
+      use_multiprocessing = kwargs.pop('pickle_safe')
+      logging.warning('The argument `pickle_safe` has been renamed '
+                      '`use_multiprocessing`. '
+                      'Update your method calls accordingly.')
+    if kwargs:
+      raise ValueError('Unrecognized keyword arguments: ' + str(kwargs))
+
     if self.model is None:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.evaluate_generator(
         generator,
         steps,
-        max_q_size=max_q_size,
+        max_queue_size=max_queue_size,
         workers=workers,
-        pickle_safe=pickle_safe)
+        use_multiprocessing=use_multiprocessing)
 
   def predict_generator(self,
                         generator,
                         steps,
-                        max_q_size=10,
+                        max_queue_size=10,
                         workers=1,
-                        pickle_safe=False,
-                        verbose=0):
+                        use_multiprocessing=False,
+                        verbose=0,
+                        **kwargs):
     """Generates predictions for the input samples from a data generator.
 
     The generator should return the same kind of data as accepted by
@@ -1132,26 +1191,44 @@ class Sequential(Model):
         generator: generator yielding batches of input samples.
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
-        max_q_size: maximum size for the generator queue
+        max_queue_size: maximum size for the generator queue
         workers: maximum number of processes to spin up
-        pickle_safe: if True, use process based threading.
+        use_multiprocessing: if True, use process based threading.
             Note that because this implementation
             relies on multiprocessing, you should not pass
             non picklable arguments to the generator
             as they can't be passed easily to children processes.
         verbose: verbosity mode, 0 or 1.
+        **kwargs: support for legacy arguments.
 
     Returns:
         A Numpy array of predictions.
+
+    Raises:
+        ValueError: In case the generator yields
+            data in an invalid format.
     """
+    # Legacy support
+    if 'max_q_size' in kwargs:
+      max_queue_size = kwargs.pop('max_q_size')
+      logging.warning('The argument `max_q_size` has been renamed '
+                      '`max_queue_size`. Update your method calls accordingly.')
+    if 'pickle_safe' in kwargs:
+      use_multiprocessing = kwargs.pop('pickle_safe')
+      logging.warning('The argument `pickle_safe` has been renamed '
+                      '`use_multiprocessing`. '
+                      'Update your method calls accordingly.')
+    if kwargs:
+      raise ValueError('Unrecognized keyword arguments: ' + str(kwargs))
+
     if self.model is None:
       self.build()
     return self.model.predict_generator(
         generator,
         steps,
-        max_q_size=max_q_size,
+        max_queue_size=max_queue_size,
         workers=workers,
-        pickle_safe=pickle_safe,
+        use_multiprocessing=use_multiprocessing,
         verbose=verbose)
 
   def get_config(self):

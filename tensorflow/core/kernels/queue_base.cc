@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 
 #include <vector>
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -375,6 +376,7 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
   HANDLE_TYPE(DT_QINT32);
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
+  HANDLE_TYPE(DT_UINT16);
 #undef HANDLE_TYPE
   return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
                                parent.dtype());
@@ -405,6 +407,7 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
   HANDLE_TYPE(DT_QINT32);
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
+  HANDLE_TYPE(DT_UINT16);
 #undef HANDLE_TYPE
   return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
                                element.dtype());

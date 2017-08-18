@@ -80,23 +80,35 @@ class AssertEqualTest(test.TestCase):
 
   def test_raises_when_greater(self):
     with self.test_session():
-      small = constant_op.constant([1, 2], name="small")
-      big = constant_op.constant([3, 4], name="big")
+      # Static check
+      static_small = constant_op.constant([1, 2], name="small")
+      static_big = constant_op.constant([3, 4], name="big")
+      with self.assertRaisesRegexp(ValueError, "fail"):
+        check_ops.assert_equal(static_big, static_small, message="fail")
+      # Dynamic check
+      small = array_ops.placeholder(dtypes.int32, name="small")
+      big = array_ops.placeholder(dtypes.int32, name="big")
       with ops.control_dependencies(
           [check_ops.assert_equal(
               big, small, message="fail")]):
         out = array_ops.identity(small)
       with self.assertRaisesOpError("fail.*big.*small"):
-        out.eval()
+        out.eval(feed_dict={small: [1, 2], big: [3, 4]})
 
   def test_raises_when_less(self):
     with self.test_session():
-      small = constant_op.constant([3, 1], name="small")
-      big = constant_op.constant([4, 2], name="big")
+      # Static check
+      static_small = constant_op.constant([3, 1], name="small")
+      static_big = constant_op.constant([4, 2], name="big")
+      with self.assertRaisesRegexp(ValueError, "fail"):
+        check_ops.assert_equal(static_big, static_small, message="fail")
+      # Dynamic check
+      small = array_ops.placeholder(dtypes.int32, name="small")
+      big = array_ops.placeholder(dtypes.int32, name="big")
       with ops.control_dependencies([check_ops.assert_equal(small, big)]):
         out = array_ops.identity(small)
       with self.assertRaisesOpError("small.*big"):
-        out.eval()
+        out.eval(feed_dict={small: [3, 1], big: [4, 2]})
 
   def test_doesnt_raise_when_equal_and_broadcastable_shapes(self):
     with self.test_session():

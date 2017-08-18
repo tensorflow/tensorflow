@@ -236,7 +236,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
   :])`
 
-  ```prettyprint
+  ```python
   # a is a tensor.
   # s is a tensor of singular values.
   # u is a tensor of left singular vectors.
@@ -257,7 +257,9 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    s: Singular values. Shape is `[..., P]`.
+    s: Singular values. Shape is `[..., P]`. The values are sorted in reverse
+      order of magnitude, so s[..., 0] is the largest value, s[..., 1] is the
+      second largest, etc.
     u: Left singular vectors. If `full_matrices` is `False` (default) then
       shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
       `[..., M, M]`. Not returned if `compute_uv` is `False`.
@@ -372,7 +374,7 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
       # matrices.
       result = math_ops.sqrt(
           math_ops.reduce_sum(
-              math_ops.square(tensor), axis, keep_dims=True))
+              tensor * math_ops.conj(tensor), axis, keep_dims=True))
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

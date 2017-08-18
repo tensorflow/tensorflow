@@ -76,7 +76,7 @@ representing the posterior or posterior predictive.
 
 ## Kullback-Leibler Divergence
 
-*   @{tf.contrib.distributions.kl}
+*   @{tf.contrib.distributions.kl_divergence}
 *   @{tf.contrib.distributions.RegisterKL}
 
 ## Utilities

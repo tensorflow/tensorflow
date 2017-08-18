@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/dense_update_ops.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -278,9 +278,11 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
 #if GOOGLE_CUDA
 TF_CALL_GPU_PROXY_TYPES(PREVENT_FOR_N_GPU);
 TF_CALL_complex64(PREVENT_FOR_N_GPU);
+TF_CALL_complex128(PREVENT_FOR_N_GPU);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N_GPU);
 TF_CALL_complex64(DECLARE_FOR_N_GPU);
+TF_CALL_complex128(DECLARE_FOR_N_GPU);
 DECLARE_FOR_N_GPU(int32);
 #endif  // END GOOGLE_CUDA
 
@@ -295,7 +297,7 @@ DECLARE_FOR_N_CPU(bfloat16);
   INSTANTIATE(SYCLDevice, T, STRIDED_SLICE_INSTANTIATE_DIM)
 
 TF_CALL_SYCL_PROXY_TYPES(PREVENT_FOR_N_SYCL);
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_FOR_N_SYCL);
 DECLARE_FOR_N_SYCL(int32);
 
 #undef DECLARE_FOR_N_SYCL

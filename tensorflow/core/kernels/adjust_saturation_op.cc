@@ -30,7 +30,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 class AdjustSaturationOpBase : public OpKernel {
  protected:
-  AdjustSaturationOpBase(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit AdjustSaturationOpBase(OpKernelConstruction* context)
+      : OpKernel(context) {}
 
   struct ComputeOptions {
     const Tensor* input;

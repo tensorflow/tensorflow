@@ -18,24 +18,25 @@ limitations under the License.
 
 #include <functional>
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/function.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/kernel_def.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -64,9 +65,14 @@ class TensorSliceReaderCacheWrapper;
 }  // namespace checkpoint
 
 class AsyncOpKernel;
+class FunctionCallFrame;
+class FunctionLibraryRuntime;
 class OpKernelConstruction;  // declared below
 class OpKernelContext;       // declared below
+class OpRegistryInterface;
 class ResourceMgr;
+class ScopedStepContainer;
+class StepStatsCollector;
 
 class OpKernel {
  public:
@@ -108,9 +114,10 @@ class OpKernel {
   virtual bool IsExpensive() { return expensive_; }
 
   // Accessors.
-  const NodeDef& def() const { return def_; }
-  const string& name() const { return def_.name(); }
-  const string& type_string() const { return def_.op(); }
+  const NodeDef& def() const { return *def_; }
+  const string& name() const;              // Same as def().name()
+  const string& type_string() const;       // Same as def().op()
+  const string& requested_device() const;  // Same as def().device()
   bool is_internal() const { return is_internal_; }
 
   int num_inputs() const { return input_types_.size(); }
@@ -119,6 +126,7 @@ class OpKernel {
   const MemoryTypeVector& input_memory_types() const {
     return input_memory_types_;
   }
+  const string& requested_input(int i) const;  // Same as def().input(i)
 
   int num_outputs() const { return output_types_.size(); }
   DataType output_type(int o) const { return output_types_[o]; }
@@ -151,8 +159,12 @@ class OpKernel {
     return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
   }
 
+  // Turn a shape Tensor into a TensorShape
+  // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
+  Status MakeShape(const Tensor& shape, TensorShape* out) const;
+
  private:
-  const NodeDef def_;
+  const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
   const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
@@ -222,19 +234,7 @@ class OpKernelConstruction {
                        const MemoryTypeSlice& input_memory_types,
                        const DataTypeSlice& output_types,
                        const MemoryTypeSlice& output_memory_types,
-                       int graph_def_version, Status* status)
-      : device_type_(device_type),
-        device_(device),
-        allocator_(allocator),
-        def_(node_def),
-        op_def_(op_def),
-        flib_(flib),
-        input_types_(input_types),
-        input_memory_types_(input_memory_types),
-        output_types_(output_types),
-        output_memory_types_(output_memory_types),
-        graph_def_version_(graph_def_version),
-        status_(status) {}
+                       int graph_def_version, Status* status);
 
   Env* env() const { return device_->env(); }
 
@@ -272,9 +272,6 @@ class OpKernelConstruction {
 
   // User-supplied configuration of this operation.
   const NodeDef& def() const { return *def_; }
-
-  // Op registered for this op type.
-  const OpDef& op_def() const { return *op_def_; }
 
   // For inspecting the inputs to this operation.
   int num_inputs() const { return input_types_.size(); }
@@ -348,6 +345,10 @@ class OpKernelConstruction {
   MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
+
+  // Allow op_def_ across from OpKernel, but not from subclasses.
+  // TODO(irving): Remove protos from this header entirely.
+  friend class OpKernel;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
 };
@@ -428,6 +429,7 @@ class OpOutputList {
   OpOutputList& operator=(const OpOutputList& other) = default;
   Tensor* operator[](int i);
   bool required(int i) const;
+  DataType expected_output_dtype(int i) const;
   Status allocate(int i, const TensorShape& shape, Tensor** output);
   void set(int i, const Tensor& tensor);
   void set_ref(int i, mutex* mu, Tensor* tensor_for_ref);
@@ -550,6 +552,7 @@ class OpKernelContext {
     FunctionCallFrame* call_frame = nullptr;
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
+    StepStatsCollector* stats_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -675,7 +678,7 @@ class OpKernelContext {
   void forward_ref_input_to_ref_output(int input_index, int output_index);
 
   // Returns true when an alias to input[input_index], reshaped to output_shape,
-  // which is is safe to use for in-place computation was written to *output.
+  // which is safe to use for in-place computation was written to *output.
   // Returns false if input[input_index] has a refcount greater than one, or if
   // its type does not match the expected output type of output[output_index],
   // or the number of elements in input[input_index] does not equal the number
@@ -715,7 +718,7 @@ class OpKernelContext {
       StringPiece output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
 
-  // Tries to reuse one of of the inputs given in input_indices as a temporary.
+  // Tries to reuse one of the inputs given in input_indices as a temporary.
   // If none of the given inputs can be forwarded, calls
   // allocate_temp() to allocate a new temporary buffer.
   Status forward_input_or_allocate_temp(
@@ -938,6 +941,9 @@ class OpKernelContext {
 
   std::function<void(std::function<void()>)>* runner() const {
     return params_->runner;
+  }
+  StepStatsCollector* stats_collector() const {
+    return params_->stats_collector;
   }
 
   // Shared resources accessible to this kernel.
@@ -1190,6 +1196,17 @@ class Name : public KernelDefBuilder {
       : KernelDefBuilder(SHOULD_REGISTER_OP(op) ? op : "_no_register") {}
 };
 
+namespace system {
+
+class Name : public KernelDefBuilder {
+ public:
+  // For system kernels, we ignore selective registration and
+  // unconditionally register the kernel.
+  explicit Name(const char* op) : KernelDefBuilder(op) {}
+};
+
+}  // namespace system
+
 }  // namespace register_kernel
 
 #define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
@@ -1212,12 +1229,32 @@ class Name : public KernelDefBuilder {
             return new __VA_ARGS__(context);                          \
           });
 
+// The `REGISTER_SYSTEM_KERNEL_BUILDER()` macro acts as
+// `REGISTER_KERNEL_BUILDER()` except that the kernel is registered
+// unconditionally even when selective registration is used.
+#define REGISTER_SYSTEM_KERNEL_BUILDER(kernel_builder, ...)               \
+  REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, \
+                                             __VA_ARGS__)
+
+#define REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
+  REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
+
+#define REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)    \
+  static ::tensorflow::kernel_factory::OpKernelRegistrar                 \
+      registrar__body__##ctr##__object(                                  \
+          ::tensorflow::register_kernel::system::kernel_builder.Build(), \
+          #__VA_ARGS__,                                                  \
+          [](::tensorflow::OpKernelConstruction* context)                \
+              -> ::tensorflow::OpKernel* {                               \
+            return new __VA_ARGS__(context);                             \
+          });
+
 void* GlobalKernelRegistry();
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
-Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
@@ -1415,6 +1452,12 @@ inline bool OpOutputList::required(int i) const {
   DCHECK_GE(i, 0);
   DCHECK_LT(i, stop_ - start_);
   return ctx_->output_required(start_ + i);
+}
+
+inline DataType OpOutputList::expected_output_dtype(int i) const {
+  DCHECK_GE(i, 0);
+  DCHECK_LT(i, stop_ - start_);
+  return ctx_->expected_output_dtype(start_ + i);
 }
 
 inline Status OpOutputList::allocate(int i, const TensorShape& shape,

@@ -36,7 +36,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/legacy_flags:service_flags",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
@@ -107,6 +107,14 @@ cc_binary(
 )
 
 cc_binary(
+    name = "replay_computation_hlo_evaluator",
+    deps = [
+        ":replay_computation_library",
+        "//tensorflow/compiler/plugin/executor:plugin_lib",
+    ],
+)
+
+cc_binary(
     name = "show_literal",
     srcs = ["show_literal.cc"],
     deps = [
@@ -153,6 +161,7 @@ cc_binary(
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
+        "//tensorflow/compiler/xla/service:computation_tracker",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
@@ -171,6 +180,24 @@ cc_binary(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:session_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_binary(
+    name = "dumped_computation_to_tf_graphdef",
+    srcs = ["dumped_computation_to_tf_graphdef.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla/service",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],

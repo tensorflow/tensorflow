@@ -137,10 +137,10 @@ For example this code runs the summary op every 100 steps in the training loop:
       if sv.should_stop():
         break
       if step % 100 == 0:
-        _, summ = session.run([my_train_op, my_summary_op])
+        _, summ = sess.run([my_train_op, my_summary_op])
         sv.summary_computed(sess, summ)
       else:
-        session.run(my_train_op)
+        sess.run(my_train_op)
 ```
 
 ## Pre-trained Model Scenario
@@ -203,15 +203,15 @@ Example: Call `my_additional_summaries()` every 20mn:
 
 ```python
 
-def my_additional_sumaries(sv, sess):
+def my_additional_summaries(sv, sess):
  ...fetch and write summaries, see below...
 
 ...
   sv = tf.train.Supervisor(logdir="/my/training/directory")
   with sv.managed_session() as sess:
-    # Call my_additional_sumaries() every 1200s, or 20mn,
+    # Call my_additional_summaries() every 1200s, or 20mn,
     # passing (sv, sess) as arguments.
-    sv.loop(1200, my_additional_sumaries, args=(sv, sess))
+    sv.loop(1200, my_additional_summaries, args=(sv, sess))
     ...main training loop...
 ```
 
@@ -226,11 +226,11 @@ better when only one events file in a directory is being actively appended to.
 The supervisor provides a helper function to append summaries:
 @{tf.train.Supervisor.summary_computed}.
 Just pass to the function the output returned by a summary op.  Here is an
-example of using that function to implement `my_additional_sumaries()` from the
+example of using that function to implement `my_additional_summaries()` from the
 previous example:
 
 ```python
-def my_additional_sumaries(sv, sess):
+def my_additional_summaries(sv, sess):
   summaries = sess.run(my_additional_summary_op)
   sv.summary_computed(sess, summaries)
 ```
@@ -362,8 +362,8 @@ following keyword arguments to the `Supervisor()` constructor:
    If not specified, the supervisor uses the first op in the
    `tf.GraphKeys.LOCAL_INIT_OP` collection.  If the collection is empty the
    supervisor adds an op to initialize all the tables and local variables in
-   the graph by calling `tf.initialize_all_tables()` and
-   `tf.initialize_all_local_variables()`.
+   the graph by calling `tf.tables_initializer()` and
+   `tf.local_variables_initializer()`.
 
    Pass `None` to not use a local init op.
 

@@ -38,6 +38,9 @@ message CreateSessionRequest {
 
   // Configuration options.
   ConfigProto config = 2;
+
+  // The target string used from the client's perspective.
+  string target = 3;
 }
 
 message CreateSessionResponse {
@@ -199,7 +202,7 @@ message CloseSessionResponse {
 // Old sessions may continue to have side-effects on resources not in
 // containers listed in "containers", and thus may affect future
 // sessions' results in ways that are hard to predict.  Thus, if well-defined
-// behaviour is desired, is it recommended that all containers be listed in
+// behavior is desired, is it recommended that all containers be listed in
 // "containers".  Similarly, if a device_filter is specified, results may be
 // hard to predict.
 message ResetRequest {
@@ -231,6 +234,15 @@ message ResetResponse {
 ////////////////////////////////////////////////////////////////////////////////
 
 message ListDevicesRequest {
+  // Optional: session_handle must be returned by a CreateSession call to the
+  // same master service.
+  //
+  // When session_handle is empty, the ClusterSpec provided when the master was
+  // started is used to compute the available devices. If the session_handle is
+  // provided but not recognized, an error is returned. Finally, if a valid
+  // session_handle is provided, the cluster configuration for that session is
+  // used when computing the response.
+  string session_handle = 1;
 }
 
 message ListDevicesResponse {

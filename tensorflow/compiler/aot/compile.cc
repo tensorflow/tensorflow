@@ -24,10 +24,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/tfcompile_util.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -77,66 +79,51 @@ Status DumpGraph(const MainFlags& flags, const string& name,
   return WriteTextProto(Env::Default(), file, graph_def);
 }
 
-string TensorIdToString(const TensorId& id) {
-  return strings::StrCat(id.node_name(), ":", id.output_index());
-}
-
 typedef std::unordered_map<string, Node*> NodeMap;
 
 // Each feed id identifies the positional output of some node, which may consist
-// of multiple edges.  For each feed node, replaces all matching edges so that
-// they point from a new _Arg node instead.
+// of multiple edges. AddPlaceholdersForFeeds has already replaced each fed
+// tensor with a placeholder.  For each feed tensor, replaces all edges so they
+// point from a new _Arg node instead.
 Status AddArgNodes(Graph* graph, const NodeMap& node_map,
-                   const protobuf::RepeatedPtrField<Feed>& feeds) {
+                   const protobuf::RepeatedPtrField<Feed>& feeds,
+                   const std::unordered_map<string, string>& feed_remapping) {
   for (int arg_index = 0; arg_index < feeds.size(); ++arg_index) {
     const Feed& feed = feeds[arg_index];
-    const TensorId& id = feed.id();
-    auto it = node_map.find(id.node_name());
-    if (it == node_map.end()) {
-      return errors::NotFound("Can't find feed id: ", TensorIdToString(id));
-    }
-    const Node* feed_node = it->second;
-    if (id.output_index() >= feed_node->num_outputs()) {
-      return errors::InvalidArgument("Invalid feed id: ", TensorIdToString(id),
-                                     ", output index should be < ",
-                                     feed_node->num_outputs());
-    }
-    // TODO(toddw): Invoke shape inference on the graph and add a "_shape" attr
-    // if we can determine it.  That way the graph will be initialized with
-    // whatever shapes we can infer, while the user can still explicitly specify
-    // or override them.
+    // All feeds have been replaced by placeholders.
+    const int output_index = 0;
+
+    const auto remap_it = feed_remapping.find(TensorIdToString(feed.id()));
+    auto node_it = node_map.find(remap_it->second);
+    const Node* feed_node = node_it->second;
+
+    // TODO(toddw): Invoke shape inference in AddPlaceholdersForFeeds and add a
+    // "_shape" attr if we can determine it.  That way the graph will be
+    // initialized with whatever shapes we can infer, while the user can still
+    // explicitly specify or override them.
     Node* arg_node = nullptr;
     TF_RETURN_IF_ERROR(
         NodeBuilder(strings::StrCat("_arg_", arg_index), kArgOp)
-            .Attr("T", BaseType(feed_node->output_type(id.output_index())))
+            .Attr("T", BaseType(feed_node->output_type(output_index)))
             .Attr("index", arg_index)
-            .Attr(kFeedIdAttr, TensorIdToString(id))
+            .Attr(kFeedIdAttr, TensorIdToString(feed.id()))
             .Attr(kShapeAttr, TensorShape(feed.shape()))
             .Attr(kDebugNameAttr, feed.name())
             .Finalize(graph, &arg_node));
+
     // Collects out-edges from the feed node that have a matching edge index;
-    // these will be replaced with edges from the arg node instead.  Also
-    // replaces all control edges from Placeholder feed nodes; similar code
-    // exists in subgraph::RewriteGraphForExecution.
-    // TODO(toddw): Why only replace control edges from Placeholder?
+    // these will be replaced with edges from the arg node instead.
     //
     // We must collect the edges first and process them in a second pass, since
     // removing the edge from the graph invalidates feed_node->out_edges.
     std::vector<const Edge*> feed_edges;
     for (const Edge* edge : feed_node->out_edges()) {
-      if (edge->src_output() == id.output_index() ||
-          (edge->src_output() == Graph::kControlSlot &&
-           feed_node->type_string() == "Placeholder")) {
+      if (edge->src_output() == output_index) {
         feed_edges.push_back(edge);
       }
     }
     for (const Edge* edge : feed_edges) {
-      if (edge->src_output() == id.output_index()) {
-        graph->AddEdge(arg_node, 0, edge->dst(), edge->dst_input());
-      } else {
-        CHECK_EQ(edge->src_output(), Graph::kControlSlot);
-        graph->AddControlEdge(arg_node, edge->dst());
-      }
+      graph->AddEdge(arg_node, 0, edge->dst(), edge->dst_input());
       graph->RemoveEdge(edge);
     }
   }
@@ -178,13 +165,16 @@ Status AddRetvalNodes(Graph* graph, const NodeMap& node_map,
 // fetch ids respectively), and rewrites the edges so that inputs flow from _Arg
 // nodes, and outputs flow to _Retval nodes.  This allows the symbolic graph
 // execution to know the input and output args for the generated function.
-Status RewriteAndPruneGraph(Graph* graph, const Config& config,
-                            const MainFlags& flags) {
+Status RewriteAndPruneGraph(
+    Graph* graph, const Config& config,
+    const std::unordered_map<string, string>& feed_remapping,
+    const MainFlags& flags) {
   NodeMap node_map;
   for (Node* n : graph->nodes()) {
     node_map[n->name()] = n;
   }
-  TF_RETURN_IF_ERROR(AddArgNodes(graph, node_map, config.feed()));
+  TF_RETURN_IF_ERROR(
+      AddArgNodes(graph, node_map, config.feed(), feed_remapping));
   std::unordered_set<const Node*> retval_nodes;
   TF_RETURN_IF_ERROR(
       AddRetvalNodes(graph, node_map, config.fetch(), &retval_nodes));
@@ -200,17 +190,17 @@ Status RewriteAndPruneGraph(Graph* graph, const Config& config,
   for (const Fetch& fetch : config.fetch()) {
     missing_fetches.insert(TensorIdToString(fetch.id()));
   }
-  for (const Node* n : graph->nodes()) {
+  for (const Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       string feed_id;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kFeedIdAttr, &feed_id));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));
       if (missing_feeds.erase(feed_id) == 0) {
         return errors::Aborted(kArgOp,
                                " node found with unknown feed id: ", feed_id);
       }
     } else if (n->type_string() == kRetvalOp) {
       string fetch_id;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kFetchIdAttr, &fetch_id));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFetchIdAttr, &fetch_id));
       if (missing_fetches.erase(fetch_id) == 0) {
         return errors::Aborted(kRetvalOp,
                                " node found with unknown fetch id: ", fetch_id);
@@ -234,7 +224,7 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
   for (Node* n : graph.nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       auto insert_result = indexed_arg_nodes.insert({index, n});
       if (!insert_result.second) {
         const Node* dup = insert_result.first->second;
@@ -264,9 +254,11 @@ Status CreateXlaArgs(const Graph& graph,
   for (const Node* node : arg_nodes) {
     XlaCompiler::Argument arg;
     arg.kind = XlaCompiler::Argument::kParameter;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kShapeAttr, &arg.shape));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kDebugNameAttr, &arg.name));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &arg.type));
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &shape));
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, &arg.shape));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
   }
   return Status::OK();
@@ -274,8 +266,8 @@ Status CreateXlaArgs(const Graph& graph,
 
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
-Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
-                         const FunctionLibraryDefinition* flib_def,
+Status ConvertGraphToXla(xla::CompileOnlyClient* client,
+                         std::unique_ptr<Graph> graph,
                          xla::Computation* computation, bool* has_context_arg) {
   // Create a device and context to convert the graph into an XLA computation.
   XlaOpRegistry::RegisterCompilationKernels();
@@ -289,18 +281,19 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  DeviceType device_type(DEVICE_CPU_XLA_JIT);
+  compiler_options.device_type = &device_type;
+  compiler_options.flib_def = &graph->flib_def();
+  compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
   XlaCompiler compiler(compiler_options);
 
-  std::unique_ptr<FunctionLibraryRuntime> flib_run(NewFunctionLibraryRuntime(
-      compiler.device_mgr(), Env::Default(), compiler.device(),
-      graph->versions().producer(), flib_def, OptimizerOptions()));
   XlaCompiler::CompilationResult result;
-  TF_RETURN_IF_ERROR(compiler.CompileGraph("tfcompile", std::move(graph),
-                                           flib_run.get(), xla_args, &result));
+  TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                           "tfcompile", std::move(graph),
+                                           xla_args, &result));
   *has_context_arg = result.requires_runtime_context;
-  *computation = std::move(result.computation);
+  *computation = std::move(*result.computation);
 
   int num_const_results = 0;
   for (int i = 0; i < result.outputs.size(); ++i) {
@@ -334,7 +327,8 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
 }
 
 // Compiles the XLA computation into executable code.
-Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
+Status CompileXla(xla::CompileOnlyClient* client,
+                  const xla::Computation& computation,
                   const xla::cpu::CpuAotCompilationOptions& aot_opts,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
@@ -348,10 +342,11 @@ Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
   compile_result->program_shape = *pshape_or.ValueOrDie();
   xla::ProgramShape* pshape = &compile_result->program_shape;
   std::vector<const xla::Shape*> arg_layouts;
+  arg_layouts.reserve(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
     arg_layouts.push_back(pshape->mutable_parameters(i));
   }
-  xla::LocalClient::AheadOfTimeComputationInstance instance;
+  xla::CompileOnlyClient::AotComputationInstance instance;
   instance.computation = &computation;
   instance.argument_layouts = std::move(arg_layouts);
   instance.result_layout = &pshape->result();
@@ -366,29 +361,46 @@ Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
           std::move(aot_or.ValueOrDie().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
-      xla::LocalClient::PointerSizeForTriple(aot_opts.triple());
+      xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
   return Status::OK();
 }
 
 }  // namespace
 
 Status InitGraph(const GraphDef& graph_def, const Config& config,
-                 const MainFlags& flags, const FunctionLibraryDefinition* flib,
-                 std::unique_ptr<Graph>* graph) {
+                 const MainFlags& flags, std::unique_ptr<Graph>* graph) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
-  std::unique_ptr<Graph> g(new Graph(flib));
-  GraphDef copy_def(graph_def);
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&copy_def, *g->op_registry(),
-                                               0 /*node_offset*/));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
+  std::unique_ptr<Graph> g(new Graph(flib_def));
+
+  // Replace references to fed tensors with references to newly added
+  // placeholders.
+  GraphDef first_copy_def = graph_def;
+
+  // Maps from name:port of a feed to the name:port of the placeholder to use.
+  std::unordered_map<string, string> feed_remapping;
+  TF_RETURN_IF_ERROR(AddPlaceholdersForFeeds(config, g->op_registry(),
+                                             &feed_remapping, &first_copy_def));
+
+  // Prune the GraphDef first so that unknown ops that we aren't compiling get
+  // filtered out.
+  GraphDef second_copy_def;
   TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(GraphConstructorOptions(), copy_def, g.get()));
-  TF_RETURN_IF_ERROR(RewriteAndPruneGraph(g.get(), config, flags));
+      PruneGraphDefInto(config, first_copy_def, &second_copy_def));
+
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
+      &second_copy_def, *g->op_registry(), 0 /*node_offset*/));
+
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
+                                            second_copy_def, g.get()));
+  TF_RETURN_IF_ERROR(
+      RewriteAndPruneGraph(g.get(), config, feed_remapping, flags));
   *graph = std::move(g);
   return Status::OK();
 }
 
 Status CompileGraph(std::unique_ptr<Graph> graph, const MainFlags& flags,
-                    const FunctionLibraryDefinition* flib,
                     CompileResult* compile_result) {
   // Converts the graph into an XLA computation, and compiles the
   // computation.
@@ -396,11 +408,11 @@ Status CompileGraph(std::unique_ptr<Graph> graph, const MainFlags& flags,
   namespace gpu = perftools::gputools;
   gpu::Platform* cpu_platform =
       gpu::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  xla::LocalClient* client =
-      xla::ClientLibrary::GetOrCreateLocalClient(cpu_platform).ValueOrDie();
+  xla::CompileOnlyClient* client =
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
+          .ValueOrDie();
   xla::Computation computation;
-  TF_RETURN_IF_ERROR(ConvertGraphToXla(client, std::move(graph), flib,
-                                       &computation,
+  TF_RETURN_IF_ERROR(ConvertGraphToXla(client, std::move(graph), &computation,
                                        &compile_result->has_context_arg));
   if (!flags.debug_dir.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,

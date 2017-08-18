@@ -25,7 +25,7 @@ namespace str_util {
 
 static char hex_char[] = "0123456789abcdef";
 
-string CEscape(const string& src) {
+string CEscape(StringPiece src) {
   string dest;
 
   for (unsigned char c : src) {
@@ -256,6 +256,25 @@ void TitlecaseString(string* s, StringPiece delimiters) {
     }
     upper = (delimiters.find(*ss) != StringPiece::npos);
   }
+}
+
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all) {
+  // TODO(jlebar): We could avoid having to shift data around in the string if
+  // we had a StringPiece::find() overload that searched for a StringPiece.
+  string res = s.ToString();
+  size_t pos = 0;
+  while ((pos = res.find(oldsub.data(), pos, oldsub.size())) != string::npos) {
+    res.replace(pos, oldsub.size(), newsub.data(), newsub.size());
+    pos += newsub.size();
+    if (oldsub.empty()) {
+      pos++;  // Match at the beginning of the text and after every byte
+    }
+    if (!replace_all) {
+      break;
+    }
+  }
+  return res;
 }
 
 size_t RemoveLeadingWhitespace(StringPiece* text) {

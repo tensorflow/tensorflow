@@ -21,9 +21,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Replaces ReadVariableOp nodes which are only used by Sends and sinks with
-// _UnsafeReadVariable nodes, as this transforamtion is safe and will improve
-// performance.
+// Replaces ReadVariableOp nodes which are only used by Sends, sinks,
+// and function Retvals with _UnsafeReadVariable nodes, as this
+// transformation is safe and will improve performance.
 class ResourceVariableReadPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override {
@@ -39,11 +39,12 @@ class ResourceVariableReadPass : public GraphOptimizationPass {
           "and a graph should be available.");
     }
     gtl::InlinedVector<Node*, 2> matches;
-    for (Node* n : g->nodes()) {
+    for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ReadVariableOp") {
         bool skip = false;
         for (const Edge* e : n->out_edges()) {
-          if (!e->dst()->IsSend() && e->dst()->name() != "_SINK") {
+          if (!e->dst()->IsSend() && e->dst()->type_string() != "_Retval" &&
+              e->dst()->name() != "_SINK") {
             skip = true;
           }
         }
@@ -54,7 +55,7 @@ class ResourceVariableReadPass : public GraphOptimizationPass {
     }
     for (Node* read : matches) {
       DataType dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(read->def()), "dtype", &dtype));
+      TF_RETURN_IF_ERROR(GetNodeAttr(read->attrs(), "dtype", &dtype));
       std::vector<Node*> in_control_edges;
       std::vector<std::pair<Node*, int>> in_edges;
       for (const Edge* edge : read->in_edges()) {

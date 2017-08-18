@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
@@ -247,7 +249,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # not have a scoped name or namespace scheme.
     functions = function._from_library(graph_def.library)
     for f in functions:
-      g._add_function(f)
+      f.add_to_graph(g)
       op_dict[f.name] = f.definition.signature
     # pylint: enable=protected-access
 
@@ -275,6 +277,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
     # 1. Add operations without their inputs.
     for node in graph_def.node:
+      # Check to see if this op's name matches a previously seen op
+      if node.name in name_to_op:
+        raise ValueError('Duplicate name \'%s\' in GraphDef.' % node.name)
       # Set any default attr values that aren't present.
       if node.op not in op_dict:
         raise ValueError('No op named %s in defined operations.' % node.op)
@@ -307,10 +312,15 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           compute_shapes=False, compute_device=False,
           op_def=op_def)
 
+    # Maps from a node to the ops it is colocated with, if colocation
+    # is specified in the attributes.
+    colocation_pairs = collections.defaultdict(list)
+
     # 2. Add inputs to the operations.
     for node in graph_def.node:
       op = name_to_op[node.name]
       input_types = _InputTypes(node, op_dict)
+      apply_device_function = True
 
       # Rewrite the colocation attributes in the graph, since the
       # names of new ops may have changed.
@@ -329,6 +339,14 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
               original_op = name_to_op[op_to_bind_to]
               new_class_values.append(compat.as_bytes(
                   'loc:@' + original_op.name))
+              if op_to_bind_to != node.name:
+                # Keep track of this mapping for a later phase.
+                colocation_pairs[op].append(original_op)
+                # Don't apply this op's device function,
+                # the colocation constraint will ensure
+                # the proper device gets assigned at runtime.
+                apply_device_function = False
+
             else:
               new_class_values.append(class_value)
           value.list.CopyFrom(attr_value_pb2.AttrValue.ListValue(
@@ -434,6 +452,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
                            'WholeFileReader', 'TextLineReader',
                            'FixedLengthRecordReader',
                            'TFRecordReader', 'IdentityReader',
+                           'LMDBReader',
                            'RefSwitch', 'RefEnter', 'RefNextIteration',
                            'RefMerge', 'RefIdentity']:
               pass
@@ -448,19 +467,49 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
         del op.node_def.attr['_output_shapes']
 
-      # Apply device functions for this op.
       # NOTE(mrry): We do this after configuring the inputs, because
       # the result of the device functions may depend on the inputs.
-      with _MaybeDevice(node.device):
-        g._apply_device_functions(op)  # pylint: disable=protected-access
+      if apply_device_function:
+        with _MaybeDevice(node.device):
+          g._apply_device_functions(op)  # pylint: disable=protected-access
 
-    # Treat unused input mappings as an error, because they are likely to be
-    # due to a typo.
-    unused_input_keys = frozenset(input_map.keys()).difference(used_input_keys)
-    if unused_input_keys:
+    # The following loop populates the device field of ops that are
+    # colocated with another op.  This is implied by the colocation
+    # attribute, but we propagate the device field for completeness.
+    for op, coloc_op_list in colocation_pairs.items():
+      coloc_device = None
+      # Find any device in the list of colocated ops that have a
+      # device, if it exists.  We assume that if multiple ops
+      # have devices, they refer to the same device.  Otherwise, a
+      # runtime error will occur since the colocation property
+      # cannot be guaranteed.
+      #
+      # One possible improvement is to try to check for compatibility
+      # of all devices in this list at import time here, which would
+      # require implementing a compatibility function for device specs
+      # in python.
+      for coloc_op in coloc_op_list:
+        if coloc_op.device:
+          coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
+          break
+      if coloc_device:
+        op._set_device(coloc_device)  # pylint: disable=protected-access
+
+    # Treat input mappings that don't appear in the graph as an error,
+    # because they are likely to be due to a typo.
+    def _IsImportedNodeOutput(tensor_name):
+      operation_name, output_index = _ParseTensorName(tensor_name)
+      try:
+        return output_index < len(name_to_op[operation_name].outputs)
+      except KeyError:
+        return False
+    absent_input_keys = [
+        k for k in frozenset(input_map.keys()).difference(used_input_keys)
+        if not _IsImportedNodeOutput(k)]
+    if absent_input_keys:
       raise ValueError(
           'Attempted to map inputs that were not found in graph_def: [%s]'
-          % ', '.join(unused_input_keys))
+          % ', '.join(absent_input_keys))
 
     if return_elements is None:
       return None

@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -44,10 +44,12 @@ class Stream;
 namespace tensorflow {
 
 class Device;
+class DeviceAttributes;
 class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
+class TensorProto;
 
 namespace thread {
 class ThreadPool;
@@ -115,7 +117,7 @@ class DeviceBase {
     cpu_worker_threads_ = t;
   }
 
-  const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
+  virtual const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
     CHECK(cpu_worker_threads_ != nullptr);
     return cpu_worker_threads_;
   }
@@ -140,7 +142,7 @@ class DeviceBase {
     gpu_device_info_ = g;
   }
 
-  const GpuDeviceInfo* tensorflow_gpu_device_info() const {
+  virtual const GpuDeviceInfo* tensorflow_gpu_device_info() const {
     return gpu_device_info_;
   }
 
@@ -170,13 +172,13 @@ class DeviceBase {
     return GetAllocator(attr);
   }
 
-  const Eigen::ThreadPoolDevice* eigen_cpu_device() {
+  virtual const Eigen::ThreadPoolDevice* eigen_cpu_device() {
     CHECK(eigen_cpu_device_ != nullptr);
     return eigen_cpu_device_;
   }
 
 #ifdef TENSORFLOW_USE_SYCL
-  const Eigen::SyclDevice* eigen_sycl_device() const {
+  virtual const Eigen::SyclDevice* eigen_sycl_device() const {
     CHECK(eigen_sycl_device_ != nullptr);
     return eigen_sycl_device_;
   }
@@ -194,11 +196,8 @@ class DeviceBase {
                                      DeviceContext* /*dc*/,
                                      Allocator* /*allocator*/) {}
 
-  virtual const DeviceAttributes& attributes() const {
-    LOG(FATAL) << "Device does not implement attributes()";
-    static DeviceAttributes dummy;
-    return dummy;
-  }
+  // Unimplemented by default
+  virtual const DeviceAttributes& attributes() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.

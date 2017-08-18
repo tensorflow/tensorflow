@@ -16,14 +16,11 @@ machine learning researchers and others who require fine levels of control over
 their models. The higher level APIs are built on top of TensorFlow Core. These
 higher level APIs are typically easier to learn and use than TensorFlow Core. In
 addition, the higher level APIs make repetitive tasks easier and more consistent
-between different users. A high-level API like tf.contrib.learn helps you manage
-data sets, estimators, training and inference. Note that a few of the high-level
-TensorFlow APIs--those whose method names contain `contrib`-- are still in
-development. It is possible that some `contrib` methods will change or become
-obsolete in subsequent TensorFlow releases.
+between different users. A high-level API like tf.estimator helps you manage
+data sets, estimators, training and inference.
 
 This guide begins with a tutorial on TensorFlow Core. Later, we
-demonstrate how to implement the same model in tf.contrib.learn. Knowing
+demonstrate how to implement the same model in tf.estimator. Knowing
 TensorFlow Core principles will give you a great mental model of how things are
 working internally when you use the more compact higher level API.
 
@@ -35,8 +32,8 @@ tensor's **rank** is its number of dimensions. Here are some examples of
 tensors:
 
 ```python
-3 # a rank 0 tensor; this is a scalar with shape []
-[1. ,2., 3.] # a rank 1 tensor; this is a vector with shape [3]
+3 # a rank 0 tensor; a scalar with shape []
+[1., 2., 3.] # a rank 1 tensor; a vector with shape [3]
 [[1., 2., 3.], [4., 5., 6.]] # a rank 2 tensor; a matrix with shape [2, 3]
 [[[1., 2., 3.]], [[7., 8., 9.]]] # a rank 3 tensor with shape [2, 1, 3]
 ```
@@ -49,7 +46,6 @@ The canonical import statement for TensorFlow programs is as follows:
 
 ```python
 import tensorflow as tf
-
 ```
 This gives Python access to all of TensorFlow's classes, methods, and symbols.
 Most of the documentation assumes you have already done this.
@@ -69,12 +65,15 @@ or more tensors as inputs and produces a tensor as an output. One type of node
 is a constant. Like all TensorFlow constants, it takes no inputs, and it outputs
 a value it stores internally. We can create two floating point Tensors `node1`
 and `node2` as follows:
+
 ```python
 node1 = tf.constant(3.0, dtype=tf.float32)
 node2 = tf.constant(4.0) # also tf.float32 implicitly
 print(node1, node2)
 ```
+
 The final print statement produces
+
 ```
 Tensor("Const:0", shape=(), dtype=float32) Tensor("Const_1:0", shape=(), dtype=float32)
 ```
@@ -93,31 +92,35 @@ running the computational graph in a session as follows:
 sess = tf.Session()
 print(sess.run([node1, node2]))
 ```
+
 we see the expected values of 3.0 and 4.0:
+
 ```
 [3.0, 4.0]
 ```
 
 We can build more complicated computations by combining `Tensor` nodes with
-operations (Operations are also nodes.). For example, we can add our two
+operations (Operations are also nodes). For example, we can add our two
 constant nodes and produce a new graph as follows:
 
 ```python
 node3 = tf.add(node1, node2)
-print("node3: ", node3)
-print("sess.run(node3): ",sess.run(node3))
+print("node3:", node3)
+print("sess.run(node3):", sess.run(node3))
 ```
+
 The last two print statements produce
+
 ```
-node3:  Tensor("Add:0", shape=(), dtype=float32)
-sess.run(node3):  7.0
+node3: Tensor("Add:0", shape=(), dtype=float32)
+sess.run(node3): 7.0
 ```
 
 TensorFlow provides a utility called TensorBoard that can display a picture of
 the computational graph. Here is a screenshot showing how TensorBoard
 visualizes the graph:
 
-![TensorBoard screenshot](../images/getting_started_add.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_add.png)
 
 As it stands, this graph is not especially interesting because it always
 produces a constant result. A graph can be parameterized to accept external
@@ -132,28 +135,31 @@ adder_node = a + b  # + provides a shortcut for tf.add(a, b)
 
 The preceding three lines are a bit like a function or a lambda in which we
 define two input parameters (a and b) and then an operation on them. We can
-evaluate this graph with multiple inputs by using the feed_dict parameter to
-specify Tensors that provide concrete values to these placeholders:
+evaluate this graph with multiple inputs by using the feed_dict argument to
+the [run method](https://www.tensorflow.org/api_docs/python/tf/Session#run)
+to feed concrete values to the placeholders:
 
 ```python
-print(sess.run(adder_node, {a: 3, b:4.5}))
-print(sess.run(adder_node, {a: [1,3], b: [2, 4]}))
+print(sess.run(adder_node, {a: 3, b: 4.5}))
+print(sess.run(adder_node, {a: [1, 3], b: [2, 4]}))
 ```
 resulting in the output
+
 ```
 7.5
 [ 3.  7.]
 ```
+
 In TensorBoard, the graph looks like this:
 
-![TensorBoard screenshot](../images/getting_started_adder.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_adder.png)
 
 We can make the computational graph more complex by adding another operation.
 For example,
 
 ```python
 add_and_triple = adder_node * 3.
-print(sess.run(add_and_triple, {a: 3, b:4.5}))
+print(sess.run(add_and_triple, {a: 3, b: 4.5}))
 ```
 produces the output
 ```
@@ -162,7 +168,7 @@ produces the output
 
 The preceding computational graph would look as follows in TensorBoard:
 
-![TensorBoard screenshot](../images/getting_started_triple.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_triple.png)
 
 In machine learning we will typically want a model that can take arbitrary
 inputs, such as the one above.  To make the model trainable, we need to be able
@@ -175,7 +181,7 @@ initial value:
 W = tf.Variable([.3], dtype=tf.float32)
 b = tf.Variable([-.3], dtype=tf.float32)
 x = tf.placeholder(tf.float32)
-linear_model = W * x + b
+linear_model = W*x + b
 ```
 
 Constants are initialized when you call `tf.constant`, and their value can never
@@ -196,7 +202,7 @@ Since `x` is a placeholder, we can evaluate `linear_model` for several values of
 `x` simultaneously as follows:
 
 ```python
-print(sess.run(linear_model, {x:[1,2,3,4]}))
+print(sess.run(linear_model, {x: [1, 2, 3, 4]}))
 ```
 to produce the output
 ```
@@ -219,7 +225,7 @@ that abstracts the error of all examples using `tf.reduce_sum`:
 y = tf.placeholder(tf.float32)
 squared_deltas = tf.square(linear_model - y)
 loss = tf.reduce_sum(squared_deltas)
-print(sess.run(loss, {x:[1,2,3,4], y:[0,-1,-2,-3]}))
+print(sess.run(loss, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]}))
 ```
 producing the loss value
 ```
@@ -236,7 +242,7 @@ perfect values of -1 and 1. A variable is initialized to the value provided to
 fixW = tf.assign(W, [-1.])
 fixb = tf.assign(b, [1.])
 sess.run([fixW, fixb])
-print(sess.run(loss, {x:[1,2,3,4], y:[0,-1,-2,-3]}))
+print(sess.run(loss, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]}))
 ```
 The final print shows the loss now is zero.
 ```
@@ -267,7 +273,7 @@ train = optimizer.minimize(loss)
 ```python
 sess.run(init) # reset values to incorrect defaults.
 for i in range(1000):
-  sess.run(train, {x:[1,2,3,4], y:[0,-1,-2,-3]})
+  sess.run(train, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]})
 
 print(sess.run([W, b]))
 ```
@@ -289,7 +295,6 @@ next section.
 The completed trainable linear regression model is shown here:
 
 ```python
-import numpy as np
 import tensorflow as tf
 
 # Model parameters
@@ -297,25 +302,27 @@ W = tf.Variable([.3], dtype=tf.float32)
 b = tf.Variable([-.3], dtype=tf.float32)
 # Model input and output
 x = tf.placeholder(tf.float32)
-linear_model = W * x + b
+linear_model = W*x + b
 y = tf.placeholder(tf.float32)
+
 # loss
 loss = tf.reduce_sum(tf.square(linear_model - y)) # sum of the squares
 # optimizer
 optimizer = tf.train.GradientDescentOptimizer(0.01)
 train = optimizer.minimize(loss)
+
 # training data
-x_train = [1,2,3,4]
-y_train = [0,-1,-2,-3]
+x_train = [1, 2, 3, 4]
+y_train = [0, -1, -2, -3]
 # training loop
 init = tf.global_variables_initializer()
 sess = tf.Session()
 sess.run(init) # reset values to wrong
 for i in range(1000):
-  sess.run(train, {x:x_train, y:y_train})
+  sess.run(train, {x: x_train, y: y_train})
 
 # evaluate training accuracy
-curr_W, curr_b, curr_loss  = sess.run([W, b, loss], {x:x_train, y:y_train})
+curr_W, curr_b, curr_loss = sess.run([W, b, loss], {x: x_train, y: y_train})
 print("W: %s b: %s loss: %s"%(curr_W, curr_b, curr_loss))
 ```
 When run, it produces
@@ -323,84 +330,99 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
+Notice that the loss is a very small number (very close to zero). If you run 
+this program, your loss may not be exactly the same as the aforementioned loss 
+because the model is initialized with pseudorandom values.
+
 This more complicated program can still be visualized in TensorBoard
-![TensorBoard final model visualization](../images/getting_started_final.png)
+![TensorBoard final model visualization](https://www.tensorflow.org/images/getting_started_final.png)
 
-## `tf.contrib.learn`
+## `tf.estimator`
 
-`tf.contrib.learn` is a high-level TensorFlow library that simplifies the
+`tf.estimator` is a high-level TensorFlow library that simplifies the
 mechanics of machine learning, including the following:
 
 *   running training loops
 *   running evaluation loops
 *   managing data sets
-*   managing feeding
 
-tf.contrib.learn defines many common models.
+tf.estimator defines many common models.
 
 ### Basic usage
 
 Notice how much simpler the linear regression program becomes with
-`tf.contrib.learn`:
+`tf.estimator`:
 
 ```python
 import tensorflow as tf
 # NumPy is often used to load, manipulate and preprocess data.
 import numpy as np
 
-# Declare list of features. We only have one real-valued feature. There are many
+# Declare list of features. We only have one numeric feature. There are many
 # other types of columns that are more complicated and useful.
-features = [tf.contrib.layers.real_valued_column("x", dimension=1)]
+feature_columns = [tf.feature_column.numeric_column("x", shape=[1])]
 
 # An estimator is the front end to invoke training (fitting) and evaluation
 # (inference). There are many predefined types like linear regression,
-# logistic regression, linear classification, logistic classification, and
-# many neural network classifiers and regressors. The following code
-# provides an estimator that does linear regression.
-estimator = tf.contrib.learn.LinearRegressor(feature_columns=features)
+# linear classification, and many neural network classifiers and regressors.
+# The following code provides an estimator that does linear regression.
+estimator = tf.estimator.LinearRegressor(feature_columns=feature_columns)
 
 # TensorFlow provides many helper methods to read and set up data sets.
-# Here we use `numpy_input_fn`. We have to tell the function how many batches
+# Here we use two data sets: one for training and one for evaluation
+# We have to tell the function how many batches
 # of data (num_epochs) we want and how big each batch should be.
-x = np.array([1., 2., 3., 4.])
-y = np.array([0., -1., -2., -3.])
-input_fn = tf.contrib.learn.io.numpy_input_fn({"x":x}, y, batch_size=4,
-                                              num_epochs=1000)
+x_train = np.array([1., 2., 3., 4.])
+y_train = np.array([0., -1., -2., -3.])
+x_eval = np.array([2., 5., 8., 1.])
+y_eval = np.array([-1.01, -4.1, -7, 0.])
+input_fn = tf.estimator.inputs.numpy_input_fn(
+    {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
+eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
-# We can invoke 1000 training steps by invoking the `fit` method and passing the
+# We can invoke 1000 training steps by invoking the  method and passing the
 # training data set.
-estimator.fit(input_fn=input_fn, steps=1000)
+estimator.train(input_fn=input_fn, steps=1000)
 
-# Here we evaluate how well our model did. In a real example, we would want
-# to use a separate validation and testing data set to avoid overfitting.
-print(estimator.evaluate(input_fn=input_fn))
+# Here we evaluate how well our model did.
+train_metrics = estimator.evaluate(input_fn=train_input_fn)
+eval_metrics = estimator.evaluate(input_fn=eval_input_fn)
+print("train metrics: %r"% train_metrics)
+print("eval metrics: %r"% eval_metrics)
 ```
 When run, it produces
 ```
-    {'global_step': 1000, 'loss': 1.9650059e-11}
+train metrics: {'loss': 1.2712867e-09, 'global_step': 1000}
+eval metrics: {'loss': 0.0025279333, 'global_step': 1000}
 ```
+Notice how our eval data has a higher loss, but it is still close to zero.
+That means we are learning properly.
 
 ### A custom model
 
-`tf.contrib.learn` does not lock you into its predefined models. Suppose we
+`tf.estimator` does not lock you into its predefined models. Suppose we
 wanted to create a custom model that is not built into TensorFlow. We can still
 retain the high level abstraction of data set, feeding, training, etc. of
-`tf.contrib.learn`. For illustration, we will show how to implement our own
+`tf.estimator`. For illustration, we will show how to implement our own
 equivalent model to `LinearRegressor` using our knowledge of the lower level
 TensorFlow API.
 
-To define a custom model that works with `tf.contrib.learn`, we need to use
-`tf.contrib.learn.Estimator`. `tf.contrib.learn.LinearRegressor` is actually
-a sub-class of `tf.contrib.learn.Estimator`. Instead of sub-classing
+To define a custom model that works with `tf.estimator`, we need to use
+`tf.estimator.Estimator`. `tf.estimator.LinearRegressor` is actually
+a sub-class of `tf.estimator.Estimator`. Instead of sub-classing
 `Estimator`, we simply provide `Estimator` a function `model_fn` that tells
-`tf.contrib.learn` how it can evaluate predictions, training steps, and
+`tf.estimator` how it can evaluate predictions, training steps, and
 loss. The code is as follows:
 
 ```python
 import numpy as np
 import tensorflow as tf
+
 # Declare list of features, we only have one real-valued feature
-def model(features, labels, mode):
+def model_fn(features, labels, mode):
   # Build a linear model and predict values
   W = tf.get_variable("W", [1], dtype=tf.float64)
   b = tf.get_variable("b", [1], dtype=tf.float64)
@@ -412,30 +434,42 @@ def model(features, labels, mode):
   optimizer = tf.train.GradientDescentOptimizer(0.01)
   train = tf.group(optimizer.minimize(loss),
                    tf.assign_add(global_step, 1))
-  # ModelFnOps connects subgraphs we built to the
+  # EstimatorSpec connects subgraphs we built to the
   # appropriate functionality.
-  return tf.contrib.learn.ModelFnOps(
-      mode=mode, predictions=y,
+  return tf.estimator.EstimatorSpec(
+      mode=mode,
+      predictions=y,
       loss=loss,
       train_op=train)
 
-estimator = tf.contrib.learn.Estimator(model_fn=model)
-# define our data set
-x = np.array([1., 2., 3., 4.])
-y = np.array([0., -1., -2., -3.])
-input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x}, y, 4, num_epochs=1000)
+estimator = tf.estimator.Estimator(model_fn=model_fn)
+# define our data sets
+x_train = np.array([1., 2., 3., 4.])
+y_train = np.array([0., -1., -2., -3.])
+x_eval = np.array([2., 5., 8., 1.])
+y_eval = np.array([-1.01, -4.1, -7, 0.])
+input_fn = tf.estimator.inputs.numpy_input_fn(
+    {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
+eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
 # train
-estimator.fit(input_fn=input_fn, steps=1000)
-# evaluate our model
-print(estimator.evaluate(input_fn=input_fn, steps=10))
+estimator.train(input_fn=input_fn, steps=1000)
+# Here we evaluate how well our model did.
+train_metrics = estimator.evaluate(input_fn=train_input_fn)
+eval_metrics = estimator.evaluate(input_fn=eval_input_fn)
+print("train metrics: %r"% train_metrics)
+print("eval metrics: %r"% eval_metrics)
 ```
 When run, it produces
-```python
-{'loss': 5.9819476e-11, 'global_step': 1000}
+```
+train metrics: {'loss': 1.227995e-11, 'global_step': 1000}
+eval metrics: {'loss': 0.01010036, 'global_step': 1000}
 ```
 
-Notice how the contents of the custom `model()` function are very similar
+Notice how the contents of the custom `model_fn()` function are very similar
 to our manual model training loop from the lower level API.
 
 ## Next steps

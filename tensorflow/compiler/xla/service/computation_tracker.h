@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/user_computation.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
@@ -72,12 +73,15 @@ class ComputationTracker {
   // Builds an HLO module using the specified computation as the entry. The
   // module will include the entry computation as well as all computations which
   // are called directly or indirectly from the entry computation via operations
-  // like "map". If include_unreachable_instructions is true, then instructions
+  // like "map". config is the HLO module configuration to use for the
+  // constructed module.
+  // If include_unreachable_instructions is true, then instructions
   // which are not reachable from the root are lowered into HloInstructions
   // including unreachable parameters. This ensures the entry HloComputation has
   // the same program shape (ProgramShape) as the entry UserComputation.
   StatusOr<std::unique_ptr<HloModule>> BuildHloModule(
       const VersionedComputationHandle& entry_handle,
+      const HloModuleConfig& config,
       bool include_unreachable_instructions = true) const;
 
   string ToString() const;

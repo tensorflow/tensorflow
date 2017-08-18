@@ -1,10 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 package(
-    default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-    ],
-    features = ["no_layering_check"],
+    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -14,24 +11,30 @@ tf_kernel_library(
     name = "xla_ops",
     srcs = [
         "aggregate_ops.cc",
+        "arg_op.cc",
         "batch_matmul_op.cc",
+        "batch_norm_op.cc",
+        "batchtospace_op.cc",
         "bcast_ops.cc",
         "bias_ops.cc",
         "binary_ops.cc",
         "cast_op.cc",
         "concat_op.cc",
+        "const_op.cc",
         "conv_ops.cc",
+        "cross_op.cc",
         "cwise_ops.cc",
-        "declaration_op.cc",
-        "depthwise_conv_ops.cc",
         "diag_op.cc",
         "dynamic_stitch_op.cc",
+        "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
+        "gather_op.cc",
         "identity_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
+        "mirror_pad_op.cc",
         "no_op.cc",
         "one_hot_op.cc",
         "pack_op.cc",
@@ -44,13 +47,18 @@ tf_kernel_library(
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
+        "segment_reduction_ops.cc",
         "select_op.cc",
+        "sendrecv_ops.cc",
         "sequence_ops.cc",
         "shape_op.cc",
         "slice_op.cc",
         "softmax_op.cc",
+        "spacetobatch_op.cc",
         "split_op.cc",
+        "stack_ops.cc",
         "strided_slice_op.cc",
+        "tensor_array_ops.cc",
         "tile_ops.cc",
         "training_ops.cc",
         "transpose_op.cc",
@@ -60,29 +68,51 @@ tf_kernel_library(
     ],
     hdrs = [
         "cwise_ops.h",
+        "gather_op.h",
+        "gather_op_helpers.h",
         "reduction_ops.h",
     ],
     deps = [
+        ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:sendrecv_ops",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow_opensource",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:concat_lib",
-        "//tensorflow/core/kernels:conv_2d",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:depthwise_conv_op",
-        "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:transpose_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "while_op",
+    srcs = ["while_op.cc"],
+    hdrs = ["while_op.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -94,7 +124,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = [
-        "gather_op.cc",
         "index_ops.cc",
     ],
     deps = [
@@ -111,6 +140,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
+        "//tensorflow/core/kernels:bounds_check",
     ],
 )
 

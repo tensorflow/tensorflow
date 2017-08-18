@@ -85,7 +85,7 @@ class MirrorPadOp : public OpKernel {
     TTypes<int32>::ConstMatrix paddings = in1.matrix<int32>();
     for (int d = 0; d < dims; ++d) {
       const int32 before = paddings(d, 0);  // Pad before existing elements.
-      const int32 after = paddings(d, 1);   // Pad after exisitng elements.
+      const int32 after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument("paddings must be non-negative: ",
                                           before, " ", after));
@@ -272,7 +272,7 @@ class MirrorPadGradOp : public OpKernel {
     TTypes<int32>::ConstMatrix paddings = in1.matrix<int32>();
     for (int d = 0; d < dims; ++d) {
       const int32 before = paddings(d, 0);  // Pad before existing elements.
-      const int32 after = paddings(d, 1);   // Pad after exisitng elements.
+      const int32 after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before, ", ", after));

@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -28,46 +31,72 @@ from tensorflow.python.platform import test
 
 class InverseOpTest(test.TestCase):
 
-  def _verifyInverse(self, x):
+  def _verifyInverse(self, x, np_type):
+    for adjoint in False, True:
+      y = x.astype(np_type)
+      with self.test_session(use_gpu=True):
+        # Verify that x^{-1} * x == Identity matrix.
+        inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
+        tf_ans = math_ops.matmul(inv, y, adjoint_b=adjoint)
+        np_ans = np.identity(y.shape[-1])
+        if x.ndim > 2:
+          tiling = list(y.shape)
+          tiling[-2:] = [1, 1]
+          np_ans = np.tile(np_ans, tiling)
+        out = tf_ans.eval()
+        self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+        self.assertShapeEqual(y, tf_ans)
+
+  def _verifyInverseReal(self, x):
     for np_type in [np.float32, np.float64]:
-      for adjoint in False, True:
-        y = x.astype(np_type)
-        with self.test_session():
-          # Verify that x^{-1} * x == Identity matrix.
-          inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
-          tf_ans = math_ops.matmul(inv, y, adjoint_b=adjoint)
-          np_ans = np.identity(y.shape[-1])
-          if x.ndim > 2:
-            tiling = list(y.shape)
-            tiling[-2:] = [1, 1]
-            np_ans = np.tile(np_ans, tiling)
-          out = tf_ans.eval()
-          self.assertAllClose(np_ans, out)
-          self.assertShapeEqual(y, tf_ans)
+      self._verifyInverse(x, np_type)
+
+  def _verifyInverseComplex(self, x):
+    for np_type in [np.complex64, np.complex128]:
+      self._verifyInverse(x, np_type)
+
+  def _makeBatch(self, matrix1, matrix2):
+    matrix_batch = np.concatenate(
+        [np.expand_dims(matrix1, 0),
+         np.expand_dims(matrix2, 0)])
+    matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
+    return matrix_batch
 
   def testNonsymmetric(self):
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
-    self._verifyInverse(matrix1)
-    self._verifyInverse(matrix2)
+    self._verifyInverseReal(matrix1)
+    self._verifyInverseReal(matrix2)
     # A multidimensional batch of 2x2 matrices
-    matrix_batch = np.concatenate(
-        [np.expand_dims(matrix1, 0), np.expand_dims(matrix2, 0)])
-    matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
-    self._verifyInverse(matrix_batch)
+    self._verifyInverseReal(self._makeBatch(matrix1, matrix2))
+    # Complex
+    matrix1 = matrix1.astype(np.complex64)
+    matrix1 += 1j * matrix1
+    matrix2 = matrix2.astype(np.complex64)
+    matrix2 += 1j * matrix2
+    self._verifyInverseComplex(matrix1)
+    self._verifyInverseComplex(matrix2)
+    # Complex batch
+    self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefinite(self):
     # 2x2 matrices
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
-    self._verifyInverse(matrix1)
-    self._verifyInverse(matrix2)
+    self._verifyInverseReal(matrix1)
+    self._verifyInverseReal(matrix2)
     # A multidimensional batch of 2x2 matrices
-    matrix_batch = np.concatenate(
-        [np.expand_dims(matrix1, 0), np.expand_dims(matrix2, 0)])
-    matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
-    self._verifyInverse(matrix_batch)
+    self._verifyInverseReal(self._makeBatch(matrix1, matrix2))
+    # Complex
+    matrix1 = matrix1.astype(np.complex64)
+    matrix1 += 1j * matrix1
+    matrix2 = matrix2.astype(np.complex64)
+    matrix2 += 1j * matrix2
+    self._verifyInverseComplex(matrix1)
+    self._verifyInverseComplex(matrix2)
+    # Complex batch
+    self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
 
   def testNonSquareMatrix(self):
     # When the inverse of a non-square matrix is attempted we should return
@@ -86,13 +115,74 @@ class InverseOpTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesOpError("Input is not invertible."):
         # All rows of the matrix below add to zero.
-        tensor3 = constant_op.constant(
-            [[1., 0., -1.], [-1., 1., 0.], [0., -1., 1.]])
+        tensor3 = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
+                                        [0., -1., 1.]])
         linalg_ops.matrix_inverse(tensor3).eval()
 
   def testEmpty(self):
-    self._verifyInverse(np.empty([0, 2, 2]))
-    self._verifyInverse(np.empty([2, 0, 0]))
+    self._verifyInverseReal(np.empty([0, 2, 2]))
+    self._verifyInverseReal(np.empty([2, 0, 0]))
+
+  def testRandomSmallAndLarge(self):
+    np.random.seed(42)
+    for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for batch_dims in [(), (1,), (3,), (2, 2)]:
+        for size in 8, 31, 32:
+          shape = batch_dims + (size, size)
+          matrix = np.random.uniform(
+              low=-1.0, high=1.0,
+              size=np.prod(shape)).reshape(shape).astype(dtype)
+          self._verifyInverseReal(matrix)
+
+
+class MatrixInverseBenchmark(test.Benchmark):
+
+  sizes = [
+      (4, 4),
+      (16, 16),
+      (256, 256),
+      (1024, 1024),
+      (513, 4, 4),
+      (513, 16, 16),
+      (513, 256, 256),
+  ]
+
+  def _GenerateData(self, size):
+    batch_shape = size[:-2]
+    size = size[-2:]
+    assert size[0] == size[1]
+    n = size[0]
+    data = np.ones(size).astype(np.float32) / (
+        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    return np.tile(data, batch_shape + (1, 1))
+
+  def benchmarkMatrixInverseOp(self):
+    for adjoint in False, True:
+      for size in self.sizes:
+        data = self._GenerateData(size)
+
+        with ops.Graph().as_default(), \
+            session.Session() as sess, \
+            ops.device("/cpu:0"):
+          inv = linalg_ops.matrix_inverse(data, adjoint=adjoint)
+          self.run_op_benchmark(
+              sess,
+              control_flow_ops.group(inv),
+              min_iters=25,
+              name="matrix_inverse_cpu_{size}_{adjoint}".format(
+                  size=size, adjoint="adjoint" if adjoint else "noadjoint"))
+
+        if test.is_gpu_available(True):
+          with ops.Graph().as_default(), \
+              session.Session() as sess, \
+              ops.device("/gpu:0"):
+            inv = linalg_ops.matrix_inverse(data, adjoint=adjoint)
+            self.run_op_benchmark(
+                sess,
+                control_flow_ops.group(inv),
+                min_iters=25,
+                name="matrix_inverse_gpu_{size}_{adjoint}".format(
+                    size=size, adjoint="adjoint" if adjoint else "noadjoint"))
 
 
 if __name__ == "__main__":

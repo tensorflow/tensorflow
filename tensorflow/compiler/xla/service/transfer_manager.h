@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -64,6 +65,17 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor,
       const Literal& literal) = 0;
 
+  // Transfer a memory block of the given size from 'source' buffer to the
+  // Infeed interface of the device using the given executor.
+  //
+  // size is the size to transfer from source in bytes.
+  //
+  // source is the source data that must be in the target-dependent layout that
+  // the Infeed HLO used in the computation expects.
+  virtual Status TransferBufferToInfeed(
+      perftools::gputools::StreamExecutor* executor, int64 size,
+      const void* source) = 0;
+
   // Transfers the given literal from the Outfeed interface of the device,
   // using the given executor.
   virtual Status TransferLiteralFromOutfeed(
@@ -99,13 +111,6 @@ class TransferManager {
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
 
-  // Returns whether tuple elements are distinct buffers (in which case each of
-  // the elements of a tuple should be deallocated, in addition to the tuple's
-  // buffer itself).
-  //
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  virtual bool TupleElementsAreDistinctBuffers() const { return true; }
-
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
   //
@@ -123,7 +128,7 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor, int64 size,
       const void* source, perftools::gputools::DeviceMemoryBase* destination);
 
-  typedef TransferManager* (*TransferManagerCreationFunction)();
+  typedef std::unique_ptr<TransferManager> (*TransferManagerCreationFunction)();
 
   /////
   // The TransferManager class also serves as a point to register objects for
@@ -153,7 +158,7 @@ class TransferManager {
   // set up creation_function, and then we use that to lazily create
   // "manager" the first time GetForPlatform is invoked for a particular id.
   struct State {
-    TransferManager* manager = nullptr;
+    std::unique_ptr<TransferManager> manager;
     TransferManagerCreationFunction creation_function = nullptr;
   };
 

@@ -159,7 +159,7 @@ Status SaveImage(const Tensor& tensor, const string& file_path) {
 
 // Reads a model graph definition from disk, and creates a session object you
 // can use to run it.
-Status LoadGraph(string graph_file_name,
+Status LoadGraph(const string& graph_file_name,
                  std::unique_ptr<tensorflow::Session>* session) {
   tensorflow::GraphDef graph_def;
   Status load_graph_status =

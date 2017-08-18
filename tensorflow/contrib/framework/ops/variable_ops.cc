@@ -19,7 +19,6 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
 
 REGISTER_OP("ZeroInitializer")
     .Input("ref: Ref(T)")

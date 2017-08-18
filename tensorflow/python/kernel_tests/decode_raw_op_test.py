@@ -54,17 +54,25 @@ class DecodeRawOpTest(test.TestCase):
       self.assertEqual([None, None], decode.get_shape().as_list())
 
       result = decode.eval(feed_dict={in_bytes: ["AaBC"]})
-      if sys.byteorder == "big":
-        self.assertAllEqual(
-            [[ord("A") * 256 + ord("a"), ord("B") * 256 + ord("C")]], result)
-      else:
-        self.assertAllEqual(
-            [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
+      self.assertAllEqual(
+          [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
 
       with self.assertRaisesOpError(
           "Input to DecodeRaw has length 3 that is not a multiple of 2, the "
           "size of int16"):
         decode.eval(feed_dict={in_bytes: ["123", "456"]})
+
+  def testEndianness(self):
+    with self.test_session():
+      in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+      decode_le = parsing_ops.decode_raw(
+          in_bytes, out_type=dtypes.int32, little_endian=True)
+      decode_be = parsing_ops.decode_raw(
+          in_bytes, out_type=dtypes.int32, little_endian=False)
+      result = decode_le.eval(feed_dict={in_bytes: ["\x01\x02\x03\x04"]})
+      self.assertAllEqual([[0x04030201]], result)
+      result = decode_be.eval(feed_dict={in_bytes: ["\x01\x02\x03\x04"]})
+      self.assertAllEqual([[0x01020304]], result)
 
   def testToFloat16(self):
     with self.test_session():
@@ -76,6 +84,14 @@ class DecodeRawOpTest(test.TestCase):
       result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
 
       self.assertAllEqual(expected_result, result)
+
+  def testEmptyStringInput(self):
+    with self.test_session():
+      in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+      decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.float16)
+
+      result = decode.eval(feed_dict={in_bytes: [""]})
+      self.assertEqual(len(result), 1)
 
 
 if __name__ == "__main__":

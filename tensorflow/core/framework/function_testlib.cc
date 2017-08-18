@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -126,25 +128,33 @@ FunctionDef XTimes16() {
       {{"y", "y:y:0"}});
 }
 
-FunctionDef WXPlusB() {
-  return FDH::Define(
-      // Name
-      "WXPlusB",
-      // Args
-      {"w: T", "x: T", "b: T"},
-      // Return values
-      {"y: T"},
-      // Attr def
-      {"T: {float, double}"},
-      // Nodes
-      {{{"mm"},
-        "MatMul",
-        {"w", "x"},
-        {{"T", "$T"},
-         {"transpose_a", false},
-         {"transpose_b", false},
+FunctionDef WXPlusB(){return FDH::Define(
+    // Name
+    "WXPlusB",
+    // Args
+    {"w: T", "x: T", "b: T"},
+    // Return values
+    {"y: T"},
+    // Attr def
+    {"T: {float, double}"},
+    // Nodes
+    {
+      {{"mm"},
+       "MatMul",
+       {"w", "x"},
+       {
+           {"T", "$T"}, {"transpose_a", false}, {"transpose_b", false},
+#ifdef INTEL_MKL
+       }},
+#else
          {"_kernel", "eigen"}}},
-       {{"y"}, "Add", {"mm", "b"}, {{"T", "$T"}}}});
+#endif
+      {
+        {"y"}, "Add", {"mm", "b"}, {
+          { "T", "$T" }
+        }
+      }
+    });
 }
 
 FunctionDef Swap() {

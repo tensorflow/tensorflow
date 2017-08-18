@@ -56,8 +56,7 @@ extern const char* const kDebugNameAttr;
 // compute the outputs.  If dump_graphs is true, graph rewrites will be dumped
 // for debugging.
 Status InitGraph(const GraphDef& graph_def, const Config& config,
-                 const MainFlags& flags, const FunctionLibraryDefinition* flib,
-                 std::unique_ptr<Graph>* graph);
+                 const MainFlags& flags, std::unique_ptr<Graph>* graph);
 
 // CompileResult describes the output of CompileGraph, where the object file
 // data and meta-information is available in aot.
@@ -83,7 +82,6 @@ struct CompileResult {
 //
 // The XLA compilation options are specified in the flags.
 Status CompileGraph(std::unique_ptr<Graph> graph, const MainFlags& flags,
-                    const FunctionLibraryDefinition* flib,
                     CompileResult* result);
 
 }  // namespace tfcompile

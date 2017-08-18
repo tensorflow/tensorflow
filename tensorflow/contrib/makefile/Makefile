@@ -202,7 +202,7 @@ ifeq ($(TARGET),LINUX)
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
-	CXXFLAGS += -D__ANDROID_TYPES_SLIM__
+	CXXFLAGS += -D__ANDROID_TYPES_SLIM__ -DRASPBERRY_PI
 	LDFLAGS := -Wl,--no-whole-archive
 	LIBS += -ldl -lpthread
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
@@ -279,6 +279,20 @@ ifeq ($(TARGET),ANDROID)
 		LIBS += -lhexagon_controller
 		LDFLAGS += -L$(HEXAGON_LIBS)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
+
+# CAVEAT: We should disable TENSORFLOW_DISABLE_META while running
+# quantized_matmul on Android because it crashes in
+# MultiThreadGemm in tensorflow/core/kernels/meta_support.cc
+# See http://b/33270149
+# TODO(satok): Remove once it's fixed
+		CXXFLAGS += -DTENSORFLOW_DISABLE_META
+
+# Declare __ANDROID_TYPES_FULL__ to enable required types for hvx
+		CXXFLAGS += -D__ANDROID_TYPES_FULL__
+	endif
+
+	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
+		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
 	endif
 
 endif  # ANDROID
@@ -293,7 +307,7 @@ ifeq ($(TARGET),IOS)
 	IPHONESIMULATOR_SYSROOT := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-path)
 	IOS_SDK_VERSION := $(shell xcrun --sdk iphoneos --show-sdk-version)
-	MIN_SDK_VERSION := 8.2
+	MIN_SDK_VERSION := 8.0
 # Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
 	IOS_ARCH := X86_64
 	ifeq ($(IOS_ARCH),ARMV7)
@@ -486,7 +500,7 @@ $(wildcard tensorflow/core/grappler/clusters/single_machine.*)
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
-TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_tracer.cc
+TF_CC_SRCS += tensorflow/core/platform/default/gpu_tracer.cc
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
@@ -495,6 +509,18 @@ BENCHMARK_SRCS := \
 tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
+
+ifdef HEXAGON_LIBS
+	TF_CC_SRCS += \
+tensorflow/cc/framework/scope.cc \
+tensorflow/cc/framework/ops.cc \
+tensorflow/cc/ops/const_op.cc \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
+tensorflow/core/kernels/hexagon/graph_transferer.cc \
+tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
+tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/hexagon/hexagon_remote_fused_graph_executor_build.cc
+endif
 
 # File names of the intermediate files target compilation generates.
 TF_CC_OBJS := $(addprefix $(OBJDIR), $(TF_CC_SRCS:.cc=.o))

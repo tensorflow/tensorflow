@@ -80,10 +80,10 @@ static std::atomic_int_fast64_t live_tensor_bytes(0);
 // A TensorBuffer that counts live memory usage for testing
 class TestTensorBuffer : public TensorBuffer {
  public:
-  TestTensorBuffer(size_t bytes) : bytes_(bytes) {
+  explicit TestTensorBuffer(size_t bytes) : bytes_(bytes) {
     live_tensor_bytes += bytes_;
   }
-  ~TestTensorBuffer() { live_tensor_bytes -= bytes_; }
+  ~TestTensorBuffer() override { live_tensor_bytes -= bytes_; }
 
   size_t size() const override { return bytes_; }
 

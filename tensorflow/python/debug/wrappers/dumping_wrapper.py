@@ -31,7 +31,12 @@ from tensorflow.python.platform import gfile
 class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
   """Debug Session wrapper that dumps debug data to filesystem."""
 
-  def __init__(self, sess, session_root, watch_fn=None, log_usage=True):
+  def __init__(self,
+               sess,
+               session_root,
+               watch_fn=None,
+               thread_name_filter=None,
+               log_usage=True):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -48,6 +53,9 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       watch_fn: (`Callable`) A Callable that can be used to define per-run
         debug ops and watched tensors. See the doc of
         `NonInteractiveDebugWrapperSession.__init__()` for details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
       log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
@@ -59,7 +67,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       pass  # No logging for open-source.
 
     framework.NonInteractiveDebugWrapperSession.__init__(
-        self, sess, watch_fn=watch_fn)
+        self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter)
 
     if gfile.Exists(session_root):
       if not gfile.IsDirectory(session_root):
@@ -69,6 +77,8 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
         raise ValueError(
             "session_root path points to a non-empty directory: %s" %
             session_root)
+    else:
+      gfile.MakeDirs(session_root)
     self._session_root = session_root
 
     self._run_counter = 0
@@ -78,7 +88,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     """Implementation of abstrat method in superclass.
 
     See doc of `NonInteractiveDebugWrapperSession.prepare_run_debug_urls()`
-    for details. This implentation creates a run-specific subdirectory under
+    for details. This implementation creates a run-specific subdirectory under
     self._session_root and stores information regarding run `fetches` and
     `feed_dict.keys()` in the subdirectory.
 

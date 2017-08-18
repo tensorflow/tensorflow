@@ -28,7 +28,49 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
+
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+
+TEST(ConvParameters, WinogradNonfusedAlgoSize) {
+  ConvParameters conv_params_small = {
+      1,         // batch
+      32,        // in_depths
+      {{300,     // in_rows
+        300}},   // in_cols
+      128,       // out_depths
+      {{3,       // filter_rows
+        3}},     // filter_cols
+      {{1,       // stride_rows
+        1}},     // stride_cols
+      {{0,       // padding_rows
+        0}},     // padding_cols
+      DT_FLOAT,  // tensor datatype
+      0,         // device_id
+  };
+  EXPECT_TRUE(conv_params_small.ShouldIncludeWinogradNonfusedAlgo<float>());
+
+  ConvParameters conv_params_large = {
+      1,         // batch
+      128,       // in_depths
+      {{300,     // in_rows
+        300}},   // in_cols
+      768,       // out_depths
+      {{3,       // filter_rows
+        3}},     // filter_cols
+      {{1,       // stride_rows
+        1}},     // stride_cols
+      {{0,       // padding_rows
+        0}},     // padding_cols
+      DT_FLOAT,  // tensor datatype
+      0,         // device_id
+  };
+  EXPECT_FALSE(conv_params_large.ShouldIncludeWinogradNonfusedAlgo<float>());
+}
+
+#endif  // GOOGLE_CUDA
 
 class FusedResizePadConvOpTest : public OpsTestBase {
  protected:
@@ -116,8 +158,9 @@ class FusedResizePadConvOpTest : public OpsTestBase {
                                int input_depth, int resize_width,
                                int resize_height, int y_padding, int x_padding,
                                int filter_size, int filter_count,
-                               bool resize_align_corners, string pad_mode,
-                               int stride, string padding) {
+                               bool resize_align_corners,
+                               const string& pad_mode, int stride,
+                               const string& padding) {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
@@ -170,8 +213,8 @@ class FusedResizePadConvOpTest : public OpsTestBase {
   void CompareFusedPadOnlyAndSeparate(int input_width, int input_height,
                                       int input_depth, int y_padding,
                                       int x_padding, int filter_size,
-                                      int filter_count, string pad_mode,
-                                      int stride, string padding) {
+                                      int filter_count, const string& pad_mode,
+                                      int stride, const string& padding) {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 

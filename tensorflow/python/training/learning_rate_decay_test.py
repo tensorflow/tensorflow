@@ -23,6 +23,8 @@ import math
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -40,7 +42,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
 
   def testStaircase(self):
     with self.test_session():
-      step = gen_state_ops._variable(shape=[], dtype=dtypes.int32, 
+      step = gen_state_ops._variable(shape=[], dtype=dtypes.int32,
           name="step", container="", shared_name="")
       assign_100 = state_ops.assign(step, 100)
       assign_1 = state_ops.assign(step, 1)
@@ -110,6 +112,11 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
       with self.assertRaises(ValueError):
         learning_rate_decay.piecewise_constant(x, boundaries, values)
+
+      # Test that ref types are valid.
+      x_ref = x.op.outputs[0]   # float32_ref tensor should be accepted
+      boundaries, values = [1.0, 2.0], [1, 2, 3]
+      learning_rate_decay.piecewise_constant(x_ref, boundaries, values)
 
 
 class LinearDecayTest(test_util.TensorFlowTestCase):

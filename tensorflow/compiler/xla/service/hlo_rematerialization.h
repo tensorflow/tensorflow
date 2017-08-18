@@ -18,9 +18,9 @@
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
 namespace xla {
 
@@ -60,7 +60,7 @@ class HloRematerialization {
 
  protected:
   HloRematerialization(const ShapeSizeFunction& size_function)
-      : size_function_(size_function), cost_analysis_(size_function_) {}
+      : size_function_(size_function) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -99,15 +99,29 @@ class HloRematerialization {
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;
 
-  // Analysis used for computing the rematerialization cost of instructions.
-  HloCostAnalysis cost_analysis_;
-
   // The peak memory usage of each computation. The map contains only those
   // computations called from sequential context
   // (CallContext::kSequential). These values are updated as rematerialization
   // occurs.
   tensorflow::gtl::FlatMap<const HloComputation*, int64>
       computation_peak_memory_;
+
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+
+  // Set of computations which have had rematerialization
+  // applied. Rematerialization is only applied once per computation.
+  tensorflow::gtl::FlatSet<const HloComputation*> rematerialized_computations_;
+
+  // Count of the total instructions rematerialized.
+  int64 instructions_rematerialized_ = 0;
+
+  // Count of the net instructions added to the HLO module by
+  // rematerialization. This can be different than instructions_rematerialized_
+  // because some rematerializations are effectively moves in the HLO
+  // schedule. In these cases, the rematerialization instruction replaces all
+  // uses of the original instruction and the original instruction is
+  // dead. Hence, no net instructions were added.
+  int64 net_instructions_added_ = 0;
 };
 
 }  // namespace xla

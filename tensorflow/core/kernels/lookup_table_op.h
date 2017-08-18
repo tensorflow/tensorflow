@@ -21,9 +21,11 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -49,40 +51,52 @@ class LookupTableOp : public OpKernel {
   // ctx is not owned by this function.
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
+
     if (!table_handle_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
                                       use_node_name_sharing_));
-      auto creator = [ctx, this](lookup::LookupInterface** ret) {
-        lookup::LookupInterface* container = new Container(ctx, this);
-        if (!ctx->status().ok()) {
-          container->Unref();
-          return ctx->status();
-        }
-        if (ctx->track_allocations()) {
-          ctx->record_device_persistent_memory_allocation(
-              container->MemoryUsed());
-        }
-        *ret = container;
-        return Status::OK();
-      };
-
-      lookup::LookupInterface* table = nullptr;
-      OP_REQUIRES_OK(
-          ctx, cinfo_.resource_manager()
-                   ->template LookupOrCreate<lookup::LookupInterface>(
-                       cinfo_.container(), cinfo_.name(), &table, creator));
-      core::ScopedUnref unref_me(table);
-
-      OP_REQUIRES_OK(ctx, lookup::CheckTableDataTypes(
-                              *table, DataTypeToEnum<key_dtype>::v(),
-                              DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
-
-      auto h = table_handle_.AccessTensor(ctx)->template flat<string>();
-      h(0) = cinfo_.container();
-      h(1) = cinfo_.name();
-      table_handle_set_ = true;
     }
-    ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+
+    auto creator = [ctx, this](lookup::LookupInterface** ret) {
+      lookup::LookupInterface* container = new Container(ctx, this);
+      if (!ctx->status().ok()) {
+        container->Unref();
+        return ctx->status();
+      }
+      if (ctx->track_allocations()) {
+        ctx->record_host_persistent_memory_allocation(
+            container->MemoryUsed() + table_handle_.AllocatedBytes());
+      }
+      *ret = container;
+      return Status::OK();
+    };
+
+    lookup::LookupInterface* table = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   cinfo_.resource_manager()
+                       ->template LookupOrCreate<lookup::LookupInterface>(
+                           cinfo_.container(), cinfo_.name(), &table, creator));
+    core::ScopedUnref unref_me(table);
+
+    OP_REQUIRES_OK(ctx, lookup::CheckTableDataTypes(
+                            *table, DataTypeToEnum<key_dtype>::v(),
+                            DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
+
+    if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
+      Tensor* handle;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
+      handle->scalar<ResourceHandle>()() =
+          MakeResourceHandle<lookup::LookupInterface>(ctx, cinfo_.container(),
+                                                      cinfo_.name());
+    } else {
+      if (!table_handle_set_) {
+        auto h = table_handle_.AccessTensor(ctx)->template flat<string>();
+        h(0) = cinfo_.container();
+        h(1) = cinfo_.name();
+      }
+      ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+    }
+    table_handle_set_ = true;
   }
 
   ~LookupTableOp() override {
@@ -103,6 +117,128 @@ class LookupTableOp : public OpKernel {
 
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
 };
+
+namespace lookup {
+
+// Ensure that the compiler cannot elide a copy into a local, for
+// bounds checking on source tensors that might be updated asynchronously for
+// integral types. However non-integer variables are not allowed and therefore
+// the local copy is unnecessary.
+template <typename T>
+T SubtleMustCopyUnlessStringOrFloat(const T& value) {
+  return internal::SubtleMustCopy(value);
+}
+
+inline const string& SubtleMustCopyUnlessStringOrFloat(const string& value) {
+  return value;
+}
+
+inline const float SubtleMustCopyUnlessStringOrFloat(const float value) {
+  return value;
+}
+
+inline const double SubtleMustCopyUnlessStringOrFloat(const double value) {
+  return value;
+}
+
+// Lookup table that wraps an unordered_map, where the key and value data type
+// is specified.
+//
+// This table is recommended for any variations to key values.
+//
+// For look up, the table is required to be initialized (allocated
+// and populated). Once the table is marked as initialized it becomes read-only.
+//
+// Sample use case:
+//
+// HashTable<int64, int64> table;  // int64 -> int64.
+// table.Prepare(10); // Prepare the underlying data structure, the number of
+//                    // elements is required by interface, but not used.
+// // Populate the table, elements could be added in one or multiple calls.
+// table.Insert(key_tensor, value_tensor); // Populate the table.
+// ...
+// table.set_is_initialized();
+//
+// table.Find(in_t, &out_t, default_t)
+//
+template <class K, class V>
+class HashTable : public InitializableLookupTable {
+ public:
+  HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
+
+  size_t size() const override {
+    // return the size of the table only if it's initialized, otherwise 0.
+    if (!is_initialized_) {
+      return 0;
+    }
+    std::atomic_thread_fence(std::memory_order_acquire);
+    return table_ ? table_->size() : 0;
+  }
+
+  DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
+
+  DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
+
+ protected:
+  Status DoPrepare(size_t unused) override {
+    if (is_initialized_) {
+      return errors::Aborted("HashTable already initialized.");
+    }
+    if (!table_) {
+      table_ = std::unique_ptr<std::unordered_map<K, V>>(
+          new std::unordered_map<K, V>());
+    }
+    return Status::OK();
+  };
+
+  Status DoInsert(const Tensor& keys, const Tensor& values) override {
+    if (!table_) {
+      return errors::FailedPrecondition("HashTable is not prepared.");
+    }
+
+    const auto key_values = keys.flat<K>();
+    const auto value_values = values.flat<V>();
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
+      const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
+      const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
+      if (previous_value != value) {
+        return errors::FailedPrecondition(
+            "HashTable has different value for same key. Key ", key, " has ",
+            previous_value, " and trying to add value ", value);
+      }
+    }
+    return Status::OK();
+  }
+
+  Status DoFind(const Tensor& key, Tensor* value,
+                const Tensor& default_value) override {
+    const V default_val = default_value.flat<V>()(0);
+    const auto key_values = key.flat<K>();
+    auto value_values = value->flat<V>();
+
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      value_values(i) = gtl::FindWithDefault(
+          *table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
+          default_val);
+    }
+    return Status::OK();
+  }
+
+  int64 MemoryUsed() const override {
+    if (table_) {
+      const int64 num_elements = table_->size();
+      return num_elements * (sizeof(K) + sizeof(V));
+    } else {
+      return 0;
+    }
+  }
+
+ private:
+  std::unique_ptr<std::unordered_map<K, V>> table_;
+};
+
+}  // namespace lookup
 
 }  // namespace tensorflow
 

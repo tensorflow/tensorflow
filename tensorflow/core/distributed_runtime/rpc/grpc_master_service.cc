@@ -25,7 +25,7 @@ limitations under the License.
 // A GrpcMasterService discovers remote devices in the background and
 // keeps track of statistics of those remote devices.
 //
-// Each session analyses the graph, places nodes across available
+// Each session analyzes the graph, places nodes across available
 // devices, and ultimately drives the graph computation by initiating
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
@@ -40,21 +40,23 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
 class GrpcMasterService : public AsyncServiceInterface {
  public:
-  GrpcMasterService(Master* master, ::grpc::ServerBuilder* builder)
-      : master_impl_(master), is_shutdown_(false) {
+  GrpcMasterService(Master* master, int64 default_timeout_in_ms,
+                    ::grpc::ServerBuilder* builder)
+      : master_impl_(master),
+        default_timeout_in_ms_(default_timeout_in_ms),
+        is_shutdown_(false) {
     builder->RegisterService(&master_service_);
     cq_ = builder->AddCompletionQueue();
   }
 
-  ~GrpcMasterService() {
-    delete shutdown_alarm_;
-  }
+  ~GrpcMasterService() override { delete shutdown_alarm_; }
 
   void Shutdown() override {
     bool did_shutdown = false;
@@ -127,6 +129,7 @@ class GrpcMasterService : public AsyncServiceInterface {
 
  private:
   Master* master_impl_ = nullptr;  // Not owned.
+  const int64 default_timeout_in_ms_;
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   grpc::MasterService::AsyncService master_service_;
 
@@ -170,18 +173,25 @@ class GrpcMasterService : public AsyncServiceInterface {
 
   // RPC handler for running one step in a session.
   void RunStepHandler(MasterCall<RunStepRequest, RunStepResponse>* call) {
+    auto* trace = TraceRpc("RunStep/Server", call->client_metadata());
     CallOptions* call_opts = new CallOptions;
+    if (call->request.options().timeout_in_ms() > 0) {
+      call_opts->SetTimeout(call->request.options().timeout_in_ms());
+    } else {
+      call_opts->SetTimeout(default_timeout_in_ms_);
+    }
     RunStepRequestWrapper* wrapped_request =
         new ProtoRunStepRequest(&call->request);
     MutableRunStepResponseWrapper* wrapped_response =
         new NonOwnedProtoRunStepResponse(&call->response);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
     master_impl_->RunStep(call_opts, wrapped_request, wrapped_response,
-                          [call, call_opts, wrapped_request,
-                           wrapped_response](const Status& status) {
+                          [call, call_opts, wrapped_request, wrapped_response,
+                           trace](const Status& status) {
                             call->ClearCancelCallback();
                             delete call_opts;
                             delete wrapped_request;
+                            delete trace;
                             call->SendResponse(ToGrpcStatus(status));
                           });
     ENQUEUE_REQUEST(RunStep, true);
@@ -217,12 +227,25 @@ class GrpcMasterService : public AsyncServiceInterface {
   }
 #undef ENQUEUE_REQUEST
 
+  // Start tracing, including the ID attached to the RPC.
+  port::Tracing::TraceMe* TraceRpc(
+      StringPiece name,
+      const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
+    StringPiece id;
+    auto it = metadata.find(GrpcIdKey());
+    if (it != metadata.end()) {
+      id = StringPiece(it->second.data(), it->second.size());
+    }
+    return new port::Tracing::TraceMe(name, id);
+  }
+
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
 };
 
 AsyncServiceInterface* NewGrpcMasterService(Master* master,
+                                            int64 default_timeout_in_ms,
                                             ::grpc::ServerBuilder* builder) {
-  return new GrpcMasterService(master, builder);
+  return new GrpcMasterService(master, default_timeout_in_ms, builder);
 }
 
 }  // end namespace tensorflow

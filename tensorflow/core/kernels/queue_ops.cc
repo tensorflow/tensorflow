@@ -103,11 +103,6 @@ class EnqueueOp : public QueueAccessOpKernel {
     }
 
     OP_REQUIRES_OK_ASYNC(ctx, queue->ValidateTuple(tuple), callback);
-    if (ctx->track_allocations()) {
-      // We can get persistent memory size of the queue when it is kept full, no
-      // matter whether it is before or after the enqueue.
-      ctx->record_host_persistent_memory_allocation(queue->MemoryUsed());
-    }
     queue->TryEnqueue(tuple, ctx, callback);
   }
 
@@ -160,9 +155,6 @@ class EnqueueManyOp : public QueueAccessOpKernel {
     }
 
     OP_REQUIRES_OK_ASYNC(ctx, queue->ValidateManyTuple(tuple), callback);
-    if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(queue->MemoryUsed());
-    }
     queue->TryEnqueueMany(tuple, ctx, callback);
   }
 
@@ -433,6 +425,27 @@ class QueueSizeOp : public QueueOpKernel {
 REGISTER_KERNEL_BUILDER(Name("QueueSize").Device(DEVICE_CPU), QueueSizeOp);
 REGISTER_KERNEL_BUILDER(Name("QueueSizeV2").Device(DEVICE_CPU), QueueSizeOp);
 
+class QueueIsClosedOp : public QueueOpKernel {
+ public:
+  explicit QueueIsClosedOp(OpKernelConstruction* context)
+     : QueueOpKernel(context) {}
+ 
+ protected:
+  void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
+                    DoneCallback callback) override {
+    Tensor* Tqueue_is_closed = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &Tqueue_is_closed));
+    Tqueue_is_closed->flat<bool>().setConstant(queue->is_closed());
+    callback();
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(QueueIsClosedOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("QueueIsClosed").Device(DEVICE_CPU), QueueIsClosedOp);
+REGISTER_KERNEL_BUILDER(Name("QueueIsClosedV2").Device(DEVICE_CPU), QueueIsClosedOp);
+
 class FakeQueueOp : public OpKernel {
  public:
   explicit FakeQueueOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -441,7 +454,7 @@ class FakeQueueOp : public OpKernel {
                                                 &handle_, nullptr));
   }
 
-  void Compute(OpKernelContext* context) {
+  void Compute(OpKernelContext* context) override {
     ResourceHandle ref = context->input(0).flat<ResourceHandle>()(0);
     handle_.AccessTensor(context)->flat<string>()(0) = ref.container();
     handle_.AccessTensor(context)->flat<string>()(1) = ref.name();

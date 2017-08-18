@@ -231,6 +231,19 @@ class VariablesTestCase(test.TestCase):
       sess.run(v0.initializer)
       sess.run(add)
 
+  def testControlFlowInitialization(self):
+    """Expects an error if an initializer is in a control-flow scope."""
+    def cond(i, _):
+      return i < 10
+
+    def body(i, _):
+      zero = array_ops.zeros([], dtype=dtypes.int32)
+      v = variables.Variable(initial_value=zero)
+      return (i + 1, v.read_value())
+
+    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+      control_flow_ops.while_loop(cond, body, [0, 0])
+
   def testUseVariableAsTensor(self):
     with self.test_session():
       var_x = variables.Variable(2.0)
@@ -276,6 +289,21 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual([var_x, var_y, var_z, var_t],
                        variables.global_variables())
       self.assertEqual([var_x, var_z, var_t], variables.trainable_variables())
+
+  def testCollectionsWithScope(self):
+    with self.test_session():
+      with ops.name_scope("scope_1"):
+        var_x = variables.Variable(2.0)
+      with ops.name_scope("scope_2"):
+        var_y = variables.Variable(2.0)
+
+      self.assertEqual([var_x, var_y], variables.global_variables())
+      self.assertEqual([var_x], variables.global_variables("scope_1"))
+      self.assertEqual([var_y], variables.global_variables("scope_2"))
+
+      self.assertEqual([var_x, var_y], variables.trainable_variables())
+      self.assertEqual([var_x], variables.trainable_variables("scope_1"))
+      self.assertEqual([var_y], variables.trainable_variables("scope_2"))
 
   def testOperators(self):
     with self.test_session():
@@ -397,6 +425,19 @@ class VariablesTestCase(test.TestCase):
         v2.eval()
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
+
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = variables.Variable(
+        lambda: constant_op.constant(1.),
+        constraint=constraint)
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = variables.Variable(
+          lambda: constant_op.constant(1.),
+          constraint=constraint)
 
   def testNoRefDataRace(self):
     with self.test_session():

@@ -61,6 +61,42 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Clamp
+
+See also
+[`ComputationBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Clamps an operand to within the range between a minimum and maximum value.
+
+<b> `Clamp(computation, args...)` </b>
+
+| Arguments     | Type                    | Semantics                        |
+| ------------- | ----------------------- | -------------------------------- |
+| `computation` | `Computation`           | computation of type `T_0, T_1,   |
+:               :                         : ..., T_N -> S` with N parameters :
+:               :                         : of arbitrary type                :
+| `operand`     | `ComputationDataHandle` | array of type T                  |
+| `min`         | `ComputationDataHandle` | array of type T                  |
+| `max`         | `ComputationDataHandle` | array of type T                  |
+
+Given an operand and minimum and maximum values, returns the operand if it is in
+the range between the minimum and maximum, else returns the minimum value if the
+operand is below this range or the maximum value if the operand is above this
+range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+
+All three arrays must be the same shape. Alternately, as a restricted form of
+[broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
+
+Example with scalar `min` and `max`:
+
+```
+let operand: s32[3] = {-1, 5, 9};
+let min: s32 = 0;
+let max: s32 = 6;
+==>
+Clamp(operand, min, max) = s32[3]{0, 5, 6};
+```
+
 ## Collapse
 
 See also
@@ -178,7 +214,7 @@ Concat({a, b}, 0)
 
 Diagram:
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/ops_concatenate.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ops_concatenate.png">
 </div>
 
 ## ConvertElementType
@@ -547,6 +583,8 @@ ComputationBuilder supports these element-wise unary functions:
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
 
+<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
+
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
@@ -577,6 +615,158 @@ Arguments | Type                    | Semantics
 
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
+
+
+## BatchNormTraining
+
+See also
+[`ComputationBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
+[`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
+
+<b> Warning: Not implemented on GPU backend yet. </b>
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------- | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized                       :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `offset`        | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\beta\\ )                    :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension       |
+:                 :                         : in `operand`                     :
+
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and use the mean and variance to normalize each
+element in `operand`. If an invalid `feature_index` is passed, an error is
+produced.
+
+The algorithm goes as follows for each batch in `operand` \\(x\\) that
+contains `m` elements with `w` and `h` as the size of spatial dimensions (
+assuming `operand` is an 4 dimensional array):
+
+- Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
+\\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
+
+- Calculates batch variance \\(\sigma^2_l\\):
+\\(\sigma^2_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (x_{ijkl} - \mu_l)^2\\)
+
+- Normalizes, scales and shifts:
+\\(y_{ijkl}=\frac{\gamma_l(x_{ijkl}-\mu_l)}{\sqrt[2]{\sigma^2_l+\epsilon}}+\beta_l\\)
+
+The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
+
+The output type is a tuple of three ComputationDataHandles:
+
+| Outputs      | Type                    | Semantics                            |
+| ------------ | ----------------------- | -------------------------------------|
+| `output`     | `ComputationDataHandle` | n dimensional array with the same    |
+:              :                         : shape as input `operand` (y)         :
+| `batch_mean` | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))      |
+| `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
+
+The `batch_mean` and `batch_var` are moments calculated across the batch and
+spatial dimensions using the formulars above.
+
+## BatchNormInference
+
+See also
+[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> Warning: Not implemented yet. </b>
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                       |
+| --------------  | ----------------------- | ------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be       |
+:                 :                         : normalized                      :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array             |
+| `offset`        | `ComputationDataHandle` | 1 dimensional array             |
+| `mean`          | `ComputationDataHandle` | 1 dimensional array             |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array             |
+| `epsilon`       | `float`                 | Epsilon value                   |
+| `feature_index` | `int64`                 | Index to feature dimension in   |
+:                 :                         : `operand`                       :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and use the mean and variance to normalize each
+element in `operand`. If an invalid `feature_index` is passed, an error is
+produced.
+
+`BatchNormInference`  is equivalent to calling `BatchNormTraining` without
+computing `mean` and `variance` for each batch. It uses the input `mean` and
+`variance` instead as estimated values. The purpose of this op is to reduce
+latency in inference, hence the name `BatchNormInference`.
+
+The output is a n dimensional, normalized array with the same shape as input
+`operand`.
+
+## BatchNormGrad
+
+See also
+[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> Warning: Not implemented yet. </b>
+
+Calculates gradients of batch norm.
+
+<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------  | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized (x)                   :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `mean`          | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))  |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\sigma^2\\))                 :
+| `grad_output`   | `ComputationDataHandle` | Gradients passed to              |
+:                 :                         : `BatchNormTraining`              :
+:                 :                         : (\\( \nabla y\\))                :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension in    |
+:                 :                         : `operand`                        :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the gradients with
+respect to `operand`, `offset` and `scale` across all the other dimensions. If
+an invalid `feature_index` is passed, an error is produced.
+
+The three gradients are defined by the following formulas:
+
+\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+
+\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+
+\\( \nabla \beta = sum(\nabla y) \\)
+
+The inputs `mean` and `variance` represents moments value
+across batch and spatial dimensions.
+
+The output type is a tuple of three ComputationDataHandles:
+
+|Outputs       | Type                    | Semantics                           |
+|------------- | ----------------------- | ------------------------------------|
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `operand`                           :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `offset`                            :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `scale`                             :
+
 
 ## GetTupleElement
 
@@ -707,7 +897,7 @@ are all 0. Figure below shows examples of different `edge_padding` and
 `interior_padding` values for a two dimensional array.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/ops_pad.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
 </div>
 
 ## Reduce
@@ -781,13 +971,13 @@ Here's an example of reducing a 2D array (matrix). The shape has rank 2,
 dimension 0 of size 2 and dimension 1 of size 3:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_2d_matrix.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_2d_matrix.png">
 </div>
 
 Results of reducing dimensions 0 or 1 with an "add" function:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_reduce_from_2d_matrix.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_reduce_from_2d_matrix.png">
 </div>
 
 Note that both reduction results are 1D arrays. The diagram shows one as column
@@ -798,7 +988,7 @@ size 4, dimension 1 of size 2 and dimension 2 of size 3. For simplicity, the
 values 1 to 6 are replicated across dimension 0.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_reduce_from_3d_matrix.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_reduce_from_3d_matrix.png">
 </div>
 
 Similarly to the 2D example, we can reduce just one dimension. If we reduce
@@ -890,7 +1080,7 @@ builder.ReduceWindow(
 ```
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_reduce_window.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_reduce_window.png">
 </div>
 
 Stride of 1 in a dimension specifies that the position of a window in the
@@ -902,7 +1092,7 @@ are the same as though the input came in with the dimensions it has after
 padding.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:75%" src="../../images/ops_reduce_window_stride.png">
+  <img style="width:75%" src="https://www.tensorflow.org/images/ops_reduce_window_stride.png">
 </div>
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1144,7 +1334,7 @@ addition `scatter` function produces the output element of value 8 (2 + 6).
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%"
-    src="../../images/ops_scatter_to_selected_window_element.png">
+    src="https://www.tensorflow.org/images/ops_scatter_to_selected_window_element.png">
 </div>
 
 The evaluation order of the `scatter` function is arbitrary and may be
@@ -1482,5 +1672,5 @@ while (result(0) < 1000) {
 ```
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/ops_while.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ops_while.png">
 </div>

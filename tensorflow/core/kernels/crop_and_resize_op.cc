@@ -216,12 +216,14 @@ struct CropAndResize<CPUDevice, T> {
           const float x_lerp = in_x - left_x_index;
 
           for (int d = 0; d < depth; ++d) {
-            const float top_left(image(b_in, top_y_index, left_x_index, d));
-            const float top_right(image(b_in, top_y_index, right_x_index, d));
-            const float bottom_left(
-                image(b_in, bottom_y_index, left_x_index, d));
-            const float bottom_right(
-                image(b_in, bottom_y_index, right_x_index, d));
+            const float top_left(
+                static_cast<float>(image(b_in, top_y_index, left_x_index, d)));
+            const float top_right(
+                static_cast<float>(image(b_in, top_y_index, right_x_index, d)));
+            const float bottom_left(static_cast<float>(
+                image(b_in, bottom_y_index, left_x_index, d)));
+            const float bottom_right(static_cast<float>(
+                image(b_in, bottom_y_index, right_x_index, d)));
             const float top = top_left + (top_right - top_left) * x_lerp;
             const float bottom =
                 bottom_left + (bottom_right - bottom_left) * x_lerp;
@@ -545,12 +547,14 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
           const float x_lerp = in_x - left_x_index;
 
           for (int d = 0; d < depth; ++d) {
-            const float top_left(image(b_in, top_y_index, left_x_index, d));
-            const float top_right(image(b_in, top_y_index, right_x_index, d));
-            const float bottom_left(
-                image(b_in, bottom_y_index, left_x_index, d));
-            const float bottom_right(
-                image(b_in, bottom_y_index, right_x_index, d));
+            const float top_left(
+                static_cast<float>(image(b_in, top_y_index, left_x_index, d)));
+            const float top_right(
+                static_cast<float>(image(b_in, top_y_index, right_x_index, d)));
+            const float bottom_left(static_cast<float>(
+                image(b_in, bottom_y_index, left_x_index, d)));
+            const float bottom_right(static_cast<float>(
+                image(b_in, bottom_y_index, right_x_index, d)));
             // Compute the image gradient.
             float image_grad_y = (1 - x_lerp) * (bottom_left - top_left) +
                                  x_lerp * (bottom_right - top_right);
@@ -606,18 +610,25 @@ inline void CheckValidBoxInd<CPUDevice>(
                               .HostMemory("crop_size"),            \
                           CropAndResizeOp<CPUDevice, T>);          \
                                                                    \
-  REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradImage")           \
-                              .Device(DEVICE_CPU)                  \
-                              .TypeConstraint<T>("T")              \
-                              .HostMemory("image_size"),           \
-                          CropAndResizeGradImageOp<CPUDevice, T>); \
-                                                                   \
   REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradBoxes")           \
                               .Device(DEVICE_CPU)                  \
                               .TypeConstraint<T>("T"),             \
                           CropAndResizeGradBoxesOp<CPUDevice, T>);
 
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+
+#define REGISTER_KERNEL(T)                               \
+  REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradImage") \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<T>("T")    \
+                              .HostMemory("image_size"), \
+                          CropAndResizeGradImageOp<CPUDevice, T>);
+
+TF_CALL_half(REGISTER_KERNEL);
 TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
@@ -685,7 +696,7 @@ inline void CheckValidBoxInd<GPUDevice>(
                               .TypeConstraint<T>("T"),             \
                           CropAndResizeGradBoxesOp<GPUDevice, T>);
 
-TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 

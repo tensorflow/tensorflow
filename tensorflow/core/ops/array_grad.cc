@@ -248,6 +248,7 @@ Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
   std::vector<string> dys;
+  dys.reserve(N);
   for (int i = 0; i < N; ++i) {
     dys.push_back(strings::StrCat("dy:", i));
   }

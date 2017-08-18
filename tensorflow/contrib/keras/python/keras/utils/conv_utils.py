@@ -47,11 +47,11 @@ def normalize_tuple(value, n, name):
     try:
       value_tuple = tuple(value)
     except TypeError:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' + str(
-          n) + ' integers. Received: ' + str(value))
+      raise ValueError('The `' + name + '` argument must be a tuple of ' +
+                       str(n) + ' integers. Received: ' + str(value))
     if len(value_tuple) != n:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' + str(
-          n) + ' integers. Received: ' + str(value))
+      raise ValueError('The `' + name + '` argument must be a tuple of ' +
+                       str(n) + ' integers. Received: ' + str(value))
     for single_value in value_tuple:
       try:
         int(single_value)
@@ -69,8 +69,8 @@ def normalize_data_format(value):
   data_format = value.lower()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('The `data_format` argument must be one of '
-                     '"channels_first", "channels_last". Received: ' + str(
-                         value))
+                     '"channels_first", "channels_last". Received: ' +
+                     str(value))
   return data_format
 
 
@@ -89,7 +89,7 @@ def convert_kernel(kernel):
   Also works reciprocally, since the transformation is its own inverse.
 
   Arguments:
-      kernel: Numpy array (4D or 5D).
+      kernel: Numpy array (3D, 4D or 5D).
 
   Returns:
       The converted kernel.
@@ -97,7 +97,8 @@ def convert_kernel(kernel):
   Raises:
       ValueError: in case of invalid kernel shape or invalid data_format.
   """
-  if not 4 <= kernel.ndim <= 5:
+  kernel = np.asarray(kernel)
+  if not 3 <= kernel.ndim <= 5:
     raise ValueError('Invalid kernel shape:', kernel.shape)
   slices = [slice(None, None, -1) for _ in range(kernel.ndim)]
   no_flip = (slice(None, None), slice(None, None))

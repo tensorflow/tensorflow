@@ -20,13 +20,34 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
+GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
+  id = other.id;
+  feed = other.feed;
+  fetch = other.fetch;
+  init_ops = other.init_ops;
+  expected_init_time = other.expected_init_time;
+  queue_runners = other.queue_runners;
+  graph.Swap(&graphDef);
+}
+
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
   return ComputeTransitiveFanin(graph, fetch);
+}
+
+std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
+  std::vector<string> enqueue_ops;
+  for (const auto& queue_runner : queue_runners) {
+    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
+      enqueue_ops.push_back(enqueue_op);
+    }
+  }
+  return ComputeTransitiveFanin(graph, enqueue_ops);
 }
 
 std::vector<const NodeDef*> GrapplerItem::InitOpsFanin() const {
@@ -37,7 +58,7 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
   std::vector<const NodeDef*> fanin = ComputeTransitiveFanin(graph, init_ops);
   std::vector<const NodeDef*> vars;
   for (const NodeDef* node : fanin) {
-    if (node->op() == "Variable" || node->op() == "VariableV2") {
+    if (IsVariable(*node)) {
       vars.push_back(node);
     }
   }
@@ -46,6 +67,17 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes) {
+  bool ill_formed = false;
+  std::vector<const NodeDef*> result =
+      ComputeTransitiveFanin(graph, terminal_nodes, &ill_formed);
+  CHECK(!ill_formed);
+  return result;
+}
+
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed) {
+  *ill_formed = false;
   std::unordered_map<string, const NodeDef*> name_to_node;
   for (const auto& node : graph.node()) {
     name_to_node[node.name()] = &node;
@@ -54,7 +86,10 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
   std::vector<const NodeDef*> queue;
   for (const string& root : terminal_nodes) {
     const NodeDef* node = name_to_node[NodeName(root)];
-    CHECK(node);
+    if (!node) {
+      *ill_formed = true;
+      return {};
+    }
     queue.push_back(node);
   }
 
@@ -71,7 +106,10 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
     result.push_back(node);
     for (const string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
-      CHECK(in);
+      if (!in) {
+        *ill_formed = true;
+        return {};
+      }
       queue.push_back(in);
     }
   }

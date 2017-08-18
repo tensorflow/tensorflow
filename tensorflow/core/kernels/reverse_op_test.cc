@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -120,7 +119,7 @@ static SessionOptions GetOptions(int intra_threads) {
 
 // Creates a Graph which "reduce"s a 3D float tensor of "num" elements
 // into a scalar.
-static Graph* Reverse(TensorShape shape, int reverse_axis) {
+static Graph* Reverse(const TensorShape& shape, int reverse_axis) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, shape);
   data.flat<float>().setRandom();

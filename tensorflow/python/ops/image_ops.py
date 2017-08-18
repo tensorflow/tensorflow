@@ -18,6 +18,7 @@
 
 See the @{$python/image} guide.
 
+@@decode_bmp
 @@decode_gif
 @@decode_jpeg
 @@encode_jpeg

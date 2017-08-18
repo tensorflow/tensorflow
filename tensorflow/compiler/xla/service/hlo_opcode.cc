@@ -19,11 +19,22 @@ limitations under the License.
 namespace xla {
 
 string HloOpcodeString(HloOpcode opcode) {
+  // Note: Do not use ':' in opcode strings. It is used as a special character
+  // in these places:
+  // - In extended opcode strings (HloInstruction::ExtendedOpcodeString()), to
+  //   separate the opcode from the fusion kind
+  // - In fully qualified names (HloInstruction::FullyQualifiedName()), to
+  //   separate the qualifiers (name of the computation and potentially the
+  //   fusion instruction) from the name
   switch (opcode) {
     case HloOpcode::kAbs:
       return "abs";
     case HloOpcode::kAdd:
       return "add";
+    case HloOpcode::kBatchNormTraining:
+      return "batch-norm-training";
+    case HloOpcode::kBatchNormGrad:
+      return "batch-norm-grad";
     case HloOpcode::kBitcast:
       return "bitcast";
     case HloOpcode::kBroadcast:
@@ -40,6 +51,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "convert";
     case HloOpcode::kConvolution:
       return "convolution";
+    case HloOpcode::kCos:
+      return "cosine";
     case HloOpcode::kCrossReplicaSum:
       return "cross-replica-sum";
     case HloOpcode::kCustomCall:
@@ -112,6 +125,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "recv";
     case HloOpcode::kReduce:
       return "reduce";
+    case HloOpcode::kReducePrecision:
+      return "reduce-precision";
     case HloOpcode::kReduceWindow:
       return "reduce-window";
     case HloOpcode::kRemainder:
@@ -130,6 +145,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "send";
     case HloOpcode::kSign:
       return "sign";
+    case HloOpcode::kSin:
+      return "sine";
     case HloOpcode::kSlice:
       return "slice";
     case HloOpcode::kSort:
@@ -159,6 +176,19 @@ bool HloOpcodeIsComparison(HloOpcode opcode) {
     case HloOpcode::kLt:
     case HloOpcode::kEq:
     case HloOpcode::kNe:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool HloOpcodeIsVariadic(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kFusion:
+    case HloOpcode::kMap:
+    case HloOpcode::kTuple:
       return true;
     default:
       return false;

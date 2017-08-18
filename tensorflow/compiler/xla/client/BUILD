@@ -46,6 +46,7 @@ cc_library(
 
 cc_test(
     name = "padding_test",
+    size = "small",
     srcs = ["padding_test.cc"],
     deps = [
         ":padding",
@@ -61,6 +62,7 @@ cc_library(
     deps = [
         ":computation",
         ":global_data",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:status_macros",
@@ -69,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
@@ -99,6 +102,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "compile_only_client",
+    srcs = ["compile_only_client.cc"],
+    hdrs = ["compile_only_client.h"],
+    deps = [
+        ":client",
+        ":computation",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:compile_only_service",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@llvm//:support",
+    ],
+)
+
 # This target is used to instantiate the XLA service in-process and create
 # a client for it.
 cc_library(
@@ -106,12 +128,14 @@ cc_library(
     srcs = ["client_library.cc"],
     hdrs = ["client_library.h"],
     deps = [
+        ":compile_only_client",
         ":local_client",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:backend",
+        "//tensorflow/compiler/xla/service:compile_only_service",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:platform_util",

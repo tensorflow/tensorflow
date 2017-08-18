@@ -29,16 +29,14 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.1.0-rc1'
+_VERSION = '1.3.0'
 
 REQUIRED_PACKAGES = [
-    'numpy >= 1.11.0',
+    'numpy >= 1.12.1',
     'six >= 1.10.0',
-    'protobuf >= 3.2.0',
-    'werkzeug >= 0.11.10',
-    'html5lib == 0.9999999',  # identical to 1.0b8
-    'markdown == 2.2.0',
-    'bleach == 1.5.0',
+    'protobuf >= 3.3.0',
+    'tensorflow-tensorboard >= 0.1.0, < 0.2.0',
+    'autograd >= 1.1.11',
 ]
 
 project_name = 'tensorflow'
@@ -56,11 +54,31 @@ else:
   # mock comes with unittest.mock for python3, need to install for python2
   REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
+# remove tensorboard from tf-nightly packages
+if 'tf_nightly' in project_name:
+  for package in REQUIRED_PACKAGES:
+    if 'tensorflow-tensorboard' in package:
+      REQUIRED_PACKAGES.remove(package)
+      break
+
+# weakref.finalize was introduced in Python 3.4
+if sys.version_info < (3, 4):
+  REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
+
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'tensorboard = tensorflow.tensorboard.tensorboard:main',
+    'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
+    # We need to keep the TensorBoard command, even though the console script
+    # is now declared by the tensorboard pip package. If we remove the
+    # TensorBoard command, pip will inappropriately remove it during install,
+    # even though the command is not removed, just moved to a different wheel.
+    'tensorboard = tensorboard.main:main',
 ]
 # pylint: enable=line-too-long
+
+# remove the tensorboard console script if building tf_nightly
+if 'tf_nightly' in project_name:
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:main')
 
 TEST_PACKAGES = [
     'scipy >= 0.15.1',
@@ -112,7 +130,7 @@ class InstallHeaders(Command):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
-    install_dir = re.sub('/google/protobuf/src', '', install_dir)
+    install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
     # Copy eigen code into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
@@ -163,7 +181,7 @@ else:
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
-           list(find_files('*.h', 'google/protobuf/src')) +
+           list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))
 
@@ -189,11 +207,6 @@ setup(
     package_data={
         'tensorflow': [
             EXTENSION_NAME,
-            'tensorboard/dist/bazel-html-imports.html',
-            'tensorboard/dist/index.html',
-            'tensorboard/dist/tf-tensorboard.html',
-            'tensorboard/lib/css/global.css',
-            'tensorboard/TAG',
         ] + matches,
     },
     zip_safe=False,

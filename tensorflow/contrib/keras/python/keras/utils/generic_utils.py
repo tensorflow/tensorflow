@@ -17,8 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import marshal
+import os
 import sys
 import time
 import types as python_types
@@ -26,6 +26,8 @@ import types as python_types
 import numpy as np
 import six
 
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 
@@ -44,8 +46,8 @@ class CustomObjectScope(object):
   Consider a custom object `MyObject`
 
   ```python
-      with CustomObjectScope({"MyObject":MyObject}):
-          layer = Dense(..., W_regularizer="MyObject")
+      with CustomObjectScope({'MyObject':MyObject}):
+          layer = Dense(..., kernel_regularizer='MyObject')
           # save, load, etc. will recognize custom object by name
   ```
   """
@@ -80,8 +82,8 @@ def custom_object_scope(*args):
   Consider a custom object `MyObject`
 
   ```python
-      with custom_object_scope({"MyObject":MyObject}):
-          layer = Dense(..., W_regularizer="MyObject")
+      with custom_object_scope({'MyObject':MyObject}):
+          layer = Dense(..., kernel_regularizer='MyObject')
           # save, load, etc. will recognize custom object by name
   ```
 
@@ -106,7 +108,7 @@ def get_custom_objects():
 
   ```python
       get_custom_objects().clear()
-      get_custom_objects()["MyObject"] = MyObject
+      get_custom_objects()['MyObject'] = MyObject
   ```
 
   Returns:
@@ -116,6 +118,7 @@ def get_custom_objects():
 
 
 def serialize_keras_object(instance):
+  _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
   if hasattr(instance, 'get_config'):
@@ -149,20 +152,24 @@ def deserialize_keras_object(identifier,
       if cls is None:
         raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
     if hasattr(cls, 'from_config'):
-      arg_spec = inspect.getargspec(cls.from_config)
+      arg_spec = tf_inspect.getargspec(cls.from_config)
+      custom_objects = custom_objects or {}
+
       if 'custom_objects' in arg_spec.args:
-        custom_objects = custom_objects or {}
         return cls.from_config(
             config['config'],
             custom_objects=dict(
-                list(_GLOBAL_CUSTOM_OBJECTS.items()) + list(
-                    custom_objects.items())))
-      return cls.from_config(config['config'])
+                list(_GLOBAL_CUSTOM_OBJECTS.items()) +
+                list(custom_objects.items())))
+      with CustomObjectScope(custom_objects):
+        return cls.from_config(config['config'])
     else:
       # Then `cls` may be a function returning a class.
       # in this case by convention `config` holds
       # the kwargs of the function.
-      return cls(**config['config'])
+      custom_objects = custom_objects or {}
+      with CustomObjectScope(custom_objects):
+        return cls(**config['config'])
   elif isinstance(identifier, six.string_types):
     function_name = identifier
     if custom_objects and function_name in custom_objects:
@@ -172,16 +179,12 @@ def deserialize_keras_object(identifier,
     else:
       fn = module_objects.get(function_name)
       if fn is None:
-        raise ValueError('Unknown ' + printable_module_name,
-                         ':' + function_name)
+        raise ValueError('Unknown ' + printable_module_name + ':' +
+                         function_name)
     return fn
   else:
     raise ValueError('Could not interpret serialized ' + printable_module_name +
                      ': ' + identifier)
-
-
-def make_tuple(*args):
-  return args
 
 
 def func_dump(func):
@@ -193,7 +196,10 @@ def func_dump(func):
   Returns:
       A tuple `(code, defaults, closure)`.
   """
-  code = marshal.dumps(func.__code__).decode('raw_unicode_escape')
+  if os.name == 'nt':
+    code = marshal.dumps(func.__code__).replace(b'\\',b'/').decode('raw_unicode_escape')
+  else:
+    code = marshal.dumps(func.__code__).decode('raw_unicode_escape')
   defaults = func.__defaults__
   if func.__closure__:
     closure = tuple(c.cell_contents for c in func.__closure__)
@@ -225,16 +231,36 @@ def func_load(code, defaults=None, closure=None, globs=None):
       code, globs, name=code.co_name, argdefs=defaults, closure=closure)
 
 
+def has_arg(fn, name, accept_all=False):
+  """Checks if a callable accepts a given keyword argument.
+
+  Arguments:
+      fn: Callable to inspect.
+      name: Check if `fn` can be called with `name` as a keyword argument.
+      accept_all: What to return if there is no parameter called `name`
+                  but the function accepts a `**kwargs` argument.
+
+  Returns:
+      bool, whether `fn` accepts a `name` keyword argument.
+  """
+  arg_spec = tf_inspect.getargspec(fn)
+  if accept_all and arg_spec.keywords is not None:
+    return True
+  return name in arg_spec.args
+
+
 class Progbar(object):
   """Displays a progress bar.
 
   Arguments:
-      target: Total number of steps expected.
+      target: Total number of steps expected, None if unknown.
       interval: Minimum visual progress update interval (in seconds).
   """
 
   def __init__(self, target, width=30, verbose=1, interval=0.05):
     self.width = width
+    if target is None:
+      target = -1
     self.target = target
     self.sum_values = {}
     self.unique_values = []
@@ -275,21 +301,22 @@ class Progbar(object):
       sys.stdout.write('\b' * prev_total_width)
       sys.stdout.write('\r')
 
-      numdigits = int(np.floor(np.log10(self.target))) + 1
-      barstr = '%%%dd/%%%dd [' % (numdigits, numdigits)
-      bar = barstr % (current, self.target)
-      prog = float(current) / self.target
-      prog_width = int(self.width * prog)
-      if prog_width > 0:
-        bar += ('=' * (prog_width - 1))
-        if current < self.target:
-          bar += '>'
-        else:
-          bar += '='
-      bar += ('.' * (self.width - prog_width))
-      bar += ']'
-      sys.stdout.write(bar)
-      self.total_width = len(bar)
+      if self.target is not -1:
+        numdigits = int(np.floor(np.log10(self.target))) + 1
+        barstr = '%%%dd/%%%dd [' % (numdigits, numdigits)
+        bar = barstr % (current, self.target)
+        prog = float(current) / self.target
+        prog_width = int(self.width * prog)
+        if prog_width > 0:
+          bar += ('=' * (prog_width - 1))
+          if current < self.target:
+            bar += '>'
+          else:
+            bar += '='
+        bar += ('.' * (self.width - prog_width))
+        bar += ']'
+        sys.stdout.write(bar)
+        self.total_width = len(bar)
 
       if current:
         time_per_unit = (now - self.start) / current
@@ -297,7 +324,7 @@ class Progbar(object):
         time_per_unit = 0
       eta = time_per_unit * (self.target - current)
       info = ''
-      if current < self.target:
+      if current < self.target and self.target is not -1:
         info += ' - ETA: %ds' % eta
       else:
         info += ' - %ds' % (now - self.start)

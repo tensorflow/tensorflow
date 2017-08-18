@@ -97,7 +97,7 @@ def Export(export_dir, use_checkpoint_v2):
     }
 
     # Create two filename assets and corresponding tensors.
-    # TODO(b/26254158) Consider adding validation of file existance as well as
+    # TODO(b/26254158) Consider adding validation of file existence as well as
     # hashes (e.g. sha1) for consistency.
     original_filename1 = tf.constant("hello1.txt")
     tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, original_filename1)
@@ -152,7 +152,7 @@ if __name__ == "__main__":
   )
   parser.add_argument(
       "--use_checkpoint_v2",
-      "bool",
+      type="bool",
       nargs="?",
       const=True,
       default=False,

@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 def compare_single_input_op_to_numpy(keras_op,
@@ -106,9 +105,12 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.image_data_format(), image_data_format)
     keras.backend.set_image_data_format('channels_last')
 
-  def test_get_uid(self):
+  def test_get_reset_uids(self):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
     self.assertEqual(keras.backend.get_uid('foo'), 2)
+
+    keras.backend.reset_uids()
+    self.assertEqual(keras.backend.get_uid('foo'), 1)
 
 
 class BackendVariableTest(test.TestCase):
@@ -207,7 +209,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
                                          keras_kwargs={'axis': -1},
                                          np_kwargs={'axis': -1})
-        if 'keepdims' in inspect.getargspec(keras_op).args:
+        if 'keepdims' in tf_inspect.getargspec(keras_op).args:
           compare_single_input_op_to_numpy(keras_op, np_op,
                                            input_shape=(4, 7, 5),
                                            keras_kwargs={'axis': 1,

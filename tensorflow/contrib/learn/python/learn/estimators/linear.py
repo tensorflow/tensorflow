@@ -27,11 +27,13 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -148,17 +150,24 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       parent_scope,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
-    if joint_weights:
-      layer_fn = layers.joint_weighted_sum_from_feature_columns
+    if all([isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+            for fc in feature_columns]):
+      if joint_weights:
+        layer_fn = layers.joint_weighted_sum_from_feature_columns
+      else:
+        layer_fn = layers.weighted_sum_from_feature_columns
+      logits, _, _ = layer_fn(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          num_outputs=head.logits_dimension,
+          weight_collections=[parent_scope],
+          scope=scope)
     else:
-      layer_fn = layers.weighted_sum_from_feature_columns
-        
-    logits, _, _ = layer_fn(
-            columns_to_tensors=features,
-            feature_columns=feature_columns,
-            num_outputs=head.logits_dimension,
-            weight_collections=[parent_scope],
-            scope=scope)
+      logits = fc_core.linear_model(
+          features=features,
+          feature_columns=feature_columns,
+          units=head.logits_dimension,
+          weight_collections=[parent_scope])
 
     def _train_op_fn(loss):
       global_step = contrib_variables.get_global_step()
@@ -333,9 +342,34 @@ class LinearClassifier(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
+  def input_fn_predict: # returns x, None.
+    ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  # predict_classes returns class indices.
+  estimator.predict_classes(input_fn=input_fn_predict)
+  ```
+
+  If the user specifies `label_keys` in constructor, labels must be strings from
+  the `label_keys` vocabulary. Example:
+
+  ```python
+  label_keys = ['label0', 'label1', 'label2']
+  estimator = LinearClassifier(
+      n_classes=n_classes,
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
+      label_keys=label_keys)
+
+  def input_fn_train: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  def input_fn_predict: # returns x, None
+  # predict_classes returns one of label_keys.
+  estimator.predict_classes(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -363,7 +397,8 @@ class LinearClassifier(estimator.Estimator):
                enable_centered_bias=False,
                _joint_weight=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               label_keys=None):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -398,6 +433,8 @@ class LinearClassifier(estimator.Estimator):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -419,7 +456,8 @@ class LinearClassifier(estimator.Estimator):
     head = head_lib.multi_class_head(
         n_classes,
         weight_column_name=weight_column_name,
-        enable_centered_bias=enable_centered_bias)
+        enable_centered_bias=enable_centered_bias,
+        label_keys=label_keys)
     params = {
         "head": head,
         "feature_columns": feature_columns,

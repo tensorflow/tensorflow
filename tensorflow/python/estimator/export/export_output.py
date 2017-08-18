@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -67,7 +69,7 @@ class ClassificationOutput(ExportOutput):
   """
 
   def __init__(self, scores=None, classes=None):
-    """Constructor for `ClassifyOutput`.
+    """Constructor for `ClassificationOutput`.
 
     Args:
       scores: A float `Tensor` giving scores (sometimes but not always
@@ -171,7 +173,7 @@ class PredictOutput(ExportOutput):
           'Prediction outputs must be given as a dict of string to Tensor; '
           'got {}'.format(outputs))
     for key, value in outputs.items():
-      if not isinstance(key, str):
+      if not isinstance(key, six.string_types):
         raise ValueError(
             'Prediction output key must be a string; got {}.'.format(key))
       if not isinstance(value, ops.Tensor):

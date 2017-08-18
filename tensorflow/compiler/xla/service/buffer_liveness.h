@@ -36,6 +36,8 @@ namespace xla {
 // interference.
 class BufferLiveness {
  public:
+  using Colorer = std::function<Status(const BufferLiveness& buffer_liveness)>;
+
   // Constructs a buffer liveness object for the given module assuming the given
   // HLO instruction ordering.
   static StatusOr<std::unique_ptr<BufferLiveness>> Run(
@@ -65,7 +67,21 @@ class BufferLiveness {
   // Returns the underlying hlo ordering used for this liveness analysis.
   const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
 
+  const HloModule& module() const { return *module_; }
+
   string ToString() const;
+
+  static Colorer DefaultColorer() {
+    return [](const BufferLiveness& buffer_liveness) {
+      for (LogicalBuffer::Id id = 0;
+           id < buffer_liveness.points_to_analysis().num_logical_buffers();
+           id++) {
+        auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
+        buffer->set_color(LogicalBuffer::Color(0));
+      }
+      return Status::OK();
+    };
+  }
 
  private:
   explicit BufferLiveness(const HloModule* module,

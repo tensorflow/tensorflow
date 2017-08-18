@@ -189,7 +189,7 @@ class Conv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       strides = [1] + strides + [1]
@@ -378,7 +378,7 @@ class Conv2DTest(test.TestCase):
         expected=[50, 60])
 
     # TODO this currently fails.
-    #self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
+    # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
     #                   filter_in_sizes=[2, 2, 1, 1],
     #                   strides=[4, 4], padding="SAME",
     #                   expected=[72, 112, 392, 432])
@@ -424,7 +424,7 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.test_session(use_gpu=use_gpu):
         if data_format == "NCHW":
           new_input_sizes = test_util.NHWCToNCHW(input_sizes)
         else:
@@ -580,7 +580,7 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.test_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
@@ -1079,10 +1079,6 @@ class Conv2DTest(test.TestCase):
                 padding="VALID"))
 
 
-# This is only a very simple test. More comprehensive tests live in
-# //learning/dist_belief/experimental/brain_compatibility/conv_nn_test.py
-# where we compare the numeric results of the depthwise conv op with the
-# depthwise weighted sum transformer in dist_belief.
 class DepthwiseConv2DTest(test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
@@ -1317,19 +1313,6 @@ class SeparableConv2DTest(test.TestCase):
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
-  def testSeparableConv2DIllegalCases(self):
-    # Output depth less then input depth.
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Refusing to perform an overparameterized separable convolution"):
-      self._VerifyValues(
-          tensor_in_sizes=[1, 4, 4, 2],
-          depthwise_filter_in_sizes=[2, 2, 2, 3],
-          pointwise_filter_in_sizes=[1, 1, 6, 5],
-          stride=1,
-          padding="SAME",
-          expected=None)
-
 
 class DeepConv2DTest(test.TestCase):
 
@@ -1411,9 +1394,14 @@ class Conv2DBenchmark(test.Benchmark):
         print("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
 
 
-def GetInceptionFwdTest(input_size, filter_size, stride, padding):
+def GetInceptionFwdTest(input_size, filter_size, stride, padding,
+                        gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionFwd %s", (input_size, filter_size,
+                                                   stride, padding))
+      return
     tf_logging.info("Testing InceptionFwd %s", (input_size, filter_size, stride,
                                                 padding))
     self._CompareFwdValues(input_size, filter_size, [stride, stride], padding)
@@ -1422,9 +1410,14 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding):
 
 
 def GetInceptionBackInputTest(input_size, filter_size, output_size, stride,
-                              padding):
+                              padding,
+                              gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionBackInput %s",
+                      (input_size, filter_size, output_size, stride, padding))
+      return
     tf_logging.info("Testing InceptionBackInput %s",
                     (input_size, filter_size, output_size, stride, padding))
     self._CompareBackpropInput(input_size, filter_size, output_size,
@@ -1434,9 +1427,13 @@ def GetInceptionBackInputTest(input_size, filter_size, output_size, stride,
 
 
 def GetInceptionBackFilterTest(input_size, filter_size, output_size, strides,
-                               padding):
+                               padding, gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionBackFilter %s",
+                      (input_size, filter_size, output_size, strides, padding))
+      return
     tf_logging.info("Testing InceptionBackFilter %s",
                     (input_size, filter_size, output_size, strides, padding))
     self._CompareBackFilter(input_size, filter_size, output_size, strides,
@@ -1457,4 +1454,21 @@ if __name__ == "__main__":
             GetInceptionBackFilterTest(input_size_, filter_size_, output_size_,
                                        [stride_, stride_], padding_))
 
+  # TODO(b/35359731)
+  # Fwd, BckInput, and BackFilter to test that for certain input parameter
+  # set, winograd nonfused algorithm will be excluded from conv autotune. If
+  # in such case, winograd nonfused algorithm is added as one option of the
+  # conv autotune, and cuDNN version is smaller than 7, the following tests
+  # will fail.
+  ishape = [1, 400, 400, 1]
+  fshape = [1, 1, 1, 256]
+  oshape = [1, 400, 400, 256]
+  setattr(Conv2DTest, "testInceptionFwd_No_Winograd_Nonfused",
+          GetInceptionFwdTest(ishape, fshape, 1, "SAME", gpu_only=True))
+  setattr(Conv2DTest, "testInceptionBackInput_No_Winograd_Nonfused",
+          GetInceptionBackInputTest(ishape, fshape, oshape, 1, "SAME",
+                                    gpu_only=True))
+  setattr(Conv2DTest, "testInceptionBackFilter_No_Winograd_Nonfused",
+          GetInceptionBackFilterTest(ishape, fshape, oshape, [1, 1], "SAME",
+                                     gpu_only=True))
   test.main()

@@ -63,29 +63,9 @@ class XlaDeviceDummyOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
                           PlaceholderOp);                                      \
                                                                                \
-  REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE),               \
-                          ControlTriggerOp);                                   \
-  REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE), EnterOp);              \
-  REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE), ExitOp);                \
-  REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE),                \
-                          NextIterationOp);                                    \
-  REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE).HostMemory("pred"),    \
-                          SwitchOp);                                           \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Merge").Device(DEVICE).HostMemory("value_index"), MergeOp);        \
-  REGISTER_KERNEL_BUILDER(Name("LoopCond")                                     \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("input")                             \
-                              .HostMemory("output"),                           \
-                          IdentityOp);                                         \
-                                                                               \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
       ResourceHandleOp<Var>);
-
-// TODO(b/32507444): the registrations for the control flow operators are
-// temporary and exist primarily to work around a bug in the graph partitioning
-// code.
 
 }  // namespace tensorflow
 

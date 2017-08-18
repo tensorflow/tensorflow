@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 #include <atomic>
+#include <utility>
 
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/fft.h"
@@ -204,7 +205,7 @@ StreamExecutor::~StreamExecutor() {
 port::Status StreamExecutor::Init(int device_ordinal,
                                   DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
-  return implementation_->Init(device_ordinal, device_options);
+  return implementation_->Init(device_ordinal, std::move(device_options));
 }
 
 port::Status StreamExecutor::Init() {
@@ -284,30 +285,36 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveAlgorithms(out_algorithms);
+  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused,
+                                            out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardDataAlgorithms(out_algorithms);
+  return dnn_support->GetConvolveBackwardDataAlgorithms(with_winograd_nonfused,
+                                                        out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
+  return dnn_support->GetConvolveBackwardFilterAlgorithms(
+      with_winograd_nonfused, out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(
@@ -619,7 +626,7 @@ bool StreamExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
 
 bool StreamExecutor::HostCallback(Stream *stream,
                                   std::function<void()> callback) {
-  return implementation_->HostCallback(stream, callback);
+  return implementation_->HostCallback(stream, std::move(callback));
 }
 
 port::Status StreamExecutor::AllocateEvent(Event *event) {
@@ -689,7 +696,7 @@ bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
 }
 
 void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
-  background_threads_->Schedule(task);
+  background_threads_->Schedule(std::move(task));
 }
 
 void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {

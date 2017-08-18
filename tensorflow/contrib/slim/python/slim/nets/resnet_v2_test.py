@@ -223,28 +223,29 @@ class ResnetUtilsTest(test.TestCase):
     # Test both odd and even input dimensions.
     height = 30
     width = 31
-    with arg_scope(resnet_utils.resnet_arg_scope(is_training=False)):
-      for output_stride in [1, 2, 4, 8, None]:
-        with ops.Graph().as_default():
-          with self.test_session() as sess:
-            random_seed.set_random_seed(0)
-            inputs = create_test_input(1, height, width, 3)
-            # Dense feature extraction followed by subsampling.
-            output = resnet_utils.stack_blocks_dense(inputs, blocks,
-                                                     output_stride)
-            if output_stride is None:
-              factor = 1
-            else:
-              factor = nominal_stride // output_stride
+    with arg_scope(resnet_utils.resnet_arg_scope()):
+      with arg_scope([layers.batch_norm], is_training=False):
+        for output_stride in [1, 2, 4, 8, None]:
+          with ops.Graph().as_default():
+            with self.test_session() as sess:
+              random_seed.set_random_seed(0)
+              inputs = create_test_input(1, height, width, 3)
+              # Dense feature extraction followed by subsampling.
+              output = resnet_utils.stack_blocks_dense(inputs, blocks,
+                                                       output_stride)
+              if output_stride is None:
+                factor = 1
+              else:
+                factor = nominal_stride // output_stride
 
-            output = resnet_utils.subsample(output, factor)
-            # Make the two networks use the same weights.
-            variable_scope.get_variable_scope().reuse_variables()
-            # Feature extraction at the nominal network rate.
-            expected = self._stack_blocks_nondense(inputs, blocks)
-            sess.run(variables.global_variables_initializer())
-            output, expected = sess.run([output, expected])
-            self.assertAllClose(output, expected, atol=1e-4, rtol=1e-4)
+              output = resnet_utils.subsample(output, factor)
+              # Make the two networks use the same weights.
+              variable_scope.get_variable_scope().reuse_variables()
+              # Feature extraction at the nominal network rate.
+              expected = self._stack_blocks_nondense(inputs, blocks)
+              sess.run(variables.global_variables_initializer())
+              output, expected = sess.run([output, expected])
+              self.assertAllClose(output, expected, atol=1e-4, rtol=1e-4)
 
 
 class ResnetCompleteNetworkTest(test.TestCase):
@@ -253,6 +254,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
   def _resnet_small(self,
                     inputs,
                     num_classes=None,
+                    is_training=None,
                     global_pool=True,
                     output_stride=None,
                     include_root_block=True,
@@ -266,8 +268,9 @@ class ResnetCompleteNetworkTest(test.TestCase):
         block('block3', base_depth=4, num_units=3, stride=2),
         block('block4', base_depth=8, num_units=2, stride=1),
     ]
-    return resnet_v2.resnet_v2(inputs, blocks, num_classes, global_pool,
-                               output_stride, include_root_block, reuse, scope)
+    return resnet_v2.resnet_v2(inputs, blocks, num_classes, is_training,
+                               global_pool, output_stride, include_root_block,
+                               reuse, scope)
 
   def testClassificationEndPoints(self):
     global_pool = True
@@ -275,7 +278,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     inputs = create_test_input(2, 224, 224, 3)
     with arg_scope(resnet_utils.resnet_arg_scope()):
       logits, end_points = self._resnet_small(
-          inputs, num_classes, global_pool, scope='resnet')
+          inputs, num_classes, global_pool=global_pool, scope='resnet')
     self.assertTrue(logits.op.name.startswith('resnet/logits'))
     self.assertListEqual(logits.get_shape().as_list(), [2, 1, 1, num_classes])
     self.assertTrue('predictions' in end_points)
@@ -288,7 +291,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     inputs = create_test_input(2, 224, 224, 3)
     with arg_scope(resnet_utils.resnet_arg_scope()):
       _, end_points = self._resnet_small(
-          inputs, num_classes, global_pool, scope='resnet')
+          inputs, num_classes, global_pool=global_pool, scope='resnet')
       endpoint_to_shape = {
           'resnet/block1': [2, 28, 28, 4],
           'resnet/block2': [2, 14, 14, 8],
@@ -305,7 +308,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     inputs = create_test_input(2, 321, 321, 3)
     with arg_scope(resnet_utils.resnet_arg_scope()):
       _, end_points = self._resnet_small(
-          inputs, num_classes, global_pool, scope='resnet')
+          inputs, num_classes, global_pool=global_pool, scope='resnet')
       endpoint_to_shape = {
           'resnet/block1': [2, 41, 41, 4],
           'resnet/block2': [2, 21, 21, 8],
@@ -324,7 +327,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
       _, end_points = self._resnet_small(
           inputs,
           num_classes,
-          global_pool,
+          global_pool=global_pool,
           include_root_block=False,
           scope='resnet')
       endpoint_to_shape = {
@@ -346,7 +349,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
       _, end_points = self._resnet_small(
           inputs,
           num_classes,
-          global_pool,
+          global_pool=global_pool,
           output_stride=output_stride,
           scope='resnet')
       endpoint_to_shape = {
@@ -363,14 +366,18 @@ class ResnetCompleteNetworkTest(test.TestCase):
     """Verify dense feature extraction with atrous convolution."""
     nominal_stride = 32
     for output_stride in [4, 8, 16, 32, None]:
-      with arg_scope(resnet_utils.resnet_arg_scope(is_training=False)):
+      with arg_scope(resnet_utils.resnet_arg_scope()):
         with ops.Graph().as_default():
           with self.test_session() as sess:
             random_seed.set_random_seed(0)
             inputs = create_test_input(2, 81, 81, 3)
             # Dense feature extraction followed by subsampling.
             output, _ = self._resnet_small(
-                inputs, None, global_pool=False, output_stride=output_stride)
+                inputs,
+                None,
+                is_training=False,
+                global_pool=False,
+                output_stride=output_stride)
             if output_stride is None:
               factor = 1
             else:
@@ -379,7 +386,8 @@ class ResnetCompleteNetworkTest(test.TestCase):
             # Make the two networks use the same weights.
             variable_scope.get_variable_scope().reuse_variables()
             # Feature extraction at the nominal network rate.
-            expected, _ = self._resnet_small(inputs, None, global_pool=False)
+            expected, _ = self._resnet_small(
+                inputs, None, is_training=False, global_pool=False)
             sess.run(variables.global_variables_initializer())
             self.assertAllClose(
                 output.eval(), expected.eval(), atol=1e-4, rtol=1e-4)
@@ -392,7 +400,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     inputs = create_test_input(None, height, width, 3)
     with arg_scope(resnet_utils.resnet_arg_scope()):
       logits, _ = self._resnet_small(
-          inputs, num_classes, global_pool, scope='resnet')
+          inputs, num_classes, global_pool=global_pool, scope='resnet')
     self.assertTrue(logits.op.name.startswith('resnet/logits'))
     self.assertListEqual(logits.get_shape().as_list(),
                          [None, 1, 1, num_classes])
@@ -408,7 +416,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     global_pool = False
     inputs = create_test_input(batch, None, None, 3)
     with arg_scope(resnet_utils.resnet_arg_scope()):
-      output, _ = self._resnet_small(inputs, None, global_pool)
+      output, _ = self._resnet_small(inputs, None, global_pool=global_pool)
     self.assertListEqual(output.get_shape().as_list(), [batch, None, None, 32])
     images = create_test_input(batch, height, width, 3)
     with self.test_session() as sess:
@@ -424,7 +432,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     inputs = create_test_input(batch, None, None, 3)
     with arg_scope(resnet_utils.resnet_arg_scope()):
       output, _ = self._resnet_small(
-          inputs, None, global_pool, output_stride=output_stride)
+          inputs, None, global_pool=global_pool, output_stride=output_stride)
     self.assertListEqual(output.get_shape().as_list(), [batch, None, None, 32])
     images = create_test_input(batch, height, width, 3)
     with self.test_session() as sess:

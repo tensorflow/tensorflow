@@ -27,6 +27,7 @@ from tensorflow.contrib.keras.python.keras.losses import categorical_crossentrop
 from tensorflow.contrib.keras.python.keras.losses import cosine_proximity
 from tensorflow.contrib.keras.python.keras.losses import hinge
 from tensorflow.contrib.keras.python.keras.losses import kullback_leibler_divergence
+from tensorflow.contrib.keras.python.keras.losses import logcosh
 from tensorflow.contrib.keras.python.keras.losses import mean_absolute_error
 from tensorflow.contrib.keras.python.keras.losses import mean_absolute_percentage_error
 from tensorflow.contrib.keras.python.keras.losses import mean_squared_error
@@ -56,6 +57,11 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   return K.mean(K.in_top_k(y_pred, K.argmax(y_true, axis=-1), k), axis=-1)
+
+
+def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
+  return K.mean(K.in_top_k(y_pred,
+                           K.cast(K.max(y_true, axis=-1), 'int32'), k), axis=-1)
 
 
 # Aliases

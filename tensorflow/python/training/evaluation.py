@@ -113,7 +113,7 @@ def _evaluate_once(checkpoint_path,
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
   summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
-  summaries run immedietly after the model checkpoint has been restored.
+  summaries run immediately after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.

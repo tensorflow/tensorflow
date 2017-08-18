@@ -55,7 +55,7 @@ TEST(CoordinatorTest, TestStopAndWaitOnStop) {
 
 class MockQueueRunner : public RunnerInterface {
  public:
-  MockQueueRunner(Coordinator* coord) {
+  explicit MockQueueRunner(Coordinator* coord) {
     coord_ = coord;
     join_counter_ = nullptr;
     thread_pool_.reset(new thread::ThreadPool(Env::Default(), "test-pool", 10));
@@ -79,7 +79,7 @@ class MockQueueRunner : public RunnerInterface {
                                      status, counter, start));
   }
 
-  Status Join() {
+  Status Join() override {
     if (join_counter_ != nullptr) {
       (*join_counter_)++;
     }

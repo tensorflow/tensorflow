@@ -53,7 +53,7 @@ class Experiment(object):
   """
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
-  # waiting as only behaviour.
+  # waiting as only behavior.
   @deprecated_args(
       "2016-10-23",
       "local_eval_frequency is deprecated as local_run will be renamed to "
@@ -76,7 +76,7 @@ class Experiment(object):
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
-               min_eval_frequency=1,
+               min_eval_frequency=None,
                delay_workers_by_global_step=False,
                export_strategies=None,
                train_steps_per_iteration=None):
@@ -116,9 +116,13 @@ class Experiment(object):
       min_eval_frequency: (applies only to train_and_evaluate). the minimum
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
+        If 0, the evaluation will only happen after training.
+        If None, defaults to 1, unless model_dir is on GCS, in which case the
+        default is 1000.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
-      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      export_strategies: Iterable of `ExportStrategy`s, or a single one, or
+        `None`.
       train_steps_per_iteration: (applies only to continuous_train_and_eval).
         Perform this many (integer) number of train steps for each
         training-evaluation iteration. With a small value, the model will be
@@ -133,7 +137,8 @@ class Experiment(object):
       self._core_estimator_used = True
       if eval_metrics is not None:
         raise ValueError(
-            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`. "
+            "Use `eval_metric_ops` in `tf.estimator.EstimatorSpec` instead.")
     else:
       self._core_estimator_used = False
       if not isinstance(estimator, evaluable.Evaluable):
@@ -156,7 +161,13 @@ class Experiment(object):
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
-    self._min_eval_frequency = min_eval_frequency
+    # Using 1 on a non-cached file system requires a lot of overhead to
+    # read the checkpoint state file. This is particular bad on GCS, so
+    # we use a different default. This is a temporary band-aid, to be
+    # fixed holistically later (b/36498507).
+    default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
+    self._min_eval_frequency = min_eval_frequency if (
+        min_eval_frequency is not None) else default_min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
@@ -184,16 +195,19 @@ class Experiment(object):
   def eval_steps(self):
     return self._eval_steps
 
-  def _set_export_strategies(self, value):
-    if value is None:
-      self._export_strategies = []
-    elif isinstance(value, list):
-      self._export_strategies = value[:]
-    elif isinstance(value, export_strategy.ExportStrategy):
-      self._export_strategies = [value]
-    else:
-      raise ValueError("`export_strategies` must be an ExportStrategy, "
-                       "a list of ExportStrategies, or None.")
+  def _set_export_strategies(self, values):  # pylint: disable=missing-docstring
+    export_strategies = []
+    if values:
+      if isinstance(values, export_strategy.ExportStrategy):
+        export_strategies.append(values)
+      else:
+        for value in values:
+          if not isinstance(value, export_strategy.ExportStrategy):
+            raise ValueError("`export_strategies` must be an ExportStrategy,"
+                             " an iterable of ExportStrategy, or `None`,"
+                             " found %s." % value)
+          export_strategies.append(value)
+    self._export_strategies = tuple(export_strategies)
 
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
@@ -232,6 +246,11 @@ class Experiment(object):
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
     config = self._estimator.config
+    if (config.cluster_spec and config.master and
+        config.environment == run_config.Environment.LOCAL):
+      logging.warn("ClusterSpec and master are provided, but environment is "
+                   "set to 'local'. Set environment to 'cloud' if you intend "
+                   "to use the distributed runtime.")
     if (config.environment != run_config.Environment.LOCAL and
         config.environment != run_config.Environment.GOOGLE and
         config.cluster_spec and config.master):
@@ -261,7 +280,7 @@ class Experiment(object):
                             max_steps=self._train_steps,
                             hooks=self._train_monitors + extra_hooks)
 
-  def evaluate(self, delay_secs=None):
+  def evaluate(self, delay_secs=None, name=None):
     """Evaluate on the evaluation data.
 
     Runs evaluation on the evaluation data and returns the result. Runs for
@@ -273,6 +292,8 @@ class Experiment(object):
     Args:
       delay_secs: Start evaluating after this many seconds. If `None`, defaults
         to using `self._eval_delays_secs`.
+      name: Gives the name to the evauation for the case multiple evaluation is
+        run for the same experiment.
 
     Returns:
       The result of the `evaluate` call to the `Estimator`.
@@ -287,7 +308,7 @@ class Experiment(object):
     return self._call_evaluate(input_fn=self._eval_input_fn,
                                steps=self._eval_steps,
                                metrics=self._eval_metrics,
-                               name="one_pass",
+                               name=(name or "one_pass"),
                                hooks=self._eval_hooks)
 
   @deprecated(
@@ -442,8 +463,8 @@ class Experiment(object):
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
 
-    The frequency of evaluation is controlled by the contructor arg
-    `min_eval_frequency`. When this parameter is None or 0, evaluation happens
+    The frequency of evaluation is controlled by the constructor arg
+    `min_eval_frequency`. When this parameter is 0, evaluation happens
     only after training has completed. Note that evaluation cannot happen
     more frequently than checkpoints are taken. If no new snapshots are
     available when evaluation is supposed to occur, then evaluation doesn't
@@ -498,17 +519,24 @@ class Experiment(object):
     (via constructor). The model will be first trained for
     `train_steps_per_iteration`, and then be evaluated in turns.
 
+    This method is intended for single machine usage.
+
     This differs from `train_and_evaluate` as follows:
       1. The procedure will have train and evaluation in turns. The model
-      will be trained for a number of steps (usuallly smaller than `train_steps`
+      will be trained for a number of steps (usually smaller than `train_steps`
       if provided) and then be evaluated.  `train_and_evaluate` will train the
-      model for `train_steps` (no small training iteraions).
+      model for `train_steps` (no small training iterations).
 
       2. Due to the different approach this schedule takes, it leads to two
       differences in resource control. First, the resources (e.g., memory) used
       by training will be released before evaluation (`train_and_evaluate` takes
       double resources). Second, more checkpoints will be saved as a checkpoint
-      is generated at the end of each small trainning iteration.
+      is generated at the end of each training iteration.
+
+      3. As the estimator.train starts from scratch (new graph, new states for
+      input, etc) at each iteration, it is recommended to have the
+      `train_steps_per_iteration` larger. It is also recommended to shuffle your
+      input.
 
     Args:
       continuous_eval_predicate_fn: A predicate function determining whether to
@@ -533,9 +561,10 @@ class Experiment(object):
           "`continuous_eval_predicate_fn` must be a callable, or None.")
 
     eval_result = None
+    export_results = None
 
     # Set the default value for train_steps_per_iteration, which will be
-    # overriden by other settings.
+    # overridden by other settings.
     train_steps_per_iteration = 1000
     if self._train_steps_per_iteration is not None:
       train_steps_per_iteration = self._train_steps_per_iteration
@@ -561,8 +590,9 @@ class Experiment(object):
                                         metrics=self._eval_metrics,
                                         name="one_pass",
                                         hooks=self._eval_hooks)
+      export_results = self._maybe_export(eval_result)
 
-    return eval_result, self._maybe_export(eval_result)
+    return eval_result, export_results
 
   def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
@@ -634,6 +664,10 @@ class Experiment(object):
     if _sentinel is not None:
       raise ValueError("_call_train should be called with keyword args only")
 
+    # Estimator in core cannot work with monitors. We need to convert them
+    # to hooks. For Estimator in contrib, it is converted internally. So, it is
+    # safe to convert for both cases.
+    hooks = monitors.replace_monitors_with_hooks(hooks, self._estimator)
     if self._core_estimator_used:
       return self._estimator.train(input_fn=input_fn,
                                    steps=steps,
@@ -695,3 +729,7 @@ def _new_attr_context(obj, attr):
     yield
   finally:
     setattr(obj, attr, saved)
+
+
+def _is_gcs(model_dir):
+  return model_dir and model_dir.startswith("gs://")

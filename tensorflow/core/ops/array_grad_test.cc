@@ -13,23 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <vector>
+
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
+namespace {
 
 namespace f = test::function;
-typedef FunctionDefHelper FDH;
+using FDH = FunctionDefHelper;
 
-class ArrayGradTest : public ::testing::Test {};
-
-Session* NewSession() {
+std::unique_ptr<Session> NewSession() {
   SessionOptions opts;
   (*opts.config.mutable_device_count())["CPU"] = 1;
-  return NewSession(opts);
+  return std::unique_ptr<Session>(NewSession(opts));
 }
 
 std::vector<Tensor> PackGrad(const Tensor& x0, const Tensor& x1,
@@ -56,11 +57,10 @@ std::vector<Tensor> PackGrad(const Tensor& x0, const Tensor& x1,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, PackGrad) {
+TEST(ArrayGradTest, PackGrad) {
   Tensor x0(DT_FLOAT, {2, 3});
   x0.flat<float>().setZero();
   Tensor x1(DT_FLOAT, {2, 3});
@@ -98,11 +98,10 @@ std::vector<Tensor> UnpackGrad(const Tensor& x, const Tensor& dy0,
                         {"dx:0"}, {}, &out));
   CHECK_EQ(out.size(), 1);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, UnpackGrad) {
+TEST(ArrayGradTest, UnpackGrad) {
   Tensor x(DT_FLOAT, {2, 2, 3});
   x.flat<float>().setZero();
   Tensor dy0(DT_FLOAT, {2, 3});
@@ -136,7 +135,6 @@ std::vector<Tensor> ConcatGrad(int dim, const Tensor& x0, const Tensor& x1,
       {"dx:0", "dx:1", "dx:2"}, {}, &out));
   CHECK_EQ(out.size(), 3);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
@@ -161,11 +159,10 @@ std::vector<Tensor> ConcatGradV2(int dim, const Tensor& x0, const Tensor& x1,
       {"dx:0", "dx:1", "dx:2"}, {}, &out));
   CHECK_EQ(out.size(), 3);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, ConcatGrad) {
+TEST(ArrayGradTest, ConcatGrad) {
   Tensor x0(DT_FLOAT, {2, 3, 5});
   x0.flat<float>().setZero();
   Tensor x1(DT_FLOAT, {2, 1, 5});
@@ -238,11 +235,10 @@ std::vector<Tensor> SplitGrad(int dim, const Tensor& x, const Tensor& dy0,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, SplitGrad) {
+TEST(ArrayGradTest, SplitGrad) {
   Tensor x(DT_FLOAT, {2, 4, 5});
   x.flat<float>().setZero();
   Tensor dy0(DT_FLOAT, {2, 2, 5});
@@ -279,11 +275,10 @@ std::vector<Tensor> ReshapeGrad(const Tensor& x, const Tensor& s,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, ReshapeGrad) {
+TEST(ArrayGradTest, ReshapeGrad) {
   Tensor x(DT_FLOAT, {2, 4, 5});
   x.flat<float>().setZero();
   auto s = test::AsTensor<int32>({8, 5});
@@ -319,11 +314,10 @@ std::vector<Tensor> ExpandDimsGrad(const Tensor& x, const Tensor& s,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, ExpandDimsGrad) {
+TEST(ArrayGradTest, ExpandDimsGrad) {
   Tensor x(DT_FLOAT, {2, 4, 5});
   x.flat<float>().setZero();
   auto s = test::AsTensor<int32>({1});
@@ -356,11 +350,10 @@ std::vector<Tensor> SqueezeGrad(const Tensor& x, const Tensor& dy) {
   TF_CHECK_OK(sess->Run({{"x:0", x}, {"dy:0", dy}}, {"dx:0"}, {}, &out));
   CHECK_EQ(out.size(), 1);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, SqueezeGrad) {
+TEST(ArrayGradTest, SqueezeGrad) {
   Tensor x(DT_FLOAT, {2, 1, 3});
   x.flat<float>().setZero();
   Tensor dy(DT_FLOAT, {2, 3});
@@ -389,11 +382,10 @@ std::vector<Tensor> TransposeGrad(const Tensor& x, const Tensor& p,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, TransposeGrad) {
+TEST(ArrayGradTest, TransposeGrad) {
   Tensor x(DT_FLOAT, {2, 4, 5});
   x.flat<float>().setZero();
   auto p = test::AsTensor<int32>({2, 0, 1});
@@ -428,11 +420,10 @@ std::vector<Tensor> ReverseGrad(const Tensor& x, const Tensor& dims,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, ReverseGrad) {
+TEST(ArrayGradTest, ReverseGrad) {
   Tensor x(DT_FLOAT, {2, 3});
   x.flat<float>().setZero();
   auto dims = test::AsTensor<bool>({false, true});
@@ -465,11 +456,10 @@ std::vector<Tensor> ReverseV2Grad(const Tensor& x, const Tensor& axis,
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, ReverseV2Grad) {
+TEST(ArrayGradTest, ReverseV2Grad) {
   Tensor x(DT_FLOAT, {2, 3});
   x.flat<float>().setZero();
   auto axis = test::AsTensor<int32>({1});
@@ -502,11 +492,10 @@ std::vector<Tensor> SliceGrad(const Tensor& x, const Tensor& b, const Tensor& s,
                         {"dx:0", "dx:1", "dx:2"}, {}, &out));
   CHECK_EQ(out.size(), 3);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, SliceGrad) {
+TEST(ArrayGradTest, SliceGrad) {
   Tensor x(DT_FLOAT, {2, 3, 4});
   x.flat<float>().setZero();
   auto begin = test::AsTensor<int32>({1, 1, 1});
@@ -564,7 +553,6 @@ std::vector<Tensor> StridedSliceGrad(const Tensor& x, const Tensor& begin,
                         {"dx:0", "dx:1", "dx:2", "dx:3"}, {}, &out));
   CHECK_EQ(out.size(), 4);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
@@ -611,11 +599,10 @@ std::vector<Tensor> StridedSliceGradGrad(
                         {"dx:0", "dx:1", "dx:2", "dx:3", "dx:4"}, {}, &out));
   CHECK_EQ(out.size(), 5);
   TF_CHECK_OK(sess->Close());
-  delete sess;
   return out;
 }
 
-TEST_F(ArrayGradTest, StridedSliceGrad) {
+TEST(ArrayGradTest, StridedSliceGrad) {
   Tensor x(DT_FLOAT, {2, 3, 4});
   x.flat<float>().setZero();
   Tensor x_shape = test::AsTensor<int32>({2, 3, 4}, {3});
@@ -730,4 +717,5 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
   }
 }
 
+}  // namespace
 }  // namespace tensorflow

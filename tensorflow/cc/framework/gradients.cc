@@ -65,7 +65,7 @@ class SymbolicGradientBuilder {
   // gradients for the node associated with `src`.
   Status BackpropAlongEdge(const Output& dst_grad, const Output& src);
 
-  // Adds a node to the graph (returned in`grad`) that sums the in-bound
+  // Adds a node to the graph (returned in `grad`) that sums the in-bound
   // gradients to `src` (if there are more than one).
   Status SumGradients(const Output& src, Output* grad);
 
@@ -152,12 +152,12 @@ Status SymbolicGradientBuilder::Initialize() {
   grad_outputs_->resize(inputs_.size());
   // Populate `output_nodes_` from node ids in `outputs_`.
   output_nodes_.reserve(outputs_.size());
-  for (int i = 0; i < outputs_.size(); ++i) {
+  for (size_t i = 0; i < outputs_.size(); ++i) {
     output_nodes_.insert(outputs_[i].node()->id());
   }
   // Populate `input_nodes_` from Outputs in `inputs_`.
   input_nodes_.reserve(inputs_.size());
-  for (int i = 0; i < inputs_.size(); ++i) {
+  for (size_t i = 0; i < inputs_.size(); ++i) {
     input_nodes_.insert({inputs_[i], i});
   }
 
@@ -210,8 +210,8 @@ Status SymbolicGradientBuilder::Initialize() {
 
   {
     // Initialize backprop with `grad_inputs_`.
-    const int num_dy = grad_inputs_.size();
-    for (int i = 0; i < num_dy; ++i) {
+    const size_t num_dy = grad_inputs_.size();
+    for (size_t i = 0; i < num_dy; ++i) {
       TF_RETURN_IF_ERROR(BackpropAlongEdge(grad_inputs_[i], outputs_[i]));
     }
   }
@@ -308,7 +308,7 @@ Status SymbolicGradientBuilder::AddGradients() {
       continue;
     }
 
-    const int num_no_grad = no_grad_dy_indices.size();
+    const size_t num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
       // No grad defined for this op, or all outputs returned 'NoGradient':
       // Backprop 'NoGradient' along the in edges.
@@ -341,7 +341,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // gradient function to the src node/output to which it should be
     // backproped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
-    int dx_index = 0;
+    size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
       if (dx_index == dx.size()) {
@@ -351,6 +351,23 @@ Status SymbolicGradientBuilder::AddGradients() {
       TF_RETURN_IF_ERROR(
           BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
     }
+  }
+
+  // Check if any input nodes still have pending gradients and have not been
+  // processed yet. This happens if not all outputs of a node are in 'inputs_'.
+  std::unordered_map<Node*, int> requested_grads;
+  for (const Output& nout : inputs_) {
+    if (pending_[nout.node()->id()] > 0) {
+      DCHECK_GT(nout.node()->num_outputs(), 1);
+      int idx = input_nodes_[nout];
+      DCHECK(((*grad_outputs_)[idx].node() == nullptr));
+      TF_RETURN_IF_ERROR(SumGradients(nout, &(*grad_outputs_)[idx]));
+      ++requested_grads[nout.node()];
+    }
+  }
+  for (const auto& p : requested_grads) {
+    int num_requested_inputs = p.first->num_outputs() - pending_[p.first->id()];
+    CHECK_EQ(num_requested_inputs, p.second);
   }
   return Status::OK();
 }
@@ -365,6 +382,19 @@ Status AddSymbolicGradients(const Scope& scope,
   SymbolicGradientBuilder builder(scope, ops::GradOpRegistry::Global(), outputs,
                                   inputs, grad_inputs, grad_outputs);
   return builder.AddGradients();
+}
+
+Status AddSymbolicGradients(const Scope& scope,
+                            const std::vector<Output>& outputs,
+                            const std::vector<Output>& inputs,
+                            std::vector<Output>* grad_outputs) {
+  std::vector<Output> grad_inputs;
+  grad_inputs.reserve(outputs.size());
+  for (const Output& output : outputs) {
+    grad_inputs.emplace_back(ops::OnesLike(scope, output));
+  }
+  return AddSymbolicGradients(scope, outputs, inputs, grad_inputs,
+                              grad_outputs);
 }
 
 Output NoGradient() { return SymbolicGradientBuilder::NoGradient(); }

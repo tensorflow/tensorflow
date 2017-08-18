@@ -102,7 +102,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     TF_RETURN_IF_ERROR(zlib_input_stream_->ReadNBytes(expected, storage));
 
     if (storage->size() != expected) {
-      if (storage->size() == 0) {
+      if (storage->empty()) {
         return errors::OutOfRange("eof");
       } else {
         return errors::DataLoss("truncated record at ", offset);
@@ -121,7 +121,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     StringPiece data;
     TF_RETURN_IF_ERROR(src_->Read(offset, expected, &data, &(*storage)[0]));
     if (data.size() != expected) {
-      if (data.size() == 0) {
+      if (data.empty()) {
         return errors::OutOfRange("eof");
       } else {
         return errors::DataLoss("truncated record at ", offset);
