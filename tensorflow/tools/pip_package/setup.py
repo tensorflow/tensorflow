@@ -54,6 +54,13 @@ else:
   # mock comes with unittest.mock for python3, need to install for python2
   REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
+# remove tensorboard from tf-nightly packages
+if 'tf_nightly' in project_name:
+  for package in REQUIRED_PACKAGES:
+    if 'tensorflow-tensorboard' in package:
+      REQUIRED_PACKAGES.remove(package)
+      break
+
 # weakref.finalize was introduced in Python 3.4
 if sys.version_info < (3, 4):
   REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
@@ -68,6 +75,10 @@ CONSOLE_SCRIPTS = [
     'tensorboard = tensorboard.main:main',
 ]
 # pylint: enable=line-too-long
+
+# remove the tensorboard console script if building tf_nightly
+if 'tf_nightly' in project_name:
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:main')
 
 TEST_PACKAGES = [
     'scipy >= 0.15.1',
