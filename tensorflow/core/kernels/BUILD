@@ -145,9 +145,7 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    deps = [
-        "//third_party/eigen3",
-    ],
+    deps = ["//third_party/eigen3"],
 )
 
 cc_library(
@@ -229,8 +227,11 @@ cc_library(
     hdrs = ["ops_testutil.h"],
     deps = [
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
     ],
@@ -251,9 +252,7 @@ cc_library(
 cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
-    deps = [
-        "//third_party/eigen3",
-    ],
+    deps = ["//third_party/eigen3"],
 )
 
 cc_library(
@@ -402,6 +401,7 @@ cc_library(
         "split_lib.h",
     ],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
@@ -411,6 +411,7 @@ cc_library(
     hdrs = ["typed_queue.h"],
     deps = [
         ":queue_base",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -461,6 +462,8 @@ cc_library(
     ],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
     ],
 )
@@ -488,6 +491,8 @@ cc_library(
     hdrs = ["image_resizer_state.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
@@ -799,6 +804,7 @@ tf_kernel_library(
         "tile_functor_gpu.cu.cc",
     ],
     prefix = "tile_ops",
+    textual_hdrs = ["tile_ops_gpu_impl.h"],
     deps = ARRAY_DEPS,
 )
 
@@ -1680,6 +1686,7 @@ cc_library(
         "conditional_accumulator_base_op.h",
     ],
     deps = [
+        ":conditional_accumulator_base",
         ":fill_functor",
         ":typed_conditional_accumulator_base",
     ],
@@ -3128,6 +3135,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -3547,7 +3555,10 @@ cc_library(
         "smooth-hinge-loss.h",
         "squared-loss.h",
     ],
-    deps = ["//tensorflow/core:framework_headers_lib"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_test(
