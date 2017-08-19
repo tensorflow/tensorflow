@@ -1042,78 +1042,212 @@ Status MasterSession::Create(GraphDef* graph_def,
   return Status::OK();
 }
 
+struct MasterSession::Worker {
+  Worker(MasterSession* sess, const string& name,
+         const DeviceNameUtils::ParsedName& parsed_name,
+         const WorkerCacheFactoryOptions& opts)
+      : sess(sess),
+        name(&name),
+        worker(GetOrCreateWorker()) {
+    BuildRequest(parsed_name, opts);
+  }
+
+  void CreateWorkerSession(BlockingCounter& done, Status& status) {
+    auto cb = [&status, &done](const Status& s) {
+      status.Update(s);
+      done.DecrementCount();
+    };
+    worker->CreateWorkerSessionAsync(&request, &response, cb);
+  }
+
+  void Release() {
+    if (worker != nullptr) {
+      sess->worker_cache_->ReleaseWorker(*name, worker);
+    }
+  }
+
+ private:
+  WorkerInterface* GetOrCreateWorker() {
+    return sess->worker_cache_->CreateWorker(*name);
+  }
+
+  void BuildRequest(const DeviceNameUtils::ParsedName& parsed_name,
+                    const WorkerCacheFactoryOptions& opts) {
+    request.set_session_handle(sess->handle_);
+    BuildServerDef(parsed_name, opts, request.mutable_server_def());
+  }
+
+  void BuildServerDef(const DeviceNameUtils::ParsedName& parsed_name,
+                      const WorkerCacheFactoryOptions& opts,
+                      ServerDef* server_def) {
+    *server_def->mutable_cluster() = *opts.cluster_def;
+    server_def->set_protocol(*opts.protocol);
+    server_def->set_job_name(parsed_name.job);
+    server_def->set_task_index(parsed_name.task);
+  }
+
+ private:
+  MasterSession* sess;
+
+  // The worker name. (Not owned.)
+  const string* name;
+
+  // The worker referenced by name. (Not owned.)
+  WorkerInterface* worker = nullptr;
+
+  // Request and responses used for a given worker.
+  CreateWorkerSessionRequest request;
+  CreateWorkerSessionResponse response;
+};
+
+struct MasterSession::WorkerGroup {
+  WorkerGroup(MasterSession* sess)
+      : sess(sess) {
+  }
+
+  Status CreateWorkerSessions(const WorkerCacheFactoryOptions& opts) {
+    TF_RETURN_IF_ERROR(CreateWorkers(opts));
+    TF_RETURN_IF_ERROR(BroadcastWorkers());
+    return Status::OK();
+  }
+
+  void ReleaseWorkers() {
+    for (auto& worker : workers) {
+      worker.Release();
+    }
+  }
+
+ private:
+  Status CreateWorkers(const WorkerCacheFactoryOptions& opts) {
+    sess->worker_cache_->ListWorkers(&worker_names);
+    for (size_t i = 0; i < worker_names.size(); ++i) {
+      TF_RETURN_IF_ERROR(AppendWorker(worker_names[i], opts));
+    }
+    return Status::OK();
+  }
+
+  Status BroadcastWorkers() {
+    Status status = Status::OK();
+    BlockingCounter done(workers.size());
+    for (size_t i = 0; i < workers.size(); ++i) {
+      workers[i].CreateWorkerSession(done, status);
+    }
+    done.Wait();
+    return status;
+  }
+
+  Status AppendWorker(const string& worker_name,
+                    const WorkerCacheFactoryOptions& opts) {
+    DeviceNameUtils::ParsedName parsed_name;
+    TF_RETURN_IF_ERROR(ParseWorkerName(worker_name, &parsed_name));
+    workers.emplace_back(Worker(sess, worker_name, parsed_name, opts));
+    return Status::OK();
+  }
+
+  Status ParseWorkerName(const string& worker_name,
+                         DeviceNameUtils::ParsedName* parsed_name) {
+    if (!DeviceNameUtils::ParseFullName(worker_name, parsed_name)) {
+      return errors::Internal("Could not parse name ", worker_name);
+    }
+    if (!parsed_name->has_job || !parsed_name->has_task) {
+      return errors::Internal("Incomplete worker name ", worker_name);
+    }
+    return Status::OK();
+  }
+
+ private:
+  MasterSession* sess;
+  std::vector<string> worker_names;
+  std::vector<Worker> workers;
+};
+
 Status MasterSession::CreateWorkerSessions(
     const WorkerCacheFactoryOptions& options) {
   CHECK(worker_cache_) << "CreateWorkerSessions should be called only with "
                        << "dynamic cluster membership.";
-  std::vector<string> worker_names;
-  worker_cache_->ListWorkers(&worker_names);
 
-  struct WorkerGroup {
-    // The worker name. (Not owned.)
-    const string* name;
-
-    // The worker referenced by name. (Not owned.)
-    WorkerInterface* worker = nullptr;
-
-    // Request and responses used for a given worker.
-    CreateWorkerSessionRequest request;
-    CreateWorkerSessionResponse response;
-    Status status = Status::OK();
-  };
-  BlockingCounter done(worker_names.size());
-  std::vector<WorkerGroup> workers(worker_names.size());
+  WorkerGroup worker_group(this);
 
   // Release the workers.
-  auto cleanup = gtl::MakeCleanup([this, &workers] {
-    for (auto&& worker_group : workers) {
-      if (worker_group.worker != nullptr) {
-        worker_cache_->ReleaseWorker(*worker_group.name, worker_group.worker);
-      }
-    }
+  auto cleanup = gtl::MakeCleanup([&worker_group] {
+    worker_group.ReleaseWorkers();
   });
 
-  Status status = Status::OK();
-  // Create all the workers & kick off the computations.
-  for (size_t i = 0; i < worker_names.size(); ++i) {
-    workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
-    workers[i].request.set_session_handle(handle_);
-    *workers[i].request.mutable_server_def()->mutable_cluster() =
-        *options.cluster_def;
-    workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
-
-    DeviceNameUtils::ParsedName name;
-    if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
-      status = errors::Internal("Could not parse name ", worker_names[i]);
-      LOG(WARNING) << status;
-      return status;
-    }
-    if (!name.has_job || !name.has_task) {
-      status = errors::Internal("Incomplete worker name ", worker_names[i]);
-      LOG(WARNING) << status;
-      return status;
-    }
-
-    workers[i].request.mutable_server_def()->set_job_name(name.job);
-    workers[i].request.mutable_server_def()->set_task_index(name.task);
-  }
-
-  for (size_t i = 0; i < worker_names.size(); ++i) {
-    auto cb = [i, &workers, &done](const Status& s) {
-      workers[i].status = s;
-      done.DecrementCount();
-    };
-    workers[i].worker->CreateWorkerSessionAsync(&workers[i].request,
-                                                &workers[i].response, cb);
-  }
-
-  done.Wait();
-  for (size_t i = 0; i < workers.size(); ++i) {
-    status.Update(workers[i].status);
-  }
-  return status;
+  return worker_group.CreateWorkerSessions(options);
 }
+
+//Status MasterSession::CreateWorkerSessions(
+//    const WorkerCacheFactoryOptions& options) {
+//  CHECK(worker_cache_) << "CreateWorkerSessions should be called only with "
+//                       << "dynamic cluster membership.";
+//  std::vector<string> worker_names;
+//  worker_cache_->ListWorkers(&worker_names);
+//
+//  struct WorkerGroup {
+//    // The worker name. (Not owned.)
+//    const string* name;
+//
+//    // The worker referenced by name. (Not owned.)
+//    WorkerInterface* worker = nullptr;
+//
+//    // Request and responses used for a given worker.
+//    CreateWorkerSessionRequest request;
+//    CreateWorkerSessionResponse response;
+//    Status status = Status::OK();
+//  };
+//  BlockingCounter done(worker_names.size());
+//  std::vector<WorkerGroup> workers(worker_names.size());
+//
+//  // Release the workers.
+//  auto cleanup = gtl::MakeCleanup([this, &workers] {
+//    for (auto&& worker_group : workers) {
+//      if (worker_group.worker != nullptr) {
+//        worker_cache_->ReleaseWorker(*worker_group.name, worker_group.worker);
+//      }
+//    }
+//  });
+//
+//  Status status = Status::OK();
+//  // Create all the workers & kick off the computations.
+//  for (size_t i = 0; i < worker_names.size(); ++i) {
+//    workers[i].name = &worker_names[i];
+//    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+//    workers[i].request.set_session_handle(handle_);
+//    *workers[i].request.mutable_server_def()->mutable_cluster() =
+//        *options.cluster_def;
+//    workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+//
+//    DeviceNameUtils::ParsedName name;
+//    if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
+//      status = errors::Internal("Could not parse name ", worker_names[i]);
+//      LOG(WARNING) << status;
+//      return status;
+//    }
+//    if (!name.has_job || !name.has_task) {
+//      status = errors::Internal("Incomplete worker name ", worker_names[i]);
+//      LOG(WARNING) << status;
+//      return status;
+//    }
+//
+//    workers[i].request.mutable_server_def()->set_job_name(name.job);
+//    workers[i].request.mutable_server_def()->set_task_index(name.task);
+//  }
+//
+//  for (size_t i = 0; i < worker_names.size(); ++i) {
+//    auto cb = [i, &workers, &done](const Status& s) {
+//      workers[i].status = s;
+//      done.DecrementCount();
+//    };
+//    workers[i].worker->CreateWorkerSessionAsync(&workers[i].request,
+//                                                &workers[i].response, cb);
+//  }
+//
+//  done.Wait();
+//  for (size_t i = 0; i < workers.size(); ++i) {
+//    status.Update(workers[i].status);
+//  }
+//  return status;
+//}
 
 Status MasterSession::ListDevices(ListDevicesResponse* resp) const {
   if (worker_cache_) {
