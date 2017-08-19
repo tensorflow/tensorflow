@@ -13,30 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/Eigen/Core"
 
-#ifdef __AVX__
-xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_ExpV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) {
+#ifdef __ARM_NEON__
+
+xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_ExpV4F32NEON(
+    xla::cpu::runtime::V4F32NEON x) {
   return Eigen::internal::pexp(x);
 }
 
-xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_LogV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) {
-  return Eigen::internal::plog(x);
+xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_LogV4F32NEON(
+    xla::cpu::runtime::V4F32NEON x) {
+  Eigen::internal::Packet4f p = x;
+  return Eigen::internal::plog(p);
 }
-#endif  // __AVX__
+
+#endif  // __ARM_NEON__
 
 namespace xla {
 namespace cpu {
 namespace runtime {
 
-const char *const kExpV8F32AVXSymbolName = "__xla_cpu_runtime_ExpV8F32AVX";
-const char *const kLogV8F32AVXSymbolName = "__xla_cpu_runtime_LogV8F32AVX";
+const char *const kExpV4F32NEONSymbolName = "__xla_cpu_runtime_ExpV4F32NEON";
+const char *const kLogV4F32NEONSymbolName = "__xla_cpu_runtime_LogV4F32NEON";
 
 }  // namespace runtime
 }  // namespace cpu
