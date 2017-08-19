@@ -105,6 +105,19 @@ py_test(
 )
 
 cuda_py_test(
+    name = "backprop_test",
+    srcs = ["backprop_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+cuda_py_test(
     name = "core_test",
     srcs = ["core_test.py"],
     additional_deps = [
@@ -284,7 +297,7 @@ py_library(
         ":tape",
         ":tensor",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:common_shapes",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
