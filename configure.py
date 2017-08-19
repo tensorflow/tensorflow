@@ -681,7 +681,7 @@ def set_tf_cunn_version(environ_cp):
 
     # Try another alternative for Linux
     if is_linux():
-      ldconfig_bin = which('ldconfig') or 'ldconfig'
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
                                            cudnn_path_from_ldconfig).group(1)
