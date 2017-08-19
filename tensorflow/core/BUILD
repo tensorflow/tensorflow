@@ -67,6 +67,7 @@ load(
     "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
+    "if_mobile",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -291,6 +292,7 @@ cc_library(
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
+        "platform/abi.h",
         "platform/cpu_feature_guard.h",
         "platform/cpu_info.h",
         "platform/dynamic_annotations.h",
@@ -513,8 +515,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps =
         [
-            "//tensorflow/core/platform/default/build_config:minimal",
+            "@nsync//:nsync_cpp",
+        ] + [
             "//third_party/eigen3",
+            "//tensorflow/core/platform/default/build_config:minimal",
         ],
 )
 
@@ -953,6 +957,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -975,6 +980,7 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1057,6 +1063,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1196,6 +1203,27 @@ tf_pyclif_proto_library(
     name = "framework/tensor_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/tensor.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/node_def_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/node_def.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/types_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/types.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -1598,10 +1626,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    includes = ["../../external/nsync/public"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
         ":reader_base",
+        "@nsync//:nsync_headers",
     ],
 )
 
@@ -2135,11 +2165,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "platform_abi_test",
+    size = "small",
+    srcs = ["platform/abi_test.cc"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "platform_setround_test",
     size = "small",
     srcs = ["platform/setround_test.cc"],
     tags = [
         "noasan",
+        "noclang",
         "nomsan",
         "notsan",
     ],
@@ -2499,6 +2546,35 @@ tf_cc_test_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:cast_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "variant_op_copy_test",
+    size = "small",
+    srcs = ["framework/variant_op_copy_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:array",
         "//third_party/eigen3",
     ],
 )
@@ -3053,6 +3129,9 @@ filegroup(
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
+        # JPEG data for jpeg benchmark.
+        "lib/jpeg/testdata/small.jpg",
+        "lib/jpeg/testdata/medium.jpg",
         # Corrupted JPEG files for tests
         "lib/jpeg/testdata/bad_huffman.jpg",
         "lib/jpeg/testdata/corrupt.jpg",

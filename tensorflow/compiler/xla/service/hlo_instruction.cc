@@ -1297,25 +1297,10 @@ bool HloInstruction::HasConstantOperand() const {
   return false;
 }
 
-bool HloInstruction::Identical(
+bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    std::function<bool(const HloInstruction*, const HloInstruction*)>
-        eq_operands,
     std::function<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // An instruction is always identical to itself.
-  if (this == &other) {
-    return true;
-  }
-
-  // Identical instruction must have the same opcode and identical operands.  In
-  // general, there is no need to check shape because shape is inferred from the
-  // shape of the operands.
-  if (opcode() != other.opcode() ||
-      !ContainersEqual(operands(), other.operands(), std::move(eq_operands))) {
-    return false;
-  }
-
   // Perform opcode specific checks.
   switch (opcode()) {
     // The result of these instructions only depend upon their opcode and
@@ -2335,6 +2320,32 @@ std::vector<int64> HloInstruction::OperandIndices(
   return result;
 }
 
+bool HloInstruction::IsElementwiseBinary() const {
+  switch (opcode_) {
+    // Binary elementwise operations. If you update this, please update
+    // IsElementwise() accordingly.
+    case HloOpcode::kAdd:
+    case HloOpcode::kDivide:
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kLogicalOr:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool HloInstruction::IsElementwise() const {
   switch (opcode_) {
     // Nullary elementwise operations.
@@ -2359,7 +2370,8 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kTanh:
       return true;
 
-    // Binary elementwise operations.
+    // Binary elementwise operations, the same as in IsElementwiseBinary().
+    // If you update this, please update IsElementwiseBinary() accordingly.
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
@@ -2536,6 +2548,18 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(i, *fused_expression_root());
+    case HloOpcode::kDot:
+      // Dot operations with inputs [A,B] * [B,1] do not re-use
+      // elements on their left operand.
+      // Dot operations with inputs [1,A] * [A,B] do not re-use
+      // elements on their right operand.
+      if (shape().dimensions_size() == 2) {
+        if ((i == 0 && shape().dimensions(1) == 1) ||
+            (i == 1 && shape().dimensions(0) == 1)) {
+          return UseKind::kUse;
+        }
+      }
+      return UseKind::kReuse;
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }

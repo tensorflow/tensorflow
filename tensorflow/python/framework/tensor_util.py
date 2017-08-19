@@ -23,6 +23,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -407,7 +408,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
 
   if dtype is not None and (not hasattr(dtype, "base_dtype") or
                             dtype.base_dtype != numpy_dtype.base_dtype):
-    raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
+    raise TypeError("Incompatible types: %s vs. %s. Value is %s"
+                    % (dtype, nparray.dtype, values))
 
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
@@ -711,6 +713,8 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
+  if isinstance(tensor, ops.EagerTensor):
+    return tensor.numpy()
   ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we

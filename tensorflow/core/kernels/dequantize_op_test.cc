@@ -77,8 +77,8 @@ class DequantizeOpTest : public OpsTestBase {
     }
     TensorShape shape({static_cast<int64>(input.size())});
     AddInputFromArray<T>(shape, input);
-    AddInputFromArray<float>(TensorShape({1}), {min_range});
-    AddInputFromArray<float>(TensorShape({1}), {max_range});
+    AddInputFromArray<float>(TensorShape({}), {min_range});
+    AddInputFromArray<float>(TensorShape({}), {max_range});
     TF_ASSERT_OK(RunOpKernel());
     Tensor expected(allocator(), DT_FLOAT, shape);
     ComputeDequantizeMinCombinedUsingEigen<T>(GetInput(0), min_range, max_range,
@@ -107,9 +107,8 @@ static void BM_DequantizeMinCombinedCpu(int iters) {
   std::vector<T> inputs;
   inputs.reserve(num_values);
   for (int i = 0; i < num_values; ++i) inputs.push_back(i);
-  ops::Dequantize(root, test::AsTensor<T>(inputs),
-                  test::AsTensor<float>({-1.5f}),
-                  test::AsTensor<float>({20.5f}),
+  ops::Dequantize(root, test::AsTensor<T>(inputs), test::AsScalar<float>(-1.5f),
+                  test::AsScalar<float>(20.5f),
                   ops::Dequantize::Attrs().Mode("MIN_COMBINED"));
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());

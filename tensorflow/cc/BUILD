@@ -274,6 +274,7 @@ cc_library(
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
     ],
     alwayslink = 1,
@@ -338,6 +339,7 @@ tf_gen_op_wrappers_cc(
         "io_ops",
         "linalg_ops",
         "logging_ops",
+        "lookup_ops",
         "math_ops",
         "nn_ops",
         "no_op",

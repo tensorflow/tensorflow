@@ -1877,7 +1877,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
   kept independently and each row and column will be kept or not kept together.
 
   Args:
-    x: A tensor.
+    x: A floating point tensor.
     keep_prob: A scalar `Tensor` with the same type as x. The probability
       that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
@@ -1891,10 +1891,14 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]`.
+    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+      point tensor.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if not x.dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going to"
+                       " be scaled. Got a %s tensor instead." % x.dtype)
     if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)

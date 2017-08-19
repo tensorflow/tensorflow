@@ -198,7 +198,7 @@ def with_same_shape(expected_tensor, tensor):
     expected_tensor: Tensor with expected shape.
     tensor: Tensor of actual values.
   Returns:
-    Tuple of (actual_tensor, label_tensor), possibly with assert ops added.
+    The original tensor argument, possibly with assert ops added.
   """
   with ops.name_scope('%s/' % tensor.op.name, values=[expected_tensor, tensor]):
     tensor_shape = expected_tensor.get_shape()

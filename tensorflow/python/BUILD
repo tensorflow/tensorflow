@@ -484,6 +484,7 @@ py_library(
         ":framework_ops",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:execute",
     ],
 )
 
@@ -1724,6 +1725,8 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -1758,6 +1761,7 @@ py_library(
     deps = [
         ":array_ops",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":math_ops",
         ":nn_ops",
         ":nn_ops_gen",
@@ -2204,6 +2208,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2424,6 +2429,7 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":nn",
         ":nn_grad",
         "//third_party/py/numpy",
@@ -4031,6 +4037,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["manual"],
 )
 
 py_library(
