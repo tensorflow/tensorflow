@@ -110,10 +110,8 @@ class GrpcRemoteMaster : public MasterInterface {
   }
 
   template <typename Request, typename Response>
-  Status Call(::grpc::ClientContext* ctx,
-              CallOptions* call_options,
-              const Request* request,
-              Response* response,
+  Status Call(::grpc::ClientContext* ctx, CallOptions* call_options,
+              const Request* request, Response* response,
               ::grpc::Status (MasterService::Stub::*pfunc)(
                   ::grpc::ClientContext*, const Request&, Response*)) {
     ctx->set_fail_fast(false);
