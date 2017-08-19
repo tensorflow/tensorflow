@@ -10,6 +10,7 @@ load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
+    "expand_isl_cmake_vars",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
@@ -128,6 +129,125 @@ cmake_vars = {
     "RETSIGTYPE": "void",
 }
 
+# Polly config vars.
+polly_cmake_vars = {
+    "CUDALIB_FOUND": 0,
+    "GPU_CODEGEN": 0,
+}
+
+isl_cmake_vars = {
+    # Headers
+    "HAVE_DIRENT_H": 1,
+    "HAVE_DLFCN_H": 1,
+    "HAVE_ERRNO_H": 1,
+    "HAVE_EXECINFO_H": 1,
+    "HAVE_FCNTL_H": 1,
+    "HAVE_INTTYPES_H": 1,
+    "HAVE_PTHREAD_H": 1,
+    "HAVE_SIGNAL_H": 1,
+    "HAVE_STDINT_H": 1,
+    "HAVE_SYS_IOCTL_H": 1,
+    "HAVE_SYS_MMAN_H": 1,
+    "HAVE_SYS_PARAM_H": 1,
+    "HAVE_SYS_RESOURCE_H": 1,
+    "HAVE_SYS_STAT_H": 1,
+    "HAVE_SYS_TIME_H": 1,
+    "HAVE_SYS_TYPES_H": 1,
+    "HAVE_TERMIOS_H": 1,
+    "HAVE_UNISTD_H": 1,
+    "HAVE_ZLIB_H": 1,
+
+    # Features
+    "HAVE_BACKTRACE": 1,
+    "HAVE_DLOPEN": 1,
+    "HAVE_FUTIMES": 1,
+    "HAVE_GETCWD": 1,
+    "HAVE_GETPAGESIZE": 1,
+    "HAVE_GETRLIMIT": 1,
+    "HAVE_GETRUSAGE": 1,
+    "HAVE_GETTIMEOFDAY": 1,
+    "HAVE_INT64_T": 1,
+    "HAVE_ISATTY": 1,
+    "HAVE_LIBEDIT": 1,
+    "HAVE_LIBPTHREAD": 1,
+    "HAVE_LIBZ": 1,
+    "HAVE_MKDTEMP": 1,
+    "HAVE_MKSTEMP": 1,
+    "HAVE_MKTEMP": 1,
+    "HAVE_PREAD": 1,
+    "HAVE_PTHREAD_GETSPECIFIC": 1,
+    "HAVE_PTHREAD_MUTEX_LOCK": 1,
+    "HAVE_PTHREAD_RWLOCK_INIT": 1,
+    "HAVE_REALPATH": 1,
+    "HAVE_SBRK": 1,
+    "HAVE_SETENV": 1,
+    "HAVE_SETRLIMIT": 1,
+    "HAVE_SIGALTSTACK": 1,
+    "HAVE_STRERROR": 1,
+    "HAVE_STRERROR_R": 1,
+    "HAVE_STRTOLL": 1,
+    "HAVE_SYSCONF": 1,
+    "HAVE_UINT64_T": 1,
+    "HAVE__UNWIND_BACKTRACE": 1,
+
+    # ISL flags.
+    # Defined.
+    "USE_IMATH_FOR_MP": 1,
+    "GCC_WARN_UNUSED_RESULT": "__attribute__((__warn_unused_result__))",
+    "HAVE_DECL_FFS": 1,
+    "HAVE_DECL_SNPRINTF": 1,
+    "HAVE_DECL___BUILTIN_FFS": 1,
+    "HAVE_DECL_STRCASECMP": 1,
+    "HAVE_DECL_STRNCASECMP": 1,
+    "HAVE_DLFCN_H": 1,
+    "HAVE_INTTYPES_H": 1,
+    "HAVE_MEMORY_H": 1,
+    "HAVE_STDLIB_H": 1,
+    "HAVE_STRINGS_H": 1,
+    "HAVE_STRING_H": 1,
+    "HAVE___ATTRIBUTE__": 1,
+    "LT_OBJDIR": ".libs/",
+    "PACKAGE": "isl",
+    "PACKAGE_BUGREPORT": "isl-development@googlegroups.com",
+    "PACKAGE_NAME": "isl",
+    "PACKAGE_STRING": "isl tensorflow-trunk",
+    "PACKAGE_VERSION": "tensorflow-trunk",
+    "PACKAGE_TARNAME": "tensorflow",
+    "STDC_HEADERS": 1,
+    "ISL_SOURCE_DIR": ".",
+
+    # NOT defined.
+    "HAVE_DECL__BITSCANFORWARD": 0,
+    "HAVE_DECL__SNPRINTF": 0,
+    "HAVE_DECL__STRICMP": 0,
+    "HAVE_DECL__STRNICMP": 0,
+
+    # LLVM features
+    "ENABLE_BACKTRACES": 1,
+    "LLVM_BINDIR": "/dev/null",
+    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
+    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
+    "LLVM_ENABLE_THREADS": 1,
+    "LLVM_ENABLE_ZLIB": 1,
+    "LLVM_HAS_ATOMICS": 1,
+    "LLVM_INCLUDEDIR": "/dev/null",
+    "LLVM_INFODIR": "/dev/null",
+    "LLVM_MANDIR": "/dev/null",
+    "LLVM_NATIVE_TARGET": 1,
+    "LLVM_NATIVE_TARGETINFO": 1,
+    "LLVM_NATIVE_TARGETMC": 1,
+    "LLVM_NATIVE_ASMPRINTER": 1,
+    "LLVM_NATIVE_ASMPARSER": 1,
+    "LLVM_NATIVE_DISASSEMBLER": 1,
+    "LLVM_ON_UNIX": 1,
+    "LLVM_PREFIX": "/dev/null",
+    "LLVM_VERSION_MAJOR": 0,
+    "LLVM_VERSION_MINOR": 0,
+    "LLVM_VERSION_PATCH": 0,
+    "LTDL_SHLIB_EXT": ".so",
+    "RETSIGTYPE": "void",
+}
+
 # CMake variables specific to the Linux platform
 linux_cmake_vars = {
     "HAVE_MALLOC_H": 1,
@@ -161,6 +281,18 @@ all_cmake_vars = select({
     ),
 })
 
+isl_all_cmake_vars = select({
+    "@//tensorflow:darwin": cmake_var_string(
+        isl_cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
+        darwin_cmake_vars,
+    ),
+    "//conditions:default": cmake_var_string(
+        isl_cmake_vars +
+        llvm_target_cmake_vars("X86", "x86_64-unknown-linux_gnu") +
+        linux_cmake_vars,
+    ),
+})
+
 # Performs CMake variable substitutions on configuration header files.
 expand_cmake_vars(
     name = "datatypes_gen",
@@ -188,6 +320,21 @@ expand_cmake_vars(
     src = "include/llvm/Config/abi-breaking.h.cmake",
     cmake_vars = all_cmake_vars,
     dst = "include/llvm/Config/abi-breaking.h",
+)
+
+# Polly / Isl - Config file.
+expand_isl_cmake_vars(
+    name = "isl_config",
+    src = "tools/polly/lib/External/isl_config.h.cmake",
+    cmake_vars = isl_all_cmake_vars,
+    dst = "tools/polly/lib/External/isl/isl_config.h",
+)
+
+expand_isl_cmake_vars(
+    name = "isl_srcdir",
+    src = "tools/polly/lib/External/isl_srcdir.c.cmake",
+    cmake_vars = isl_all_cmake_vars,
+    dst = "tools/polly/lib/External/isl/isl_srcdir.c",
 )
 
 # Performs macro expansions on .def.in files
@@ -1683,6 +1830,22 @@ cc_library(
 )
 
 cc_library(
+    name = "opt",
+    srcs = glob([
+        "tools/opt/*.c",
+        "tools/opt/*.cpp",
+        "tools/opt/*.h",
+    ]),  
+    hdrs = glob([
+        "tools/opt/*.h",
+    ]),  
+    copts = ["-Iexternal/llvm/include"],
+    deps = [
+        ":intrinsics_gen",
+    ],   
+)
+
+cc_library(
     name = "orc_jit",
     srcs = glob([
         "lib/ExecutionEngine/Orc/*.c",
@@ -2268,4 +2431,376 @@ cc_library(
         ":core",
         ":support",
     ],
+)
+
+genrule(
+    name = "configure_stdint_h",
+    outs = ["tools/polly/lib/External/isl/include/isl/stdint.h"],
+    cmd = "\n".join([
+        "cat <<'EOF' >$@",
+        "#include <stdint.h>",
+        "",
+        "EOF",
+    ]),
+)
+
+# FIXME: Read ISL version from GIT_VERSION_ID
+genrule(
+    name = "gen_gitversion_h",
+    srcs = ["tools/polly/lib/External/isl/GIT_HEAD_ID"],
+    outs = ["tools/polly/lib/External/isl/gitversion.h"],
+    cmd = "echo '#define GIT_HEAD_ID \"isl-0.18-43-g0b4256f\"' | tee $@",
+)
+
+# CPU first.
+genrule(
+    name = "gen_polly_config_h",
+    outs = ["tools/polly/include/polly/Config/config.h"],
+    cmd = "\n".join([
+        "cat <<'EOF' >$@",
+        "#ifndef POLLY_CONFIG_H",
+        "#define POLLY_CONFIG_H",
+        "",
+        "#define CUDALIB_FOUND 0",
+        "#define GPU_CODEGEN 0",
+        "",
+        "#endif",
+        "EOF",
+    ]),
+)
+
+cc_library(
+    name = "isl_test_inputs",
+    srcs = glob([
+        "tools/polly/lib/External/isl/test_inputs/*.c",
+        "tools/polly/lib/External/isl/test_inputs/*.cpp",
+    ]),
+    hdrs = glob([
+        "tools/polly/lib/External/isl/test_inputs/*.h",
+    ]),
+)
+
+cc_library(
+    name = "imath",
+    srcs = glob([
+        "tools/polly/lib/External/isl/imath/*.c",
+        "tools/polly/lib/External/isl/imath/*.cpp",
+    ]),
+    hdrs = glob([
+        "tools/polly/lib/External/isl/imath/*.h",
+    ]),
+)
+
+cc_library(
+    name = "imath_wrap",
+    srcs = glob([
+        "tools/polly/lib/External/isl/imath_wrap/*.c",
+        "tools/polly/lib/External/isl/imath_wrap/*.cpp",
+    ]),
+    hdrs = glob([
+        "tools/polly/lib/External/isl/imath_wrap/*.h",
+        "tools/polly/lib/External/isl/imath/*.h",
+        "tools/polly/lib/External/isl/imath/*.c",
+    ]),
+)
+
+cc_library(
+    name = "isl",
+    srcs = glob([
+	    "tools/polly/lib/External/isl/*.c",
+	    "tools/polly/lib/External/isl/*.cpp",
+        ], exclude = [
+	    "tools/polly/lib/External/isl/*templ.c",
+	    "tools/polly/lib/External/isl/isl_pw_hash.c",
+	    "tools/polly/lib/External/isl/isl_multi_apply_union_set.c",
+	    "tools/polly/lib/External/isl/isl_multi_gist.c",
+	    "tools/polly/lib/External/isl/isl_pw_union_opt.c",
+	    "tools/polly/lib/External/isl/isl_multi_cmp.c",
+	    "tools/polly/lib/External/isl/isl_multi_templ.c",
+	    "tools/polly/lib/External/isl/print_templ.c",
+	    "tools/polly/lib/External/isl/isl_union_neg.c",
+	    "tools/polly/lib/External/isl/isl_multi_coalesce.c",
+	    "tools/polly/lib/External/isl/isl_multi_apply_set.c",
+	    "tools/polly/lib/External/isl/isl_int_sioimath.c",
+	    "tools/polly/lib/External/isl/isl_multi_intersect.c",
+	    "tools/polly/lib/External/isl/isl_val_sioimath.c",
+	    "tools/polly/lib/External/isl/print_templ_yaml.c",
+	    "tools/polly/lib/External/isl/isl_ast_int.c",
+	    "tools/polly/lib/External/isl/isl_val_gmp.c",
+	    "tools/polly/lib/External/isl/isl_union_single.c",
+	    "tools/polly/lib/External/isl/isl_multi_hash.c",
+	    "tools/polly/lib/External/isl/mp_get_memory_functions.c",
+	    "tools/polly/lib/External/isl/isl_union_eval.c",
+	    "tools/polly/lib/External/isl/isl_multi_floor.c",
+	    "tools/polly/lib/External/isl/isl_gmp.c",
+	    "tools/polly/lib/External/isl/isl_union_multi.c",
+	    "tools/polly/lib/External/isl/isl_test_int.c",
+	    "tools/polly/lib/External/isl/isl_test_imath.c",
+	    "tools/polly/lib/External/isl/bound.c",
+	    "tools/polly/lib/External/isl/cat.c",
+	    "tools/polly/lib/External/isl/closure.c",
+	    "tools/polly/lib/External/isl/codegen.c",
+	    "tools/polly/lib/External/isl/isl_test.c",
+	    "tools/polly/lib/External/isl/isl_test_imath.c",
+	    "tools/polly/lib/External/isl/isl_test_int.c",
+	    "tools/polly/lib/External/isl/pip.c",
+	    "tools/polly/lib/External/isl/polyhedron_detect_equalities.c",
+	    "tools/polly/lib/External/isl/polyhedron_minimize.c",
+	    "tools/polly/lib/External/isl/polyhedron_sample.c",
+	    "tools/polly/lib/External/isl/polytope_scan.c",
+	    "tools/polly/lib/External/isl/schedule.c",
+ 
+	]),
+    hdrs = glob([
+        "tools/polly/lib/External/isl/isl_pw_hash.c",
+        "tools/polly/lib/External/isl/isl_multi_gist.c",
+        "tools/polly/lib/External/isl/isl_pw_union_opt.c",
+        "tools/polly/lib/External/isl/read_in_string_templ.c",
+        "tools/polly/lib/External/isl/isl_multi_cmp.c",
+        "tools/polly/lib/External/isl/isl_multi_templ.c",
+        "tools/polly/lib/External/isl/isl_tab_lexopt_templ.c",
+        "tools/polly/lib/External/isl/print_templ.c",
+        "tools/polly/lib/External/isl/isl_multi_apply_templ.c",
+        "tools/polly/lib/External/isl/isl_union_neg.c",
+        "tools/polly/lib/External/isl/*.h",
+        "tools/polly/lib/External/isl/*templ.c",
+	"tools/polly/lib/External/isl/isl_multi_coalesce.c",
+	"tools/polly/lib/External/isl/isl_multi_apply_set.c",
+	"tools/polly/lib/External/isl/isl_int_sioimath.c",
+	"tools/polly/lib/External/isl/isl_multi_intersect.c",
+	"tools/polly/lib/External/isl/isl_val_sioimath.c",
+	"tools/polly/lib/External/isl/print_templ_yaml.c",
+	"tools/polly/lib/External/isl/isl_val_gmp.c",
+	"tools/polly/lib/External/isl/isl_union_single.c",
+	"tools/polly/lib/External/isl/isl_multi_hash.c",
+	"tools/polly/lib/External/isl/mp_get_memory_functions.c",
+	"tools/polly/lib/External/isl/isl_union_eval.c",
+	"tools/polly/lib/External/isl/isl_multi_floor.c",
+	"tools/polly/lib/External/isl/isl_union_multi.c",
+	"tools/polly/lib/External/isl/isl_test_int.c",
+	"tools/polly/lib/External/isl/isl_test_imath.c",
+	"tools/polly/lib/External/isl/bound.c",
+	"tools/polly/lib/External/isl/cat.c",
+	"tools/polly/lib/External/isl/closure.c",
+	"tools/polly/lib/External/isl/codegen.c",
+	"tools/polly/lib/External/isl/isl_test.c",
+	"tools/polly/lib/External/isl/isl_test_imath.c",
+	"tools/polly/lib/External/isl/isl_test_int.c",
+	"tools/polly/lib/External/isl/pip.c",
+	"tools/polly/lib/External/isl/polyhedron_detect_equalities.c",
+	"tools/polly/lib/External/isl/polyhedron_minimize.c",
+	"tools/polly/lib/External/isl/polyhedron_sample.c",
+	"tools/polly/lib/External/isl/polytope_scan.c",
+	"tools/polly/lib/External/isl/schedule.c",
+
+        "tools/polly/lib/External/isl/include/**/*.h",
+    ]) + [
+       "tools/polly/lib/External/isl/isl_config.h", 
+       "tools/polly/lib/External/isl/isl_srcdir.c",
+       "tools/polly/lib/External/isl/gitversion.h",
+       "tools/polly/lib/External/isl/include/isl/stdint.h"],
+    includes = [
+	"tools/polly/lib/External/isl/include",
+	"tools/polly/lib/External/isl/",
+	"tools/polly/lib/External/isl/imath",
+    ],
+    deps = [
+        ":imath",
+        ":imath_wrap",
+    ],
+)
+
+cc_library(
+    name="polly_analysis",
+    srcs = glob ([
+	"tools/polly/lib/Analysis/*.cpp"
+    ]),
+    hdrs = [
+	"include/llvm/Config/llvm-config.h",
+	"include/llvm/IR/Attributes.gen",
+	"include/llvm/Config/abi-breaking.h",
+	"include/llvm/IR/Intrinsics.gen",
+	"include/llvm/Support/DataTypes.h",
+	"tools/polly/include/polly/Config/config.h",
+        "tools/polly/lib/External/isl/include/isl/stdint.h",
+    ],
+    includes = [
+	"tools/polly/include",
+	"tools/polly/lib/External/isl/include",
+	"include",
+    ],
+    copts = [
+	"-Iexternal/llvm/include",
+	"-Iexternal/llvm/tools/polly/include",
+	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+)
+
+cc_library(
+    name="polly_codegen",
+    srcs = glob ([
+	"tools/polly/lib/CodeGen/*.cpp"
+    ], exclude = [
+	"tools/polly/lib/CodeGen/PPCGCodeGeneration.cpp",
+    ]),
+    hdrs = [
+	"include/llvm/Config/llvm-config.h",
+	"include/llvm/IR/Attributes.gen",
+	"include/llvm/Config/abi-breaking.h",
+	"include/llvm/IR/Intrinsics.gen",
+	"include/llvm/Support/DataTypes.h",
+	"tools/polly/include/polly/Config/config.h",
+    ],
+    includes = [
+	"tools/polly/include",
+	"include",
+    ],
+    copts = [
+	"-Iexternal/llvm/include",
+	"-Iexternal/llvm/tools/polly/include",
+	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+    deps = [
+	":isl",
+    ],
+)
+
+cc_library(
+    name="polly_exchange",
+    srcs = glob ([
+	"tools/polly/lib/Exchange/*.cpp"
+    ]),
+    hdrs = [
+	"include/llvm/Config/llvm-config.h",
+	"include/llvm/IR/Attributes.gen",
+	"include/llvm/Config/abi-breaking.h",
+	"include/llvm/IR/Intrinsics.gen",
+	"include/llvm/Support/DataTypes.h",
+	"tools/polly/include/polly/Config/config.h",
+        "tools/polly/lib/External/isl/include/isl/stdint.h",
+    ],
+    includes = [
+	"tools/polly/lib/JSON/include",
+	"tools/polly/include",
+	"tools/polly/lib/External/isl/include",
+	"include",
+    ],
+    copts = [
+	"-Iexternal/llvm/include",
+	"-Iexternal/llvm/tools/polly/include",
+	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+)
+
+cc_library(
+    name="pet",
+    srcs = glob ([
+    ]),
+    hdrs = [
+	"tools/polly/lib/External/pet/include/pet.h",
+    ],
+    copts = [
+	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+)
+
+cc_library(
+    name="polly_json",
+    srcs = glob ([
+	"tools/polly/lib/JSON/*.cpp",
+    ]),
+    hdrs = [
+	"tools/polly/lib/JSON/json_batchallocator.h",
+    ],
+    includes = [
+	"tools/polly/lib/JSON/include",
+	"tools/polly/lib/JSON",
+    ],
+    copts = [
+	"-Iexternal/llvm/tools/polly/lib/JSON/include",
+	"-Iexternal/llvm/tools/polly/lib/JSON",
+    ],
+)
+
+cc_library(
+    name="polly_support",
+    srcs = glob ([
+	"tools/polly/lib/Support/*.cpp"
+    ]),
+    hdrs = [
+	"include/llvm/Config/llvm-config.h",
+	"include/llvm/IR/Attributes.gen",
+	"include/llvm/Config/abi-breaking.h",
+	"include/llvm/IR/Intrinsics.gen",
+	"include/llvm/Support/DataTypes.h",
+	"tools/polly/include/polly/Config/config.h",
+    ],
+    includes = [
+	"tools/polly/include",
+	"include",
+    ],
+    copts = [
+	"-Iexternal/llvm/include",
+	"-Iexternal/llvm/tools/polly/include",
+	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+    deps = [
+	":isl",
+    ],
+)
+
+cc_library(
+    name="polly_transform",
+    srcs = glob ([
+	"tools/polly/lib/Transform/*.cpp"
+    ]),
+    hdrs = [
+	"include/llvm/Config/llvm-config.h",
+	"include/llvm/IR/Attributes.gen",
+	"include/llvm/Config/abi-breaking.h",
+	"include/llvm/IR/Intrinsics.gen",
+	"include/llvm/Support/DataTypes.h",
+	"tools/polly/include/polly/Config/config.h",
+    ],
+    includes = [
+	"tools/polly/include",
+	"include",
+    ],
+    copts = [
+	"-Iexternal/llvm/include",
+	"-Iexternal/llvm/tools/polly/include",
+	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+    deps = [
+	":isl",
+    ],
+)
+
+cc_library(
+    name = "polly",
+    srcs = glob([
+	"tools/polly/lib/Polly.cpp",
+    ]),
+    hdrs = glob([
+    ]) + [
+	"include/llvm/Support/DataTypes.h",
+	"tools/polly/include/polly/Config/config.h",
+    ],
+    includes = [
+	"tools/polly/include",
+    ],
+    copts = ["-Iexternal/llvm/include"],
+    deps = [
+        ":core",
+        ":isl",
+	":polly_analysis",
+	":polly_codegen",
+	":polly_exchange",
+	":pet",
+	":polly_json",
+	":polly_support",
+	":polly_transform",
+    ],
+    alwayslink = 1,
+    linkstatic = 1,
 )
