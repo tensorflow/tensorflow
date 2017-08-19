@@ -78,6 +78,7 @@ py_library(
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/timeseries",
         "//tensorflow/contrib/tpu",
+        "//tensorflow/contrib/tpu:tpu_estimator",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
     ],
