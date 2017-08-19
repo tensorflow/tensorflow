@@ -133,6 +133,21 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "function_test",
+    srcs = ["function_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":function",
+        ":tape",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
 py_library(
     name = "test",
     srcs = ["test.py"],
