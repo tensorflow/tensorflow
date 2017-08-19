@@ -32,6 +32,8 @@ namespace tensorflow {
 // GrpcRemoteMaster is an implementation of the MasterInterface
 // that uses gRPC to talk to the Master service.
 class GrpcRemoteMaster : public MasterInterface {
+  using MasterServiceStub = grpc::MasterService::Stub;
+
  public:
   explicit GrpcRemoteMaster(const SharedGrpcChannelPtr& client_channel)
       : stub_(grpc::MasterService::NewStub(client_channel)) {}
@@ -43,7 +45,7 @@ class GrpcRemoteMaster : public MasterInterface {
                        CreateSessionResponse* response) override {
     ::grpc::ClientContext ctx;
     return Call(&ctx, call_options, request, response,
-                &MasterService::Stub::CreateSession);
+                &MasterServiceStub::CreateSession);
   }
 
   Status ExtendSession(CallOptions* call_options,
@@ -51,7 +53,7 @@ class GrpcRemoteMaster : public MasterInterface {
                        ExtendSessionResponse* response) override {
     ::grpc::ClientContext ctx;
     return Call(&ctx, call_options, request, response,
-                &MasterService::Stub::ExtendSession);
+                &MasterServiceStub::ExtendSession);
   }
 
   Status PartialRunSetup(CallOptions* call_options,
@@ -59,16 +61,16 @@ class GrpcRemoteMaster : public MasterInterface {
                          PartialRunSetupResponse* response) override {
     ::grpc::ClientContext ctx;
     return Call(&ctx, call_options, request, response,
-                &MasterService::Stub::PartialRunSetup);
+                &MasterServiceStub::PartialRunSetup);
   }
 
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
                  MutableRunStepResponseWrapper* response) override {
     ::grpc::ClientContext ctx;
     auto trace = TraceRpc("RunStep/Client", &ctx);
-    return Call(&ctx, call_options, request->ToProto(),
+    return Call(&ctx, call_options, &request->ToProto(),
                 get_proto_from_wrapper(response),
-                &MasterService::Stub::RunStep);
+                &MasterServiceStub::RunStep);
   }
 
   Status CloseSession(CallOptions* call_options,
@@ -76,7 +78,7 @@ class GrpcRemoteMaster : public MasterInterface {
                       CloseSessionResponse* response) override {
     ::grpc::ClientContext ctx;
     return Call(&ctx, call_options, request, response,
-                &MasterService::Stub::CloseSession);
+                &MasterServiceStub::CloseSession);
   }
 
   Status ListDevices(CallOptions* call_options,
@@ -84,14 +86,14 @@ class GrpcRemoteMaster : public MasterInterface {
                      ListDevicesResponse* response) override {
     ::grpc::ClientContext ctx;
     return Call(&ctx, call_options, request, response,
-                &MasterService::Stub::ListDevices);
+                &MasterServiceStub::ListDevices);
   }
 
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override {
     ::grpc::ClientContext ctx;
     return Call(&ctx, call_options, request, response,
-                &MasterService::Stub::Reset);
+                &MasterServiceStub::Reset);
   }
 
  private:
@@ -112,14 +114,14 @@ class GrpcRemoteMaster : public MasterInterface {
   template <typename Request, typename Response>
   Status Call(::grpc::ClientContext* ctx, CallOptions* call_options,
               const Request* request, Response* response,
-              ::grpc::Status (MasterService::Stub::*pfunc)(
+              ::grpc::Status (MasterServiceStub::*pfunc)(
                   ::grpc::ClientContext*, const Request&, Response*)) {
     ctx->set_fail_fast(false);
     SetDeadline(ctx, call_options->GetTimeout());
-    return FromGrpcStatus((stub_->*pfunc)(ctx, *request, response));
+    return FromGrpcStatus((stub_.get()->*pfunc)(ctx, *request, response));
   }
 
-  std::unique_ptr<grpc::MasterService::Stub> stub_;
+  std::unique_ptr<MasterServiceStub> stub_;
 };
 
 MasterInterface* NewGrpcMaster(const SharedGrpcChannelPtr& channel) {
