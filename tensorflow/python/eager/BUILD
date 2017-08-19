@@ -127,6 +127,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":core",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -147,6 +148,18 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "execution_callbacks",
+    srcs = ["execution_callbacks.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//third_party/py/numpy",
     ],
 )
 
