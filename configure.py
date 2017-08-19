@@ -25,6 +25,11 @@ import re
 import subprocess
 import sys
 
+try:
+  from shutil import which
+except ImportError:
+  from distutils.spawn import find_executable as which
+
 _TF_BAZELRC = '.tf_configure.bazelrc'
 _DEFAULT_CUDA_VERSION = '8.0'
 _DEFAULT_CUDNN_VERSION = '6'
@@ -51,6 +56,10 @@ def is_macos():
 
 def is_ppc64le():
   return platform.machine() == 'ppc64le'
+
+
+def is_cygwin():
+  return platform.system().startswith('CYGWIN_NT')
 
 
 def get_input(question):
@@ -177,8 +186,8 @@ def setup_python(environ_cp, bazel_version):
         environ_cp, 'PYTHON_BIN_PATH', ask_python_bin_path,
         default_python_bin_path)
     # Check if the path is valid
-    if (os.path.isfile(python_bin_path) and os.access(
-        python_bin_path, os.X_OK)) or (os.path.isdir(python_bin_path)):
+    if os.path.isfile(python_bin_path) and os.access(
+        python_bin_path, os.X_OK):
       break
     elif not os.path.exists(python_bin_path):
       print('Invalid python path: %s cannot be found.' % python_bin_path)
@@ -187,7 +196,7 @@ def setup_python(environ_cp, bazel_version):
     environ_cp['PYTHON_BIN_PATH'] = ''
 
   # Convert python path to Windows style before checking lib and version
-  if is_windows():
+  if is_cygwin():
     python_bin_path = cygpath(python_bin_path)
 
   # Get PYTHON_LIB_PATH
@@ -210,7 +219,7 @@ def setup_python(environ_cp, bazel_version):
   python_major_version = get_python_major_version(python_bin_path)
 
   # Convert python path to Windows style before writing into bazel.rc
-  if is_windows():
+  if is_cygwin():
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -432,11 +441,10 @@ def check_bazel_version(min_version):
   Returns:
     The bazel version detected.
   """
-  try:
-    curr_version = run_shell(['bazel', '--batch', 'version'])
-  except subprocess.CalledProcessError:
+  if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)
+  curr_version = run_shell(['bazel', '--batch', 'version'])
 
   for line in curr_version.split('\n'):
     if 'Build label: ' in line:
@@ -528,7 +536,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = run_shell(['which', 'clang'], allow_non_zero=True)
+  default_clang_path = which('clang') or ''
   ask_clang_path = ('Please specify which clang should be used as device and '
                     'host compiler. [Default is %s]: ') % default_clang_path
 
@@ -551,13 +559,12 @@ def set_clang_cuda_compiler_path(environ_cp):
 
 def set_gcc_host_compiler_path(environ_cp):
   """Set GCC_HOST_COMPILER_PATH."""
-  default_gcc_host_compiler_path = run_shell(['which', 'gcc'],
-                                             allow_non_zero=True)
+  default_gcc_host_compiler_path = which('gcc') or ''
   cuda_bin_symlink = '%s/bin/gcc' % environ_cp.get('CUDA_TOOLKIT_PATH')
 
   if os.path.islink(cuda_bin_symlink):
     # os.readlink is only available in linux
-    default_gcc_host_compiler_path = run_shell(['readlink', cuda_bin_symlink])
+    default_gcc_host_compiler_path = os.path.realpath(cuda_bin_symlink)
 
   ask_gcc_path = (
       'Please specify which gcc should be used by nvcc as the '
@@ -592,7 +599,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Find out where the CUDA toolkit is installed
     default_cuda_path = _DEFAULT_CUDA_PATH
-    if is_windows():
+    if is_cygwin():
       default_cuda_path = cygpath(
           environ_cp.get('CUDA_PATH', _DEFAULT_CUDA_PATH_WIN))
     elif is_linux():
@@ -652,7 +659,7 @@ def set_tf_cunn_version(environ_cp):
     # unusable. Going through one more level of expansion to handle that.
     cudnn_install_path = os.path.realpath(
         os.path.expanduser(cudnn_install_path))
-    if is_windows():
+    if is_cygwin():
       cudnn_install_path = cygpath(cudnn_install_path)
 
     if is_windows():
@@ -674,10 +681,7 @@ def set_tf_cunn_version(environ_cp):
 
     # Try another alternative for Linux
     if is_linux():
-      if subprocess.call(['which', 'ldconfig']):
-        ldconfig_bin = '/sbin/ldconfig'
-      else:
-        ldconfig_bin = 'ldconfig'
+      ldconfig_bin = which('ldconfig') or 'ldconfig'
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
                                            cudnn_path_from_ldconfig).group(1)
@@ -713,12 +717,15 @@ def get_native_cuda_compute_capabilities(environ_cp):
   """
   device_query_bin = os.path.join(
       environ_cp.get('CUDA_TOOLKIT_PATH'), 'extras/demo_suite/deviceQuery')
-  try:
-    output = run_shell(device_query_bin).split('\n')
-    pattern = re.compile('[0-9]*\\.[0-9]*')
-    output = [pattern.search(x) for x in output if 'Capability' in x]
-    output = ','.join(x.group() for x in output if x is not None)
-  except subprocess.CalledProcessError:
+  if os.path.isfile(device_query_bin) and os.access(device_query_bin, os.X_OK):
+    try:
+      output = run_shell(device_query_bin).split('\n')
+      pattern = re.compile('[0-9]*\\.[0-9]*')
+      output = [pattern.search(x) for x in output if 'Capability' in x]
+      output = ','.join(x.group() for x in output if x is not None)
+    except subprocess.CalledProcessError:
+      output = ''
+  else:
     output = ''
   return output
 
@@ -799,7 +806,7 @@ def set_other_cuda_vars(environ_cp):
 
 def set_host_cxx_compiler(environ_cp):
   """Set HOST_CXX_COMPILER."""
-  default_cxx_host_compiler = run_shell(['which', 'g++'], allow_non_zero=True)
+  default_cxx_host_compiler = which('g++') or ''
   ask_cxx_host_compiler = (
       'Please specify which C++ compiler should be used as'
       ' the host C++ compiler. [Default is %s]: ') % default_cxx_host_compiler
@@ -822,7 +829,7 @@ def set_host_cxx_compiler(environ_cp):
 
 def set_host_c_compiler(environ_cp):
   """Set HOST_C_COMPILER."""
-  default_c_host_compiler = run_shell(['which', 'gcc'], allow_non_zero=True)
+  default_c_host_compiler = which('gcc') or ''
   ask_c_host_compiler = (
       'Please specify which C compiler should be used as the'
       ' host C compiler. [Default is %s]: ') % default_c_host_compiler
@@ -876,15 +883,8 @@ def set_computecpp_toolkit_path(environ_cp):
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
-  try:
-    default_mpi_home = run_shell(['which', 'mpirun'])
-    default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
-  except subprocess.CalledProcessError:
-    try:
-      default_mpi_home = run_shell(['which', 'mpiexec'])
-      default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
-    except subprocess.CalledProcessError as e:
-      default_mpi_home = e.output
+  default_mpi_home = which('mpirun') or which('mpiexec') or ''
+  default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
 
   ask_mpi_home = ('Please specify the MPI toolkit folder. [Default is %s]: '
                  ) % default_mpi_home
