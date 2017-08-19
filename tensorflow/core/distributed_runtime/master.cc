@@ -125,9 +125,6 @@ MasterSession* Master::FindMasterSession(const string& handle) {
       session->Ref();
     }
   }
-  if (session == nullptr) {
-    done(errors::Aborted("Session ", handle, " is not found."));
-  }
   return session;
 }
 
@@ -445,6 +442,11 @@ void Master::CreateSession(const CreateSessionRequest* req,
 void Master::ExtendSession(const ExtendSessionRequest* req,
                            ExtendSessionResponse* resp, MyClosure done) {
   auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
   SchedClosure([session, req, resp, done]() {
     Status status = ValidateExternalGraphDefSyntax(req->graph_def());
     if (status.ok()) {
@@ -458,6 +460,11 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
   auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
+
   SchedClosure([this, session, req, resp, done]() {
     Status s = session->PartialRunSetup(req, resp);
     session->Unref();
@@ -469,6 +476,10 @@ void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      MutableRunStepResponseWrapper* resp, MyClosure done) {
   auto start_time = env_->env->NowMicros();
   auto session = FindMasterSession(req->session_handle());
+  if (session == nullptr) {
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, *req, resp);
@@ -515,6 +526,12 @@ void Master::ListDevices(const ListDevicesRequest* req,
   SchedClosure([this, req, resp, done]() {
     if (!req->session_handle().empty()) {
       auto session = FindMasterSession(req->session_handle());
+      if (session == nullptr) {
+        done(errors::InvalidArgument(
+             "Session ", req->session_handle(),
+             " is not found. Possibly, this master has restarted."));
+        return;
+      }
       core::ScopedUnref ref(session);
       Status s = session->ListDevices(resp);
       done(s);

@@ -94,7 +94,8 @@ class Master {
   // Cleanup unused session.
   void GC();
 
-  // Find master session.
+  // Find master session by session handle, and increments the reference count
+  // on the returned MasterSession if not null.
   MasterSession* FindMasterSession(const string& handle);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Master);
