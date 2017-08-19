@@ -25,7 +25,6 @@ from autograd import core as ag_core
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
@@ -144,10 +143,6 @@ def watch(tensor):
   Returns:
     The tensor, potentially wrapped by all tapes in the stack.
   """
-  if isinstance(tensor, resource_variable_ops.ResourceVariable):
-    tensor._handle = watch(tensor.handle)  # pylint: disable=protected-access
-    return tensor
-
   for t in _tape_stack.stack:
     tensor = _watch_with_tape(t, tensor)
   return tensor

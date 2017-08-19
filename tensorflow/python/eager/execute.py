@@ -67,7 +67,11 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
                                             num_outputs)
     # pylint: enable=protected-access
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
-    raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+    if name is not None:
+      message = e.message + " name: " + name
+    else:
+      message = e.message
+    raise core._status_to_exception(e.code, message)  # pylint: disable=protected-access
   # pylint: enable=protected-access
 
   tensors = [tensor._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
