@@ -22,6 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/tools/polly/include/polly/LinkAllPasses.h"
+#include "llvm/tools/polly/include/polly/RegisterPasses.h"
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -312,6 +315,11 @@ void CompilerFunctor::AddOptimizationPasses(
   builder.SLPVectorize = opt_level > 1 && size_level == 0;
 
   builder.populateFunctionPassManager(*function_passes);
+
+  llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
+  ::polly::initializePollyPasses(Registry);
+  ::polly::registerPollyPasses(*module_passes);
+
   builder.populateModulePassManager(*module_passes);
 }
 

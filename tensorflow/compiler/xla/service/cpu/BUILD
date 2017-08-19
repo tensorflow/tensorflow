@@ -427,6 +427,7 @@ cc_library(
         "@llvm//:object",
         "@llvm//:support",
         "@llvm//:target",
+        "@llvm//:polly",
     ],
 )
 
