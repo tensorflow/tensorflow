@@ -13,25 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_NEON_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_NEON_H_
+
 // This header declares functions which may be called by the generated code on
 // the CPU. Calls to these functions must be resolved explicitly in the JIT in
-// xla::cpu::SimpleResolver.  It also defines a per-CpuExecutable context
-// which is used to cache expensive state and resources utilized by the
-// aforementioned functions.
-
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_
+// xla::cpu::SimpleResolver.
 
 #include "tensorflow/core/platform/macros.h"
+
+#ifdef __ARM_NEON__
+// For the other runtimes (AVX, SSE4.1) we define the vector type directly using
+// __attribute__((__vector_size__(*))).  Unfortunately, the typedef for the ARM
+// NEON SIMD types is not portable, so the type has to come from <arm_neon.h>
+#include <arm_neon.h>
+#endif  // __ARM_NEON__
 
 namespace xla {
 namespace cpu {
 namespace runtime {
 
-extern const char *const kExpV4F32SSESymbolName;
-extern const char *const kLogV4F32SSESymbolName;
+extern const char *const kExpV4F32NEONSymbolName;
+extern const char *const kLogV4F32NEONSymbolName;
 
-typedef float V4F32SSE __attribute__((__vector_size__(16)));
+#ifdef __ARM_NEON__
+typedef float32x4_t V4F32NEON;
+#else
+// On non-ARM platforms ensure the declaration is present
+struct V4F32NEON;
+#endif  // __ARM_NEON__
 
 }  // namespace runtime
 }  // namespace cpu
@@ -42,11 +52,11 @@ extern "C" {
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
-xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
-    xla::cpu::runtime::V4F32SSE x) TF_ATTRIBUTE_WEAK;
+xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_ExpV4F32NEON(
+    xla::cpu::runtime::V4F32NEON x) TF_ATTRIBUTE_WEAK;
 
-xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
-    xla::cpu::runtime::V4F32SSE x) TF_ATTRIBUTE_WEAK;
+xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_LogV4F32NEON(
+    xla::cpu::runtime::V4F32NEON x) TF_ATTRIBUTE_WEAK;
 }
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_NEON_H_
