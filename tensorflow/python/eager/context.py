@@ -66,6 +66,7 @@ class Context(object):
     self._context_handle = None
     self._context_devices = None
     self._summary_writer_resource = None
+    self._post_execution_callbacks = []
     self._config = config
     self._initialize_lock = threading.Lock()
 
@@ -237,6 +238,40 @@ class Context(object):
     # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
     return len(self._devices) - 1
 
+  def add_post_execution_callback(self, callback):
+    """Add a post-execution callback to the context.
+
+    A post-execution callback is invoked immediately after an eager operation or
+    function has finished execution, providing access to the op's type, name
+    input and output tensors. Multiple execution callbacks can be added, in
+    which case the callbacks will be invoked in the order in which they are
+    added.
+
+    Args:
+      callback: a callable of the signature
+      `f(op_type, op_name, attrs, inputs, outputs)`.
+      `op_type` is the type of the operation that was just executed (e.g.,
+        `MatMul`).
+      `op_name` is the name of the operation that has was just executed. This
+        name is set by the client who created the operation and can be `None` if
+        it is unset.
+      `attrs` contains the attributes of the operation as a `tuple` of
+        alternating attribute names and attribute values.
+      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
+      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+       Return value(s) from the callback are ignored.
+    """
+    # TODO(cais): (b/64674139) Allow access to function-internal operations.
+    self._post_execution_callbacks.append(callback)
+
+  def clear_post_execution_callbacks(self):
+    """Clear all post-execution callbacks added to the context."""
+    del self._post_execution_callbacks[:]
+
+  @property
+  def post_execution_callbacks(self):
+    """Get the list of post-execution callbacks added to the context."""
+    return self._post_execution_callbacks
 
 _context = None
 _context_lock = threading.Lock()
@@ -365,3 +400,34 @@ def enable_eager_execution():
   global _default_mode
   assert _default_mode == GRAPH_MODE
   _default_mode = EAGER_MODE
+
+
+def add_execution_callback(callback):
+  """Add an execution callback to the default eager context.
+
+  An execution callback is invoked immediately after an eager operation or
+  function has finished execution, providing access to the op's type, name
+  input and output tensors. Multiple execution callbacks can be added, in
+  which case the callbacks will be invoked in the order in which they are
+  added.
+
+  Args:
+    callback: a callable of the signature
+      `f(op_type, op_name, attrs, inputs, outputs)`.
+      `op_type` is the type of the operation that was just executed (e.g.,
+        `MatMul`).
+      `op_name` is the name of the operation that has was just executed. This
+        name is set by the client who created the operation and can be `None` if
+        it is unset.
+      `attrs` contains the attributes of the operation as a `tuple` of
+        alternating attribute name and attribute value.
+      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
+      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+       Return value(s) from the callback are ignored.
+  """
+  get_default_context().add_post_execution_callback(callback)
+
+
+def clear_execution_callbacks():
+  """Clear all execution callbacks from the default eager context."""
+  get_default_context().clear_post_execution_callbacks()
