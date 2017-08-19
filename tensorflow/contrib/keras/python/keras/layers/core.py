@@ -728,19 +728,10 @@ class Dense(tf_core_layers.Dense, Layer):
         kernel_regularizer=regularizers.get(kernel_regularizer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
         **kwargs)
-    # TODO(fchollet): move weight constraint support to core layers.
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
     self.supports_masking = True
-
-  def build(self, input_shape):
-    super(Dense, self).build(input_shape)
-    # TODO(fchollet): move weight constraint support to core layers.
-    if self.kernel_constraint:
-      self.constraints[self.kernel] = self.kernel_constraint
-    if self.use_bias and self.bias_constraint:
-      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {

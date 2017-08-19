@@ -54,8 +54,11 @@ class Notification {
                                              int64 timeout_in_us);
   bool WaitForNotificationWithTimeout(int64 timeout_in_us) {
     mutex_lock l(mu_);
-    return cv_.wait_for(l, std::chrono::microseconds(timeout_in_us),
-                        [this]() { return notified_; });
+    while (!notified_ &&
+           cv_.wait_for(l, std::chrono::microseconds(timeout_in_us)) !=
+               std::cv_status::timeout) {
+    }
+    return notified_;
   }
 
   mutex mu_;

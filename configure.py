@@ -22,7 +22,6 @@ import errno
 import os
 import platform
 import re
-import site
 import subprocess
 import sys
 
@@ -131,16 +130,23 @@ def cygpath(path):
   return run_shell('cygpath  -m "%s"' % path)
 
 
-def get_python_path(environ_cp):
+def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
   python_paths = []
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
-    library_paths = site.getsitepackages()
-  except AttributeError:
-    from distutils.sysconfig import get_python_lib  # pylint: disable=g-import-not-at-top
-    library_paths = [get_python_lib()]
+    check_input = [python_bin_path, '-c',
+                   'import site; print("\\n".join(site.getsitepackages()))']
+    library_paths = subprocess.check_output(
+        check_input).decode('UTF-8').strip().split("\n")
+  except subprocess.CalledProcessError:
+    check_input = [python_bin_path, '-c',
+        'from distutils.sysconfig import get_python_lib;' +
+        'print(get_python_lib())']
+    library_paths = [subprocess.check_output(
+        check_input).decode('UTF-8').strip()]
+
   all_paths = set(python_paths + library_paths)
 
   paths = []
@@ -148,6 +154,12 @@ def get_python_path(environ_cp):
     if os.path.isdir(path):
       paths.append(path)
   return paths
+
+
+def get_python_major_version(python_bin_path):
+  """Get the python major version."""
+  check_input = [python_bin_path, '-c', 'import sys; print(sys.version[0])']
+  return subprocess.check_output(check_input).decode('UTF-8').strip()
 
 
 def setup_python(environ_cp, bazel_version):
@@ -170,10 +182,14 @@ def setup_python(environ_cp, bazel_version):
       print('%s is not executable.  Is it the python binary?' % python_bin_path)
     environ_cp['PYTHON_BIN_PATH'] = ''
 
+  # Convert python path to Windows style before checking lib and version
+  if is_windows():
+    python_bin_path = cygpath(python_bin_path)
+
   # Get PYTHON_LIB_PATH
   python_lib_path = environ_cp.get('PYTHON_LIB_PATH')
   if not python_lib_path:
-    python_lib_paths = get_python_path(environ_cp)
+    python_lib_paths = get_python_path(environ_cp, python_bin_path)
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
       python_lib_path = python_lib_paths[0]
     else:
@@ -187,10 +203,10 @@ def setup_python(environ_cp, bazel_version):
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  python_major_version = sys.version_info[0]
+  python_major_version = get_python_major_version(python_bin_path)
+
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows():
-    python_bin_path = cygpath(python_bin_path)
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -384,12 +400,16 @@ def set_action_env_var(environ_cp,
 def convert_version_to_int(version):
   """Convert a version number to a integer that can be used to compare.
 
+  Version strings of the form X.YZ and X.Y.Z-xxxxx are supported. The
+  'xxxxx' part, for instance 'homebrew' on OS/X, is ignored.
+
   Args:
-    version: a version to be covnerted
+    version: a version to be converted
 
   Returns:
     An integer if converted successfully, otherwise return None.
   """
+  version = version.split('-')[0]
   version_segments = version.split('.')
   for seg in version_segments:
     if not seg.isdigit():
@@ -427,6 +447,8 @@ def check_bazel_version(min_version):
     print('WARNING: current bazel installation is not a release version.')
     print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
+
+  print("You have bazel %s installed." % curr_version)
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
@@ -720,9 +742,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     # Check whether all capabilities from the input is valid
     all_valid = True
     for compute_capability in tf_cuda_compute_capabilities.split(','):
-      if not re.match('[0-9]+.[0-9]+', compute_capability):
+      m = re.match('[0-9]+.[0-9]+', compute_capability)
+      if not m:
         print('Invalid compute capability: ' % compute_capability)
         all_valid = False
+      else:
+        ver = int(m.group(0).split('.')[0])
+        if ver < 3:
+          print('Only compute capabilities 3.0 or higher are supported.')
+          all_valid = False
 
     if all_valid:
       break
@@ -937,6 +965,8 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
                 'with_hdfs_support', False)
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
+                False)
+  set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
                 False)
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False)

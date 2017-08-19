@@ -586,15 +586,15 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
 
   Example:
 
-    ```python
-    x = ...  # Tensor of shape [1, 2, 3, 4].
-    rotate_transpose(x, -1)  # result shape: [2, 3, 4, 1]
-    rotate_transpose(x, -2)  # result shape: [3, 4, 1, 2]
-    rotate_transpose(x,  1)  # result shape: [4, 1, 2, 3]
-    rotate_transpose(x,  2)  # result shape: [3, 4, 1, 2]
-    rotate_transpose(x, 7) == rotate_transpose(x, 3)
-    rotate_transpose(x, -7) == rotate_transpose(x, -3)
-    ```
+  ```python
+  x = tf.random_normal([1, 2, 3, 4])  # Tensor of shape [1, 2, 3, 4].
+  rotate_transpose(x, -1).shape == [2, 3, 4, 1]
+  rotate_transpose(x, -2).shape == [3, 4, 1, 2]
+  rotate_transpose(x,  1).shape == [4, 1, 2, 3]
+  rotate_transpose(x,  2).shape == [3, 4, 1, 2]
+  rotate_transpose(x,  7).shape == rotate_transpose(x, 3).shape  # [2, 3, 4, 1]
+  rotate_transpose(x, -7).shape == rotate_transpose(x, -3).shape  # [4, 1, 2, 3]
+  ```
 
   Args:
     x: `Tensor`.
@@ -667,10 +667,8 @@ def pick_vector(cond,
   Example:
 
   ```python
-  pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15, 18))
-  # result is tensor: [10, 11].
-  pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15, 18))
-  # result is tensor: [15, 16, 17].
+  pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15, 18))  # [10, 11]
+  pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15, 18))  # [15, 16, 17]
   ```
 
   Returns:
@@ -733,10 +731,9 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
   Example:
 
   ```python
-  fill_lower_triangular([1, 2, 3, 4, 5, 6])
-  # Returns: [[1, 0, 0],
-  #           [2, 3, 0],
-  #           [4, 5, 6]]
+  fill_lower_triangular([1, 2, 3, 4, 5, 6])  # [[1, 0, 0],
+                                             #  [2, 3, 0],
+                                             #  [4, 5, 6]]
   ```
 
   For comparison, a pure numpy version of this function can be found in
@@ -753,7 +750,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     tril: `Tensor` with lower triangular elements filled from `x`.
 
   Raises:
-    ValueError: if shape if `x` has static shape which cannot be mapped to a
+    ValueError: if shape of `x` has static shape which cannot be mapped to a
       lower triangular matrix.
   """
   # TODO(jvdillon): Replace this code with dedicated op when it exists.

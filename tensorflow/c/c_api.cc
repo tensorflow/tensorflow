@@ -155,7 +155,7 @@ void* allocate_tensor(const char* operation, size_t len) {
 }
 
 void deallocate_buffer(void* data, size_t len, void* arg) {
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawDeallocation(
         "TensorFlow C Api",
         tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,

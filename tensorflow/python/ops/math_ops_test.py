@@ -134,6 +134,11 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
         self.assertAllClose(y_tf_np, y_np)
 
+  def testInfinity(self):
+    with self.test_session(use_gpu=True):
+      res = math_ops.reduce_logsumexp(-np.inf).eval()
+      self.assertEqual(-np.inf, res)
+
 
 class RoundTest(test_util.TensorFlowTestCase):
 
@@ -311,6 +316,20 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sum(x), math_ops.add_n(tf_x).eval())
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
+
+  def testGrad(self):
+    np.random.seed(42)
+    for num_inputs in range(1, 10):
+      with self.test_session(use_gpu=True) as sess:
+        input_vars = [
+            variables.Variable(10.0 * np.random.random())
+            for i in range(0, num_inputs)
+        ]
+        addn = math_ops.add_n(input_vars)
+        sess.run(variables.global_variables_initializer())
+        add_n_grad = gradients.gradients(addn, input_vars)
+        self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
+                            [g.eval() for g in add_n_grad])
 
 
 class DivAndModTest(test_util.TensorFlowTestCase):

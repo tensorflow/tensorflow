@@ -575,7 +575,7 @@ class Optimizer(object):
       grad: A `Tensor`.
       var: A `Variable` object.
 
-    Return:
+    Returns:
       An `Operation`.
     """
     raise NotImplementedError()
@@ -688,7 +688,7 @@ class Optimizer(object):
       grad: `IndexedSlices`, with no repeated indices.
       var: A `Variable` object.
 
-    Return:
+    Returns:
       An `Operation`.
     """
     raise NotImplementedError()

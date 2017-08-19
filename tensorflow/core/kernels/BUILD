@@ -103,7 +103,6 @@ tf_kernel_library(
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
         "strided_slice_op_gpu.cu.cc",
-        "slice_op_gpu.cu.cc",
     ],
     deps = [
         ":bounds_check",
@@ -1573,6 +1572,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "dynamic_stitch_op",
+    gpu_srcs = [
+        "cuda_device_array.h",
+        "cuda_device_array_gpu.h",
+    ],
     prefix = "dynamic_stitch_op",
     deps = DYNAMIC_DEPS,
 )
@@ -2252,7 +2255,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_solve_op",
     prefix = "matrix_solve_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -2732,6 +2738,42 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":sparse_matmul_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "split_op_test",
+    size = "small",
+    srcs = ["split_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":split_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "split_v_op_test",
+    size = "small",
+    srcs = ["split_v_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":split_v_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5575,6 +5617,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "prefetch_dataset_op",
+    srcs = ["prefetch_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "repeat_dataset_op",
     srcs = ["repeat_dataset_op.cc"],
     deps = [
@@ -5761,6 +5816,7 @@ tf_kernel_library(
         ":map_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_map_dataset_op",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",

@@ -3,7 +3,6 @@
 #
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -31,6 +30,7 @@ tf_kernel_library(
         "depthwiseconv_float.h",
         "types.h",
     ],
+    features = ["-parse_headers"],  # included gemmlowp headers are not self-contained
     prefix = "neon_depthwise_conv_op",
     deps = [
         "//tensorflow/core:core_cpu",

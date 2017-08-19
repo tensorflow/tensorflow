@@ -495,6 +495,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
+    cudnn_disable_conv_1x1_optimization_ = CudnnDisableConv1x1Optimization();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -558,7 +559,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       return;
     }
 
-    if (dims.spatial_dims[0].filter_size == 1 &&
+    if (!cudnn_disable_conv_1x1_optimization_ &&
+        dims.spatial_dims[0].filter_size == 1 &&
         dims.spatial_dims[1].filter_size == 1 &&
         dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
         data_format_ == FORMAT_NHWC) {
@@ -852,6 +854,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   bool use_cudnn_;
   TensorFormat data_format_;
   bool cudnn_use_autotune_;
+  bool cudnn_disable_conv_1x1_optimization_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);
 };

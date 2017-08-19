@@ -67,6 +67,7 @@ load(
     "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
+    "if_mobile",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -116,6 +117,7 @@ load(
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
+    "tf_additional_gdr_lib_defines",
     "tf_additional_gpu_tracer_srcs",
     "tf_additional_gpu_tracer_deps",
     "tf_additional_gpu_tracer_cuda_deps",
@@ -290,6 +292,7 @@ cc_library(
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
+        "platform/abi.h",
         "platform/cpu_feature_guard.h",
         "platform/cpu_info.h",
         "platform/dynamic_annotations.h",
@@ -512,8 +515,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps =
         [
-            "//tensorflow/core/platform/default/build_config:minimal",
+            "@nsync//:nsync_cpp",
+        ] + [
             "//third_party/eigen3",
+            "//tensorflow/core/platform/default/build_config:minimal",
         ],
 )
 
@@ -952,6 +957,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -974,6 +980,7 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1056,6 +1063,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1198,6 +1206,27 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_pyclif_proto_library(
+    name = "framework/node_def_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/node_def.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/types_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/types.proto",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -1245,72 +1274,36 @@ tf_proto_library_cc(
     ],
 )
 
-LIB_INTERNAL_WINDOWS_DEPS = glob(
-    [
-        "lib/**/*.h",
-        "lib/**/*.cc",
-        "platform/*.h",
-        "platform/*.cc",
-        "platform/profile_utils/**/*.h",
-        "platform/profile_utils/**/*.cc",
-    ] + [
-        "framework/resource_handle.h",
-        "framework/resource_handle.cc",
-        "framework/variant_tensor_data.h",
-        "framework/variant_tensor_data.cc",
-    ],
-    exclude = [
-        "**/*test*",
-        "lib/hash/crc32c_accelerate.cc",
-        "lib/gif/**/*",
-        "lib/jpeg/**/*",
-        "platform/gif.h",
-        "platform/jpeg.h",
-        "platform/**/env_time.cc",
-        "platform/**/cuda.h",
-        "platform/**/cuda_libdevice_path.cc",
-        "platform/**/stream_executor.h",
-        "platform/load_library.cc",
-        "platform/variant_coding.cc",
-        "platform/**/variant_cord_coding.cc",
-    ],
-)
-
 cc_library(
     name = "lib_internal",
-    srcs = select({
-        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_DEPS,
-        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_DEPS,
-        "//conditions:default": glob(
-            [
-                "lib/**/*.h",
-                "lib/**/*.cc",
-                "platform/*.h",
-                "platform/*.cc",
-                "platform/profile_utils/**/*.h",
-                "platform/profile_utils/**/*.cc",
-                "framework/resource_handle.h",
-                "framework/resource_handle.cc",
-            ],
-            exclude = [
-                "**/*test*",
-                "framework/variant.cc",
-                "platform/variant_coding.cc",
-                "lib/hash/crc32c_accelerate.cc",
-                "lib/gif/**/*",
-                "lib/jpeg/**/*",
-                "platform/gif.h",
-                "platform/jpeg.h",
-                "platform/**/env_time.cc",
-                "platform/**/cuda.h",
-                "platform/**/cuda_libdevice_path.cc",
-                "platform/**/stream_executor.h",
-                "platform/**/gpu_tracer.cc",
-                "platform/variant_coding.cc",
-                "platform/**/variant_cord_coding.cc",
-            ],
-        ),
-    }) + tf_additional_lib_srcs(
+    srcs = glob(
+        [
+            "lib/**/*.h",
+            "lib/**/*.cc",
+            "platform/*.h",
+            "platform/*.cc",
+            "platform/profile_utils/**/*.h",
+            "platform/profile_utils/**/*.cc",
+            "framework/resource_handle.h",
+            "framework/resource_handle.cc",
+        ],
+        exclude = [
+            "**/*test*",
+            "framework/variant.cc",
+            "lib/hash/crc32c_accelerate.cc",
+            "lib/gif/**/*",
+            "lib/jpeg/**/*",
+            "platform/gif.h",
+            "platform/jpeg.h",
+            "platform/**/env_time.cc",
+            "platform/**/cuda.h",
+            "platform/**/cuda_libdevice_path.cc",
+            "platform/**/stream_executor.h",
+            "platform/**/gpu_tracer.cc",
+            "platform/variant_coding.cc",
+            "platform/**/variant_cord_coding.cc",
+        ],
+    ) + tf_additional_lib_srcs(
         exclude = [
             "**/*test*",
             "platform/**/cuda.h",
@@ -1370,9 +1363,12 @@ cc_library(
     defines = tf_additional_lib_defines() + [
                   "SNAPPY",
               ] + tf_additional_verbs_lib_defines() +
-              tf_additional_mpi_lib_defines(),
+              tf_additional_mpi_lib_defines() +
+              tf_additional_gdr_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",
@@ -1407,6 +1403,8 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -1430,6 +1428,8 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -1605,6 +1605,8 @@ tf_cuda_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }) + [
         "-lm",
@@ -1624,10 +1626,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    includes = ["../../external/nsync/public"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
         ":reader_base",
+        "@nsync//:nsync_headers",
     ],
 )
 
@@ -2161,11 +2165,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "platform_abi_test",
+    size = "small",
+    srcs = ["platform/abi_test.cc"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "platform_setround_test",
     size = "small",
     srcs = ["platform/setround_test.cc"],
     tags = [
         "noasan",
+        "noclang",
         "nomsan",
         "notsan",
     ],
@@ -2525,6 +2546,35 @@ tf_cc_test_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:cast_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "variant_op_copy_test",
+    size = "small",
+    srcs = ["framework/variant_op_copy_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:array",
         "//third_party/eigen3",
     ],
 )
@@ -3079,6 +3129,9 @@ filegroup(
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
+        # JPEG data for jpeg benchmark.
+        "lib/jpeg/testdata/small.jpg",
+        "lib/jpeg/testdata/medium.jpg",
         # Corrupted JPEG files for tests
         "lib/jpeg/testdata/bad_huffman.jpg",
         "lib/jpeg/testdata/corrupt.jpg",

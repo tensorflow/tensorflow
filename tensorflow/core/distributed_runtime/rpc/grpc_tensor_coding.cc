@@ -29,18 +29,13 @@ limitations under the License.
 namespace tensorflow {
 namespace grpc {
 
-static void do_nothing(void* raw) {}
-static void unref_tensorbuffer(void* raw) {
-  TensorBuffer* buf = static_cast<TensorBuffer*>(raw);
-  buf->Unref();
-}
-
 void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
                                           ::grpc::ByteBuffer* result) {
   ::grpc::Slice slice(proto.ByteSizeLong());
   proto.SerializeWithCachedSizesToArray(
       const_cast<uint8*>(reinterpret_cast<const uint8*>(slice.begin())));
-  *result = ::grpc::ByteBuffer(&slice, 1);
+  ::grpc::ByteBuffer tmp(&slice, 1);
+  result->Swap(&tmp);
 }
 
 // We generate a RecvTensorResponse protocol buffer encoding into "*result",
@@ -203,7 +198,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     // All but the tensor backing store are serialized now
 
     // Now allocate memory and put into the ByteBuffer
-    ::grpc::Slice slices[3];
+    ::grpc::Slice slices[2];
     int num_slices = 0;
     {
       size_t slice_len = e.size() + (tensor_data_is_large ? 0 : tdata.size());
@@ -218,44 +213,24 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     }
 
     if (tensor_data_is_large) {
-      // Encode the actual tensor data by pointing to the backing store,
-      // and add a special zero-length slice that is really a TensorBuffer
-      // reference that we will unref when we are done.
-      //
-      // TODO(jeff): Note that this approach relies on the fact that
-      // slices are destroyed in the order in which they are added to
-      // the ByteBuffer.  In principle, these could be broken by future
-      // hypothetical grpc_slice-related changes (e.g. the
-      // implementation could decide to destroy 0-length slices
-      // eagerly).  In practice, this does not happen with the current
-      // implementation, and the grpc_slice interface at the moment does
-      // not allow us to do the Tensor-unreferencing in the right way
-      // (since the Tensor pointer is different than the backing store
-      // array pointer).
-      //
-      // TODO(jeff,sanjay): switch to using new
-      // grpc_slice_new_with_user_data interface that allows for
-      // different pointers for the data and the argument to the
-      // destroy function once that has been added integrated into grpc
-      // (see https://github.com/grpc/grpc/pull/7488)
-
       // (E) Encode tensor data, but by sharing backing store
 
-      // TODO(https://github.com/grpc/grpc/issues/11981): Use a pure C++
-      // ::grpc::Slice in the below two instances of grpc_slice once
-      // the appropriate constructor is created
+      // TODO(vpai): Use the pure C++ ::grpc::Slice constructor that uses
+      // grpc_slice_new_with_user_data once TensorFlow pins a version of gRPC
+      // that includes https://github.com/grpc/grpc/pull/12065
 
       const TensorBuffer* buf = DMAHelper::buffer(&val);
       buf->Ref();
-      grpc_slice s1 = grpc_slice_new(
-          const_cast<void*>(static_cast<const void*>(tdata.data())),
-          tdata.size(), do_nothing);
-      slices[1] = ::grpc::Slice(s1, ::grpc::Slice::STEAL_REF);
-
-      grpc_slice s2 =
-          grpc_slice_new(const_cast<TensorBuffer*>(buf), 0, unref_tensorbuffer);
-      slices[2] = ::grpc::Slice(s2, ::grpc::Slice::STEAL_REF);
-      num_slices += 2;
+      slices[1] = ::grpc::Slice(
+          grpc_slice_new_with_user_data(
+              const_cast<void*>(static_cast<const void*>(tdata.data())),
+              tdata.size(),
+              [](void* backing) {
+                static_cast<TensorBuffer*>(backing)->Unref();
+              },
+              const_cast<TensorBuffer*>(buf)),
+          ::grpc::Slice::STEAL_REF);
+      num_slices += 1;
     }
     size_t total_bytes = 0;
     for (int i = 0; i < num_slices; i++) {
@@ -263,7 +238,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     }
     CHECK_EQ(total_bytes, expected_size);
 
-    *result = ::grpc::ByteBuffer(&slices[0], num_slices);
+    ::grpc::ByteBuffer tmp(&slices[0], num_slices);
+    result->Swap(&tmp);
   }
 }
 

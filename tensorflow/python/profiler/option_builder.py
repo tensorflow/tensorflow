@@ -315,7 +315,7 @@ class ProfileOptionBuilder(object):
     """Selectively counting statistics based on node types.
 
     Here, 'types' means the profiler nodes' properties. Profiler by default
-    consider device name (e.g. /job:xx/.../gpu:0) and operation type
+    consider device name (e.g. /job:xx/.../device:GPU:0) and operation type
     (e.g. MatMul) as profiler nodes' properties. User can also associate
     customized 'types' to profiler nodes through OpLogProto proto.
 
@@ -406,7 +406,7 @@ class ProfileOptionBuilder(object):
     """Generate a pprof profile gzip file.
 
     To use the pprof file:
-      pprof -png --nodecount=20 --sample_index=1 <pprof_file>
+      pprof -png --nodecount=100 --sample_index=1 <pprof_file>
 
     Args:
       pprof_file: filename for output, usually suffixed with .pb.gz.

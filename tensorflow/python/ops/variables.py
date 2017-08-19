@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -187,7 +188,11 @@ class Variable(object):
       ValueError: If both `variable_def` and initial_value are specified.
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+      RuntimeError: If created in EAGER mode.
     """
+    if not context.in_graph_mode():
+      raise RuntimeError("Variable not supported in Eager mode. "
+                         "Please use ResourceVariable instead")
     if variable_def:
       # If variable_def is provided, recreates the variable from its fields.
       if initial_value:
@@ -692,12 +697,15 @@ class Variable(object):
     Raises:
         ValueError: Session is not passed and no default session
     """
-    session = session or ops.get_default_session()
-    if session is None:
-      raise ValueError(
-          "Either session argument should be provided or default session "
-          "should be established")
-    session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
+    if context.in_graph_mode():
+      session = session or ops.get_default_session()
+      if session is None:
+        raise ValueError(
+            "Either session argument should be provided or default session "
+            "should be established")
+      session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
+    else:
+      self.assign(value)
 
   # Conversion to tensor.
   @staticmethod
@@ -1057,7 +1065,10 @@ class PartitionedVariable(object):
         `partitions` is not a list.
       ValueError: If `variable_list` is empty, or the `Variable` shape
         information does not match `shape`, or `partitions` has invalid values.
+      RuntimeError: If created in EAGER mode.
     """
+    if not context.in_graph_mode():
+      raise RuntimeError("PartitionedVariable not supported in Eager mode.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)
@@ -1187,7 +1198,7 @@ class PartitionedVariable(object):
         "assign() has not been implemented for PartitionedVariable.")
 
 
-def global_variables():
+def global_variables(scope=None):
   """Returns global variables.
 
   Global variables are variables that are shared across machines in a
@@ -1199,10 +1210,17 @@ def global_variables():
   An alternative to global variables are local variables. See
   @{tf.local_variables}
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, scope)
 
 
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
@@ -1211,18 +1229,25 @@ def all_variables():
   return global_variables()
 
 
-def _all_saveable_objects():
+def _all_saveable_objects(scope=None):
   """Returns all variables and `SaveableObject`s that must be checkpointed.
+
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
 
   Returns:
     A list of `Variable` and `SaveableObject` to be checkpointed
   """
   # TODO(andreasst): make this function public once things are settled.
-  return (ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
-          ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
+  return (ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, scope) +
+          ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS, scope))
 
 
-def local_variables():
+def local_variables(scope=None):
   """Returns local variables.
 
   Local variables - per process variables, usually not saved/restored to
@@ -1236,22 +1261,36 @@ def local_variables():
   An alternative to local variables are global variables. See
   @{tf.global_variables}
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of local `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES, scope)
 
 
-def model_variables():
+def model_variables(scope=None):
   """Returns all variables in the MODEL_VARIABLES collection.
+
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
 
   Returns:
     A list of local Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES, scope)
 
 
-def trainable_variables():
+def trainable_variables(scope=None):
   """Returns all variables created with `trainable=True`.
 
   When passed `trainable=True`, the `Variable()` constructor automatically
@@ -1259,13 +1298,20 @@ def trainable_variables():
   `GraphKeys.TRAINABLE_VARIABLES`. This convenience function returns the
   contents of that collection.
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES, scope)
 
 
-def moving_average_variables():
+def moving_average_variables(scope=None):
   """Returns all variables that maintain their moving averages.
 
   If an `ExponentialMovingAverage` object is created and the `apply()`
@@ -1273,10 +1319,17 @@ def moving_average_variables():
   be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
   This convenience function returns the contents of that collection.
 
+  Args:
+    scope: (Optional.) A string. If supplied, the resulting list is filtered
+      to include only items whose `name` attribute matches `scope` using
+      `re.match`. Items without a `name` attribute are never returned if a
+      scope is supplied. The choice of `re.match` means that a `scope` without
+      special tokens filters by prefix.
+
   Returns:
     A list of Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, scope)
 
 
 def variables_initializer(var_list, name="init"):

@@ -175,7 +175,21 @@ class CudaSolver {
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) const;
 
-  // Computes partially pivoted LU factorizations for a batch of matrices.
+  // LU factorization.
+  // Computes LU factorization with partial pivoting P * A = L * U.
+  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
+  template <typename Scalar>
+  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
+               int* dev_lapack_info) const;
+
+  // Uses LU factorization to solve A * X = B.
+  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
+  template <typename Scalar>
+  Status Getrs(cublasOperation_t trans, int n, int nrhs, const Scalar* A,
+               int lda, const int* pivots, Scalar* B, int ldb,
+               int* dev_lapack_info) const;
+
+  // Computes partially pivoted LU factorizations for a batch of small matrices.
   // Returns Status::OK() if the kernel was launched successfully.See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
   template <typename Scalar>
@@ -183,15 +197,32 @@ class CudaSolver {
                       int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
                       int batch_size) const;
 
-  // Computes matrix inverses for a batch of matrices. Uses the outputs from
-  // GetrfBatched. Returns Status::OK() if the kernel was launched successfully.
+  // Batched linear solver using LU factorization from getrfBatched.
   // See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
+  template <typename Scalar>
+  Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
+                      const Scalar* dev_Aarray[], int lda, const int* devIpiv,
+                      const Scalar* dev_Barray[], int ldb,
+                      DeviceLapackInfo* dev_lapack_info, int batch_size) const;
+
+  // Computes matrix inverses for a batch of small matrices. Uses the outputs
+  // from GetrfBatched. Returns Status::OK() if the kernel was launched
+  // successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
   template <typename Scalar>
   Status GetriBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
                       const int* dev_pivots,
                       const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
                       DeviceLapackInfo* dev_lapack_info, int batch_size) const;
+
+  // Computes matrix inverses for a batch of small matrices with size n < 32.
+  // Returns Status::OK() if the kernel was launched successfully. See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-matinvbatched
+  template <typename Scalar>
+  Status MatInvBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
+                       const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
+                       DeviceLapackInfo* dev_lapack_info, int batch_size) const;
 
   /*
   TODO(rmlarsen, volunteers): Implement the kernels below.
@@ -200,19 +231,6 @@ class CudaSolver {
   template <typename Scalar>
   Status Potrs(cublasFillMode_t uplo, int n, int nrhs, const Scalar* dev_A, int
   lda, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
-
-  // LU factorization.
-  // Computes LU factorization with partial pivoting P * A = L * U.
-  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
-  template <typename Scalar>
-  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
-             int* dev_lapack_info) const;
-
-  // Uses LU factorization to solve A * X = B.
-  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
-  template <typename Scalar>
-  Status Getrs(int n, int nrhs, const Scalar* dev_A, int lda, const int*
-  dev_pivots, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -246,15 +264,6 @@ class CudaSolver {
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
              int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
              int ldvt, int* dev_lapack_info);
-
-  // Batched linear solver using LU factorization from getrfBatched.
-  // See:
-  http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
-  template <typename Scalar>
-  Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
-                    const Scalar* dev_Aarray[], int lda, const int* devIpiv,
-                    Scalar* dev_Barray[], int ldb, int* info, int batch_size)
-  const;
   */
 
  private:
@@ -296,6 +305,9 @@ class ScratchSpace {
   }
   const Scalar* data() const {
     return scratch_tensor_.template flat<Scalar>().data();
+  }
+  Scalar operator[](int64 i) const {
+    return scratch_tensor_.template flat<Scalar>().data()[i];
   }
   int64 bytes() const { return scratch_tensor_.TotalBytes(); }
   int64 size() const { return scratch_tensor_.NumElements(); }
@@ -359,6 +371,16 @@ struct DeterminantFromPivotedLUFunctor {
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
                   int* info);
 };
+
+// Helper functor to set a batch of matrices to the identity.
+// TODO(rmlarsen): Use this kernel to replace the horribly inefficient tf.eye
+// op.
+template <typename Device, typename Scalar>
+struct EyeFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<Scalar, 3>::Tensor matrix_batch);
+};
+
 }  // namespace functor
 
 }  // namespace tensorflow

@@ -1321,7 +1321,7 @@ class Saver(object):
     """Returns a `Saver` object created from `saver_def`.
 
     Args:
-      saver_def: a `SaveDef` protocol buffer.
+      saver_def: a `SaverDef` protocol buffer.
       import_scope: Optional `string`. Name scope to use.
 
     Returns:

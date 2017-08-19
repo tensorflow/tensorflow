@@ -53,7 +53,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:batchnorm_rewriter",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
-        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -70,6 +69,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:inliner",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
@@ -290,6 +290,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:analysis",
@@ -436,6 +437,19 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "cpu_instruction_fusion_test",
+    size = "small",
+    srcs = ["cpu_instruction_fusion_test.cc"],
+    deps = [
+        ":cpu_instruction_fusion",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:transpose_folding",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
     ],
 )
 

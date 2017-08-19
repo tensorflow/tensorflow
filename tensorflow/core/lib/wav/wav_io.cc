@@ -111,9 +111,20 @@ Status ReadValue(const string& data, T* value, int* offset) {
         reinterpret_cast<const uint8*>(data.data() + *offset);
     int shift = 0;
     for (int i = 0; i < sizeof(T); ++i, shift += 8) {
-      *value = *value | (data_buf[i] >> shift);
+      *value = *value | (data_buf[i] << shift);
     }
   }
+  *offset = new_offset;
+  return Status::OK();
+}
+
+Status ReadString(const string& data, int expected_length, string* value,
+                  int* offset) {
+  const int new_offset = *offset + expected_length;
+  if (new_offset > data.size()) {
+    return errors::InvalidArgument("Data too short when trying to read string");
+  }
+  *value = string(data.begin() + *offset, data.begin() + new_offset);
   *offset = new_offset;
   return Status::OK();
 }
@@ -254,17 +265,33 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
     // Skip over this unused section.
     offset += 2;
   }
-  TF_RETURN_IF_ERROR(ExpectText(wav_string, kDataChunkId, &offset));
-  uint32 data_size;
-  TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &data_size, &offset));
-  *sample_count = data_size / bytes_per_sample;
-  const uint32 data_count = *sample_count * *channel_count;
-  float_values->resize(data_count);
-  for (int i = 0; i < data_count; ++i) {
-    int16 single_channel_value = 0;
-    TF_RETURN_IF_ERROR(
-        ReadValue<int16>(wav_string, &single_channel_value, &offset));
-    (*float_values)[i] = Int16SampleToFloat(single_channel_value);
+
+  bool was_data_found = false;
+  while (offset < wav_string.size()) {
+    string chunk_id;
+    TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &chunk_id, &offset));
+    uint32 chunk_size;
+    TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &chunk_size, &offset));
+    if (chunk_id == kDataChunkId) {
+      if (was_data_found) {
+        return errors::InvalidArgument("More than one data chunk found in WAV");
+      }
+      was_data_found = true;
+      *sample_count = chunk_size / bytes_per_sample;
+      const uint32 data_count = *sample_count * *channel_count;
+      float_values->resize(data_count);
+      for (int i = 0; i < data_count; ++i) {
+        int16 single_channel_value = 0;
+        TF_RETURN_IF_ERROR(
+            ReadValue<int16>(wav_string, &single_channel_value, &offset));
+        (*float_values)[i] = Int16SampleToFloat(single_channel_value);
+      }
+    } else {
+      offset += chunk_size;
+    }
+  }
+  if (!was_data_found) {
+    return errors::InvalidArgument("No data chunk found in WAV");
   }
   return Status::OK();
 }

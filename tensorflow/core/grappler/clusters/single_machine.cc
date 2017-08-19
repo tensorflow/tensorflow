@@ -89,7 +89,7 @@ Status SingleMachine::Provision() {
   VLOG(1) << "Number of GPUs: " << num_gpus_;
   for (int i = 0; i < num_gpus_; ++i) {
     string device_name =
-        strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i);
+        strings::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i);
     VLOG(1) << "Adding GPU device " << device_name;
     devices_[device_name] = GetLocalGPUInfo(i);
   }
@@ -112,10 +112,10 @@ Status SingleMachine::Shutdown() {
   TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
 
   // Delete the threadpool: this ensures that all the pending closures complete
-  // before we return. Note that if that if TF deadlocked on us, the closures
-  // will never complete, and the call to thread_pool_.reset() will never
-  // return: therefore we need to delete the threadpool with the background
-  // thread. That thread itself will also never complete, so the user should
+  // before we return. Note that if TF deadlocked on us, the closures will
+  // never complete, and the call to thread_pool_.reset() will never return:
+  // therefore we need to delete the threadpool with the background thread.
+  // That thread itself will also never complete, so the user should
   // abort the process to avoid leaking too many resources.
   auto n = std::make_shared<Notification>();
   Env::Default()->SchedClosure([this, n]() {

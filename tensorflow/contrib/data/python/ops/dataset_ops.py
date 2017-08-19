@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import warnings
 
 import numpy as np
 
@@ -257,11 +258,12 @@ class Iterator(object):
       # initializers that simply reset their state to the beginning.
       raise ValueError("Iterator does not have an initializer.")
 
-  def make_initializer(self, dataset):
+  def make_initializer(self, dataset, name=None):
     """Returns a `tf.Operation` that initializes this iterator on `dataset`.
 
     Args:
       dataset: A `Dataset` with compatible structure to this iterator.
+      name: (Optional.) A name for the created operation.
 
     Returns:
       A `tf.Operation` that can be run to initialize this iterator on the given
@@ -271,22 +273,25 @@ class Iterator(object):
       TypeError: If `dataset` and this iterator do not have a compatible
         element structure.
     """
-    nest.assert_same_structure(self._output_types, dataset.output_types)
-    nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
-    for iterator_dtype, dataset_dtype in zip(
-        nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
-      if iterator_dtype != dataset_dtype:
-        raise TypeError(
-            "Expected output types %r but got dataset with output types %r." %
-            (self._output_types, dataset.output_types))
-    for iterator_shape, dataset_shape in zip(
-        nest.flatten(self._output_shapes), nest.flatten(dataset.output_shapes)):
-      if not iterator_shape.is_compatible_with(dataset_shape):
-        raise TypeError("Expected output shapes compatible with %r but got "
-                        "dataset with output shapes %r." %
-                        (self._output_shapes, dataset.output_shapes))
-    return gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
-                                         self._iterator_resource)
+    with ops.name_scope(name, "make_initializer") as name:
+      nest.assert_same_structure(self._output_types, dataset.output_types)
+      nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
+      for iterator_dtype, dataset_dtype in zip(
+          nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
+        if iterator_dtype != dataset_dtype:
+          raise TypeError(
+              "Expected output types %r but got dataset with output types %r." %
+              (self._output_types, dataset.output_types))
+      for iterator_shape, dataset_shape in zip(
+          nest.flatten(self._output_shapes),
+          nest.flatten(dataset.output_shapes)):
+        if not iterator_shape.is_compatible_with(dataset_shape):
+          raise TypeError("Expected output shapes compatible with %r but got "
+                          "dataset with output shapes %r." %
+                          (self._output_shapes, dataset.output_shapes))
+      return gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
+                                           self._iterator_resource,
+                                           name=name)
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
@@ -328,8 +333,8 @@ class Iterator(object):
     Returns:
       A scalar `tf.Tensor` of type `tf.string`.
     """
-    return gen_dataset_ops.iterator_to_string_handle(self._iterator_resource,
-                                                     name=name)
+    return gen_dataset_ops.iterator_to_string_handle(
+        self._iterator_resource, name=name)
 
   @property
   def output_shapes(self):
@@ -650,6 +655,18 @@ class Dataset(object):
     """
     return ConcatenateDataset(self, dataset)
 
+  def prefetch(self, buffer_size):
+    """Creates a `Dataset` that prefetches elements from this dataset.
+
+    Args:
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        maximum number elements that will be buffered when prefetching.
+
+    Returns:
+      A `Dataset`.
+    """
+    return PrefetchDataset(self, buffer_size)
+
   @staticmethod
   def read_batch_features(file_pattern,
                           batch_size,
@@ -821,6 +838,78 @@ class Dataset(object):
     """
     return SkipDataset(self, count)
 
+  def shard(self, num_shards, index):
+    """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
+
+    This dataset operator is very useful when running distributed training, as
+    it allows each worker to read a unique subset.
+
+    When reading a single input file, you can skip elements as follows:
+
+    ```python
+    d = tf.contrib.data.TFRecordDataset(FLAGS.input_file)
+    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
+    d = d.repeat(FLAGS.num_epochs)
+    d = d.shuffle(FLAGS.shuffle_buffer_size)
+    d = d.map(parser_fn, num_threads=FLAGS.num_map_threads)
+    ```
+
+    Important caveats:
+     - Be sure to shard before you use any randomizing operator (such as
+       shuffle).
+     - Generally it is best if the shard operator is used early in the dataset
+       pipeline. For example, when reading from a set of TFRecord files, shard
+       before converting the dataset to input samples. This avoids reading every
+       file on every worker. The following is an example of an efficient
+       sharding strategy within a complete pipeline:
+
+       ```python
+       d = Dataset.list_files(FLAGS.pattern)
+       d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
+       d = d.repeat(FLAGS.num_epochs)
+       d = d.shuffle(FLAGS.shuffle_buffer_size)
+       d = d.repeat()
+       d = d.interleave(tf.contrib.data.TFRecordDataset,
+                        cycle_length=FLAGS.num_readers, block_length=1)
+       d = d.map(parser_fn, num_threads=FLAGS.num_map_threads)
+       ```
+
+    Args:
+      num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        shards operating in parallel.
+      index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
+
+    Returns:
+      A `Dataset`.
+
+    Raises:
+      ValueError: if `num_shards` or `index` are illegal values. Note: error
+        checking is done on a best-effort basis, and aren't guaranteed to be
+        caught upon dataset creation. (e.g. providing in a placeholder tensor
+        bypasses the early checking, and will instead result in an error during
+        a session.run call.)
+    """
+    num_shards = ops.convert_to_tensor(
+        num_shards, name="num_shards", dtype=dtypes.int64)
+    num_shards_static = tensor_util.constant_value(num_shards)
+    index = ops.convert_to_tensor(index, name="index", dtype=dtypes.int64)
+    index_static = tensor_util.constant_value(index)
+
+    if num_shards_static is not None and num_shards_static < 1:
+      raise ValueError("num_shards must be >= 1; got: %s" % num_shards_static)
+    if index_static is not None and index_static < 0:
+      raise ValueError("index must be >= 0; got: %s" % index_static)
+    if (index_static is not None and num_shards_static is not None and
+        index_static >= num_shards_static):
+      raise ValueError("index must be <= num_shards; %s is not < %s" %
+                       (index_static, num_shards_static))
+
+    def filter_fn(elem_index, _):
+      mod_result = math_ops.mod(elem_index, num_shards)
+      return math_ops.equal(mod_result, index)
+
+    return self.enumerate().filter(filter_fn).map(lambda _, elem: elem)
+
   def ignore_errors(self):
     """Creates a `Dataset` from this one and silently ignores any errors.
 
@@ -964,6 +1053,7 @@ class Dataset(object):
       output_buffer_size: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the maximum number of processed elements that will be
         buffered when processing in parallel.
+        Note that this argument is ignored if 'num_threads' is not set.
 
     Returns:
       A `Dataset`.
@@ -1058,11 +1148,13 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
+
     def unbatch_map(arg, *rest):
       if rest:
         return Dataset.from_tensor_slices((arg,) + rest)
       else:
         return Dataset.from_tensor_slices(arg)
+
     return self.flat_map(map_func=unbatch_map)
 
   def filter(self, predicate):
@@ -1751,6 +1843,10 @@ class MapDataset(Dataset):
             num_threads, dtype=dtypes.int64, name="output_buffer_size")
     else:
       self._num_threads = None
+      if output_buffer_size is not None:
+        warnings.warn(
+            "Dataset.map() is ignoring output_buffer_size since the argument "
+            "num_threads was not set. To buffer elements, set num_threads >= 1")
       self._output_buffer_size = None
 
   def make_dataset_resource(self):
@@ -1834,11 +1930,7 @@ class FlatMapDataset(Dataset):
 class InterleaveDataset(Dataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
-  def __init__(self,
-               input_dataset,
-               map_func,
-               cycle_length,
-               block_length):
+  def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
     super(InterleaveDataset, self).__init__()
     self._input_dataset = input_dataset
@@ -1929,6 +2021,31 @@ class FilterDataset(Dataset):
         predicate=self._predicate,
         output_types=nest.flatten(self.output_types),
         output_shapes=nest.flatten(self.output_shapes))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+
+class PrefetchDataset(Dataset):
+  """A `Dataset` that asynchronously prefetches its input."""
+
+  def __init__(self, input_dataset, buffer_size):
+    """See `Dataset.prefetch()` for details."""
+    super(PrefetchDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64)
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.prefetch_dataset(
+        self._input_dataset.make_dataset_resource(),
+        buffer_size=self._buffer_size,
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
 
   @property
   def output_shapes(self):

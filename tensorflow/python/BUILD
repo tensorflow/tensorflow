@@ -30,6 +30,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 
 py_library(
     name = "python",
@@ -359,11 +360,11 @@ cc_library(
     srcs = ["framework/python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/eager:python_eager_op_gen",
     ],
 )
 
@@ -402,6 +403,10 @@ py_library(
         ":registry",
         ":tensor_shape",
         ":versions",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -479,6 +484,7 @@ py_library(
         ":framework_ops",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:execute",
     ],
 )
 
@@ -591,6 +597,8 @@ py_library(
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:core",
         "@six_archive//:six",
     ],
 )
@@ -961,7 +969,17 @@ py_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
+)
+
+py_test(
+    name = "framework_pip_dependencies_test",
+    size = "small",
+    srcs = ["framework/pip_dependencies_test.py"],
+    main = "framework/pip_dependencies_test.py",
+    srcs_version = "PY2AND3",
+    deps = [":client_testlib"],
 )
 
 py_test(
@@ -1117,6 +1135,15 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "audio_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/contrib/framework:__pkg__",
     ],
 )
 
@@ -1698,6 +1725,8 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -1732,6 +1761,7 @@ py_library(
     deps = [
         ":array_ops",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":math_ops",
         ":nn_ops",
         ":nn_ops_gen",
@@ -2178,6 +2208,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2351,6 +2382,7 @@ cuda_py_test(
         ":math_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2368,6 +2400,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2396,6 +2429,7 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":nn",
         ":nn_grad",
         "//third_party/py/numpy",
@@ -2448,6 +2482,7 @@ cuda_py_test(
         ":special_math_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_library(
@@ -2705,9 +2740,7 @@ py_test(
 py_test(
     name = "events_writer_test",
     size = "small",
-    srcs = [
-        "client/events_writer_test.py",
-    ],
+    srcs = ["client/events_writer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":errors",
@@ -2807,6 +2840,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "pywrap_tfe.i",
         "training/quantize_training.i",
         "training/server_lib.i",
         "util/kernel_registry.i",
@@ -2831,6 +2865,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
@@ -2843,11 +2878,13 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
-         tf_additional_mpi_deps()),
+         tf_additional_mpi_deps() +
+         tf_additional_gdr_deps()),
 )
 
 py_library(
@@ -3726,7 +3763,7 @@ py_test(
 
 cuda_py_test(
     name = "layers_normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/normalization_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3739,6 +3776,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     main = "layers/normalization_test.py",
+    shard_count = 10,
 )
 
 # -----------------------------------------------------------------------------
@@ -3999,6 +4037,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["manual"],
 )
 
 py_library(

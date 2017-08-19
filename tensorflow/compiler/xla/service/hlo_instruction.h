@@ -309,6 +309,11 @@ class HloInstruction {
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
 
+  // Returns true if this instruction has a side effect. An instruction has a
+  // side effect if it uses certain opcodes or calls a computation with a side
+  // effect.
+  bool HasSideEffect() const;
+
   // Returns the result shape of this instruction.
   const Shape& shape() const;
 
@@ -374,7 +379,23 @@ class HloInstruction {
       std::function<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
       std::function<bool(const HloComputation*, const HloComputation*)>
-          eq_computations = std::equal_to<const HloComputation*>()) const;
+          eq_computations = std::equal_to<const HloComputation*>()) const {
+    // An instruction is always identical to itself.
+    if (this == &other) {
+      return true;
+    }
+
+    // Identical instruction must have the same opcode and identical operands.
+    // In general, there is no need to check shape because shape is inferred
+    // from the shape of the operands.
+    if (opcode() != other.opcode() ||
+        !ContainersEqual(operands(), other.operands(),
+                         std::move(eq_operands))) {
+      return false;
+    }
+
+    return IdenticalSlowPath(other, eq_computations);
+  }
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -594,9 +615,7 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   HloComputation* fused_instructions_computation() const;
 
-  // Returns the vector of fused instructions inside this fusion
-  // instruction. The order is a reverse postorder of the fused expression (root
-  // is first in the order).
+  // Returns the list of fused instructions inside this fusioninstruction.
   //
   // Note: although the list itself is const, the instructions contained in the
   // list returned here are mutable.
@@ -639,6 +658,16 @@ class HloInstruction {
   // Predondition: 'instruction_to_merge' must be an operand of 'this'.
   void MergeFusionInstruction(HloInstruction* instruction_to_merge);
 
+  // Merges the fused instructions from 'instruction_to_merge' into the
+  // fused instruction set of 'this' and generate multioutput fusion
+  // instructions. All the user of instruction_to_merge will be redirected
+  // to 'this' instruction. `instruction_to_merge' will be removed from its
+  // parent computation.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  void MergeFusionInstructionIntoMultiOutput(
+      HloInstruction* instruction_to_merge);
+
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion
   // instruction. instruction_to_fuse is unchanged. Instruction is cloned rather
@@ -648,7 +677,21 @@ class HloInstruction {
   // and significantly complicate code generation.
   //
   // Precondition: this->opcode() == HloOpcode::kFusion
-  HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);
+  HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse) {
+    return FuseInstructionInternal(instruction_to_fuse);
+  }
+
+  // Fuses the given instruction in this fusion instruction and generate
+  // multioutput fusion instruction. A clone of the instruction_to_fuse will
+  // be part of the output of fusion instructions. The users of
+  // instruction_to_fuse will be redirected to this fusion instructions.
+  // instruction_to_fuse will be removed from its parent computation.
+  //
+  // Precondition: this->opcode() == HloOpcode::kFusion
+  HloInstruction* FuseInstructionIntoMultiOutput(
+      HloInstruction* instruction_to_fuse) {
+    return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
+  }
 
   // Returns the start index in the given dimension for a slice node.
   //
@@ -782,6 +825,9 @@ class HloInstruction {
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
 
+  // Returns true if this instruction is binary and elementwise.
+  bool IsElementwiseBinary() const;
+
   // Returns whether this instruction may reuse elements of its `i`th operand.
   bool ReusesOperandElements(int64 i) const {
     return OperandElementUse(i) == UseKind::kReuse;
@@ -869,6 +915,12 @@ class HloInstruction {
   // Helper class for computing OperandElementUse for kFusion.
   class FusionReusesParamElements;
 
+  // See comments on Identical().
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      std::function<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const;
+
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
       const Shape& shape, HloOpcode opcode,
@@ -888,11 +940,28 @@ class HloInstruction {
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
+  // Fuses the given instruction into this fusion instruction. When add_output
+  // is false (which is the default), instruction_to_fuse is cloned and the
+  // clone is placed in the fusion instruction. instruction_to_fuse is
+  // unchanged.
+  //
+  // When add_output is true, a clone of the instruction_to_fuse will be part
+  // of the output of fusion instructions. The users of instruction_to_fuse
+  // will be redirected to this fusion instructions. instruction_to_fuse will
+  // be removed from its parent computation.
+  //
+  // Precondition: this->opcode() == HloOpcode::kFusion
+  HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
+                                          bool add_output = false);
+
   // Clones the given instruction_to_fuse and insert the clone into this fusion
-  // instruction.
+  // instruction. If add_output is true, a clone of instruction_to_fuse will
+  // be in the output of the this fusion instruction (part of the tuple of the
+  // fusion root).
   //
   // Precondition: opcode() == HloOpcode::kFusion
-  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse);
+  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse,
+                                       bool add_output = false);
 
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(

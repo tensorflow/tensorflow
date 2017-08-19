@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from setuptools import setup
 
-_VERSION = '1.3.0-rc1'
+_VERSION = '1.3.0-a1'
 
 CONSOLE_SCRIPTS = [
     'capture_tpu_profile=cloud_tpu_profiler.main:main',
@@ -54,8 +54,8 @@ setup(
         'Development Status :: 3 - Alpha',
 
         # Indicate who your project is intended for
-        'Intended Audience :: TensorFlow TFRC Cloud TPU users',
-        'Topic :: Software Development :: Performance tools',
+        'Intended Audience :: Developers',
+        'Topic :: Software Development',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 2.7',
     ],

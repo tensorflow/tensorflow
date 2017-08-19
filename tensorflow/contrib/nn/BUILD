@@ -15,6 +15,7 @@ py_library(
         "__init__.py",
         "python/__init__.py",
         "python/ops/__init__.py",
+        "python/ops/alpha_dropout.py",
         "python/ops/cross_entropy.py",
         "python/ops/sampling_ops.py",
     ],
@@ -41,6 +42,23 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:nn",
+    ],
+)
+
+py_test(
+    name = "alpha_dropout_test",
+    size = "small",
+    srcs = ["python/ops/alpha_dropout_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nn_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
     ],
 )
 

@@ -63,6 +63,9 @@ class HloModule {
   HloComputation* AddEmbeddedComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Removes an embedded computation.
+  Status RemoveEmbeddedComputation(HloComputation* to_remove);
+
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.

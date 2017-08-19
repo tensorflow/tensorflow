@@ -65,13 +65,13 @@ class Initializer(object):
 
     Example:
 
-    ```
+    ```python
     initializer = RandomUniform(-1, 1)
     config = initializer.get_config()
     initializer = RandomUniform.from_config(config)
     ```
 
-    Arguments:
+    Args:
       config: A Python dictionary.
         It will typically be the output of `get_config`.
 
@@ -388,7 +388,7 @@ class VarianceScaling(Initializer):
   With `distribution="uniform"`, samples are drawn from a uniform distribution
   within [-limit, limit], with `limit = sqrt(3 * scale / n)`.
 
-  Arguments:
+  Args:
     scale: Scaling factor (positive float).
     mode: One of "fan_in", "fan_out", "fan_avg".
     distribution: Random distribution to use. One of "normal", "uniform".
@@ -570,7 +570,7 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
 
   Reference: http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to create random seeds. See
       @{tf.set_random_seed}
       for behavior.
@@ -593,7 +593,7 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
 
   Reference: http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to create random seeds. See
       @{tf.set_random_seed}
       for behavior.
@@ -612,7 +612,7 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
 def _compute_fans(shape):
   """Computes the number of input and output units for a weight shape.
 
-  Arguments:
+  Args:
     shape: Integer shape tuple or TF tensor shape.
 
   Returns:

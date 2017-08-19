@@ -73,8 +73,10 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Map")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -89,12 +91,13 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         // NOTE(mrry): This method is thread-safe as long as
         // `input_impl_` and `f` are thread-safe. However, if multiple
         // threads enter this method, outputs may be observed in a
@@ -113,10 +116,19 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         // MasterSession generates 56-bit random step IDs whose MSB is
         // always 0, so a negative random step ID should suffice.
         opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        ScopedStepContainer step_container(
+            opts.step_id, [this, ctx](const string& name) {
+              dataset()
+                  ->captured_func_->resource_manager()
+                  ->Cleanup(name)
+                  .IgnoreError();
+            });
+        opts.step_container = &step_container;
         opts.runner = ctx->runner();
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.
-        return dataset()->captured_func_->Run(opts, args, out_tensors);
+        return dataset()->captured_func_->Run(opts, args, out_tensors,
+                                              prefix());
       }
 
      private:

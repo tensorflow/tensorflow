@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -74,6 +75,7 @@ void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     false /* protobuf */>,
                        VariantTensorData* data) {
+  data->set_type_name(TypeNameVariant(value));
   value.Encode(data);
 }
 
@@ -154,7 +156,7 @@ string TypeNameVariantImpl(
     const T& value,
     TypeNameResolver<T, false /* has_type_name */, false /* Tensor */,
                      false /* protobuf */>) {
-  return value.TypeName();
+  return port::MaybeAbiDemangle(MakeTypeIndex<T>().name());
 }
 
 template <typename T>
