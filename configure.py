@@ -640,7 +640,7 @@ def set_tf_cuda_version(environ_cp):
 def set_tf_cunn_version(environ_cp):
   """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
   ask_cudnn_version = (
-      '"Please specify the cuDNN version you want to use. '
+      'Please specify the cuDNN version you want to use. '
       '[Leave empty to default to cuDNN %s.0]: ') % _DEFAULT_CUDNN_VERSION
 
   while True:
