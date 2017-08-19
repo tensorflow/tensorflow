@@ -124,8 +124,9 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   if context.in_graph_mode():
     return gen_array_ops.identity(input, name=name)
   else:
-    # TODO(apassos): make sure this works ok with gradients.
-    return input._copy()  # pylint: disable=protected-access
+    if context.context().device_name != input.device:
+      return input._copy()  # pylint: disable=protected-access
+    return input
 
 
 # pylint: disable=redefined-builtin,protected-access

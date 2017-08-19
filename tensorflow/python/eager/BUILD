@@ -30,6 +30,7 @@ py_library(
         ":execute",
         ":function",
         ":graph_only_ops",
+        ":tape",
         ":tensor",
         ":test",
         "//tensorflow/python:pywrap_tensorflow",
@@ -82,7 +83,6 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
     ],
 )
