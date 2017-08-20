@@ -70,8 +70,10 @@ GetConvolutionParameters(const HloInstruction* inst) {
   unsigned int dw_x = window.dimensions(1).window_dilation();
 
   popconv::ConvParams params(dtype,
-                             {n_b, n_y, n_x, n_i},
-                             {f_y, f_x, n_o, n_i},
+                             n_b,
+                             {n_y, n_x},
+                             {f_y, f_x},
+                             n_i, n_o,
                              {s_y, s_x},
                              {pl_y, pl_x},
                              {pu_y, pu_x},
