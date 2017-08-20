@@ -110,7 +110,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         rgbBytes = new int[previewWidth * previewHeight];
         onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
       }
-      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
+      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight);
     } catch (final Exception e) {
       LOGGER.e(e, "Exception!");
       return;
