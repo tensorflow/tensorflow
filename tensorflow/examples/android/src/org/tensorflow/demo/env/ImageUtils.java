@@ -98,6 +98,60 @@ public class ImageUtils {
   // Always prefer the native implementation if available.
   private static boolean useNativeConversion = true;
 
+  public static void convertYUV420SPToARGB8888(
+      byte[] input,
+      int[] output,
+      int width,
+      int height) {
+
+    if (useNativeConversion) {
+      try {
+        ImageUtils.convertYUV420SPToARGB8888(input, output, width, height, false);
+        return;
+      } catch (UnsatisfiedLinkError e) {
+        LOGGER.w("Native YUV420SP -> RGB implementation not found, falling back to Java implementation");
+        useNativeConversion = false;
+      }
+    }
+
+    // Java implementation of YUV420SP to ARGB8888 converting
+    final int frameSize = width * height;
+    for (int j = 0, yp = 0; j < height; j++) {
+      int uvp = frameSize + (j >> 1) * width, u = 0, v = 0;
+      for (int i = 0; i < width; i++, yp++) {
+        int y = (0xff & ((int) input[yp])) - 16;
+        if (y < 0)
+          y = 0;
+        if ((i & 1) == 0) {
+          v = (0xff & input[uvp++]) - 128;
+          u = (0xff & input[uvp++]) - 128;
+        }
+
+        int y1192 = 1192 * y;
+        int r = (y1192 + 1634 * v);
+        int g = (y1192 - 833 * v - 400 * u);
+        int b = (y1192 + 2066 * u);
+
+        if (r < 0)
+          r = 0;
+        else if (r > kMaxChannelValue)
+          r = kMaxChannelValue;
+        if (g < 0)
+          g = 0;
+        else if (g > kMaxChannelValue)
+          g = kMaxChannelValue;
+        if (b < 0)
+          b = 0;
+        else if (b > kMaxChannelValue)
+          b = kMaxChannelValue;
+
+        output[yp] = 0xff000000 | ((r << 6) & 0xff0000)
+                | ((g >> 2) & 0xff00) | ((b >> 10) & 0xff);
+
+      }
+    }
+  }
+
   public static void convertYUV420ToARGB8888(
       byte[] yData,
       byte[] uData,
@@ -122,48 +176,47 @@ public class ImageUtils {
     int i = 0;
     for (int y = 0; y < height; y++) {
       int pY = yRowStride * y;
-      int uv_row_start = uvRowStride * (y >> 1);
-      int pUV = uv_row_start;
-      int pV = uv_row_start;
+      int pUV = uvRowStride * (y >> 1);
 
       for (int x = 0; x < width; x++) {
         int uv_offset = pUV + (x >> 1) * uvPixelStride;
-        out[i++] =
-            YUV2RGB(
-                convertByteToInt(yData, pY + x),
-                convertByteToInt(uData, uv_offset),
-                convertByteToInt(vData, uv_offset));
+        int nY = (yData[pY + x] & 0xFF) - 16;
+        int nU = (uData[uv_offset] & 0xFF) - 128;
+        int nV = (vData[uv_offset] & 0xFF) - 128;
+        if (nY < 0)
+          nY = 0;
+
+        // This is the floating point equivalent. We do the conversion in integer
+        // because some Android devices do not have floating point in hardware.
+        // nR = (int)(1.164 * nY + 2.018 * nU);
+        // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
+        // nB = (int)(1.164 * nY + 1.596 * nV);
+
+        final int foo = 1192 * nY;
+        int nR = foo + 1634 * nV;
+        int nG = foo - 833 * nV - 400 * nU;
+        int nB = foo + 2066 * nU;
+
+        if (nR < 0)
+          nR = 0;
+        else if (nR > kMaxChannelValue)
+          nR = kMaxChannelValue;
+        if (nG < 0)
+          nG = 0;
+        else if (nG > kMaxChannelValue)
+          nG = kMaxChannelValue;
+        if (nB < 0)
+          nB = 0;
+        else if (nB > kMaxChannelValue)
+          nB = kMaxChannelValue;
+
+        out[i++] = 0xff000000 | ((nR << 6) & 0x00ff0000)
+                | ((nG >> 2) & 0x0000FF00) | ((nB >> 10) & 0xff);
+
       }
     }
   }
 
-  private static int convertByteToInt(byte[] arr, int pos) {
-    return arr[pos] & 0xFF;
-  }
-
-  private static int YUV2RGB(int nY, int nU, int nV) {
-    nY -= 16;
-    nU -= 128;
-    nV -= 128;
-    if (nY < 0) nY = 0;
-
-    // This is the floating point equivalent. We do the conversion in integer
-    // because some Android devices do not have floating point in hardware.
-    // nR = (int)(1.164 * nY + 2.018 * nU);
-    // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
-    // nB = (int)(1.164 * nY + 1.596 * nV);
-
-    final int foo = 1192 * nY;
-    int nR = foo + 1634 * nV;
-    int nG = foo - 833 * nV - 400 * nU;
-    int nB = foo + 2066 * nU;
-
-    nR = Math.min(kMaxChannelValue, Math.max(0, nR));
-    nG = Math.min(kMaxChannelValue, Math.max(0, nG));
-    nB = Math.min(kMaxChannelValue, Math.max(0, nB));
-
-    return 0xff000000 | ((nR << 6) & 0x00ff0000) | ((nG >> 2) & 0x0000FF00) | ((nB >> 10) & 0xff);
-  }
 
   /**
    * Converts YUV420 semi-planar data to ARGB 8888 data using the supplied width and height. The
@@ -176,8 +229,8 @@ public class ImageUtils {
    * @param height The height of the input image.
    * @param halfSize If true, downsample to 50% in each dimension, otherwise not.
    */
-  public static native void convertYUV420SPToARGB8888(
-      byte[] input, int[] output, int width, int height, boolean halfSize);
+  private static native void convertYUV420SPToARGB8888(
+          byte[] input, int[] output, int width, int height, boolean halfSize);
 
   /**
    * Converts YUV420 semi-planar data to ARGB 8888 data using the supplied width
@@ -193,17 +246,17 @@ public class ImageUtils {
    * @param halfSize If true, downsample to 50% in each dimension, otherwise not.
    * @param output A pre-allocated array for the ARGB 8:8:8:8 output data.
    */
-  public static native void convertYUV420ToARGB8888(
-      byte[] y,
-      byte[] u,
-      byte[] v,
-      int[] output,
-      int width,
-      int height,
-      int yRowStride,
-      int uvRowStride,
-      int uvPixelStride,
-      boolean halfSize);
+  private static native void convertYUV420ToARGB8888(
+          byte[] y,
+          byte[] u,
+          byte[] v,
+          int[] output,
+          int width,
+          int height,
+          int yRowStride,
+          int uvRowStride,
+          int uvPixelStride,
+          boolean halfSize);
 
   /**
    * Converts YUV420 semi-planar data to RGB 565 data using the supplied width
@@ -215,8 +268,8 @@ public class ImageUtils {
    * @param width The width of the input image.
    * @param height The height of the input image.
    */
-  public static native void convertYUV420SPToRGB565(
-      byte[] input, byte[] output, int width, int height);
+  private static native void convertYUV420SPToRGB565(
+          byte[] input, byte[] output, int width, int height);
 
   /**
    * Converts 32-bit ARGB8888 image data to YUV420SP data.  This is useful, for
@@ -228,8 +281,8 @@ public class ImageUtils {
    * @param width The width of the input image.
    * @param height The height of the input image.
    */
-  public static native void convertARGB8888ToYUV420SP(
-      int[] input, byte[] output, int width, int height);
+  private static native void convertARGB8888ToYUV420SP(
+          int[] input, byte[] output, int width, int height);
 
   /**
    * Converts 16-bit RGB565 image data to YUV420SP data.  This is useful, for
@@ -241,8 +294,8 @@ public class ImageUtils {
    * @param width The width of the input image.
    * @param height The height of the input image.
    */
-  public static native void convertRGB565ToYUV420SP(
-      byte[] input, byte[] output, int width, int height);
+  private static native void convertRGB565ToYUV420SP(
+          byte[] input, byte[] output, int width, int height);
 
   /**
    * Returns a transformation matrix from one reference frame into another.
