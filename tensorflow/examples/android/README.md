@@ -180,7 +180,7 @@ file as instructed, then try building again.
 
 ##### Install
 
-Make sure that adb debugging is enabled on your Android 5.0 (API 21) or
+Make sure that USB debugging (or ADB over TCPIP) is enabled on your Android 5.0 (API 21) or
 later device, then after building use the following command from your workspace
 root to install the APK:
 
