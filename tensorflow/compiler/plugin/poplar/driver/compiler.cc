@@ -69,6 +69,19 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
+poplar::Tensor ShuffleLayout(const Shape& shape, poplar::Tensor tensor) {
+  poplar::Tensor out = tensor;
+  if (!LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    unsigned int rank = tensor.rank();
+    std::vector<unsigned int> shuffle(rank);
+    for (unsigned int i=0; i<rank; i++) {
+      shuffle[rank - i - 1] = shape.layout().minor_to_major(i);
+    }
+    out = out.dimShuffle(shuffle);
+  }
+  return out;
+}
+
 static std::string GetPathToGraphProgFile() {
   Dl_info dlInfo;
   static const void* dummy;
@@ -98,8 +111,8 @@ static std::string GetPathToGraphProgFile() {
 class EntryVisitor : public FullVisitor {
 public:
   EntryVisitor(poplar::Graph* graph,
-                    CompilerResources& resources,
-                    uint64 num_parameters)
+               CompilerResources& resources,
+               uint64 num_parameters)
           : FullVisitor(graph, resources),
             parameter_shapes(num_parameters),
             all_outputs_are_parameters(false) {}
@@ -110,11 +123,18 @@ public:
 
     std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
 
+    HloModule* module = inst->parent()->parent();
+    ComputationLayout* layout = module->mutable_entry_computation_layout();
+    const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
+    std::vector<Shape> module_shapes = FlattenedXlaShape(mod_shape);
+
     for (unsigned i=0; i<shapes.size(); i++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out,
                           AddTensor(*graph_, inst, shapes[i], resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+
+      out = ShuffleLayout(module_shapes[i], out);
 
       graph_->createHostWrite(
               sep::GetInputCopyHandle(inst->parameter_number(), i), out);
@@ -126,6 +146,8 @@ public:
     const HloComputation* comp = inst->parent();
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
+
+    std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
 
     for (size_t o=0; o<outputs.size(); o++) {
 
@@ -140,7 +162,8 @@ public:
         }
       }
 
-      graph_->createHostRead(sep::GetOutputCopyHandle(o), outputs[o]);
+      poplar::Tensor out = ShuffleLayout(shapes[o], outputs[o]);
+      graph_->createHostRead(sep::GetOutputCopyHandle(o), out);
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -330,7 +353,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     graph->outputComputeGraph(stream, progs);
   }
 
-  hlo_module->mutable_entry_computation_layout()->SetToDefaultLayout();
+  hlo_module->mutable_entry_computation_layout()->mutable_result_layout()->CopyLayoutFromShape(entry->root_instruction()->shape());
 
   std::unique_ptr<Executable> executable;
   executable.reset(

@@ -79,8 +79,7 @@ Status PoplarTransferManager::TransferLiteralFromDevice(
           executor, source, ShapeUtil::ByteSizeOf(device_shape),
           literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(
-            literal->Relayout(literal_shape.layout()).get());
+    literal->Swap(literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -137,19 +136,8 @@ Status PoplarTransferManager::TransferLiteralToDevice(
             executor, tuple_elements_on_device.size() * sizeof(void*),
             tuple_elements_on_device.data(), destination);
   }
-
-  if (LayoutUtil::IsMonotonicWithDim0Major(literal.shape().layout())) {
-    return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
-                                  literal.InternalData(), destination);
-
-  } else {
-    Shape new_shape = literal.shape();
-    LayoutUtil::SetToDefaultLayout(&new_shape);
-    auto new_literal = literal.Relayout(new_shape.layout());
-    return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
-                                  new_literal->InternalData(), destination);
-
-  }
+  return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
+                                literal.InternalData(), destination);
 }
 
 Status
