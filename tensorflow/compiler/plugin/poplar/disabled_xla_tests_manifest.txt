@@ -74,10 +74,14 @@ ConvertTest.ConvertR1U8ToR1F32 POPLAR // U8
 ConvertTest.ConvertR1U8ToR1S32 POPLAR // U8
 ConvertTest.ConvertR1U8ToR1U32 POPLAR // U8
 
-ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
+ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3D conv
+ConvolutionVariantsTest.BackwardFilterEvenPadding3D POPLAR // 3D conv
+ConvolutionVariantsTest.BackwardInputEvenPadding3D POPLAR // 3D conv
 
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1d conv
-ConvolutionTest.Convolve1D_Valid  POPLAR // 1d conv
+ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1D conv
+ConvolutionTest.Convolve1D_Valid  POPLAR // 1D conv
+ConvolutionVariantsTest.BackwardInputEvenPadding1D POPLAR // 1D conv
+ConvolutionVariantsTest.BackwardFilterEvenPadding1D POPLAR // 1D conv
 
 DotOperationTest POPLAR // Test hangs
 
