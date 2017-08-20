@@ -69,19 +69,6 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
-poplar::Tensor ShuffleLayout(const Shape& shape, poplar::Tensor tensor) {
-  poplar::Tensor out = tensor;
-  if (!LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    unsigned int rank = tensor.rank();
-    std::vector<unsigned int> shuffle(rank);
-    for (unsigned int i=0; i<rank; i++) {
-      shuffle[rank - i - 1] = shape.layout().minor_to_major(i);
-    }
-    out = out.dimShuffle(shuffle);
-  }
-  return out;
-}
-
 static std::string GetPathToGraphProgFile() {
   Dl_info dlInfo;
   static const void* dummy;
