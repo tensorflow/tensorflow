@@ -1120,8 +1120,8 @@ struct MasterSession::WorkerGroup {
  private:
   Status CreateWorkers(const WorkerCacheFactoryOptions& opts) {
     sess->worker_cache_->ListWorkers(&worker_names);
-    for (size_t i = 0; i < worker_names.size(); ++i) {
-      TF_RETURN_IF_ERROR(AppendWorker(worker_names[i], opts));
+    for (auto& worker_name : worker_names) {
+      TF_RETURN_IF_ERROR(AppendWorker(worker_name, opts));
     }
     return Status::OK();
   }
@@ -1129,8 +1129,8 @@ struct MasterSession::WorkerGroup {
   Status BroadcastWorkers() {
     Status status = Status::OK();
     BlockingCounter done(workers.size());
-    for (size_t i = 0; i < workers.size(); ++i) {
-      workers[i].CreateWorkerSession(done, status);
+    for (auto& worker : workers) {
+      worker.CreateWorkerSession(done, status);
     }
     done.Wait();
     return status;
