@@ -139,7 +139,7 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
         out_index);
 
     auto ip1 = bodyb.Add(i, bodyb.ConstantR0<int32>(1));
-    bodyb.Tuple({ip1, data, indices_1d, updated_output});
+    bodyb.Tuple({ip1, data, idcs, updated_output});
   }
   auto body_status = bodyb.Build();
   // TF_CHECK_OK(body_status);

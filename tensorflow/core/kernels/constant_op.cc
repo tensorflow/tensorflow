@@ -73,6 +73,13 @@ REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
+// TODO(ebrevdo): Add callbacks based on Variant TypeName for
+// Variant tensors in rendezvous.  At that point, MakeTensorFromProto() will
+// work correctly and so will Variant _Send/_Recv calls; and we will
+// no longer have to mark Variant inputs/outputs as sitting on host in
+// kernel registrations.  Then we can uncomment this registration.
+// REGISTER_KERNEL(GPU, Variant);
+
 // Currently we do not support string constants on GPU
 #undef REGISTER_KERNEL
 #endif

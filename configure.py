@@ -136,16 +136,20 @@ def get_python_path(environ_cp, python_bin_path):
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
-    check_input = [python_bin_path, '-c',
-                   'import site; print("\\n".join(site.getsitepackages()))']
-    library_paths = subprocess.check_output(
-        check_input).decode('UTF-8').strip().split("\n")
+    check_input = [
+        python_bin_path, '-c',
+        'import site; print("\\n".join(site.getsitepackages()))'
+    ]
+    library_paths = subprocess.check_output(check_input).decode(
+        'UTF-8').strip().split('\n')
   except subprocess.CalledProcessError:
-    check_input = [python_bin_path, '-c',
-        'from distutils.sysconfig import get_python_lib;' +
-        'print(get_python_lib())']
-    library_paths = [subprocess.check_output(
-        check_input).decode('UTF-8').strip()]
+    check_input = [
+        python_bin_path, '-c', 'from distutils.sysconfig import get_python_lib;'
+        + 'print(get_python_lib())'
+    ]
+    library_paths = [
+        subprocess.check_output(check_input).decode('UTF-8').strip()
+    ]
 
   all_paths = set(python_paths + library_paths)
 

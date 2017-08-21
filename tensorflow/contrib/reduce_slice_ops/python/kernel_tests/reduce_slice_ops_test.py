@@ -25,6 +25,7 @@ from tensorflow.contrib.reduce_slice_ops.python.ops import reduce_slice_ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.platform import googletest
 
+
 class ReduceSliceTest(TensorFlowTestCase):
 
   def testReduceSliceSum1D(self):
@@ -38,8 +39,10 @@ class ReduceSliceTest(TensorFlowTestCase):
   def testReduceSliceSum2D(self):
     x = np.array([[1, 2, 3], [40, 50, 60], [700, 800, 900]], dtype=np.int32)
     indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0, 2]], dtype=np.int32)
-    result = np.array([[1, 2, 3], [741, 852, 963], [40, 50, 60],
-                       [740, 850, 960], [41, 52, 63]], dtype=np.int32)
+    result = np.array(
+        [[1, 2, 3], [741, 852, 963], [40, 50, 60], [740, 850, 960],
+         [41, 52, 63]],
+        dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = reduce_slice_ops.reduce_slice_sum(x, indices, 0).eval()
       self.assertAllEqual(y_tf, result)
@@ -58,24 +61,26 @@ class ReduceSliceTest(TensorFlowTestCase):
       self.assertAllEqual(y_tf, result)
 
   def testReduceSliceSumAxis1(self):
-    x = np.transpose(np.array([[1, 2, 3], [40, 50, 60],
-                               [700, 800, 900]], dtype=np.int32))
+    x = np.transpose(
+        np.array([[1, 2, 3], [40, 50, 60], [700, 800, 900]], dtype=np.int32))
     indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0, 2]], dtype=np.int32)
-    result = np.transpose(np.array([[1, 2, 3],
-                                    [741, 852, 963],
-                                    [40, 50, 60],
-                                    [740, 850, 960],
-                                    [41, 52, 63]], dtype=np.int32))
+    result = np.transpose(
+        np.array(
+            [[1, 2, 3], [741, 852, 963], [40, 50, 60], [740, 850, 960],
+             [41, 52, 63]],
+            dtype=np.int32))
     with self.test_session(use_gpu=True):
       y_tf = reduce_slice_ops.reduce_slice_sum(x, indices, 1).eval()
       self.assertAllEqual(y_tf, result)
 
   def testReduceSliceSum1DIndices(self):
-    x = np.array([[1, 2, 3], [40, 50, 60], [700, 800, 900],
-                  [1000, 2000, 3000], [40000, 50000, 60000]], dtype=np.int32)
+    x = np.array(
+        [[1, 2, 3], [40, 50, 60], [700, 800, 900], [1000, 2000, 3000],
+         [40000, 50000, 60000]],
+        dtype=np.int32)
     indices = np.array([0, 0, 2, 5], dtype=np.int32)
-    result = np.array([[0, 0, 0], [41, 52, 63],
-                       [41700, 52800, 63900]], dtype=np.int32)
+    result = np.array(
+        [[0, 0, 0], [41, 52, 63], [41700, 52800, 63900]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = reduce_slice_ops.reduce_slice_sum(x, indices, 0).eval()
       self.assertAllEqual(y_tf, result)
@@ -83,8 +88,9 @@ class ReduceSliceTest(TensorFlowTestCase):
   def testReduceSliceProd(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int32)
     indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0, 2]], dtype=np.int32)
-    result = np.array([[1, 2, 3], [28, 80, 162], [4, 5, 6],
-                       [28, 40, 54], [4, 10, 18]], dtype=np.int32)
+    result = np.array(
+        [[1, 2, 3], [28, 80, 162], [4, 5, 6], [28, 40, 54], [4, 10, 18]],
+        dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = reduce_slice_ops.reduce_slice_prod(x, indices, 0).eval()
       self.assertAllEqual(y_tf, result)
@@ -92,8 +98,8 @@ class ReduceSliceTest(TensorFlowTestCase):
   def testReduceSliceMax(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int32)
     indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0, 2]], dtype=np.int32)
-    result = np.array([[1, 2, 3], [7, 8, 9], [4, 5, 6],
-                       [7, 8, 9], [4, 5, 6]], dtype=np.int32)
+    result = np.array(
+        [[1, 2, 3], [7, 8, 9], [4, 5, 6], [7, 8, 9], [4, 5, 6]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = reduce_slice_ops.reduce_slice_max(x, indices, 0).eval()
       self.assertAllEqual(y_tf, result)
@@ -101,8 +107,8 @@ class ReduceSliceTest(TensorFlowTestCase):
   def testReduceSliceMin(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int32)
     indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0, 2]], dtype=np.int32)
-    result = np.array([[1, 2, 3], [1, 2, 3], [4, 5, 6],
-                       [4, 5, 6], [1, 2, 3]], dtype=np.int32)
+    result = np.array(
+        [[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6], [1, 2, 3]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = reduce_slice_ops.reduce_slice_min(x, indices, 0).eval()
       self.assertAllEqual(y_tf, result)

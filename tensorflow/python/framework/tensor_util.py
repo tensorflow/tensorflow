@@ -313,10 +313,13 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
-    A TensorProto. Depending on the type, it may contain data in the
+    A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with tensor_util.MakeNdarray(proto).
+    with `tensor_util.MakeNdarray(proto)`.
+
+    If `values` is a `TensorProto`, it is immediately returned; `dtype` and
+    `shape` are ignored.
 
   Raises:
     TypeError:  if unsupported types are provided.
@@ -344,6 +347,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
+  if isinstance(values, tensor_pb2.TensorProto):
+    return values
+
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 

@@ -80,7 +80,7 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
     HloInstruction* instruction, const ShapeIndex& index,
     const TuplePointsToAnalysis& points_to_analysis) {
   std::vector<std::pair<HloInstruction*, int64>> uses;
-  const std::vector<const LogicalBuffer*>& points_to =
+  const PointsToSet::BufferList& points_to =
       points_to_analysis.GetPointsToSet(instruction).element(index);
   for (const LogicalBuffer* buffer : points_to) {
     for (const BufferAlias& alias :

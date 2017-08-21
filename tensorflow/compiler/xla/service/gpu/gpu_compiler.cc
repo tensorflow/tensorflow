@@ -135,6 +135,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       // instead.
       pass.AddPass<BatchNormRewriter>(
           /*rewrite_training_op=*/true,
+          /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
           /*use_fusion=*/false);
       pass.AddPass<AlgebraicSimplifier>(

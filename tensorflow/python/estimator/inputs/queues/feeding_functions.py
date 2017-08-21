@@ -47,13 +47,12 @@ except ImportError:
 
 
 def _fill_array(arr, seq, fillvalue=0):
-  """ 
-  Recursively fills padded arr with elements from seq. 
-  If lenght of seq is less then arr padded length, fillvalue used.
+  """Recursively fills padded arr with elements from seq.
 
+  If lenght of seq is less then arr padded length, fillvalue used.
   Args:
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
-    seq: Non-padded list of data sampels of shape 
+    seq: Non-padded list of data sampels of shape
       [batch_size, ..., padded_dim(None)]
     fillvalue: Default fillvalue to use.
   """
@@ -84,21 +83,23 @@ def _pad_if_needed(batch_key_item, fillvalue=0):
   Raises:
     ValueError if data samples have different shapes (except last padded dim).
   """
-  shapes = [seq.shape[:-1] if len(seq.shape) > 0 else -1
-            for seq in batch_key_item]
+  shapes = [
+      seq.shape[:-1] if len(seq.shape) > 0 else -1 for seq in batch_key_item
+  ]
   if not all(shapes[0] == x for x in shapes):
     raise ValueError("Array shapes must match.")
 
-  last_length = [seq.shape[-1] if len(seq.shape) > 0 else 0
-                 for seq in batch_key_item]
+  last_length = [
+      seq.shape[-1] if len(seq.shape) > 0 else 0 for seq in batch_key_item
+  ]
   if all([x == last_length[0] for x in last_length]):
     return batch_key_item
 
   batch_size = len(batch_key_item)
   max_sequence_length = max(last_length)
   result_batch = np.zeros(
-    shape=[batch_size] + list(shapes[0]) + [max_sequence_length],
-    dtype=batch_key_item[0].dtype)
+      shape=[batch_size] + list(shapes[0]) + [max_sequence_length],
+      dtype=batch_key_item[0].dtype)
   _fill_array(result_batch, batch_key_item, fillvalue)
   return result_batch
 
@@ -325,11 +326,15 @@ class _GeneratorFeedFn(object):
         list_dict_size += 1
 
     if self._pad_value is not None:
-      feed_dict = {key: np.asarray(_pad_if_needed(item, self._pad_value))
-                   for key, item in list(list_dict.items())}
+      feed_dict = {
+          key: np.asarray(_pad_if_needed(item, self._pad_value))
+          for key, item in list(list_dict.items())
+      }
     else:
-      feed_dict = {key: np.asarray(item)
-                   for key, item in list(list_dict.items())}
+      feed_dict = {
+          key: np.asarray(item)
+          for key, item in list(list_dict.items())
+      }
     return feed_dict
 
 
@@ -375,7 +380,7 @@ def _enqueue_data(data,
       arrays, a numpy `ndarray`, or a generator producing these.
     NotImplementedError: padding and shuffling data at the same time.
     NotImplementedError: padding usage with non generator data type.
-  """ 
+  """
   with ops.name_scope(name):
     if isinstance(data, np.ndarray):
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
@@ -447,11 +452,11 @@ def _enqueue_data(data,
           seed=seed)
     elif pad_data:
       min_after_dequeue = 0  # just for the summary text
-      queue_shapes = list(map(
-        lambda x: tuple(list(x[:-1]) + [None]) if len(x) > 0 else x,
-        queue_shapes))
+      queue_shapes = list(
+          map(lambda x: tuple(list(x[:-1]) + [None]) if len(x) > 0 else x,
+              queue_shapes))
       queue = data_flow_ops.PaddingFIFOQueue(
-        capacity, dtypes=types, shapes=queue_shapes)
+          capacity, dtypes=types, shapes=queue_shapes)
     else:
       min_after_dequeue = 0  # just for the summary text
       queue = data_flow_ops.FIFOQueue(
@@ -470,23 +475,23 @@ def _enqueue_data(data,
 
       if not pad_data:
         feed_fns.append(
-          get_feed_fn(
-              placeholders,
-              data,
-              enqueue_size,
-              random_start=shuffle,
-              seed=seed_i,
-              num_epochs=num_epochs))
+            get_feed_fn(
+                placeholders,
+                data,
+                enqueue_size,
+                random_start=shuffle,
+                seed=seed_i,
+                num_epochs=num_epochs))
       else:
         feed_fns.append(
-          get_feed_fn(
-              placeholders,
-              data,
-              enqueue_size,
-              random_start=shuffle,
-              seed=seed_i,
-              num_epochs=num_epochs,
-              pad_value=pad_value))
+            get_feed_fn(
+                placeholders,
+                data,
+                enqueue_size,
+                random_start=shuffle,
+                seed=seed_i,
+                num_epochs=num_epochs,
+                pad_value=pad_value))
 
     runner = fqr._FeedingQueueRunner(  # pylint: disable=protected-access
         queue=queue, enqueue_ops=enqueue_ops, feed_fns=feed_fns)

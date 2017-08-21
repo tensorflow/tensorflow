@@ -328,8 +328,9 @@ class AddNTest(test_util.TensorFlowTestCase):
         addn = math_ops.add_n(input_vars)
         sess.run(variables.global_variables_initializer())
         add_n_grad = gradients.gradients(addn, input_vars)
-        self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
-                            [g.eval() for g in add_n_grad])
+        self.assertAllEqual(
+            np.repeat(1.0, num_inputs),  # d/dx (x + y + ...) = 1
+            [g.eval() for g in add_n_grad])
 
 
 class DivAndModTest(test_util.TensorFlowTestCase):
