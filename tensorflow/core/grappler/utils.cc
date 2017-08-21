@@ -61,8 +61,9 @@ void NodeMap::AddOutput(const string& node, const string& output) {
 
 void NodeMap::UpdateOutput(const string& node, const string& old_output,
                            const string& new_output) {
-  outputs_[node].erase(nodes_[old_output]);
-  outputs_[node].insert(nodes_[new_output]);
+  std::set<NodeDef*>& outputs = outputs_[node];
+  outputs.erase(nodes_[old_output]);
+  outputs.insert(nodes_[new_output]);
 }
 
 bool IsSameInput(const string& name1, const string& name2) {

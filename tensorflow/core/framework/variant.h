@@ -26,12 +26,16 @@ limitations under the License.
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
 template <typename T>
 string TypeNameVariant(const T& value);
+
+template <typename T>
+string DebugStringVariant(const T& value);
 
 template <typename T>
 void EncodeVariant(const T& value, VariantTensorData* data);
@@ -154,10 +158,10 @@ class Variant {
   Variant() noexcept {}
 
   Variant(const Variant& other) {
-    if (other.is_empty()) {
+    mutex_lock other_lock(other.mu_);
+    if (other.IsEmptyLocked()) {
       value_ = std::unique_ptr<ValueInterface>();
     } else {
-      mutex_lock other_lock(other.mu_);
       value_ = other.value_->Clone();
     }
   }
@@ -187,14 +191,17 @@ class Variant {
     return *this;
   }
 
-  bool is_empty() const { return value_ == nullptr; }
+  bool is_empty() const {
+    mutex_lock lock(mu_);
+    return IsEmptyLocked();
+  }
 
   void clear() noexcept {
     mutex_lock lock(mu_);
     value_.reset();
   }
 
-  void swap(Variant& other) noexcept {
+  void swap(Variant& other) noexcept NO_THREAD_SAFETY_ANALYSIS {
     if (this == &other) return;
     mutex_lock lock0(this < &other ? mu_ : other.mu_);
     mutex_lock lock1(this < &other ? other.mu_ : mu_);
@@ -207,6 +214,12 @@ class Variant {
   TypeIndex TypeId() const {
     mutex_lock lock(mu_);
     return TypeIdLocked();
+  }
+
+  string DebugString() const {
+    mutex_lock lock(mu_);
+    return strings::StrCat("Variant<type: ", TypeNameLocked(),
+                           " value: ", value_->DebugString(), ">");
   }
 
   // Returns a pointer to the stored value if it is type T, or nullptr
@@ -247,11 +260,11 @@ class Variant {
         "possibility of race conditions when other threads call a "
         "mutating MaybeDecodeAndGet<ORIGINAL_TYPE>.  Please access the the "
         "value via MaybeDecodeAndGet<ORIGINAL_TYPE>.");
-    if (is_empty()) {
+    mutex_lock lock(mu_);
+    if (IsEmptyLocked()) {
       return nullptr;
     }
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
-    mutex_lock lock(mu_);
     if (TTypeIndex != TypeIdLocked()) {
       CHECK(TypeIdLocked() != MakeTypeIndex<VariantTensorDataProto>())
           << ": Cannot call MaybeDecodeAndGet on const Variant holding "
@@ -276,7 +289,7 @@ class Variant {
   // Serialize the contents of the stored object into `data`.
   void Encode(VariantTensorData* data) const {
     mutex_lock lock(mu_);
-    if (!is_empty()) {
+    if (!IsEmptyLocked()) {
       value_->Encode(data);
     }
   }
@@ -290,22 +303,26 @@ class Variant {
   // Helper methods to directly serialize/deserialize from strings.
   void Encode(string* buf) const {
     mutex_lock lock(mu_);
-    if (!is_empty()) {
+    if (!IsEmptyLocked()) {
       value_->Encode(buf);
     }
   }
   bool Decode(const string& buf) {
     mutex_lock lock(mu_);
-    if (!is_empty()) {
+    if (!IsEmptyLocked()) {
       return value_->Decode(buf);
     }
     return true;
   }
 
  private:
+  bool IsEmptyLocked() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return value_ == nullptr;
+  }
+
   TypeIndex TypeIdLocked() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const TypeIndex VoidTypeIndex = MakeTypeIndex<void>();
-    if (is_empty()) {
+    if (IsEmptyLocked()) {
       return VoidTypeIndex;
     }
     return value_->TypeId();
@@ -313,7 +330,7 @@ class Variant {
 
   template <typename T, typename VT = typename std::decay<T>::type>
   T* GetLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (is_empty()) {
+    if (IsEmptyLocked()) {
       return nullptr;
     }
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
@@ -328,7 +345,7 @@ class Variant {
   }
 
   string TypeNameLocked() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (is_empty()) {
+    if (IsEmptyLocked()) {
       return "";
     }
     return value_->TypeName();
@@ -336,7 +353,7 @@ class Variant {
 
   bool DecodeLocked(const VariantTensorData& data)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (!is_empty()) {
+    if (!IsEmptyLocked()) {
       return value_->Decode(data);
     }
     return true;
@@ -364,6 +381,7 @@ class Variant {
     virtual const void* RawPtr() const = 0;
     virtual std::unique_ptr<ValueInterface> Clone() const = 0;
     virtual string TypeName() const = 0;
+    virtual string DebugString() const = 0;
     virtual void Encode(VariantTensorData* data) const = 0;
     virtual bool Decode(const VariantTensorData& data) = 0;
     virtual void Encode(string* buf) const = 0;
@@ -391,6 +409,8 @@ class Variant {
     }
 
     string TypeName() const override { return TypeNameVariant(value); }
+
+    string DebugString() const override { return DebugStringVariant(value); }
 
     void Encode(VariantTensorData* data) const override {
       EncodeVariant(value, data);

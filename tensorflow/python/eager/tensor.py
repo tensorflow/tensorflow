@@ -24,8 +24,6 @@ import numpy as np
 # ops.py.
 # pylint: disable=unused-import
 from tensorflow.python.framework.ops import _tensor_from_handle
-from tensorflow.python.framework.ops import convert_n_to_eager_tensor
-from tensorflow.python.framework.ops import convert_to_eager_tensor
 from tensorflow.python.framework.ops import EagerTensor as Tensor
 # pylint: enable=unused-import
 

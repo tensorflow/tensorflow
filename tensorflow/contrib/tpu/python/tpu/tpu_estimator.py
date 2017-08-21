@@ -95,7 +95,8 @@ def _increase_eval_step_op(iterations_per_loop):
   """
   eval_step = evaluation._get_or_create_eval_step()  # pylint: disable=protected-access
   # Estimator evaluate increases 1 by default. So, we increase the difference.
-  return state_ops.assign_add(eval_step, iterations_per_loop - 1)
+  return state_ops.assign_add(eval_step, iterations_per_loop - 1,
+                              use_locking=True)
 
 
 def _tpu_job(run_config):
@@ -283,7 +284,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     if self._dequeue_ops is not None:
       logging.info('Stop output thread controller')
-      self._infeed_thd_controller.join()
+      self._outfeed_thd_controller.join()
 
     logging.info('Shutdown TPU system.')
     session.run(self._finalize_op)
@@ -880,7 +881,7 @@ class _EvalMetrics(object):
 
     num_shards = run_config.tpu_config.num_shards
     job = _tpu_job(run_config)
-    job_device = '' if job is None else ('/job:%s/replica:0' % job)
+    job_device = '' if job is None else ('/job:%s' % job)
 
     # For each i, dequeue_ops[i] is a list containing the tensors from all
     # shards. This list is concatenated later.
@@ -1143,7 +1144,7 @@ class TPUEstimator(estimator_lib.Estimator):
       if job is None:
         return '/replica:0/task:0/device:CPU:0'
       else:
-        return '/job:%s/replica:0/task:%d/device:CPU:0' % (job, index / 8)
+        return '/job:%s/task:%d/device:CPU:0' % (job, index / 8)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       if not config.tpu_config.per_host_input_for_training:
@@ -1220,7 +1221,9 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
         if job is None:
           return '/replica:0/task:0/device:CPU:0'
         else:
-          return '/job:%s/replica:0/task:%d/device:CPU:0' % (job, index / 8)
+          # This assumes that if using more than 8 shards,
+          # the job configuration varies 'task'.
+          return '/job:%s/task:%d/device:CPU:0' % (job, index / 8)
       return infeed_queue.split_inputs_and_generate_enqueue_ops(
           unsharded_inputs, placement_function=placement_function)
 

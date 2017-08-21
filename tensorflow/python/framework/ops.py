@@ -876,29 +876,6 @@ class EagerTensor(Tensor):
     raise NotImplementedError("eval not supported for Eager Tensors.")
 
 
-# TODO(josh11b): Support other cases like converting TensorShape, lists/tuples and
-# other custom conversion functions.
-def convert_to_eager_tensor(t, dtype=None):
-  """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(ag_core.getval(t), EagerTensor):
-    if dtype is not None and t.dtype != dtype:
-      raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
-    return t
-  # Handle converting ResourceVariable to Tensor.
-  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
-  # general scheme in place.
-  try:
-    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
-  except AttributeError:
-    pass
-  return EagerTensor(t, dtype=dtype)
-
-
-def convert_n_to_eager_tensor(values, dtype):
-  """Converts the given `values` to a list of `EagerTensor`."""
-  return [convert_to_eager_tensor(t, dtype) for t in values]
-
-
 def _tensor_from_handle(handle):
   """'Private' constructor for the Tensor object.
 
@@ -1112,21 +1089,17 @@ def internal_convert_n_to_tensor(values,
   """
   if not isinstance(values, collections.Sequence):
     raise TypeError("values must be a list.")
-  if context.in_graph_mode():
-    ret = []
-    for i, value in enumerate(values):
-      n = None if name is None else "%s_%d" % (name, i)
-      ret.append(
-          internal_convert_to_tensor(
-              value,
-              dtype=dtype,
-              name=n,
-              as_ref=as_ref,
-              preferred_dtype=preferred_dtype))
-    return ret
-  else:
-    # TODO(josh11b): handle preferred_dtype, as_ref
-    return convert_n_to_eager_tensor(values, dtype=dtype)
+  ret = []
+  for i, value in enumerate(values):
+    n = None if name is None else "%s_%d" % (name, i)
+    ret.append(
+        internal_convert_to_tensor(
+            value,
+            dtype=dtype,
+            name=n,
+            as_ref=as_ref,
+            preferred_dtype=preferred_dtype))
+  return ret
 
 
 def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):

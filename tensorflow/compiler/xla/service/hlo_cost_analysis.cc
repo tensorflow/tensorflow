@@ -374,6 +374,12 @@ Status HloCostAnalysis::HandleBatchNormTraining(
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleBatchNormInference(
+    HloInstruction* batchNormInference) {
+  // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batchNormGrad) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return Status::OK();
