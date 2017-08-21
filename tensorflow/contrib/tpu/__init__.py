@@ -13,7 +13,30 @@
 # limitations under the License.
 # =============================================================================
 
-"""Ops related to Tensor Processing Units."""
+"""Ops related to Tensor Processing Units.
+
+@@cross_replica_sum
+@@infeed_dequeue
+@@infeed_dequeue_tuple
+@@outfeed_enqueue
+@@outfeed_enqueue_tuple
+
+@@initialize_system
+@@shutdown_system
+@@core
+@@outside_all_rewrites
+@@replicate
+@@shard
+@@batch_parallel
+@@rewrite
+
+@@CrossShardOptimizer
+
+@@InfeedQueue
+
+@@while_loop
+@@repeat
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,7 +45,10 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.contrib.tpu.python import profiler
 from tensorflow.contrib.tpu.python.ops.tpu_ops import *
-from tensorflow.contrib.tpu.python.tpu import *
+from tensorflow.contrib.tpu.python.tpu.tpu import *
+from tensorflow.contrib.tpu.python.tpu.tpu_feed import *
+from tensorflow.contrib.tpu.python.tpu.tpu_optimizer import *
+from tensorflow.contrib.tpu.python.tpu.training_loop import *
 # pylint: enable=wildcard-import,unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

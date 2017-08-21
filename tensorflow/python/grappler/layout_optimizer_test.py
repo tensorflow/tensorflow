@@ -98,7 +98,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape', nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
+                    nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-MaxPool_1',
                     nodes)
 

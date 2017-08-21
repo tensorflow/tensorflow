@@ -260,6 +260,13 @@ class UnaryOpsTest(XLATestCase):
           np.array([[-2, 0, 8]], dtype=dtype),
           expected=np.array([[0.126928, 0.6931472, 8.0003354]], dtype=dtype))
 
+      self._assertOpOutputMatchesExpected(
+          math_ops.is_finite,
+          np.array(
+              [[42, float("inf"), -123], [float("nan"), 0, -0.0]], dtype=dtype),
+          expected=np.array(
+              [[True, False, True], [False, True, True]], dtype=np.bool))
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(

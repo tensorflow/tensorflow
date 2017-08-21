@@ -62,7 +62,7 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
 struct RecvNodeDescriptor {
   const NodeDef* node;
   const int port_num;
-  const string& device;
+  const string device;
 
   RecvNodeDescriptor(const NodeDef* node_, const int port_num_,
                      const string& device_)

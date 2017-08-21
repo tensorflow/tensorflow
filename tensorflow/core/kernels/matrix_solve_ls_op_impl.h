@@ -158,9 +158,4 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
   bool fast_;
 };
 
-REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<float>), float);
-REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<double>), double);
-REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<float>), float);
-REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<double>), double);
-
 }  // namespace tensorflow

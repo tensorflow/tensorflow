@@ -179,6 +179,19 @@ class ControlFlowTest(test.TestCase):
       result = exit_op.eval()
     self.assertAllEqual(np.array([x * 5 for x in [1, 2, 3, 4, 5, 6]]), result)
 
+  def testEnterShapePropagation(self):
+    with self.test_session():
+      v = variables.Variable([0.0, 0.0], dtype=dtypes.float32)
+
+      # If is_constant=True, the shape information should be propagated.
+      enter_v_constant = control_flow_ops.enter(v, "frame1", is_constant=True)
+      self.assertEqual(enter_v_constant.shape, [2])
+
+      # Otherwise, the shape should be unknown.
+      enter_v_non_constant = control_flow_ops.enter(v, "frame2",
+                                                    is_constant=False)
+      self.assertEqual(enter_v_non_constant.shape, None)
+
   def testSwitchMergeIndexedSlices(self):
     with self.test_session():
       values = constant_op.constant([1, 2, 3, 4, 5, 6])

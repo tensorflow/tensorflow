@@ -1477,9 +1477,29 @@ ComputationDataHandle ComputationBuilder::BatchNormInference(
     const ComputationDataHandle& operand, const ComputationDataHandle& scale,
     const ComputationDataHandle& offset, const ComputationDataHandle& mean,
     const ComputationDataHandle& variance, float epsilon, int64 feature_index) {
-  // TODO(b/62843645): Implement BatchNormInference.
-  NoteError(Unimplemented("BatchNormInference is not implemented yet."));
-  return ComputationDataHandle();
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormInferenceRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_offset() = offset;
+  *request.mutable_mean() = mean;
+  *request.mutable_variance() = variance;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_inference_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormInference request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
 }
 
 ComputationDataHandle ComputationBuilder::BatchNormGrad(

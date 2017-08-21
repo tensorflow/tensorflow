@@ -139,15 +139,14 @@ static Node* AddRet(Graph* g, Endpoint input, int index) {
   return ret;
 }
 
-static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
-
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options,
-                             CustomKernelCreator custom_kernel_creator);
+                             CustomKernelCreator custom_kernel_creator,
+                             ProcessFunctionLibraryRuntime* parent);
 
   ~FunctionLibraryRuntimeImpl() override;
 
@@ -184,16 +183,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
   const CustomKernelCreator custom_kernel_creator_;
+  const string device_name_;
 
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel_;
 
   mutable mutex mu_;
-
-  // Maps function instantiation to a handle. The key is a
-  // canonicalized representation of the function name and
-  // instantiation attrs. The handle is an index into the items_.
-  std::unordered_map<string, Handle> table_ GUARDED_BY(mu_);
 
   // func_graphs_ never shrinks or reorders its members.
   std::vector<FunctionBody*> func_graphs_ GUARDED_BY(mu_);
@@ -208,12 +203,16 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   };
   std::vector<Item*> items_;
 
+  ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
+
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            FunctionBody** fbody);
   Status CreateItem(Handle handle, Item** item);
   Status GetOrCreateItem(Handle handle, Item** item);
   Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      FunctionBody** g_body);
+  bool IsLocalTarget(const AttrSlice& attrs);
+  AttrValueMap FixAttrs(const AttrSlice& attrs);
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
 };
@@ -222,14 +221,19 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator)
+    CustomKernelCreator custom_kernel_creator,
+    ProcessFunctionLibraryRuntime* parent)
     : device_mgr_(dmgr),
       device_(device),
       env_(env),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
       optimizer_(optimizer_options),
-      custom_kernel_creator_(std::move(custom_kernel_creator)) {
+      custom_kernel_creator_(std::move(custom_kernel_creator)),
+      device_name_(device_ == nullptr
+                       ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
+                       : device_->name()),
+      parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return lib_def_->LookUpOpDef(op, sig);
   };
@@ -294,10 +298,17 @@ class CallOp : public AsyncOpKernel {
 };
 
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, h);
+  if (local_handle == kInvalidLocalHandle) {
+    LOG(ERROR) << "Could not find Handle: " << h
+               << " on device: " << device_name_;
+    return nullptr;
+  }
+
   mutex_lock l(mu_);
-  CHECK_LE(static_cast<Handle>(0), h);
-  CHECK_LT(h, func_graphs_.size());
-  return func_graphs_[h];
+  CHECK_LE(0, local_handle);
+  CHECK_LT(local_handle, func_graphs_.size());
+  return func_graphs_[local_handle];
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
@@ -393,22 +404,47 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
   return Status::OK();
 }
 
+bool FunctionLibraryRuntimeImpl::IsLocalTarget(const AttrSlice& attrs) {
+  if (device_ == nullptr) return true;
+  string target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
+  if (target.empty()) return true;
+  return target == device_->name();
+}
+
+AttrValueMap FunctionLibraryRuntimeImpl::FixAttrs(const AttrSlice& attrs) {
+  AttrValueMap value_map;
+  for (auto it : attrs) {
+    value_map[it.first] = it.second;
+  }
+  if (attrs.Find("_target") != nullptr) {
+    return value_map;
+  }
+  AttrValue v;
+  v.set_s(device_name_);
+  AddAttr("_target", v, &value_map);
+  return value_map;
+}
+
 Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
                                                AttrSlice attrs,
                                                Handle* handle) {
-  const string key = Canonicalize(function_name, attrs);
-  {
-    mutex_lock l(mu_);
-    *handle = gtl::FindWithDefault(table_, key, kInvalidHandle);
-    if (*handle != kInvalidHandle) {
-      return Status::OK();
-    }
+  AttrValueMap value_map = FixAttrs(attrs);
+  AttrSlice new_attrs(&value_map);
+
+  if (!IsLocalTarget(new_attrs)) {
+    return parent_->Instantiate(function_name, new_attrs, handle);
+  }
+
+  const string key = Canonicalize(function_name, new_attrs);
+  *handle = parent_->GetHandle(key);
+  if (*handle != kInvalidHandle) {
+    return Status::OK();
   }
 
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    const AttrValue* f = attrs.Find(kFuncAttr);
+    const AttrValue* f = new_attrs.Find(kFuncAttr);
     if (f == nullptr) {
       return errors::InvalidArgument("SymbolicGradient is missing attr: f");
     }
@@ -426,17 +462,16 @@ Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
     if (fdef == nullptr) {
       return errors::NotFound("Function ", function_name, " is not defined.");
     }
-    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, &fbody));
+    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, new_attrs, &fbody));
   }
 
   {
     mutex_lock l(mu_);
-    *handle = gtl::FindWithDefault(table_, key, kInvalidHandle);
+    *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       delete fbody;
     } else {
-      *handle = func_graphs_.size();
-      table_.insert({key, *handle});
+      *handle = parent_->AddHandle(key, device_name_, func_graphs_.size());
       func_graphs_.push_back(fbody);
       items_.resize(func_graphs_.size());
     }
@@ -494,13 +529,14 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
 }
 
 Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   {
     mutex_lock l(mu_);
-    if (handle >= items_.size()) {
+    if (local_handle >= items_.size()) {
       return errors::NotFound("Function handle ", handle,
                               " is not valid. Likely an internal error.");
     }
-    *item = items_[handle];
+    *item = items_[local_handle];
     if (*item != nullptr) {
       (*item)->Ref();
       return Status::OK();
@@ -512,9 +548,9 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
 
   {
     mutex_lock l(mu_);
-    if (items_[handle] == nullptr) {
+    if (items_[local_handle] == nullptr) {
       // Install *item in items_.
-      items_[handle] = *item;
+      items_[local_handle] = *item;
       (*item)->Ref();
     }
   }
@@ -527,6 +563,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
     return done(errors::Cancelled(""));
+  }
+  if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
+    return parent_->Run(opts, handle, args, rets, done);
   }
   const FunctionBody* fbody = GetFunctionBody(handle);
   FunctionCallFrame* frame =
@@ -616,19 +655,21 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator) {
+    CustomKernelCreator custom_kernel_creator,
+    ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
       device_mgr, env, device, graph_def_version, lib_def, optimizer_options,
-      std::move(custom_kernel_creator)));
+      std::move(custom_kernel_creator), parent));
 }
 
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options) {
+    const OptimizerOptions& optimizer_options,
+    ProcessFunctionLibraryRuntime* parent) {
   return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
                                    lib_def, optimizer_options,
-                                   GetCustomCreatorSingleton()->Get());
+                                   GetCustomCreatorSingleton()->Get(), parent);
 }
 
 bool RemoveDeadNodes(Graph* g) {
