@@ -175,24 +175,6 @@ class SumReductionTest(BaseReductionTest):
       np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
       self._compareAllAxes(np_arr)
 
-  def testFloat16(self):
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.float16)
-      self._compareAllAxes(np_arr)
-
-    # test that mean doesn't overflow
-    # only on GPU, since it has the more accurate implementation
-    if not test.is_gpu_available():
-      return
-
-    arr = np.ones([68000], dtype=np.float16)
-
-    with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
-      tf_arr = array_ops.constant(arr)
-      tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
-      tf_out_mean = sess.run(tf_mean)
-    self.assertAllClose(tf_out_mean, 1.)
-
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
