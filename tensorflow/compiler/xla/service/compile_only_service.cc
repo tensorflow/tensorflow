@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
@@ -49,19 +50,14 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
 
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
   std::unique_ptr<CompileOnlyService> service(
-      new CompileOnlyService(compiler, std::move(compute_constant_backend)));
+      new CompileOnlyService(options, compiler));
   return std::move(service);
 }
 
-CompileOnlyService::CompileOnlyService(
-    Compiler* compiler, std::unique_ptr<Backend> compute_constant_backend)
-    : Service(/*backend=*/nullptr, std::move(compute_constant_backend)),
-      compiler_(compiler) {
-  runs_in_client_process_ = true;
-}
+CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
+                                       Compiler* compiler)
+    : Service(options, /*execute_backend=*/nullptr), compiler_(compiler) {}
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
@@ -74,9 +70,11 @@ CompileOnlyService::CompileAheadOfTime(
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
 
+    // TODO(b/63773457): Track DebugOptions in AotCompilationOptions.
+    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+
     // Dump computation proto state if flag is set.
-    legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-    const string& directory_path = flags->xla_dump_computations_to;
+    const string& directory_path = debug_options.xla_dump_computations_to();
     if (!directory_path.empty()) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<SessionModule> session_module,
@@ -93,34 +91,22 @@ CompileOnlyService::CompileAheadOfTime(
         std::shared_ptr<const ProgramShape> program_shape,
         user_computation->ComputeProgramShape(versioned_handle.version));
 
-    HloModuleConfig hlo_module_config(*program_shape);
-    auto* computation_layout =
-        hlo_module_config.mutable_entry_computation_layout();
-    if (flags->xla_hlo_profile) {
-      hlo_module_config.enable_hlo_profiling(true);
-    }
-    for (int i = 0; i < instance.argument_layouts.size(); ++i) {
-      const Shape& argument_layout = *instance.argument_layouts[i];
-      if (ShapeUtil::IsTuple(argument_layout)) {
-        return Unimplemented("tuple arguments not supported yet");
-      }
-      TF_RETURN_IF_ERROR(
-          computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-              argument_layout));
-    }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            *instance.result_layout));
+    ExecutionOptions execution_options;
+    *execution_options.mutable_debug_options() = debug_options;
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(*program_shape, instance.argument_layouts,
+                           &execution_options,
+                           /*has_hybrid_result=*/false));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, hlo_module_config,
+                            versioned_handle, *module_config,
                             /*include_unreachable_instructions=*/true));
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules),
-                                       MakeHloDumper(), options);
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
 }
 
 }  // namespace xla

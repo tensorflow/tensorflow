@@ -934,6 +934,31 @@ class Stream {
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *y, int incy);
 
+  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64 m, uint64 n,
+                                    float alpha, const DeviceMemory<float> &a,
+                                    int lda, const DeviceMemory<float> &x,
+                                    int incx, float beta,
+                                    DeviceMemory<float> *y, int incy,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64 m, uint64 n,
+                                    double alpha, const DeviceMemory<double> &a,
+                                    int lda, const DeviceMemory<double> &x,
+                                    int incx, double beta,
+                                    DeviceMemory<double> *y, int incy,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemvWithProfiling(
+      blas::Transpose trans, uint64 m, uint64 n, std::complex<float> alpha,
+      const DeviceMemory<std::complex<float>> &a, int lda,
+      const DeviceMemory<std::complex<float>> &x, int incx,
+      std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemvWithProfiling(
+      blas::Transpose trans, uint64 m, uint64 n, std::complex<double> alpha,
+      const DeviceMemory<std::complex<double>> &a, int lda,
+      const DeviceMemory<std::complex<double>> &x, int incx,
+      std::complex<double> beta, DeviceMemory<std::complex<double>> *y,
+      int incy, blas::ProfileResult *output_profile_result);
+
   // See BlasSupport::DoBlasGer.
   Stream &ThenBlasGer(uint64 m, uint64 n, float alpha,
                       const DeviceMemory<float> &x, int incx,
@@ -1249,6 +1274,44 @@ class Stream {
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *c, int ldc);
 
+  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, float alpha,
+                                    const DeviceMemory<Eigen::half> &a, int lda,
+                                    const DeviceMemory<Eigen::half> &b, int ldb,
+                                    float beta, DeviceMemory<Eigen::half> *c,
+                                    int ldc,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, float alpha,
+                                    const DeviceMemory<float> &a, int lda,
+                                    const DeviceMemory<float> &b, int ldb,
+                                    float beta, DeviceMemory<float> *c, int ldc,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, double alpha,
+                                    const DeviceMemory<double> &a, int lda,
+                                    const DeviceMemory<double> &b, int ldb,
+                                    double beta, DeviceMemory<double> *c,
+                                    int ldc,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithProfiling(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<float> alpha,
+      const DeviceMemory<std::complex<float>> &a, int lda,
+      const DeviceMemory<std::complex<float>> &b, int ldb,
+      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithProfiling(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<double> alpha,
+      const DeviceMemory<std::complex<double>> &a, int lda,
+      const DeviceMemory<std::complex<double>> &b, int ldb,
+      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      blas::ProfileResult *output_profile_result);
+
   // See BlasSupport::DoBlasGemmWithAlgorithm.
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
@@ -1257,6 +1320,15 @@ class Stream {
       const Eigen::half &beta, DeviceMemory<Eigen::half> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, int alpha,
+                                    const DeviceMemory<int8> &a, int lda,
+                                    const DeviceMemory<int8> &b, int ldb,
+                                    int beta, DeviceMemory<int> *c, int ldc,
+                                    blas::ComputationType computation_type,
+                                    blas::AlgorithmType algorithm,
+                                    blas::ProfileResult *output_profile_result);
   Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,
                                     uint64 k, float alpha,
@@ -1595,18 +1667,14 @@ class Stream {
     return ThenMemcpy(gpu_dst, gpu_src, size);
   }
 
-  // Entrain onto the stream: a memset of zero at a GPU location of size
-  // bytes.
+  // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
   // The location must not be null.
   Stream &ThenMemZero(DeviceMemoryBase *location, uint64 size);
 
-  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location
-  // of
-  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly
-  // divisible
+  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
+  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  Stream &ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
-                       uint64 size);
+  Stream &ThenMemset32(DeviceMemoryBase *location, uint32 pattern, uint64 size);
 
   // Enqueue a forward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnForward for more details.
@@ -1624,6 +1692,23 @@ class Stream {
                          DeviceMemory<float> *output_h_data,
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<float> *output_c_data, bool is_training,
+                         ScratchAllocator *reserve_space_allocator,
+                         ScratchAllocator *workspace_allocator);
+
+  Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
+                         const dnn::RnnSequenceTensorDescriptor &input_desc,
+                         const DeviceMemory<double> &input_data,
+                         const dnn::RnnStateTensorDescriptor &input_h_desc,
+                         const DeviceMemory<double> &input_h_data,
+                         const dnn::RnnStateTensorDescriptor &input_c_desc,
+                         const DeviceMemory<double> &input_c_data,
+                         const DeviceMemory<double> &params,
+                         const dnn::RnnSequenceTensorDescriptor &output_desc,
+                         DeviceMemory<double> *output_data,
+                         const dnn::RnnStateTensorDescriptor &output_h_desc,
+                         DeviceMemory<double> *output_h_data,
+                         const dnn::RnnStateTensorDescriptor &output_c_desc,
+                         DeviceMemory<double> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
                          ScratchAllocator *workspace_allocator);
 
@@ -1652,6 +1737,51 @@ class Stream {
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator);
+
+  Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
+                          const dnn::RnnSequenceTensorDescriptor &input_desc,
+                          const DeviceMemory<double> &input_data,
+                          const dnn::RnnStateTensorDescriptor &input_h_desc,
+                          const DeviceMemory<double> &input_h_data,
+                          const dnn::RnnStateTensorDescriptor &input_c_desc,
+                          const DeviceMemory<double> &input_c_data,
+                          const DeviceMemory<double> &params,
+                          const dnn::RnnSequenceTensorDescriptor &output_desc,
+                          const DeviceMemory<double> &output_data,
+                          const dnn::RnnStateTensorDescriptor &output_h_desc,
+                          const DeviceMemory<double> &output_h_data,
+                          const dnn::RnnStateTensorDescriptor &output_c_desc,
+                          const DeviceMemory<double> &output_c_data,
+                          const DeviceMemory<double> &output_backprop_data,
+                          const DeviceMemory<double> &output_h_backprop_data,
+                          const DeviceMemory<double> &output_c_backprop_data,
+                          DeviceMemory<double> *input_backprop_data,
+                          DeviceMemory<double> *input_h_backprop_data,
+                          DeviceMemory<double> *input_c_backprop_data,
+                          DeviceMemory<double> *params_backprop_data,
+                          DeviceMemory<uint8> *reserve_space_data,
+                          ScratchAllocator *workspace_allocator);
+
+  // Enqueue onto the stream a operation that transforms a tensor.
+  // See DnnSupport::DoTransformTensor for more details.
+  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                              dnn::DataType input_type,
+                              const DeviceMemoryBase &input_data,
+                              const dnn::BatchDescriptor &output_desc,
+                              dnn::DataType output_type, float scale,
+                              DeviceMemoryBase *output_data);
+
+  // The templated version of the above ThenTransformTensor. Useful when the
+  // input and output types are statically known.
+  template <typename InElemT, typename OutElemT>
+  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                              const DeviceMemory<InElemT> &input_data,
+                              const dnn::BatchDescriptor &output_desc,
+                              DeviceMemory<OutElemT> *output_data) {
+    return ThenTransformTensor(input_desc, dnn::ToDataType<InElemT>(),
+                               input_data, output_desc,
+                               dnn::ToDataType<OutElemT>(), output_data);
+  }
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
@@ -1715,7 +1845,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const {
-    shared_lock lock{mu_};
+    tf_shared_lock lock{mu_};
     return !ok_;
   }
 

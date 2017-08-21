@@ -16,17 +16,36 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
+
+class NodeProperties {
+ public:
+  NodeProperties(const OpDef* op_def, const NodeDef& node_def,
+                 const DataTypeSlice inputs, const DataTypeSlice outputs)
+      : op_def(op_def),
+        node_def(node_def),
+        input_types(inputs.begin(), inputs.end()),
+        output_types(outputs.begin(), outputs.end()) {}
+
+  const OpDef* op_def;  // not owned
+  NodeDef node_def;
+  const DataTypeVector input_types;
+  const DataTypeVector output_types;
+};
 
 // Node
 
@@ -93,26 +112,17 @@ Node::Node()
       props_(nullptr),
       assigned_device_name_index_(0) {}
 
-Node::~Node() {
-  if (props_) {
-    props_->Unref();
-  }
-}
-
-void Node::Initialize(int id, int cost_id, Properties* props) {
+void Node::Initialize(int id, int cost_id,
+                      std::shared_ptr<NodeProperties> props) {
   DCHECK_EQ(id_, -1);
   DCHECK(in_edges_.empty());
   DCHECK(out_edges_.empty());
   id_ = id;
   cost_id_ = cost_id;
 
-  // Unref the old, assign the new properties.
-  if (props_) {
-    props_->Unref();
-  }
-  props_ = props;
+  props_ = std::move(props);
   // Initialize the class_ based on the type string
-  class_ = GetNodeClassForOp(props->node_def_.op());
+  class_ = GetNodeClassForOp(props_->node_def.op());
 }
 
 void Node::Clear() {
@@ -121,14 +131,32 @@ void Node::Clear() {
   id_ = -1;
   cost_id_ = -1;
   class_ = NC_UNINITIALIZED;
-
-  if (props_) {
-    props_->Unref();
-    props_ = nullptr;
-  }
-
+  props_.reset();
   assigned_device_name_index_ = 0;
 }
+
+const string& Node::name() const { return props_->node_def.name(); }
+const string& Node::type_string() const { return props_->node_def.op(); }
+const NodeDef& Node::def() const { return props_->node_def; }
+const OpDef& Node::op_def() const { return *props_->op_def; }
+
+int32 Node::num_inputs() const { return props_->input_types.size(); }
+DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
+const DataTypeVector& Node::input_types() const { return props_->input_types; }
+
+int32 Node::num_outputs() const { return props_->output_types.size(); }
+DataType Node::output_type(int32 o) const { return props_->output_types[o]; }
+const DataTypeVector& Node::output_types() const {
+  return props_->output_types;
+}
+
+AttrSlice Node::attrs() const { return AttrSlice(def()); }
+
+const protobuf::RepeatedPtrField<string>& Node::requested_inputs() const {
+  return def().input();
+}
+
+const string& Node::requested_device() const { return def().device(); }
 
 gtl::iterator_range<NeighborIter> Node::out_nodes() const {
   return gtl::make_range(NeighborIter(out_edges_.begin(), false),
@@ -141,19 +169,25 @@ gtl::iterator_range<NeighborIter> Node::in_nodes() const {
 }
 
 void Node::MaybeCopyOnWrite() {
-  // Properties may be shared between Nodes. Make a copy if so.
-  if (!props_->RefCountIsOne()) {
-    Properties* new_props =
-        new Properties(props_->op_def_, props_->node_def_, props_->input_types_,
-                       props_->output_types_);
-    props_->Unref();
-    props_ = new_props;
+  // NodeProperties may be shared between Nodes. Make a copy if so.
+  if (!props_.unique()) {
+    props_ = std::make_shared<NodeProperties>(*props_);
   }
+}
+
+AttrValue* Node::AddAttrHelper(const string& name) {
+  MaybeCopyOnWrite();
+  return &((*props_->node_def.mutable_attr())[name]);
 }
 
 void Node::ClearAttr(const string& name) {
   MaybeCopyOnWrite();
-  (*props_->node_def_.mutable_attr()).erase(name);
+  (*props_->node_def.mutable_attr()).erase(name);
+}
+
+void Node::set_requested_device(const string& device) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_device(device);
 }
 
 Status Node::input_edge(int idx, const Edge** e) const {
@@ -225,24 +259,15 @@ Status Node::input_node(int idx, const Node** const_n) const {
   return Status::OK();
 }
 
-// Node::Properties
-
-Node::Properties::Properties(const OpDef* op_def, const NodeDef& node_def,
-                             const DataTypeSlice inputs,
-                             const DataTypeSlice outputs)
-    : op_def_(op_def),
-      node_def_(node_def),
-      input_types_(inputs.begin(), inputs.end()),
-      output_types_(outputs.begin(), outputs.end()) {}
-
-Node::Properties::~Properties() {}
 
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
-    : ops_(ops, FunctionDefLibrary()), arena_(8 << 10 /* 8kB */) {
-  versions_.set_producer(TF_GRAPH_DEF_VERSION);
-  versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+    : ops_(ops, FunctionDefLibrary()),
+      versions_(new VersionDef),
+      arena_(8 << 10 /* 8kB */) {
+  versions_->set_producer(TF_GRAPH_DEF_VERSION);
+  versions_->set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
 
   // Initialize the name interning table for assigned_device_name.
   device_names_.push_back("");
@@ -286,6 +311,9 @@ Graph::~Graph() {
   // destroy them.
 }
 
+const VersionDef& Graph::versions() const { return *versions_; }
+void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
+
 Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   const OpDef* op_def;
   status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
@@ -300,16 +328,15 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   }
 
   Node* node = AllocateNode(
-      new Node::Properties(op_def, node_def, inputs, outputs), nullptr);
+      std::make_shared<NodeProperties>(op_def, node_def, inputs, outputs),
+      nullptr);
   return node;
 }
 
 Node* Graph::CopyNode(Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
-  Node::Properties* props = node->properties();
-  props->Ref();
-  Node* copy = AllocateNode(props, node);
+  Node* copy = AllocateNode(node->props_, node);
   copy->set_assigned_device_name(node->assigned_device_name());
 
   // Since the OpDef of a function may be owned by the Graph that owns 'node',
@@ -317,16 +344,16 @@ Node* Graph::CopyNode(Node* node) {
   // node properties with the updated OpDef.
   const OpDef* op_def;
   TF_CHECK_OK(ops_.LookUpOpDef(node->type_string(), &op_def));
-  if (op_def != props->op_def_) {
+  if (op_def != node->props_->op_def) {
     copy->MaybeCopyOnWrite();
-    copy->props_->op_def_ = op_def;
+    copy->props_->op_def = op_def;
   }
 
   return copy;
 }
 
 void Graph::RemoveNode(Node* node) {
-  DCHECK(IsValidNode(node)) << node->DebugString();
+  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
 
@@ -341,8 +368,8 @@ void Graph::RemoveNode(Node* node) {
 }
 
 const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
-  DCHECK(IsValidNode(source)) << source->DebugString();
-  DCHECK(IsValidNode(dest)) << dest->DebugString();
+  TF_DCHECK_OK(IsValidNode(source)) << source->DebugString();
+  TF_DCHECK_OK(IsValidNode(dest)) << dest->DebugString();
 
   // source/sink must only be linked via control slots, and
   // control slots must only be linked to control slots.
@@ -372,8 +399,8 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
 }
 
 void Graph::RemoveEdge(const Edge* e) {
-  DCHECK(IsValidNode(e->src_)) << e->src_->DebugString();
-  DCHECK(IsValidNode(e->dst_)) << e->dst_->DebugString();
+  TF_DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
+  TF_DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
@@ -392,35 +419,7 @@ void Graph::RemoveEdge(const Edge* e) {
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
-  for (const FunctionDef& fdef : fdef_lib.function()) {
-    const FunctionDef* preexisting_fdef = ops_.Find(fdef.signature().name());
-    if (preexisting_fdef != nullptr) {
-      if (!FunctionDefsEqual(*preexisting_fdef, fdef)) {
-        return errors::InvalidArgument(
-            "Cannot add function '", fdef.signature().name(),
-            "' because a different function with the same name already "
-            "exists.");
-      }
-      // Ignore duplicate FunctionDefs
-      continue;
-    }
-    TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
-  }
-  for (const GradientDef& grad : fdef_lib.gradient()) {
-    string preexisting_grad_func = ops_.FindGradient(grad.function_name());
-    if (!preexisting_grad_func.empty()) {
-      if (preexisting_grad_func != grad.gradient_func()) {
-        return errors::InvalidArgument(
-            "Cannot assign gradient function '", grad.gradient_func(), "' to '",
-            grad.function_name(), "' because it already has gradient function ",
-            "'", preexisting_grad_func, "'");
-      }
-      // Ignore duplicate GradientDefs
-      continue;
-    }
-    TF_RETURN_IF_ERROR(ops_.AddGradientDef(grad));
-  }
-  return Status::OK();
+  return ops_.AddLibrary(fdef_lib);
 }
 
 namespace {
@@ -445,6 +444,9 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
   *graph_def->mutable_library() = ops_.ToProto();
+
+  graph_def->mutable_node()->Reserve(std::max(1, num_nodes() - from_node_id));
+
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
   for (auto id = from_node_id; id < num_node_ids(); ++id) {
@@ -478,10 +480,16 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
       }
     }
     node_def->clear_input();
+    node_def->mutable_input()->Reserve(inputs.size());
+
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->requested_inputs()[i]);
+        if (i < node->requested_inputs().size()) {
+          node_def->add_input(node->requested_inputs()[i]);
+        } else {
+          node_def->add_input("");
+        }
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;
@@ -495,14 +503,28 @@ string Graph::NewName(StringPiece prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
 }
 
-bool Graph::IsValidNode(Node* node) const {
-  if (node == nullptr) return false;
+Status Graph::IsValidNode(Node* node) const {
+  if (node == nullptr) {
+    return errors::InvalidArgument("Node is null");
+  }
   const int id = node->id();
-  if (id < 0 || static_cast<size_t>(id) >= nodes_.size()) return false;
-  return nodes_[id] == node;
+  if (id < 0) {
+    return errors::InvalidArgument("node id ", id, "is less than zero");
+  }
+  if (static_cast<size_t>(id) >= nodes_.size()) {
+    return errors::InvalidArgument(
+        "node id ", id, "is >= than number of nodes in graph ", nodes_.size());
+  }
+  if (nodes_[id] != node) {
+    return errors::InvalidArgument("Node with id ", id,
+                                   " is different from the passed in node. "
+                                   "Does it belong to a different graph?");
+  }
+  return Status::OK();
 }
 
-Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
+Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
+                          const Node* cost_node) {
   Node* node = nullptr;
   if (free_nodes_.empty()) {
     node = new (arena_.Alloc(sizeof(Node))) Node;  // placement new
@@ -513,14 +535,14 @@ Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
   node->graph_ = this;
   const int id = nodes_.size();
   int cost_id = cost_node ? cost_node->cost_id() : id;
-  node->Initialize(id, cost_id, props);
+  node->Initialize(id, cost_id, std::move(props));
   nodes_.push_back(node);
   ++num_nodes_;
   return node;
 }
 
 void Graph::ReleaseNode(Node* node) {
-  DCHECK(IsValidNode(node)) << node->DebugString();
+  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
   --num_nodes_;
@@ -547,6 +569,11 @@ int Graph::InternDeviceName(const string& device_name) {
   index_cell = index;
   device_names_.push_back(device_name);
   return index;
+}
+
+string Edge::DebugString() const {
+  return strings::Printf("Edge %d %s:%d -> %s:%d", id_, src_->name().c_str(),
+                         src_output_, dst_->name().c_str(), dst_input_);
 }
 
 }  // namespace tensorflow

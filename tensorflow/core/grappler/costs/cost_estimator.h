@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <chrono>
+#include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -94,6 +95,9 @@ struct Costs {
                                // streams from main memory.
   // If the time estimation is inaccurate.
   bool inaccurate = false;
+
+  // Max possible memory usage per device.
+  std::unordered_map<string, uint64> estimated_max_memory_per_device;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Costs::MicroSeconds d) {

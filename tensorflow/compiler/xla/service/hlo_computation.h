@@ -29,11 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -112,8 +112,8 @@ class HloComputation {
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
-  // the result of the computation.
-  void set_root_instruction(HloInstruction* instruction);
+  // the result of the computation for non fusion computations.
+  void set_root_instruction(HloInstruction* new_root_instruction);
 
   // Return the root instruction of the computation. The root instruction is the
   // instruction which produces the output of the computation.
@@ -153,9 +153,18 @@ class HloComputation {
   // this order, definitions of values always appear before their uses.
   std::list<HloInstruction*> MakeInstructionPostOrder() const;
 
-  // Computes and returns the mapping from HLO to its transitive operands.
-  class ReachabilityMap;
-  std::unique_ptr<ReachabilityMap> ComputeTransitiveOperands() const;
+  // Computes and returns the reachability between HLO instructions in the
+  // computation. The returned HloReachabilityMap is constructed such that
+  // HloReachabilityMap::IsReachable(a, b) returns true iff there exists a
+  // directed path (from producer to consumer) from 'a' to 'b'. Both data
+  // dependencies (operands) and control dependencies are considered for
+  // reachability. Trivially an instruction is reachable from itself.
+  std::unique_ptr<HloReachabilityMap> ComputeReachability() const;
+
+  // Updates the given reachability map after the immediate predecessor set
+  // (operands and control predecessors) of 'instruction' has changed.
+  void UpdateReachabilityThroughInstruction(
+      const HloInstruction* instruction, HloReachabilityMap* reachability_map);
 
   int64 instruction_count() const { return instructions_.size(); }
 
@@ -250,6 +259,10 @@ class HloComputation {
   // is removable for a fusion computation.
   bool IsRemovable(const HloInstruction* instruction);
 
+  // Returns true if this computation has a side effect. A computation has a
+  // side effect if it contains one or more instructions with a side effect.
+  bool HasSideEffect() const;
+
   // Returns if this computation is a fusion computation.
   bool IsFusionComputation() const { return is_fusion_computation_; }
 
@@ -306,34 +319,6 @@ class HloComputation {
   NameUniquer instruction_name_uniquer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
-};
-
-class HloComputation::ReachabilityMap {
- public:
-  // Sets up an empty reachable matrix for the full set of
-  // instructions specified in "all_instructions"
-  explicit ReachabilityMap(const std::list<HloInstruction*>& all_instructions);
-  // Sets entry so that IsReachable(a, b) will return true
-  void SetReachable(const HloInstruction* a, const HloInstruction* b);
-
-  // Sets IsReachable(a_inst, b_inst) as well as IsReachable(a_inst, trans)
-  // for all "trans" s.t. "IsReachable(b_inst, trans)" is true
-  void SetReachableAndTransitiveClosure(const HloInstruction* a_inst,
-                                        const HloInstruction* b_inst);
-
-  // Returns true if "b" is reachable from "a"
-  bool IsReachable(const HloInstruction* a, const HloInstruction* b) const;
-
-  // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
-  bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
-
- private:
-  friend class HloComputation;
-
-  // dense id assignment from HloInstruction* to number
-  tensorflow::gtl::FlatMap<const HloInstruction*, int> ids_;
-  // matrix_(a,b) is true iff b is reachable from a
-  tensorflow::core::Bitmap matrix_;
 };
 
 }  // namespace xla

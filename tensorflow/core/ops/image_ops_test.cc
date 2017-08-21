@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -224,6 +223,31 @@ TEST(ImageOpsTest, RandomCrop_ShapeFn) {
   Tensor size = test::AsTensor<int64>({10, 20});
   op.input_tensors[1] = &size;
   INFER_OK(op, "[?,?,?];[2]", "[10,20,d0_2]");
+}
+
+TEST(ImageOpsTest, QuantizedResizeBilinear_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizedResizeBilinear");
+  op.input_tensors.resize(4);
+
+  NodeDefBuilder builder =
+      NodeDefBuilder("test", "QuantizedResizeBilinear")
+          .Input(NodeDefBuilder::NodeOut{"images", 0, DT_QINT32})
+          .Input(NodeDefBuilder::NodeOut{"size", 0, DT_INT32})
+          .Input(NodeDefBuilder::NodeOut{"min", 0, DT_FLOAT})
+          .Input(NodeDefBuilder::NodeOut{"max", 0, DT_FLOAT})
+          .Attr("T", DT_QINT32)
+          .Attr("Toutput", DT_QINT32);
+  TF_ASSERT_OK(builder.Finalize(&op.node_def));
+
+  // When the size tensor is not a constant, the middle dims are unknown.
+  INFER_OK(op, "[1,?,3,?];[2];[];[]",
+           "[d0_0,?,?,d0_3];[];[]");  // output rank unknown
+  INFER_ERROR("must be rank 0", op, "[1,?,3,?];[2];[?];[]");
+  INFER_ERROR("must be rank 0", op, "[1,?,3,?];[2];[];[?]");
+
+  const Tensor size_tensor = test::AsTensor<int32>({20, 30});
+  op.input_tensors.at(1) = &size_tensor;
+  INFER_OK(op, "[1,?,3,?];[2];[];[]", "[d0_0,20,30,d0_3];[];[]");
 }
 
 }  // end namespace tensorflow

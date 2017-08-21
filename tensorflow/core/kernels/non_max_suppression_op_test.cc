@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -144,8 +143,8 @@ TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-              StringPiece(s.ToString()).contains("scores has incompatible shape"))
-    << s;
+      StringPiece(s.ToString()).contains("scores has incompatible shape"))
+      << s;
 }
 
 TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
@@ -157,8 +156,8 @@ TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-              StringPiece(s.ToString()).contains("iou_threshold must be in [0, 1]"))
-    << s;
+      StringPiece(s.ToString()).contains("iou_threshold must be in [0, 1]"))
+      << s;
 }
 
 TEST_F(NonMaxSuppressionOpTest, TestEmptyInput) {

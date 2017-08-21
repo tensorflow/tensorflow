@@ -213,7 +213,7 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
       CHECK_LE(shard.second, perm.size());
       CHECK_LE(shard.first, shard.second);
       const int64 input_index = get_input_index(perm[shard.first]);
-      // Acccumulate the rhs and lhs terms in the normal equations
+      // Accumulate the rhs and lhs terms in the normal equations
       // for the non-zero elements in the row or column of the sparse matrix
       // corresponding to input_index.
       int num_batched = 0;

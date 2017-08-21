@@ -508,7 +508,7 @@ class CoordinatedSessionTest(test.TestCase):
 
 
 class AbortAtNSession(object):
-  """A mock sessionthat aborts at the N-th run call."""
+  """A mock session that aborts at the N-th run call."""
 
   def __init__(self, sess, n):
     self._sess = sess
@@ -522,6 +522,99 @@ class AbortAtNSession(object):
       raise errors_impl.AbortedError('Aborted at N', None, None)
     self._count -= 1
     return self._sess.run(*args, **kwargs)
+
+
+class StopCoordinatorWithException(session_run_hook.SessionRunHook):
+  """With this hook Coordinator throws an exception after N-runs."""
+
+  def __init__(self, calls_before_stopping, exception_to_raise=None):
+    self._started_the_side_thread_already = False
+    self._lock = threading.Lock()
+    self._stored_exception_event = threading.Event()
+    self._calls_before_stopping = calls_before_stopping
+    self._exception_to_raise = (exception_to_raise or errors_impl.AbortedError(
+        None, None, 'Aborted at N'))
+
+  def _maybe_stop_with_exception(self, coord):
+    while True:
+      with self._lock:
+        if self._calls_before_stopping == 0:
+          try:
+            raise self._exception_to_raise
+          except Exception as e:  # pylint: disable=broad-except
+            coord.request_stop(e)
+            self._stored_exception_event.set()
+            break
+
+  def after_create_session(self, session, coord):
+    if self._started_the_side_thread_already:
+      return
+
+    separate_thread = threading.Thread(
+        target=self._maybe_stop_with_exception, args=(coord,))
+
+    coord.register_thread(separate_thread)
+    separate_thread.start()
+    self._started_the_side_thread_already = True
+    # Coordinator will take care of joining `separate_thread`.
+
+  def after_run(self, run_context, run_values):
+    stopping_now = False
+    with self._lock:
+      self._calls_before_stopping -= 1
+      if self._calls_before_stopping == 0:
+        stopping_now = True
+
+    if stopping_now:
+      self._stored_exception_event.wait()
+
+
+class FailTrainingAfterCoordinatorStopped(StopCoordinatorWithException):
+  """With this hook training encounters an exception after N-runs."""
+
+  def __init__(self, calls_before_stopping):
+    StopCoordinatorWithException.__init__(self, calls_before_stopping)
+    self._coord = None
+
+  def after_create_session(self, session, coord):
+    self._coord = coord
+    return StopCoordinatorWithException.after_create_session(
+        self, session, coord)
+
+  def after_run(self, run_context, run_values):
+    StopCoordinatorWithException.after_run(self, run_context, run_values)
+    try:
+      # After a `run`, an exception could have been stored inside the
+      # coordinator.
+      self._coord.raise_requested_exception()
+    except errors_impl.AbortedError:
+      # In real world, the main thread may or may not know about the exception
+      # that stopped the coordinator. Because the coordinator has stopped, the
+      # main thread could have gotten stuck as well (for example, the
+      # coordinator was supposed to execute `FIFOQueue.enqueue` while the main
+      # thread is executing a blocking `FIFOQueue.dequeue`). After it got stuck,
+      # the session is going to get garbage collected after some time with:
+      raise errors_impl.CancelledError(None, None,
+                                       'Session got garbage-collected.')
+
+
+class CountingSessionCreator(object):
+  """A creator that counts the number of created sessions."""
+
+  def __init__(self, session):
+    self._initial_session = session
+    # We only have one session per test case. We can't re-create it, thus
+    # it shouldn't be closed.
+    self._initial_session.close = lambda *args: None
+    self._create_session_calls = 0
+
+  @property
+  def number_of_sessions_created(self):
+    return self._create_session_calls
+
+  def create_session(self):
+    self._create_session_calls += 1
+    return self._initial_session
 
 
 class RecoverableSessionTest(test.TestCase):
@@ -596,6 +689,84 @@ class RecoverableSessionTest(test.TestCase):
       # This will fail and throw a real error as the pop() will fail.
       with self.assertRaisesRegexp(IndexError, 'pop from empty list'):
         recoverable_sess.run(v, feed_dict={c: -12})
+
+  def test_recovery_from_coordinator_exception(self):
+    with self.test_session() as test_session:
+      session_creator = CountingSessionCreator(test_session)
+      session = monitored_session.MonitoredSession(
+          session_creator,
+          [StopCoordinatorWithException(calls_before_stopping=2)])
+
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      self.assertFalse(session.should_stop())
+
+      c = constant_op.constant(0)
+      v = array_ops.identity(c)
+
+      # The coordinator will not abort during this call, since it's the call
+      # number 0.
+      self.assertEqual(51, session.run(v, feed_dict={c: 51}))
+      self.assertFalse(session.should_stop())
+      # The coordinator will abort during the next call, since it's the call
+      # number 1.
+      self.assertEqual(42, session.run(v, feed_dict={c: 42}))
+      # Even though the coordinator was asked to stop, the underlying session is
+      # recreated and is to be continued.
+      self.assertFalse(session.should_stop())
+      self.assertEqual(2, session_creator.number_of_sessions_created)
+
+  def test_recovery_from_non_preemption_in_coordinator(self):
+    with self.test_session() as test_session:
+      session_creator = CountingSessionCreator(test_session)
+      hook = StopCoordinatorWithException(
+          calls_before_stopping=2,
+          exception_to_raise=errors_impl.UnknownError(
+              None, None, 'Some fatal exception inside the coordinator.'))
+      session = monitored_session.MonitoredSession(session_creator, [hook])
+
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      self.assertFalse(session.should_stop())
+
+      c = constant_op.constant(0)
+      v = array_ops.identity(c)
+
+      # The coordinator will not abort during this call, since it's the call
+      # number 0.
+      self.assertEqual(51, session.run(v, feed_dict={c: 51}))
+      self.assertFalse(session.should_stop())
+      # The coordinator will abort during the next call, since it's the call
+      # number 1.
+      self.assertEqual(42, session.run(v, feed_dict={c: 42}))
+      # The coordinator was asked to stop due to non-redeemable error. Training
+      # should stop and the session should not be recreated.
+      self.assertTrue(session.should_stop())
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      with self.assertRaises(errors_impl.UnknownError):
+        session.close()
+
+  def test_recovery_from_session_getting_stuck(self):
+    with self.test_session() as test_session:
+      session_creator = CountingSessionCreator(test_session)
+      session = monitored_session.MonitoredSession(
+          session_creator,
+          [FailTrainingAfterCoordinatorStopped(calls_before_stopping=2)])
+
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      self.assertFalse(session.should_stop())
+
+      c = constant_op.constant(0)
+      v = array_ops.identity(c)
+
+      # Training will not fail, since it's the call number 0.
+      self.assertEqual(51, session.run(v, feed_dict={c: 51}))
+      self.assertFalse(session.should_stop())
+      # Training will fail during the next call, since it's the call
+      # number 1.
+      self.assertEqual(42, session.run(v, feed_dict={c: 42}))
+      # Even though the coordinator stopped which and training failed, the
+      # underlying session is recreated and training is to be continued.
+      self.assertFalse(session.should_stop())
+      self.assertEqual(2, session_creator.number_of_sessions_created)
 
 
 class FakeSession(monitored_session._WrappedSession):
@@ -1243,6 +1414,12 @@ class MonitoredSessionTest(test.TestCase):
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
         self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
 
+  def test_with_statement_and_close(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/12224
+    # where close() inside the with should have a better error message.
+    with self.assertRaisesRegexp(RuntimeError, 'Session is already closed'):
+      with monitored_session.MonitoredSession() as session:
+        session.close()
 
 class SingularMonitoredSessionTest(test.TestCase):
   """Tests SingularMonitoredSession."""

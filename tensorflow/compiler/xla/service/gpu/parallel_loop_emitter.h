@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
+#include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -41,6 +41,12 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
                       const llvm_ir::IrArray& target_array,
                       const LaunchDimensions& launch_dimensions,
                       llvm::IRBuilder<>* ir_builder);
+
+  ParallelLoopEmitter(
+      const llvm_ir::ElementGenerator& target_element_generator,
+      tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+      const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder);
+
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
   ~ParallelLoopEmitter() override = default;

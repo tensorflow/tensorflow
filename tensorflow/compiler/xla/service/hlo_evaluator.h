@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -36,9 +37,17 @@ namespace xla {
 class HloEvaluator : public DfsHloVisitorWithDefault {
  public:
   HloEvaluator();
-  // Evaluates a HLO computation and an array of pointers to literals.
-  // Return the evaluated result as literal if successful.
-  // Precondition: argument literals are corresponds to the input computation's
+  // Evaluates an HLO module and an array of pointers to literals.
+  // Returns the evaluated result as a literal if successful.
+  // Precondition: argument literals correspond to each input computation's
+  // parameters in their post-ordering. See comment below for example.
+  StatusOr<std::unique_ptr<Literal>> Evaluate(
+      const HloModule& module,
+      tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+
+  // Evaluates an HLO computation and an array of pointers to literals.
+  // Returns the evaluated result as a literal if successful.
+  // Precondition: argument literals correspond to the input computation's
   // parameters in their post-ordering. For e.g., consider the following graph:
   //
   //                *
@@ -51,27 +60,38 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // The input literals array will have its first literal map to Parameter0 and
   // the second map to Parameter1.
   StatusOr<std::unique_ptr<Literal>> Evaluate(
-      HloComputation* computation,
+      const HloComputation& computation,
       tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
 
   // Evaluates a single HLO instruction and an array of pointers to literals.
   // Return the evaluated result as literal if successful.
   // Precondition:
-  // 1. argument literals are corresponds to the input instruction's
-  // parameters in their post-orderring.
+  // 1. argument literals correspond to the input instruction's parameters in
+  // their post-ordering.
   // 2. the instruction's operands must be of either Parameter or Constant type.
   // TODO(b/35950897): implement more ops other than element-wise ops.
   StatusOr<std::unique_ptr<Literal>> Evaluate(
       HloInstruction* instruction,
       tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
 
+  // Evaluates a single HLO instruction with constant operands.
+  // Returns the evaluated result as literal if successful.
+  // Precondition:
+  // 1. all operands of the input instruction are constants.
+  // 2. the instruction is not a Parameter operation.
+  StatusOr<std::unique_ptr<Literal>> Evaluate(HloInstruction* instruction);
+
+  // Same as Evaluate, except returning nullptr on error.
+  std::unique_ptr<Literal> TryEvaluate(HloInstruction* instruction);
+
  protected:
   // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
-  // literal type of each evaluated Handle* method of a TypedVisitor. One
-  // exception to this is HandleCompare, where the resulting literal type is
+  // literal type of each evaluated Handle* method of a TypedVisitor.
+  // There are however a few notable exceptions to this is rule, notably:
+  // - HandleCompare and HandleIsFinite: where the resulting literal type is
   // always boolean.
-  // Note the forward declaration here is necessary to enable TypedVisitor to
-  // access parent members.
+  // These operations are handled outside of the parent HloEvaluator handlers
+  // instead of from within TypedVisitor.
   template <typename ReturnT>
   class TypedVisitor;
 
@@ -81,15 +101,49 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return hlo->Visit(typed_visitors_.at(hlo->shape().element_type()).get());
   }
 
+  Status Preprocess(HloInstruction* hlo) override;
+
+  Status Postprocess(HloInstruction* hlo) override;
+
+  // Operations that are type-agnostic or always return a specific type, such as
+  // HandleIsFinite where boolean is always returned.
+  //
   Status HandleParameter(HloInstruction* parameter) override;
 
   Status HandleConstant(HloInstruction* constant,
                         const Literal& literal) override;
 
+  Status HandleConcatenate(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
+  Status HandleReshape(HloInstruction* reshape) override;
+
+  Status HandleTranspose(HloInstruction* transpose) override;
+
+  Status HandleIsFinite(HloInstruction* is_finite,
+                        HloInstruction* operand) override;
+
+  Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
+                       HloInstruction* lhs, HloInstruction* rhs) override;
+  Status HandleTuple(
+      HloInstruction* tuple,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
+                               HloInstruction* operand) override;
+
+  Status HandleCopy(HloInstruction* copy) override;
+
  private:
   // Returns the already-evaluated literal result for the instruction.
+  // A Constant instruction is considered evaluated and its literal will be
+  // returned directly without looking up the cache.
   // Crash with log if the given instruction has not been evaluated previously.
   const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
+    if (hlo->IsConstant()) {
+      return hlo->literal();
+    }
     auto it = evaluated_.find(hlo);
     CHECK(it != evaluated_.end())
         << "could not find evaluated value for: " << hlo->ToString();

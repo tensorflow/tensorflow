@@ -17,7 +17,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/platform/tracing.h"
+
+// Polymorphic datasets should support all primitive TensorFlow
+// types. Use this macro to expand `m(T)` once for each primitive type
+// `T`, e.g. to build a `switch` statement.
+#define TF_CALL_DATASET_TYPES(m) TF_CALL_ALL_TYPES(m) TF_CALL_QUANTIZED_TYPES(m)
 
 namespace tensorflow {
 
@@ -123,7 +130,11 @@ class DatasetBase : public ResourceBase {
   // start.
   //
   // Ownership of the created iterator will be transferred to the caller.
-  virtual std::unique_ptr<IteratorBase> MakeIterator() const = 0;
+  //
+  // The prefix identifies the sequence of iterators leading up to the newly
+  // created iterator.
+  virtual std::unique_ptr<IteratorBase> MakeIterator(
+      const string& prefix) const = 0;
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -140,26 +151,97 @@ class DatasetBase : public ResourceBase {
 template <class DatasetType>
 class DatasetIterator : public IteratorBase {
  public:
-  explicit DatasetIterator(const DatasetType* dataset) : dataset_(dataset) {
-    dataset_->Ref();
+  struct Params {
+    // Owns one reference on the shared dataset resource.
+    const DatasetType* dataset;
+
+    // Identifies the sequence of iterators leading up to to this iterator.
+    const string prefix;
+  };
+
+  explicit DatasetIterator(const Params& params) : params_(params) {
+    params_.dataset->Ref();
   }
 
-  ~DatasetIterator() override { dataset_->Unref(); }
+  ~DatasetIterator() override { params_.dataset->Unref(); }
 
   // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return dataset_; }
+  const DatasetType* dataset() const { return params_.dataset; }
+
+  // The sequence of iterators leading up to this iterator.
+  const string prefix() const { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
-    return dataset_->output_dtypes();
+    return params_.dataset->output_dtypes();
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
-    return dataset_->output_shapes();
+    return params_.dataset->output_shapes();
   }
 
+  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence) final {
+    port::Tracing::TraceMe activity(params_.prefix);
+    return GetNextInternal(ctx, out_tensors, end_of_sequence);
+  }
+
+  // Internal implementation of GetNext that is wrapped in tracing logic.
+  virtual Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) = 0;
+
  private:
-  const DatasetType* const dataset_;  // Owns one reference on the
-                                      // shared dataset resource.
+  Params params_;
+};
+
+// Encapsulates the work required to plug a DatasetBase into the core TensorFlow
+// graph execution engine.
+class DatasetOpKernel : public OpKernel {
+ public:
+  DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) final;
+
+ protected:
+  // Subclasses should implement this method. It will be called during Compute
+  // execution.
+  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
+
+  template <typename T>
+  Status ParseScalarArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name, T* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a scalar");
+    }
+    *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+};
+
+// Encapsulates the work required to plug unary Datasets into the core
+// TensorFlow graph execution engine.
+class UnaryDatasetOpKernel : public DatasetOpKernel {
+ public:
+  UnaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
+  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                           DatasetBase** output) = 0;
+};
+
+// Encapsulates the work required to plug binary Datasets into the core
+// TensorFlow graph execution engine.
+class BinaryDatasetOpKernel : public DatasetOpKernel {
+ public:
+  BinaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
+  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                           DatasetBase* another_input,
+                           DatasetBase** output) = 0;
 };
 
 }  // namespace tensorflow

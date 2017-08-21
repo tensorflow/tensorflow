@@ -29,26 +29,22 @@ namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
-class GroupByWindowDatasetOp : public OpKernel {
+class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx),
+        graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* window_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("window_size", &window_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(window_size_t->shape()),
-                errors::InvalidArgument("window_size must be a scalar"));
-    const int64 window_size = window_size_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    int64 window_size = 0;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
@@ -84,16 +80,9 @@ class GroupByWindowDatasetOp : public OpKernel {
                                       std::move(reduce_func_other_arguments),
                                       &captured_reduce_func));
 
-    DatasetBase* dataset = new Dataset(
-        input, window_size, std::move(captured_key_func),
-        std::move(captured_reduce_func), output_types_, output_shapes_);
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, window_size, std::move(captured_key_func),
+                          std::move(captured_reduce_func), output_types_,
+                          output_shapes_);
   }
 
  private:
@@ -115,8 +104,10 @@ class GroupByWindowDatasetOp : public OpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::GroupByWindow")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -131,12 +122,13 @@ class GroupByWindowDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           if (current_group_iterator_) {
@@ -184,7 +176,7 @@ class GroupByWindowDatasetOp : public OpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Run(
-                  opts, next_input_element, &key_func_output));
+                  opts, next_input_element, &key_func_output, prefix()));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -277,8 +269,8 @@ class GroupByWindowDatasetOp : public OpKernel {
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
 
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_reduce_func_->Run(opts, args, &return_values));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
+            opts, args, &return_values, prefix()));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_RESOURCE &&
@@ -305,7 +297,7 @@ class GroupByWindowDatasetOp : public OpKernel {
         // Create an iterator for the dataset that was returned by
         // `f`. This transfers ownership of the dataset to the
         // iterator.
-        current_group_iterator_ = returned_dataset->MakeIterator();
+        current_group_iterator_ = returned_dataset->MakeIterator(prefix());
         return Status::OK();
       }
 

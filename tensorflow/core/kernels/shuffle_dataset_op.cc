@@ -24,48 +24,33 @@ namespace tensorflow {
 
 namespace {
 
+const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
+
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class ShuffleDatasetOp : public OpKernel {
+class ShuffleDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit ShuffleDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit ShuffleDatasetOp(OpKernelConstruction* ctx)
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    // Create a new ShuffleDatasetOp::Dataset, insert it in the step-local
-    // container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* buffer_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("buffer_size", &buffer_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(buffer_size_t->shape()),
-                errors::InvalidArgument("buffer_size must be a scalar"));
-    const int64 buffer_size = buffer_size_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    // Create a new ShuffleDatasetOp::Dataset, and return it as the output.
+    int64 buffer_size;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(
         ctx, buffer_size > 0,
         errors::InvalidArgument("buffer_size must be greater than zero."));
 
-    const Tensor* seed_t;
-    OP_REQUIRES_OK(ctx, ctx->input("seed", &seed_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(seed_t->shape()),
-                errors::InvalidArgument("seed must be a scalar"));
-    const int64 seed = seed_t->flat<int64>()(0);
+    int64 seed;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed", &seed));
 
-    const Tensor* seed2_t;
-    OP_REQUIRES_OK(ctx, ctx->input("seed2", &seed2_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(seed2_t->shape()),
-                errors::InvalidArgument("seed2 must be a scalar"));
-    const int64 seed2 = seed2_t->flat<int64>()(0);
+    int64 seed2;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed2", &seed2));
 
-    DatasetBase* dataset = new Dataset(input, buffer_size, seed, seed2);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, buffer_size, seed, seed2);
   }
 
  private:
@@ -79,8 +64,10 @@ class ShuffleDatasetOp : public OpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Shuffle")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -99,13 +86,13 @@ class ShuffleDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()),
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             generator_(&parent_generator_) {
-        buffer_.reserve(dataset->buffer_size_);
-        int64 seed = dataset->seed_;
-        int64 seed2 = dataset->seed2_;
+        buffer_.reserve(params.dataset->buffer_size_);
+        int64 seed = params.dataset->seed_;
+        int64 seed2 = params.dataset->seed2_;
         if (seed == 0 && seed2 == 0) {
           // If both seeds are unspecified, use completely random seeds.
           seed = random::New64();
@@ -114,17 +101,29 @@ class ShuffleDatasetOp : public OpKernel {
         parent_generator_ = random::PhiloxRandom(seed, seed2);
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        int64 start_micros = ctx->env()->NowMicros();
+        int64 num_log_entries = 0;
         while (!end_of_input_sequence_ &&
                buffer_.size() < dataset()->buffer_size_) {
+          if (ctx->env()->NowMicros() >
+              ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
+            num_log_entries++;
+            LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
+                      << buffer_.size() << " of " << dataset()->buffer_size_;
+          }
           std::vector<Tensor> input_element;
           TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
                                                   &end_of_input_sequence_));
           if (!end_of_input_sequence_) {
             buffer_.emplace_back(std::move(input_element));
           }
+        }
+        if (num_log_entries > 0) {
+          LOG(INFO) << "Shuffle buffer filled.";
         }
 
         if (!buffer_.empty()) {

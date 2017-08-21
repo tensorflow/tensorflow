@@ -24,11 +24,11 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class ZipDatasetOp : public OpKernel {
+class ZipDatasetOp : public DatasetOpKernel {
  public:
-  explicit ZipDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit ZipDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     std::vector<DatasetBase*> inputs;
     Status s;
     for (size_t i = 0; i < ctx->num_inputs(); ++i) {
@@ -43,17 +43,7 @@ class ZipDatasetOp : public OpKernel {
     }
 
     if (s.ok()) {
-      DatasetBase* dataset = new Dataset(inputs);
-      Tensor* output = nullptr;
-      s = ctx->allocate_output(0, TensorShape({}), &output);
-      if (s.ok()) {
-        ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-            ctx, ctx->step_container()->name(), name());
-        s = CreateResource(ctx, handle, dataset);
-        if (s.ok()) {
-          output->flat<ResourceHandle>()(0) = handle;
-        }
-      }
+      *output = new Dataset(inputs);
     }
 
     // TODO(mrry): Implement a container that acts as a
@@ -87,13 +77,16 @@ class ZipDatasetOp : public OpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Zip")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
       return output_dtypes_;
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return output_shapes_;
     }
@@ -103,16 +96,19 @@ class ZipDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {
-        input_impls_.reserve(dataset->inputs_.size());
-        for (const auto& input : dataset->inputs_) {
-          input_impls_.emplace_back(input->MakeIterator());
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {
+        input_impls_.reserve(params.dataset->inputs_.size());
+        size_t idx = 0;
+        for (const auto& input : params.dataset->inputs_) {
+          input_impls_.emplace_back(input->MakeIterator(
+              strings::StrCat(params.prefix, "[", idx++, "]")));
         }
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         out_tensors->clear();
         out_tensors->reserve(dataset()->output_dtypes().size());

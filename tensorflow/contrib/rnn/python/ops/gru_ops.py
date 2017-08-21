@@ -98,7 +98,7 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
   r"""Block GRU cell implementation.
 
   The implementation is based on:  http://arxiv.org/abs/1406.1078
-  Computes the LSTM cell forward propagation for 1 time step.
+  Computes the GRU cell forward propagation for 1 time step.
 
   This kernel op implements the following mathematical equations:
 

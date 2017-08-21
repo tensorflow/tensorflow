@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
@@ -75,6 +77,8 @@ class DummyReadResourceCC {
     scope.UpdateBuilder(&builder);
     scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
     if (!scope.ok()) return;
+    scope.UpdateStatus(scope.DoShapeInference(ret));
+    if (!scope.ok()) return;
     this->output_ = Output(ret, 0);
   }
   Node* node() const { return output_.node(); }
@@ -85,6 +89,7 @@ class DummyReadResourceCC {
 REGISTER_OP("DummyReadResource")
     .Input("input: int32")
     .Output("output: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A dummy Op.
 
@@ -93,6 +98,31 @@ output: dummy output.
 )doc");
 
 REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
+
+// DummyDuplicateOp is present purely to test multiple REGISTER_XLA_OP calls
+// on the same Op name below.
+class DummyDuplicateOp : public XlaOpKernel {
+ public:
+  explicit DummyDuplicateOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, ctx->Input(0));
+  }
+};
+
+REGISTER_OP("DummyDuplicateOp")
+    .Input("input: int32")
+    .Output("output: int32")
+    .Doc(R"doc(
+A dummy Op.
+
+input: dummy input.
+output: dummy output.
+)doc");
+
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
+                DummyDuplicateOp);
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
+                DummyDuplicateOp);
 
 class XlaCompilerTest : public ::testing::Test {
  protected:
@@ -149,10 +179,10 @@ TEST_F(XlaCompilerTest, Simple) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape({2});
+  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -163,9 +193,9 @@ TEST_F(XlaCompilerTest, Simple) {
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
+      xla::Literal::CreateR1<int32>({7, 42});
   std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
+      xla::Literal::CreateR1<int32>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -179,7 +209,7 @@ TEST_F(XlaCompilerTest, Simple) {
       client_->Transfer(*actual).ConsumeValueOrDie();
 
   std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::CreateR1<int32>({4, 143});
+      xla::Literal::CreateR1<int32>({4, 143});
   xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
 }
 
@@ -201,21 +231,21 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
+  XlaCompiler::Options options = DefaultOptions();
+  XlaCompiler compiler(options);
   {
     // Compiles the graph, with resolve_compile_time_constants enabled.
-    XlaCompiler::Options options = DefaultOptions();
-    options.resolve_compile_time_constants = true;
-    XlaCompiler compiler(options);
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.resolve_compile_time_constants = true;
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                       "constants", std::move(graph_copy), args,
-                                       &result));
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                       std::move(graph_copy), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -225,7 +255,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     // Tests that the generated computation works.
     std::unique_ptr<xla::Literal> param0_literal =
-        xla::LiteralUtil::CreateR1<int32>({7, 42});
+        xla::Literal::CreateR1<int32>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
         client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -236,23 +266,20 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         client_->Transfer(*actual).ConsumeValueOrDie();
 
     std::unique_ptr<xla::Literal> expected_literal =
-        xla::LiteralUtil::CreateR1<int32>({-7, -42});
+        xla::Literal::CreateR1<int32>({-7, -42});
     xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
   }
 
   {
     // Compiles the graph, with resolve_compile_time_constants disabled.
-    XlaCompiler::Options options = DefaultOptions();
-    options.resolve_compile_time_constants = false;
-    XlaCompiler compiler(options);
-
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.resolve_compile_time_constants = false;
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                       "constants", std::move(graph_copy), args,
-                                       &result));
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                       std::move(graph_copy), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);
@@ -260,7 +287,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     // Tests that the generated computation works.
     std::unique_ptr<xla::Literal> param0_literal =
-        xla::LiteralUtil::CreateR1<int32>({7, 42});
+        xla::Literal::CreateR1<int32>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
         client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -270,12 +297,11 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     std::unique_ptr<xla::Literal> actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
 
-    std::unique_ptr<xla::Literal> expected0 =
-        xla::LiteralUtil::CreateR0<int32>(7);
+    std::unique_ptr<xla::Literal> expected0 = xla::Literal::CreateR0<int32>(7);
     std::unique_ptr<xla::Literal> expected1 =
-        xla::LiteralUtil::CreateR1<int32>({-7, -42});
+        xla::Literal::CreateR1<int32>({-7, -42});
     std::unique_ptr<xla::Literal> expected =
-        xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
+        xla::Literal::MakeTuple({expected0.get(), expected1.get()});
     xla::LiteralTestUtil::ExpectEqual(*expected, *actual_literal);
   }
 }
@@ -294,7 +320,7 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   DummyResourceForTest* resource = new DummyResourceForTest();
 

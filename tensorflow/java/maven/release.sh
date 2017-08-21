@@ -17,11 +17,12 @@
 # Script to upload release artifacts for the TensorFlow Java library to
 # Maven Central. See README.md for an explanation.
 
+cd $(dirname "$0")
 TF_VERSION="$1"
 SETTINGS_XML="$2"
 shift
 shift
-CMD="$@"
+CMD="$*"
 
 if [[ -z "${TF_VERSION}" ]]
 then

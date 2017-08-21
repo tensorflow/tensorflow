@@ -60,22 +60,19 @@ void ShapeTreeTest::TestShapeConstructor(const Shape& shape,
                                          int expected_num_nodes) {
   ShapeTree<int> int_tree(shape);
   int num_nodes = 0;
-  TF_CHECK_OK(int_tree.ForEachElement(
-      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
-        EXPECT_EQ(0, data);
-        ++num_nodes;
-        return Status::OK();
-      }));
+  int_tree.ForEachElement([&num_nodes](const ShapeIndex& /*index*/, int data) {
+    EXPECT_EQ(0, data);
+    ++num_nodes;
+  });
   EXPECT_EQ(expected_num_nodes, num_nodes);
 
   ShapeTree<bool> bool_tree(shape);
   num_nodes = 0;
-  TF_CHECK_OK(bool_tree.ForEachElement(
-      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, bool data) {
+  bool_tree.ForEachElement(
+      [&num_nodes](const ShapeIndex& /*index*/, bool data) {
         EXPECT_EQ(false, data);
         ++num_nodes;
-        return Status::OK();
-      }));
+      });
   EXPECT_EQ(expected_num_nodes, num_nodes);
 }
 
@@ -89,31 +86,26 @@ void ShapeTreeTest::TestInitValueConstructor(const Shape& shape,
                                              int expected_num_nodes) {
   ShapeTree<int> tree(shape, 42);
   int num_nodes = 0;
-  TF_CHECK_OK(tree.ForEachElement(
-      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
-        EXPECT_EQ(42, data);
-        ++num_nodes;
-        return Status::OK();
-      }));
+  tree.ForEachElement([&num_nodes](const ShapeIndex& /*index*/, int data) {
+    EXPECT_EQ(42, data);
+    ++num_nodes;
+  });
   EXPECT_EQ(expected_num_nodes, num_nodes);
 
   num_nodes = 0;
-  TF_CHECK_OK(tree.ForEachMutableElement(
-      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int* data) {
+  tree.ForEachMutableElement(
+      [&num_nodes](const ShapeIndex& /*index*/, int* data) {
         EXPECT_EQ(42, *data);
         *data = num_nodes;
         ++num_nodes;
-        return Status::OK();
-      }));
+      });
   EXPECT_EQ(expected_num_nodes, num_nodes);
 
   num_nodes = 0;
-  TF_CHECK_OK(tree.ForEachElement(
-      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
-        EXPECT_EQ(num_nodes, data);
-        ++num_nodes;
-        return Status::OK();
-      }));
+  tree.ForEachElement([&num_nodes](const ShapeIndex& /*index*/, int data) {
+    EXPECT_EQ(num_nodes, data);
+    ++num_nodes;
+  });
   EXPECT_EQ(expected_num_nodes, num_nodes);
 }
 
@@ -161,11 +153,8 @@ TEST_F(ShapeTreeTest, TupleShape) {
 
   // Sum all elements in the shape.
   int sum = 0;
-  TF_CHECK_OK(shape_tree.ForEachElement(
-      [&sum](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
-        sum += data;
-        return Status::OK();
-      }));
+  shape_tree.ForEachElement(
+      [&sum](const ShapeIndex& /*index*/, int data) { sum += data; });
   EXPECT_EQ(66, sum);
 
   // Test the copy constructor.
@@ -176,11 +165,8 @@ TEST_F(ShapeTreeTest, TupleShape) {
   EXPECT_EQ(-100, copy.element({2}));
 
   // Write zero to all data elements.
-  TF_CHECK_OK(shape_tree.ForEachMutableElement(
-      [&sum](const ShapeIndex& /*index*/, bool /*is_leaf*/, int* data) {
-        *data = 0;
-        return Status::OK();
-      }));
+  shape_tree.ForEachMutableElement(
+      [&sum](const ShapeIndex& /*index*/, int* data) { *data = 0; });
   EXPECT_EQ(0, shape_tree.element({}));
   EXPECT_EQ(0, shape_tree.element({0}));
   EXPECT_EQ(0, shape_tree.element({1}));
@@ -377,6 +363,107 @@ TEST_F(ShapeTreeTest, OperatorEquals) {
     EXPECT_TRUE(b == c);
     EXPECT_FALSE(b != c);
   }
+}
+
+TEST_F(ShapeTreeTest, ConstructWithPointerToShape) {
+  // Construct a ShapeTree using a pointer to a shape, rather than a reference
+  // to a shape.  This constructor is an optimization to let us avoid
+  // constructing and destroying temporary shapes when we have many ShapeTrees.
+  ShapeTree<int> t(&nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  t.ForEachElement([&num_nodes](const ShapeIndex& /*index*/, int data) {
+    EXPECT_EQ(42, data);
+    ++num_nodes;
+  });
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, CopyWithPointerToShape) {
+  ShapeTree<int> source(&nested_tuple_shape_, 0);
+  ShapeTree<int> dest(source);
+  EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
+}
+
+TEST_F(ShapeTreeTest, CopyAssignWithPointerToShape) {
+  ShapeTree<int> source(&nested_tuple_shape_, 0);
+  ShapeTree<int> dest;
+  dest = source;
+  EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
+}
+
+TEST_F(ShapeTreeTest, IterateSimple) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (auto index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, ConstIterate) {
+  const ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (const auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, IterateAndMutate) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  int i = 0;
+  for (auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    if (i == 1) {
+      index_to_data.second = 98;
+    }
+    ++i;
+  }
+  t.begin()->second = 78;
+  EXPECT_EQ(78, t.begin()->second);
+  i = 0;
+  for (auto& index_to_data : t) {
+    if (i == 0) {
+      EXPECT_EQ(78, index_to_data.second);
+    } else if (i == 1) {
+      EXPECT_EQ(98, index_to_data.second);
+    } else {
+      EXPECT_EQ(42, index_to_data.second);
+    }
+    ++i;
+  }
+  EXPECT_EQ(78, t.begin()->second);
+  EXPECT_EQ(98, std::next(t.begin())->second);
+}
+
+TEST_F(ShapeTreeTest, IterateOrder) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto& index_to_data : t) {
+    v.push_back(index_to_data.first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{{},
+                                        {0},
+                                        {1},
+                                        {1, 0},
+                                        {1, 1},
+                                        {2},
+                                        {2, 0},
+                                        {2, 0, 0},
+                                        {2, 0, 1},
+                                        {2, 1}}));
+}
+
+TEST_F(ShapeTreeTest, IterateOrderLeaves) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto& index_to_data : t.leaves()) {
+    v.push_back(index_to_data.first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {0}, {1, 0}, {1, 1}, {2, 0, 0}, {2, 0, 1}, {2, 1}}));
 }
 
 }  // namespace

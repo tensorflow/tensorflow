@@ -279,6 +279,17 @@ class DenseTest(test.TestCase):
         dense._compute_output_shape(ts([None, 4, 3])).as_list())
     # pylint: enable=protected-access
 
+  def testConstraints(self):
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    dense = core_layers.Dense(2,
+                              kernel_constraint=k_constraint,
+                              bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3), seed=1)
+    dense(inputs)
+    self.assertEqual(dense.kernel_constraint, k_constraint)
+    self.assertEqual(dense.bias_constraint, b_constraint)
+
 
 class DropoutTest(test.TestCase):
 
@@ -286,7 +297,7 @@ class DropoutTest(test.TestCase):
     dp = core_layers.Dropout(0.5, name='dropout')
     self.assertEqual(dp.rate, 0.5)
     self.assertEqual(dp.noise_shape, None)
-    dp.apply(np.ones(()))
+    dp.apply(array_ops.ones(()))
     self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):

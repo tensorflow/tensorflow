@@ -18,8 +18,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/cc_op_gen.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/framework/op_gen_overrides.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -808,12 +812,8 @@ string OpInfo::GetConstructorBody() const {
   strings::StrAppend(&body, "  ", scope_str, ".UpdateStatus(builder.Finalize(",
                      scope_str, ".graph(), &ret));\n");
   strings::StrAppend(&body, "  ", return_on_error, "\n");
-
-  // TODO(b/28152992): Enable this code-path once we have converted
-  // all python shape functions to call their C++ versions.
-
-  // strings::StrAppend(&body, "  ", scope_str, ".UpdateStatus(", scope_str,
-  //                    ".refiner()->AddNode(ret));\n");
+  strings::StrAppend(&body, "  ", scope_str, ".UpdateStatus(", scope_str,
+                     ".DoShapeInference(ret));\n");
 
   GetOutput(&body);
   return body;

@@ -24,12 +24,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -44,10 +45,11 @@ class MklToTfOp : public OpKernel {
   explicit MklToTfOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES_OK(context, context->GetAttr("T", &op_data_type));
+    has_avx512f_ = port::TestCPUFeature(port::CPUFeature::AVX512F);
   }
 
   void Compute(OpKernelContext* context) override {
-    // 1. Check that input tensor is in MKL format.
+    // Check that input tensor is in MKL format.
     const Tensor& input_tensor = MklGetInput(context, 0);
     MklShape input_shape;
     GetMklShape(context, 0, &input_shape);
@@ -68,9 +70,12 @@ class MklToTfOp : public OpKernel {
     CHECK_EQ(op_data_type, output_data_type);
 
     TensorShape output_shape;
-    for (size_t i = 0; i < input_shape.GetDimension(); i++) {
+    size_t ndims = input_shape.GetDimension();
+    size_t* in_sizes = new size_t[ndims];
+    for (size_t i = 0; i < ndims; i++) {
       // Outermost to innermost dimension
       output_shape.AddDim(input_shape.GetSizes()[input_shape.tf_dim_idx(i)]);
+      in_sizes[i] = input_shape.GetSizes()[i];
     }
 
     // Allocate output tensor.
@@ -78,18 +83,16 @@ class MklToTfOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &output_tensor));
 
-    // 3. Get input and output layout pointers.
     dnnLayout_t output_layout =
         static_cast<dnnLayout_t>(input_shape.GetTfLayout());
-
-    // 4. Execute DNNConversion.
+    // Execute DNNConversion.
     void* input_buffer =
         static_cast<void*>(const_cast<T*>(input_tensor.flat<T>().data()));
+    delete[] in_sizes;
     void* output_buffer =
         static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
     input_shape.GetConvertedFlatData(output_layout, input_buffer,
                                      output_buffer);
-
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
@@ -99,6 +102,9 @@ class MklToTfOp : public OpKernel {
 
   /// Data type of the operation
   DataType op_data_type;
+
+  /// CPUIDInfo
+  bool has_avx512f_ = false;
 };
 
 ///////////////////////////////////////////////////////////

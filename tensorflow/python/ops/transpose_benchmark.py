@@ -83,8 +83,8 @@ class TransposeBenchmark(test.Benchmark):
         start_time = time.time()
         session.run(outputs)
         duration = (time.time() - start_time) / num_iters
-        throughput = np.prod(np.array(
-            input_shape)) * datatype().itemsize * 2 / duration / 1e9
+        throughput = np.prod(
+            np.array(input_shape)) * datatype().itemsize * 2 / duration / 1e9
         print("%s %s inputshape:%s perm:%s %d %.6fsec, %.4fGB/s." %
               (device, str(datatype), str(input_shape).replace(" ", ""),
                str(perm).replace(" ", ""), num_iters, duration, throughput))

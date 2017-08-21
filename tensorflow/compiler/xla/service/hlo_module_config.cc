@@ -57,7 +57,11 @@ string HloModuleConfig::compilation_cache_key() const {
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
-  StrAppend(&key, "::fast_math_disabled=", fast_math_disabled_);
+  StrAppend(&key, debug_options_.DebugString());
+  if (intra_op_parallelism_threads() > 0) {
+    StrAppend(&key, "::intra_op_parallelism_threads=",
+              intra_op_parallelism_threads());
+  }
   return key;
 }
 

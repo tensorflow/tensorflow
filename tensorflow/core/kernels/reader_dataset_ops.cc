@@ -16,8 +16,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
 
@@ -37,13 +41,39 @@ class TextLineDatasetOp : public OpKernel {
         ctx, filenames_tensor->dims() <= 1,
         errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
+    const Tensor* compression_type_tensor;
+    OP_REQUIRES_OK(ctx,
+                   ctx->input("compression_type", &compression_type_tensor));
+    OP_REQUIRES(
+        ctx, compression_type_tensor->dims() == 0,
+        errors::InvalidArgument("`compression_type` must be a scalar."));
+    const string& compression_type =
+        compression_type_tensor->scalar<string>()();
+
+    io::ZlibCompressionOptions zlib_compression_options =
+        io::ZlibCompressionOptions::DEFAULT();
+    bool use_compression = false;
+    if (compression_type.empty()) {
+      use_compression = false;
+    } else if (compression_type == "ZLIB") {
+      use_compression = true;
+      zlib_compression_options = io::ZlibCompressionOptions::DEFAULT();
+    } else if (compression_type == "GZIP") {
+      use_compression = true;
+      zlib_compression_options = io::ZlibCompressionOptions::GZIP();
+    } else {
+      OP_REQUIRES(ctx, compression_type.empty(),
+                  errors::InvalidArgument("Unsupported compression_type."));
+    }
+
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
-    DatasetBase* dataset = new Dataset(std::move(filenames));
+    DatasetBase* dataset = new Dataset(std::move(filenames), use_compression,
+                                       zlib_compression_options);
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     ResourceHandle handle = MakeResourceHandle<DatasetBase>(
@@ -55,11 +85,16 @@ class TextLineDatasetOp : public OpKernel {
  private:
   class Dataset : public DatasetBase {
    public:
-    explicit Dataset(std::vector<string> filenames)
-        : filenames_(std::move(filenames)) {}
+    explicit Dataset(std::vector<string> filenames, bool use_compression,
+                     io::ZlibCompressionOptions options)
+        : filenames_(std::move(filenames)),
+          use_compression_(use_compression),
+          options_(options) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -78,17 +113,19 @@ class TextLineDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next line.
-          if (input_buffer_) {
+          if (processing_file_) {
             string line_contents;
-            Status s = input_buffer_->ReadLine(&line_contents);
+            Status s = buffered_input_stream_->ReadLine(&line_contents);
+
             if (s.ok()) {
               // Produce the line as output.
               Tensor line_tensor(cpu_allocator(), DT_STRING, {});
@@ -103,7 +140,10 @@ class TextLineDatasetOp : public OpKernel {
 
             // We have reached the end of the current file, so maybe
             // move on to next file.
-            input_buffer_.reset();
+            processing_file_ = false;
+            input_stream_.reset();
+            zlib_input_stream_.reset();
+            buffered_input_stream_.reset();
             file_.reset();
             ++current_file_index_;
           }
@@ -117,7 +157,19 @@ class TextLineDatasetOp : public OpKernel {
           // Actually move on to next file.
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
+          processing_file_ = true;
+          input_stream_.reset(
+              new io::RandomAccessInputStream(file_.get(), false));
+          if (dataset()->use_compression_) {
+            zlib_input_stream_.reset(
+                new io::ZlibInputStream(input_stream_.get(), kBufferSize,
+                                        kBufferSize, dataset()->options_));
+            buffered_input_stream_.reset(new io::BufferedInputStream(
+                zlib_input_stream_.get(), kBufferSize, false));
+          } else {
+            buffered_input_stream_.reset(new io::BufferedInputStream(
+                input_stream_.get(), kBufferSize, false));
+          }
         } while (true);
       }
 
@@ -127,13 +179,20 @@ class TextLineDatasetOp : public OpKernel {
       enum { kBufferSize = 256 << 10 /* 256 kB */ };
 
       mutex mu_;
+      bool processing_file_ GUARDED_BY(mu_) = false;
+      std::unique_ptr<io::RandomAccessInputStream> input_stream_
+          GUARDED_BY(mu_);
+      std::unique_ptr<io::ZlibInputStream> zlib_input_stream_ GUARDED_BY(mu_);
+      std::unique_ptr<io::BufferedInputStream> buffered_input_stream_
+          GUARDED_BY(mu_);
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
-          GUARDED_BY(mu_);  // must outlive input_buffer_
-      std::unique_ptr<io::InputBuffer> input_buffer_ GUARDED_BY(mu_);
+          GUARDED_BY(mu_);  // must outlive input_stream_
     };
 
     const std::vector<string> filenames_;
+    bool use_compression_;
+    io::ZlibCompressionOptions options_;
   };
 };
 
@@ -195,8 +254,10 @@ class FixedLengthRecordDatasetOp : public OpKernel {
           record_bytes_(record_bytes),
           footer_bytes_(footer_bytes) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -217,11 +278,12 @@ class FixedLengthRecordDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.
@@ -333,8 +395,10 @@ class TFRecordDatasetOp : public OpKernel {
           options_(io::RecordReaderOptions::CreateRecordReaderOptions(
               compression_type)) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -353,11 +417,12 @@ class TFRecordDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.

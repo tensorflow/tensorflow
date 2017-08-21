@@ -26,16 +26,19 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -71,16 +74,15 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
+  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+    return Status::OK();
+  }
+
   // Create a session option for a single GPU device.
   SessionOptions options;
 
   // Inline all functions.
   GraphDef inlined_graph_def(graph_def);
-  for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
-    FunctionDef* fdef =
-        inlined_graph_def.mutable_library()->mutable_function(i);
-    SetAttrValue(false, &((*fdef->mutable_attr())[kNoInlineAttr]));
-  }
 
   // Instantiate all variables for function library runtime creation.
   std::vector<Device*> devices;
@@ -111,12 +113,17 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
+  // Populate default attrs to the NodeDefs in the GraphDef.
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
+                                               *graphptr->op_registry(), 0));
+
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_ctor_opts, inlined_graph_def,
                                             graphptr.get()));
 
   // Optimize the graph.
   GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flib.get(), env, devices[0], &graphptr);
+  optimizer.Optimize(flib.get(), env, devices[0], &graphptr,
+                     /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
   return Status::OK();
@@ -184,7 +191,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           shape_proto.add_dim()->set_size(
               cfg.placeholder_unknown_output_shape_dim);
         } else {
-          dims.push_back(dim_proto.size());
+          dims.push_back(std::max<int32>(1, dim_proto.size()));
           shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }
@@ -325,14 +332,63 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
 
+  if (meta_graph.collection_def().count("savers") > 0) {
+    const CollectionDef& savers = meta_graph.collection_def().at("savers");
+    for (const auto& raw : savers.bytes_list().value()) {
+      SaverDef saver;
+      // Skip bad savers since we don't need saves/restores to be able to run a
+      // graph.
+      if (!saver.ParseFromString(raw)) {
+        continue;
+      }
+      if (saver.filename_tensor_name().empty()) {
+        continue;
+      }
+      new_item->save_op = saver.save_tensor_name();
+      new_item->restore_op = saver.restore_op_name();
+      new_item->save_restore_loc_tensor = saver.filename_tensor_name();
+      // Only use the first saver since it's not clear what to do if there's
+      // more than one.
+      break;
+    }
+  } else {
+    const SaverDef& saver = meta_graph.saver_def();
+    new_item->save_op = saver.save_tensor_name();
+    new_item->restore_op = saver.restore_op_name();
+    new_item->save_restore_loc_tensor = saver.filename_tensor_name();
+  }
+
   // Optimize the graph (function inlining, l1 optimizations, etc).
   Status optimize_status =
       OptimizeGraph(new_item->graph, &new_item->graph, cfg);
   if (!optimize_status.ok()) {
-    LOG(ERROR) << "Function optimization failed: " << optimize_status;
+    LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
     return nullptr;
   }
 
+  // Validate feed, fetch and init nodes
+  std::unordered_set<string> nodes;
+  for (const auto& node : new_item->graph.node()) {
+    nodes.insert(node.name());
+  }
+  for (const auto& feed : new_item->feed) {
+    if (nodes.find(feed.first) == nodes.end()) {
+      LOG(ERROR) << "Feed node " << feed.first << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& fetch : new_item->fetch) {
+    if (nodes.find(fetch) == nodes.end()) {
+      LOG(ERROR) << "Fetch node " << fetch << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& init : new_item->init_ops) {
+    if (nodes.find(init) == nodes.end()) {
+      LOG(ERROR) << "Init node " << init << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
   return new_item;
 }
 

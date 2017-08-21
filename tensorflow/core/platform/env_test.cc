@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -295,6 +296,34 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
 TEST_F(DefaultEnvTest, GetExecutablePath) {
   Env* env = Env::Default();
   TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
+}
+
+TEST_F(DefaultEnvTest, LocalTempFilename) {
+  Env* env = Env::Default();
+  string filename;
+  EXPECT_TRUE(env->LocalTempFilename(&filename));
+  EXPECT_FALSE(env->FileExists(filename).ok());
+
+  // Write something to the temporary file.
+  std::unique_ptr<WritableFile> file_to_write;
+  TF_CHECK_OK(env->NewWritableFile(filename, &file_to_write));
+  TF_CHECK_OK(file_to_write->Append("Null"));
+  TF_CHECK_OK(file_to_write->Close());
+  TF_CHECK_OK(env->FileExists(filename));
+
+  // Read from the temporary file and check content.
+  std::unique_ptr<RandomAccessFile> file_to_read;
+  TF_CHECK_OK(env->NewRandomAccessFile(filename, &file_to_read));
+  StringPiece content;
+  char scratch[1024];
+  CHECK_EQ(error::OUT_OF_RANGE,
+           file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)
+               .code());
+  EXPECT_EQ("Null", content.ToString());
+
+  // Delete the temporary file.
+  TF_CHECK_OK(env->DeleteFile(filename));
+  EXPECT_FALSE(env->FileExists(filename).ok());
 }
 
 }  // namespace tensorflow

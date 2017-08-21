@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
       xla::TextLiteralReader::ReadPath(argv[1]).ConsumeValueOrDie();
 
   LOG(INFO) << "literal: " << literal->ShortDebugString();
-  fprintf(stderr, "%s\n", xla::LiteralUtil::ToString(*literal).c_str());
+  fprintf(stderr, "%s\n", literal->ToString().c_str());
   if (literal->shape().element_type() == xla::F32) {
     float min =
         *std::min_element(literal->f32s().begin(), literal->f32s().end());

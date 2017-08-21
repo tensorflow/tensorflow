@@ -70,7 +70,7 @@ get_container_id_by_image_name() {
     # Get the id of a container by image name
     # Usage: get_docker_container_id_by_image_name <img_name>
 
-    echo $(docker ps | grep $1 | awk '{print $1}')
+    docker ps | grep $1 | awk '{print $1}'
 }
 
 # Parse input arguments
@@ -152,7 +152,7 @@ rm -rf "${BUILD_DIR}"
 docker run ${DOCKER_IMG_NAME} \
     /var/tf_dist_test/scripts/dist_mnist_test.sh \
     --ps_hosts $(seq -f "localhost:%g" -s "," \
-                 2000 $((2000 + ${NUM_PARAMETER_SERVERS} - 1))) \
+                 2000 $((2000 + NUM_PARAMETER_SERVERS - 1))) \
     --worker_hosts $(seq -f "localhost:%g" -s "," \
-                     3000 $((3000 + ${NUM_WORKERS} - 1))) \
+                     3000 $((3000 + NUM_WORKERS - 1))) \
     --num_gpus 0 ${SYNC_REPLICAS_FLAG}

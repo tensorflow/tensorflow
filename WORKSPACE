@@ -2,11 +2,11 @@ workspace(name = "org_tensorflow")
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "edc91f556b762fc5212d1050d00b12e40dd0b0b1c1d5d96886b59e9a30a6cae4",
-    strip_prefix = "rules_closure-3f07fb6a58870afbb36051bd5d54da4479561cc6",
+    sha256 = "bc41b80486413aaa551860fc37471dbc0666e1dbb5236fb6177cb83b0c105846",
+    strip_prefix = "rules_closure-dec425a4ff3faf09a56c85d082e4eed05d8ce38f",
     urls = [
-        "http://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/3f07fb6a58870afbb36051bd5d54da4479561cc6.tar.gz",  # 2017-05-31
-        "https://github.com/bazelbuild/rules_closure/archive/3f07fb6a58870afbb36051bd5d54da4479561cc6.tar.gz",
+        "http://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/dec425a4ff3faf09a56c85d082e4eed05d8ce38f.tar.gz",  # 2017-06-02
+        "https://github.com/bazelbuild/rules_closure/archive/dec425a4ff3faf09a56c85d082e4eed05d8ce38f.tar.gz",
     ],
 )
 
@@ -32,6 +32,9 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",
 #    # This needs to be 14 or higher to compile TensorFlow.
+#    # Please specify API level to >= 21 to build for 64-bit
+#    # archtectures or the Android NDK will automatically select biggest
+#    # API level that it supports without notice.
 #    # Note that the NDK version is not the API level.
 #    api_level=14)
 
@@ -45,6 +48,16 @@ new_http_archive(
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip",
         "http://download.tensorflow.org/models/inception5h.zip",
+    ],
+)
+
+new_http_archive(
+    name = "mobile_ssd",
+    build_file = "models.BUILD",
+    sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",
+    urls = [
+        "http://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
+        "http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
     ],
 )
 

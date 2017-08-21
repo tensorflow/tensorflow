@@ -27,6 +27,7 @@ import uuid
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -390,7 +391,7 @@ def rename(oldname, newname, overwrite=False):
   Args:
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false its an error for newpath to be occupied by an
+    overwrite: boolean, if false its an error for `newname` to be occupied by an
         existing file.
 
   Raises:
@@ -441,11 +442,8 @@ def is_directory(dirname):
   Returns:
     True, if the path is a directory; False otherwise
   """
-  try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+  status = c_api_util.ScopedTFStatus()
+  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
 
 
 def list_directory(dirname):

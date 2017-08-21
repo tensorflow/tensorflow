@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -80,6 +82,9 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
     report = cost_analyzer.GenerateCostReport(mg)
 
+    # Print the report to make it easier to debug
+    print("{}".format(report))
+
     self.assertTrue(b"MatMul" in report)
     self.assertTrue(b"ApplyAdam" in report)
     self.assertTrue(b"Conv2D" in report)
@@ -87,11 +92,25 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     self.assertTrue(b"Conv2DBackpropFilter" in report)
     self.assertTrue(b"Softmax" in report)
 
-    # Also print the report to make it easier to debug
-    print("{}".format(report))
+    for op_type in [
+        b"MatMul", b"Conv2D", b"Conv2DBackpropInput", b"Conv2DBackpropFilter"
+    ]:
+      matcher = re.compile(
+          br"\s+" + op_type + br",\s*(\d+),\s*(\d+),\s*([\d\.eE+-]+)%,\s*" +
+          br"([\d\.eE+-]+)%,\s*(-?\d+),\s*(\d+),", re.MULTILINE)
+      m = matcher.search(report)
 
+      op_count = int(m.group(1))
+      # upper = int(m.group(5))
+      lower = int(m.group(6))
+      if op_type is b"MatMul":
+        self.assertEqual(3, op_count)
+      else:
+        self.assertEqual(1, op_count)
+      self.assertTrue(0 <= lower)
+      # self.assertTrue(0 < upper)
+      # self.assertTrue(lower <= upper)
 
-#    print("{}".format(mg.graph_def))
 
 if __name__ == "__main__":
   test.main()

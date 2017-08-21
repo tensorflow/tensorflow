@@ -15,26 +15,15 @@ package_group(
 )
 
 package(
-    default_visibility = [":internal"],
+    default_visibility = [
+        ":internal",
+        "//tensorflow/compiler/plugin/executor:__pkg__",
+    ],
 )
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-
-# This target can be used by XLA device plugins to prevent circular
-# dependencies, and provides access to all of the required headers
-# for building a device library.
-cc_header_only_library(
-    name = "xla_jit_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":xla_cpu_device",
-        ":xla_cpu_jit",
-        ":xla_gpu_device",
-        ":xla_gpu_jit",
-    ],
-)
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -52,7 +41,7 @@ cc_library(
 
 cc_library(
     name = "xla_cpu_jit",
-    visibility = [":friends"],
+    visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -64,7 +53,7 @@ cc_library(
 
 cc_library(
     name = "xla_gpu_jit",
-    visibility = [":friends"],
+    visibility = ["//visibility:public"],
     deps = if_cuda([
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -150,6 +139,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:constant_op",
@@ -244,17 +234,37 @@ cc_library(
 )
 
 cc_test(
+    name = "graph_to_functiondef_test",
+    size = "small",
+    srcs = [
+        "graph_to_functiondef_test.cc",
+    ],
+    deps = [
+        ":graph_to_functiondef",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [
         "encapsulate_subgraphs_pass_test.cc",
-        "graph_to_functiondef_test.cc",
         "mark_for_compilation_pass_test.cc",
     ],
     deps = [
         ":common",
         ":compilation_passes",
-        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -282,4 +292,16 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+    ],
 )

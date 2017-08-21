@@ -54,19 +54,10 @@ TF_CALL_complex128(REGISTER_GPU_KERNELS);
           .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<SYCLDevice, type, Eigen::internal::ProdReducer<type>>);
+REGISTER_SYCL_KERNELS(int32);
 REGISTER_SYCL_KERNELS(float);
 REGISTER_SYCL_KERNELS(double);
 #undef REGISTER_SYCL_KERNELS
-
-REGISTER_KERNEL_BUILDER(
-    Name("Prod")
-        .Device(DEVICE_SYCL)
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int32>("Tidx")
-        .HostMemory("input")
-        .HostMemory("output")
-        .HostMemory("reduction_indices"),
-    ReductionOp<CPUDevice, int32, Eigen::internal::ProdReducer<int32>>);
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

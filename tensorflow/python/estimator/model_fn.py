@@ -48,21 +48,19 @@ class ModeKeys(object):
   PREDICT = 'infer'
 
 
-class MetricKeys(object):
-  """Metric key strings."""
-  LOSS = 'loss'
-  AVERAGE_LOSS = 'average_loss'
+LOSS_METRIC_KEY = 'loss'
+AVERAGE_LOSS_METRIC_KEY = 'average_loss'
 
 
 class EstimatorSpec(
     collections.namedtuple('EstimatorSpec', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'export_outputs', 'training_chief_hooks', 'training_hooks',
-        'scaffold'
+        'scaffold', 'evaluation_hooks'
     ])):
-  """Ops and objects returned from a `model_fn` and passed to `Estimator`.
+  """Ops and objects returned from a `model_fn` and passed to an `Estimator`.
 
-  `EstimatorSpec` fully defines the model to be run by `Estimator`.
+  `EstimatorSpec` fully defines the model to be run by an `Estimator`.
   """
 
   def __new__(cls,
@@ -74,17 +72,18 @@ class EstimatorSpec(
               export_outputs=None,
               training_chief_hooks=None,
               training_hooks=None,
-              scaffold=None):
+              scaffold=None,
+              evaluation_hooks=None):
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
     * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
-    * For `mode == ModeKeys.EVAL`: required field is`loss`.
+    * For `mode == ModeKeys.EVAL`: required field is `loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some
-    arguments will be ignored by `Estimator`. E.g. `train_op` will be ignored
-    in eval and infer modes. Example:
+    arguments will be ignored by an `Estimator`. E.g. `train_op` will be
+    ignored in eval and infer modes. Example:
 
     ```python
     def my_model_fn(mode, features, labels):
@@ -145,10 +144,12 @@ class EstimatorSpec(
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.
       training_chief_hooks: Iterable of `tf.train.SessionRunHook` objects to
         run on the chief worker during training.
-      training_hooks: Iterable of `tf.train.SessionRunHook` objects that to run
+      training_hooks: Iterable of `tf.train.SessionRunHook` objects to run
         on all workers during training.
       scaffold: A `tf.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
+      evaluation_hooks: Iterable of `tf.train.SessionRunHook` objects to
+        run during evaluation.
 
     Returns:
       A validated `EstimatorSpec` object.
@@ -276,7 +277,8 @@ class EstimatorSpec(
     # Validate hooks.
     training_chief_hooks = tuple(training_chief_hooks or [])
     training_hooks = tuple(training_hooks or [])
-    for hook in training_hooks + training_chief_hooks:
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    for hook in training_hooks + training_chief_hooks + evaluation_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
         raise TypeError(
             'All hooks must be SessionRunHook instances, given: {}'.format(
@@ -297,7 +299,8 @@ class EstimatorSpec(
         export_outputs=export_outputs,
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
-        scaffold=scaffold)
+        scaffold=scaffold,
+        evaluation_hooks=evaluation_hooks)
 
 
 def _check_is_tensor_or_operation(x, name):

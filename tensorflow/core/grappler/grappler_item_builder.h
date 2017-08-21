@@ -31,8 +31,8 @@ struct ItemConfig {
       : ignore_user_placement(true),
         ignore_colocation(true),
         placeholder_unknown_output_shape_dim(-1),
-        apply_optimizations(true),
-        inline_functions(true) {}
+        apply_optimizations(false),
+        inline_functions(false) {}
 
   // If true, ignore all user specified node placement.
   bool ignore_user_placement;

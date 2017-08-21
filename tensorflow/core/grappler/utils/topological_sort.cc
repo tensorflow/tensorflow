@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 #include <unordered_map>
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
@@ -26,37 +27,49 @@ namespace grappler {
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
 void TopologicalSort(GraphDef* graph) {
   NodeMap node_map(graph);
-  std::deque<const NodeDef*> ready_nodes;
+  std::vector<NodeDef*> ready_nodes;
+  ready_nodes.reserve(graph->node_size());
+  int front = 0;
+  int back = 0;
   std::unordered_map<const NodeDef*, int> ready_inputs;
-  for (const NodeDef& node : graph->node()) {
-    if (node.input_size() == 0) {
-      ready_nodes.push_back(&node);
+  for (int i = 0; i < graph->node_size(); i++) {
+    auto node = graph->mutable_node(i);
+    if (node->input_size() == 0) {
+      ready_nodes.push_back(node);
+      back++;
     }
-    if (node.op() == "Merge") {
-      ready_inputs[&node] = 0;
-      for (const auto& input : node.input()) {
-        if (node_map.GetNode(input)->op() == "NextIteration") {
-          ready_inputs[&node]++;
+    if (IsMerge(*node)) {
+      ready_inputs[node] = 0;
+      for (const auto& input : node->input()) {
+        if (IsNextIteration(*node_map.GetNode(input))) {
+          ready_inputs[node]++;
         }
       }
     } else {
-      ready_inputs[&node] = 0;
+      ready_inputs[node] = 0;
     }
   }
-  GraphDef sorted_graph;
-  while (!ready_nodes.empty()) {
-    auto ready_node = ready_nodes.front();
-    *sorted_graph.add_node() = *ready_node;
+
+  while (front != back) {
+    auto ready_node = ready_nodes[front];
     for (const auto& fanout : node_map.GetOutputs(ready_node->name())) {
       ready_inputs[fanout]++;
       if (ready_inputs[fanout] == fanout->input_size()) {
         ready_nodes.push_back(fanout);
+        back++;
       }
     }
-    ready_nodes.pop_front();
+    front++;
   }
-  if (sorted_graph.node_size() == graph->node_size()) {
-    *graph = sorted_graph;
+
+  if (back == graph->node_size()) {
+    GraphDef new_graph;
+    new_graph.mutable_node()->Reserve(graph->node_size());
+    for (int i = 0; i < graph->node_size(); i++) {
+      auto new_node = new_graph.add_node();
+      new_node->Swap(ready_nodes[i]);
+    }
+    graph->mutable_node()->Swap(new_graph.mutable_node());
   }
 }
 

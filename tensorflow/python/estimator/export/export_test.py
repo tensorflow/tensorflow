@@ -232,8 +232,8 @@ class ExportTest(test_util.TensorFlowTestCase):
                                                              output_2, None),
         "head-3":
             signature_def_utils.predict_signature_def({
-                "input": receiver_tensor
-            }, {"output": output_3})
+                "receiver": receiver_tensor
+            }, {"some_output_3": output_3})
     }
 
     self.assertDictEqual(expected_signature_defs, signature_defs)

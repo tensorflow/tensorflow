@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,7 +43,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-typedef FunctionDefHelper FDH;
+using FDH = FunctionDefHelper;
 
 Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
@@ -162,9 +163,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    lib_.reset(NewFunctionLibraryRuntime(nullptr, Env::Default(), device_.get(),
-                                         TF_GRAPH_DEF_VERSION, lib_def_.get(),
-                                         opts));
+    lib_ =
+        NewFunctionLibraryRuntime(nullptr, Env::Default(), device_.get(),
+                                  TF_GRAPH_DEF_VERSION, lib_def_.get(), opts);
     fdef_lib_ = lib_def_->ToProto();
   }
 
@@ -283,6 +284,7 @@ Output Call(Scope* scope, const string& op_name, const string& fn_name,
   Status status;
   Node* n = scope->graph()->AddNode(def, &status);
   TF_CHECK_OK(status);
+  TF_CHECK_OK(scope->DoShapeInference(n));
   for (int i = 0; i < inputs.size(); ++i) {
     scope->graph()->AddEdge(inputs[i].node(), inputs[i].index(), n, i);
   }
@@ -988,7 +990,7 @@ TEST(OptimizationTest, RemoveDeadNodes) {
 
   GraphDef expected;
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_INT32, 0);
     auto o = ops::Const(s.WithOpName("o"), 1);
     auto keep_me = ops::RandomUniform(s.WithOpName("keep_me"), {o}, DT_FLOAT);
@@ -1069,7 +1071,7 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
        {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
 
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_INT32, 0);
     auto o = ops::Const(s.WithOpName("o"), 1);
     auto a = ops::Square(s.WithOpName("a"), x);
@@ -1086,7 +1088,7 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
   }
 
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_INT32, 0);
     auto o = ops::Const(s.WithOpName("o"), 1);
     auto a = ops::Square(s.WithOpName("a"), x);
@@ -1136,7 +1138,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
       {{"o", "o:sum"}});
 
   {
-    Scope scope = Scope::NewRootScope();
+    Scope scope = Scope::DisabledShapeInferenceScope();
     auto i = ops::_Arg(scope.WithOpName("i"), DT_FLOAT, 0);
     auto zero = ops::Const(scope.WithOpName("zero"), 0);
     auto s = ops::Split(scope.WithOpName("s"), zero, i, 4);
@@ -1221,7 +1223,7 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
       {{"o", "o:sum"}});
 
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto i = ops::_Arg(s.WithOpName("i"), DT_FLOAT, 0);
     auto dummy = ops::Const(s.WithOpName("dummy"), 0);
     auto x = ops::_ListToArray(s.WithOpName("x").WithControlDependencies(dummy),
@@ -1263,5 +1265,5 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
   TF_EXPECT_GRAPH_EQ(expected, Optimize(remove_listarray_and_identity, func));
 }
 
-}  // end namespace
-}  // end namespace tensorflow
+}  // namespace
+}  // namespace tensorflow

@@ -22,8 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -46,14 +44,8 @@ ClientType client_types[] = {ClientType::kLocal, ClientType::kCompileOnly};
 class ComputeConstantTest : public ::testing::Test {
  public:
   explicit ComputeConstantTest(
-      perftools::gputools::Platform* platform = nullptr,
-      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {})
-      : platform_(platform) {
-    legacy_flags::HloPassPipelineFlags* flags =
-        legacy_flags::GetHloPassPipelineFlags();
-    flags->xla_disable_hlo_passes =
-        tensorflow::str_util::Join(disabled_pass_names, ",");
-  }
+      perftools::gputools::Platform* platform = nullptr)
+      : platform_(platform) {}
 
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
@@ -80,9 +72,8 @@ class ComputeConstantTest : public ::testing::Test {
   StatusOr<std::unique_ptr<Literal>> ComputeConstantLiteral(
       Client* client, const ComputationDataHandle& operand,
       ComputationBuilder* builder, Layout* output_layout = nullptr) {
-    TF_ASSIGN_OR_RETURN(auto remote_computed,
+    TF_ASSIGN_OR_RETURN(auto computed,
                         builder->ComputeConstant(operand, output_layout));
-    TF_ASSIGN_OR_RETURN(auto computed, client->Transfer(*remote_computed));
     return std::move(computed);
   }
 
@@ -92,7 +83,7 @@ class ComputeConstantTest : public ::testing::Test {
                                          ComputationBuilder* builder) {
     TF_ASSIGN_OR_RETURN(auto literal,
                         ComputeConstantLiteral(client, operand, builder));
-    return LiteralUtil::Get<Scalar>(*literal, {});
+    return literal->Get<Scalar>({});
   }
 
   bool IsConstant(const ComputationDataHandle& operand,
@@ -217,7 +208,7 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
     auto computed = ComputeConstantLiteral(client, computation, &b);
     ASSERT_TRUE(computed.ok()) << computed.status();
     std::unique_ptr<Literal> expected_literal =
-        LiteralUtil::CreateR1<int32>({4, 6});
+        Literal::CreateR1<int32>({4, 6});
     LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
   }
 }
@@ -231,7 +222,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
 
     auto computed = ComputeConstantLiteral(client, computation, &b);
     ASSERT_TRUE(computed.ok()) << computed.status();
-    std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR0<int32>(5);
+    std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
     LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
   }
 }
@@ -261,52 +252,5 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
   }
 }
 
-// This test is permanently disabled on CPU because it requires that the
-// backend used for execution is different than the backend used for
-// ComputeConstant which is always cpu.
-TEST_F(ComputeConstantTest, DISABLED_ON_CPU(ReuseComputedConstant)) {
-  // Compute a trivial constant, then try to use the value in an Execute
-  // call. This should fail because the constant resides on the CPU and the
-  // Execute call is executed on a different backend.  This test only makes
-  // sense with LocalClient, since CompileOnlyClient does not support
-  // execution.
-  Client* client = ClientOrDie(platform_, ClientType::kLocal);
-  ComputationBuilder constant_b(client, TestName());
-  auto constant = constant_b.ConstantR0<int32>(42);
-  auto handle = constant_b.ComputeConstant(constant).ConsumeValueOrDie();
-  auto literal = client->Transfer(*handle).ConsumeValueOrDie();
-  LiteralTestUtil::ExpectR0Equal(42, *literal);
-
-  // Build trivial computation which takes one parameter.
-  ComputationBuilder b(client, TestName());
-  b.Neg(b.Parameter(0, ShapeUtil::MakeShape(S32, {}), "param0"));
-  auto computation = b.Build().ConsumeValueOrDie();
-
-  // Try to use value from ComputeConstant in Execute.
-  auto execute_status = client->Execute(computation, {handle.get()});
-  EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(
-      execute_status.status().error_message(),
-      ::testing::ContainsRegex("argument 0 is on device Host:0 but computation "
-                               "will be executed on device"));
-}
-
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

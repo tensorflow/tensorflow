@@ -92,8 +92,15 @@
 #   TF_SKIP_CONTRIB_TESTS:
 #                     If set to any non-empty or non-0 value, will skipp running
 #                     contrib tests.
+#   TF_NIGHTLY:
+#                     If this run is being used to build the tf_nightly pip
+#                     packages.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
+
+# TODO(jhseu): Temporary for the gRPC pull request due to the
+# protobuf -> protobuf_archive rename. Remove later.
+TF_BUILD_BAZEL_CLEAN=1
 
 # Helper function: Convert to lower case
 to_lower () {
@@ -200,8 +207,8 @@ echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
 function get_cuda_capability_version() {
   if [[ ! -z $(which deviceQuery) ]]; then
     # The first listed device is used
-    echo $(deviceQuery | grep "CUDA Capability .* version" | \
-        head -1 | awk '{print $NF}')
+    deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}'
   fi
 }
 
@@ -358,7 +365,7 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
+  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi
@@ -441,6 +448,11 @@ elif [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
   MAIN_CMD="${NO_PIP_MAIN_CMD} && ${PIP_MAIN_CMD}"
 else
   die "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
+fi
+
+# Check if this is a tf_nightly build
+if [[ "${TF_NIGHTLY}" == "1" ]]; then
+  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_NIGHTLY=1"
 fi
 
 # Process Python version
@@ -532,11 +544,14 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
   DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
   # Replace a line in the Dockerfile
-  sed -i \
+  if sed -i \
       's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
-      "${DOCKERFILE}" && \
-      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
-      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+      "${DOCKERFILE}"
+  then
+    echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
+  else
+    die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+  fi
 
   DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
 fi
@@ -574,7 +589,7 @@ rm -f ${TMP_SCRIPT}
 END_TIME=$(date +'%s')
 echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
-"(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
+"(Elapsed time: $((END_TIME - START_TIME)) s)"
 
 
 # Clean up temporary directory if it exists

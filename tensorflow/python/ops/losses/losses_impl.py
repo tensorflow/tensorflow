@@ -291,7 +291,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
   Raises:
     ValueError: If the shapes of `logits` and `labels` don't match.
   """
-  with ops.name_scope(scope, "hinge_loss", (logits, labels)) as scope:
+  with ops.name_scope(scope, "hinge_loss", (logits, labels, weights)) as scope:
     logits = math_ops.to_float(logits)
     labels = math_ops.to_float(labels)
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -531,7 +531,7 @@ def mean_squared_error(
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    losses = math_ops.square(math_ops.subtract(predictions, labels))
+    losses = math_ops.squared_difference(predictions, labels)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 

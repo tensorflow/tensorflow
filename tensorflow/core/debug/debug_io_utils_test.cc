@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <unordered_set>
+
 #include "tensorflow/core/debug/debug_io_utils.h"
 
+#include "tensorflow/core/debug/debugger_event_metadata.pb.h"
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -49,15 +53,48 @@ class DebugIOUtilsTest : public ::testing::Test {
 };
 
 TEST_F(DebugIOUtilsTest, ConstructDebugNodeKey) {
-  DebugNodeKey debug_node_key("/job:worker/replica:1/task:0/gpu:2",
+  DebugNodeKey debug_node_key("/job:worker/replica:1/task:0/device:GPU:2",
                               "hidden_1/MatMul", 0, "DebugIdentity");
-  EXPECT_EQ("/job:worker/replica:1/task:0/gpu:2", debug_node_key.device_name);
+  EXPECT_EQ("/job:worker/replica:1/task:0/device:GPU:2", debug_node_key.device_name);
   EXPECT_EQ("hidden_1/MatMul", debug_node_key.node_name);
   EXPECT_EQ(0, debug_node_key.output_slot);
   EXPECT_EQ("DebugIdentity", debug_node_key.debug_op);
   EXPECT_EQ("hidden_1/MatMul:0:DebugIdentity", debug_node_key.debug_node_name);
-  EXPECT_EQ("_tfdbg_device_,job_worker,replica_1,task_0,gpu_2",
+  EXPECT_EQ("_tfdbg_device_,job_worker,replica_1,task_0,device_GPU_2",
             debug_node_key.device_path);
+}
+
+TEST_F(DebugIOUtilsTest, EqualityOfDebugNodeKeys) {
+  const DebugNodeKey debug_node_key_1("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_2("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_3("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/BiasAdd", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_4("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0,
+                                      "DebugNumericSummary");
+  EXPECT_EQ(debug_node_key_1, debug_node_key_2);
+  EXPECT_NE(debug_node_key_1, debug_node_key_3);
+  EXPECT_NE(debug_node_key_1, debug_node_key_4);
+  EXPECT_NE(debug_node_key_3, debug_node_key_4);
+}
+
+TEST_F(DebugIOUtilsTest, DebugNodeKeysIsHashable) {
+  const DebugNodeKey debug_node_key_1("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_2("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_3("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/BiasAdd", 0, "DebugIdentity");
+
+  std::unordered_set<DebugNodeKey> keys;
+  keys.insert(debug_node_key_1);
+  ASSERT_EQ(1, keys.size());
+  keys.insert(debug_node_key_3);
+  ASSERT_EQ(2, keys.size());
+  keys.erase(debug_node_key_2);
+  ASSERT_EQ(1, keys.size());
 }
 
 TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
@@ -123,9 +160,17 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
 
   ASSERT_GE(wall_time, event.wall_time());
   ASSERT_EQ(1, event.summary().value().size());
-  ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+  ASSERT_EQ(kDebugNodeKey.node_name, event.summary().value(0).tag());
   ASSERT_EQ(kDebugNodeKey.debug_node_name,
             event.summary().value(0).node_name());
+
+  // Determine and validate some information from the metadata.
+  third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+  auto status = tensorflow::protobuf::util::JsonStringToMessage(
+      event.summary().value(0).metadata().plugin_data().content(), &metadata);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
+  ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
 
   Tensor b_prime(DT_STRING);
   ASSERT_TRUE(b_prime.FromProto(event.summary().value(0).tensor()));
@@ -228,9 +273,17 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
 
     ASSERT_GE(wall_time, event.wall_time());
     ASSERT_EQ(1, event.summary().value().size());
-    ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+    ASSERT_EQ(kDebugNodeKey.node_name, event.summary().value(0).tag());
     ASSERT_EQ(kDebugNodeKey.debug_node_name,
               event.summary().value(0).node_name());
+
+    // Determine and validate some information from the metadata.
+    third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+    auto status = tensorflow::protobuf::util::JsonStringToMessage(
+        event.summary().value(0).metadata().plugin_data().content(), &metadata);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
+    ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
 
     Tensor a_prime(DT_FLOAT);
     ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));
@@ -332,9 +385,18 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
       ASSERT_GE(wall_time, event.wall_time());
       ASSERT_EQ(1, event.summary().value().size());
-      ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+      ASSERT_EQ(kDebugNodeKey.node_name, event.summary().value(0).tag());
       ASSERT_EQ(kDebugNodeKey.debug_node_name,
                 event.summary().value(0).node_name());
+
+      // Determine and validate some information from the metadata.
+      third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+      auto status = tensorflow::protobuf::util::JsonStringToMessage(
+          event.summary().value(0).metadata().plugin_data().content(),
+          &metadata);
+      ASSERT_TRUE(status.ok());
+      ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
+      ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
 
       Tensor a_prime(DT_FLOAT);
       ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));

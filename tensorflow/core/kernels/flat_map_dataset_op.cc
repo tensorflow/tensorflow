@@ -28,20 +28,18 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class FlatMapDatasetOp : public OpKernel {
+class FlatMapDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit FlatMapDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx),
+        graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
     std::vector<Tensor> other_arguments;
@@ -55,15 +53,8 @@ class FlatMapDatasetOp : public OpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    DatasetBase* dataset = new Dataset(input, std::move(captured_func),
-                                       output_types_, output_shapes_);
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, std::move(captured_func), output_types_,
+                          output_shapes_);
   }
 
  private:
@@ -82,13 +73,16 @@ class FlatMapDatasetOp : public OpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FlatMap")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
       return output_types_;
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return output_shapes_;
     }
@@ -98,12 +92,13 @@ class FlatMapDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           if (current_element_iterator_) {
@@ -147,8 +142,8 @@ class FlatMapDatasetOp : public OpKernel {
               });
           opts.step_container = &step_container;
           std::vector<Tensor> return_values;
-          TF_RETURN_IF_ERROR(
-              dataset()->captured_func_->Run(opts, args, &return_values));
+          TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(
+              opts, args, &return_values, prefix()));
 
           if (!(return_values.size() == 1 &&
                 return_values[0].dtype() == DT_RESOURCE &&
@@ -180,7 +175,8 @@ class FlatMapDatasetOp : public OpKernel {
           // Create an iterator for the dataset that was returned by
           // `f`. This transfers ownership of the dataset to the
           // iterator, so we can delete it from the resource manager.
-          current_element_iterator_ = returned_dataset->MakeIterator();
+          current_element_iterator_ = returned_dataset->MakeIterator(
+              strings::StrCat(prefix(), "[", element_index_++, "]"));
           TF_RETURN_IF_ERROR(
               dataset()
                   ->captured_func_->resource_manager()
@@ -191,6 +187,7 @@ class FlatMapDatasetOp : public OpKernel {
 
      private:
       mutex mu_;
+      size_t element_index_ GUARDED_BY(mu_) = 0;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
     };

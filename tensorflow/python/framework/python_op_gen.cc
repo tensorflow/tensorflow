@@ -20,12 +20,13 @@ limitations under the License.
 #include <unordered_map>
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -325,6 +326,9 @@ string DataTypeToPython(DataType dtype, const string& dtype_module) {
 }
 
 string ShapeToPython(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return "None";
+  }
   string python = "[";
   for (const auto& dim : shape.dim()) {
     if (python.size() > 1) strings::StrAppend(&python, ", ");
@@ -391,6 +395,9 @@ string AttrListToPython(const AttrValue& value,
   return ret;
 }
 
+// NOTE: The return value may contain spaces (for example, it could be
+// a string "foo bar" with an embedded space) and is not safe to pass
+// to WordWrap().
 string AttrValueToPython(const string& type, const AttrValue& value,
                          const string& dtype_module) {
   if (type == "string") {
@@ -398,7 +405,11 @@ string AttrValueToPython(const string& type, const AttrValue& value,
   } else if (type == "int") {
     return strings::StrCat(value.i());
   } else if (type == "float") {
-    return strings::StrCat(value.f());
+    if (std::isnan(value.f()) || std::isinf(value.f())) {
+      return strings::StrCat("float('", value.f(), "')");
+    } else {
+      return strings::StrCat(value.f());
+    }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
   } else if (type == "type") {
@@ -520,9 +531,7 @@ string GenPythonOp::Code() {
 }
 
 void GenPythonOp::AddDefLine(const string& parameters) {
-  const string def_prefix = strings::StrCat("def ", function_name_, "(");
-  strings::StrAppend(
-      &result_, WordWrap(def_prefix, parameters + "):", kRightMargin), "\n");
+  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
 }
 
 void GenPythonOp::AddDocStringDescription() {
@@ -681,25 +690,26 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  string return_prefix =
-      strings::StrCat(prefix, "result = _op_def_lib.apply_op(");
-  string return_args = strings::StrCat("\"", op_def_.name(), "\", ");
-  for (size_t i = 0; i < param_names_.size(); ++i) {
-    strings::StrAppend(&return_args, param_names_[i], "=", param_names_[i],
-                       ", ");
+  const string apply_prefix =
+      strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
+  AddBodyNoReturn(apply_prefix);
+  if (num_outs_ > 1) {
+    strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
+                       "Output._make(_result)\n");
   }
-  strings::StrAppend(&return_args, "name=name)");
+  strings::StrAppend(&result_, prefix, "return _result\n");
+}
+
+void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
+  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  for (size_t i = 0; i < param_names_.size(); ++i) {
+    strings::StrAppend(&args, param_names_[i], "=", param_names_[i], ", ");
+  }
+  strings::StrAppend(&args, "name=name)");
 
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
-                     WordWrap(return_prefix, return_args, kRightMargin), "\n");
-
-  if (num_outs_ <= 1) {
-    strings::StrAppend(&result_, prefix, "return result\n");
-  } else {
-    strings::StrAppend(&result_, prefix, "return _", op_def_.name(),
-                       "Output._make(result)\n");
-  }
+                     WordWrap(apply_prefix, args, kRightMargin), "\n");
 }
 
 }  // namespace python_op_gen_internal
@@ -719,8 +729,6 @@ This file is MACHINE GENERATED! Do not edit.
 """
 
 import collections as _collections
-
-from google.protobuf import text_format as _text_format
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 
@@ -770,21 +778,24 @@ from tensorflow.python.framework import op_def_library as _op_def_library
     RemoveNonDeprecationDescriptionsFromOpDef(added);
   }
 
-  strings::Appendf(&result, R"(def _InitOpDefLibrary():
+  result.append(R"(def _InitOpDefLibrary(op_list_proto_bytes):
   op_list = _op_def_pb2.OpList()
-  _text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
+  op_list.ParseFromString(op_list_proto_bytes)
   _op_def_registry.register_op_list(op_list)
   op_def_lib = _op_def_library.OpDefLibrary()
   op_def_lib.add_op_list(op_list)
   return op_def_lib
 
 
-_InitOpDefLibrary.op_list_ascii = """%s"""
+)");
 
-
-_op_def_lib = _InitOpDefLibrary()
-)",
-                   ProtoDebugString(cleaned_ops).c_str());
+  result.append("# ");
+  auto ops_text = ProtoDebugString(cleaned_ops);
+  str_util::StripTrailingWhitespace(&ops_text);
+  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
+  result.append("\n");
+  strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
+                   str_util::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
 }
 

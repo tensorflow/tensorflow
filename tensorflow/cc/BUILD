@@ -34,6 +34,7 @@ cc_library(
 
 tf_cc_test(
     name = "framework_gradients_test",
+    size = "small",
     srcs = ["framework/gradients_test.cc"],
     deps = [
         ":cc_ops",
@@ -44,6 +45,7 @@ tf_cc_test(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -60,7 +62,6 @@ cc_library(
         ":gradients",
         ":ops",
         ":scope",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -69,6 +70,7 @@ cc_library(
 
 tf_cc_test(
     name = "framework_gradient_checker_test",
+    size = "small",
     srcs = ["framework/gradient_checker_test.cc"],
     deps = [
         ":cc_ops",
@@ -150,6 +152,7 @@ cc_library_with_android_deps(
 
 tf_cc_test(
     name = "framework_scope_test",
+    size = "small",
     srcs = ["framework/scope_test.cc"],
     deps = [
         ":ops",
@@ -179,6 +182,7 @@ cc_library_with_android_deps(
 
 tf_cc_test(
     name = "client_client_session_test",
+    size = "small",
     srcs = ["client/client_session_test.cc"],
     deps = [
         ":cc_ops",
@@ -213,6 +217,7 @@ cc_library_with_android_deps(
 
 tf_cc_test(
     name = "ops_const_op_test",
+    size = "small",
     srcs = ["ops/const_op_test.cc"],
     deps = [
         ":const_op",
@@ -243,10 +248,12 @@ cc_library(
         ":gradients",
         "//tensorflow/core:lib_proto_parsing",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
     name = "gradients_array_grad_test",
+    size = "small",
     srcs = ["gradients/array_grad_test.cc"],
     deps = [
         ":array_grad",
@@ -267,21 +274,21 @@ cc_library(
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
-        ":ops",
-        ":scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
     name = "gradients_math_grad_test",
+    size = "small",
     srcs = ["gradients/math_grad_test.cc"],
     deps = [
         ":cc_ops",
         ":grad_op_registry",
         ":grad_testutil",
+        ":gradient_checker",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",
@@ -298,15 +305,13 @@ cc_library(
         ":cc_ops",
         ":cc_ops_internal",
         ":grad_op_registry",
-        ":ops",
-        ":scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
     name = "gradients_nn_grad_test",
+    size = "small",
     srcs = ["gradients/nn_grad_test.cc"],
     deps = [
         ":cc_ops",
@@ -334,6 +339,7 @@ tf_gen_op_wrappers_cc(
         "io_ops",
         "linalg_ops",
         "logging_ops",
+        "lookup_ops",
         "math_ops",
         "nn_ops",
         "no_op",
@@ -355,6 +361,7 @@ tf_gen_op_wrappers_cc(
 
 tf_cc_test(
     name = "framework_cc_ops_test",
+    size = "small",
     srcs = ["framework/cc_ops_test.cc"],
     deps = [
         ":cc_ops",
@@ -432,6 +439,7 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -454,7 +462,6 @@ cc_library(
         ":client_session",
         ":ops",
         ":scope",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:tensorflow",
@@ -473,13 +480,25 @@ cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),
-    linkopts = [
-        "-lpthread",
-        "-lm",
-    ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//tensorflow:darwin": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//tensorflow:ios": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-lpthread",
+            "-lrt",
+        ],
+    }),
     deps = [
         ":cc_ops",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -507,7 +526,6 @@ cc_library(
     deps = [
         ":coordinator",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -540,8 +558,6 @@ cc_library(
     srcs = ["training/coordinator.cc"],
     hdrs = ["training/coordinator.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -551,6 +567,7 @@ cc_library(
 
 tf_cc_test(
     name = "coordinator_test",
+    size = "small",
     srcs = ["training/coordinator_test.cc"],
     deps = [
         ":cc_ops",

@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import six
 
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops.init_ops import Constant
-from tensorflow.python.ops.init_ops import Initializer
+from tensorflow.python.ops.init_ops import Identity
+from tensorflow.python.ops.init_ops import Initializer  # pylint: disable=unused-import
 from tensorflow.python.ops.init_ops import Ones
 from tensorflow.python.ops.init_ops import Orthogonal
 from tensorflow.python.ops.init_ops import RandomNormal
@@ -34,27 +34,26 @@ from tensorflow.python.ops.init_ops import VarianceScaling
 from tensorflow.python.ops.init_ops import Zeros
 
 
-class Identity(Initializer):
-  """Initializer that generates the identity matrix.
+def lecun_normal(seed=None):
+  """LeCun normal initializer.
 
-  Only use for square 2D matrices.
+  It draws samples from a truncated normal distribution centered on 0
+  with `stddev = sqrt(1 / fan_in)`
+  where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      gain: Multiplicative factor to apply to the identity matrix.
+      seed: A Python integer. Used to seed the random generator.
+
+  Returns:
+      An initializer.
+
+  References:
+      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+      - [Efficient
+      Backprop](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
   """
-
-  def __init__(self, gain=1.):
-    self.gain = gain
-
-  def __call__(self, shape, dtype=None):
-    if len(shape) != 2 or shape[0] != shape[1]:
-      raise ValueError('Identity matrix initializer can only be used '
-                       'for 2D square matrices.')
-    else:
-      return self.gain * np.identity(shape[0])
-
-  def get_config(self):
-    return {'gain': self.gain}
+  return VarianceScaling(
+      scale=1., mode='fan_in', distribution='normal', seed=seed)
 
 
 def lecun_uniform(seed=None):

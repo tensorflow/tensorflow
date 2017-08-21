@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helper routines for the TLA device.
+// This file defines helper routines for the XLA device.
 
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
@@ -77,6 +77,11 @@ class XlaHelpers {
                        const xla::ComputationDataHandle& on_value,
                        const xla::ComputationDataHandle& off_value,
                        xla::ComputationDataHandle* one_hot);
+
+  // Pads 'x' with 'count' zeros. 'x' must have 1 element.
+  static xla::ComputationDataHandle PadWithZeros(
+      xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+      int count);
 };
 
 }  // end namespace tensorflow

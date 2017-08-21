@@ -31,6 +31,29 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+// Returning a Status instead of using OP_REQUIRES directly since that doesn't
+// seem to work outside the main OpKernel functions.
+Status RemapVectorToMap(const TTypes<const int64>::Vec& remapping,
+                        std::vector<bool>* id_present,
+                        std::unordered_map<int64, int64>* old_id_to_new_id) {
+  id_present->clear();
+  id_present->resize(remapping.size(), false);
+  for (int i = 0; i < remapping.size(); ++i) {
+    const int64 old_id = remapping(i);
+    if (old_id < 0) continue;
+    (*id_present)[i] = true;
+    if (!gtl::InsertIfNotPresent(old_id_to_new_id, old_id, i)) {
+      return errors::Unimplemented(
+          strings::StrCat("Old ID ", old_id, " is mapped to both new ID ",
+                          old_id_to_new_id->at(old_id), " and ", i,
+                          ", which is not supported."));
+    }
+  }
+  return Status::OK();
+}
+}  // anonymous namespace
+
 // This op loads a rank-2 Tensor (matrix) from a TensorFlow checkpoint (V2) and
 // swaps around the rows/columns according to row_remapping/col_remapping.
 // "Missing" cells are initialized with values from initializing_values.
@@ -40,13 +63,15 @@ class LoadAndRemapMatrixOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("num_rows", &num_rows_));
     OP_REQUIRES_OK(context, context->GetAttr("num_cols", &num_cols_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("max_rows_in_memory", &max_rows_in_memory_));
   }
 
   void Compute(OpKernelContext* context) override {
     // Checks what we're remapping and inverts the relevant remapping Tensors to
     // be maps with key = old ID, value = new ID.
-    std::vector<std::pair<int64, int64>> old_row_to_new_row_pairs;
-    std::vector<bool> row_id_present(num_rows_);
+    std::unordered_map<int64, int64> old_row_to_new_row_map;
+    std::vector<bool> row_id_present;
     const Tensor* row_remapping_t;
     OP_REQUIRES_OK(context, context->input("row_remapping", &row_remapping_t));
     const auto row_remapping = row_remapping_t->vec<int64>();
@@ -54,16 +79,27 @@ class LoadAndRemapMatrixOp : public OpKernel {
                 errors::InvalidArgument(strings::StrCat(
                     "Size of row_remapping is ", row_remapping.size(),
                     " intead of being equal to num_rows=", num_rows_)));
-    old_row_to_new_row_pairs.reserve(num_rows_);
+    OP_REQUIRES_OK(context, RemapVectorToMap(row_remapping, &row_id_present,
+                                             &old_row_to_new_row_map));
+
+    // Calculates the min/max old row ID that we need to read, to save us from
+    // reading some unnecessary slices of the old tensor.
+    int64 min_old_row = -1;
+    int64 max_old_row = -1;
     for (int i = 0; i < row_remapping.size(); ++i) {
-      if (row_remapping(i) < 0) continue;
-      row_id_present[i] = true;
-      old_row_to_new_row_pairs.push_back(std::make_pair(row_remapping(i), i));
+      if (min_old_row < 0 ||
+          (row_remapping(i) >= 0 && row_remapping(i) < min_old_row)) {
+        min_old_row = row_remapping(i);
+      }
+      if (max_old_row < 0 ||
+          (row_remapping(i) >= 0 && row_remapping(i) > max_old_row)) {
+        max_old_row = row_remapping(i);
+      }
     }
 
     // Processes the remapping for columns.
     std::unordered_map<int64, int64> old_col_to_new_col_map;
-    std::vector<bool> col_id_present(num_cols_);
+    std::vector<bool> col_id_present;
     const Tensor* col_remapping_t;
     OP_REQUIRES_OK(context, context->input("col_remapping", &col_remapping_t));
     const auto col_remapping = col_remapping_t->vec<int64>();
@@ -77,19 +113,8 @@ class LoadAndRemapMatrixOp : public OpKernel {
           errors::InvalidArgument(strings::StrCat(
               "Provided col_remapping, but its size is ", col_remapping.size(),
               " instead of being equal to num_cols=", num_cols_)));
-      for (int i = 0; i < col_remapping.size(); ++i) {
-        const int64 old_col = col_remapping(i);
-        if (old_col < 0) continue;
-        col_id_present[i] = true;
-        OP_REQUIRES(
-            context,
-            gtl::InsertIfNotPresent(&old_col_to_new_col_map, old_col, i),
-            errors::Unimplemented(strings::StrCat(
-                "Old column ID ", old_col, " is mapped to both new column ID ",
-                old_col_to_new_col_map[old_col], " and ", i,
-                ", which is not currently supported - but could be "
-                "implemented.")));
-      }
+      OP_REQUIRES_OK(context, RemapVectorToMap(col_remapping, &col_id_present,
+                                               &old_col_to_new_col_map));
     } else {
       col_id_present.clear();
       col_id_present.resize(num_cols_, true);
@@ -139,29 +164,27 @@ class LoadAndRemapMatrixOp : public OpKernel {
                       " instead of being equal to num_cols=", num_cols_)));
     }
 
-    // Uses TensorSlice to selectively read rows of interest from the old
-    // tensor. Given BundleReader's use of RandomAccessFile and InputBuffer,
-    // there shouldn't too many more additional disk seeks when compared to
-    // loading the old tensor in chunks, once we sort the row IDs. Even if there
-    // are locality concerns with some reading patterns, that just means if we
-    // had read it in chunks, then we would have had to read, copy, and process
-    // then discard many redundant rows - so we should come out ahead this way.
-    // In addition, this frees us from having to hold the entire old tensor in
-    // memory.
-    std::sort(old_row_to_new_row_pairs.begin(), old_row_to_new_row_pairs.end());
+    // Uses TensorSlice to potentially load the old tensor in chunks in case
+    // memory usage is a concern.
     std::vector<TensorSlice> tensor_slices;
-    tensor_slices.reserve(old_row_to_new_row_pairs.size());
     TensorSlice slice(tensor_shape.dims());
-    for (const auto& pair : old_row_to_new_row_pairs) {
-      OP_REQUIRES(
-          context, pair.first < tensor_shape.dim_size(0),
-          errors::InvalidArgument(strings::StrCat(
-              "Trying to read row ", pair.first, " from tensor ",
-              old_tensor_name, ", which only has ", tensor_shape.dim_size(0),
-              " rows (with shape ", tensor_shape.DebugString(), ").")));
-      slice.set_start(0, pair.first);
-      slice.set_length(0, 1);
-      tensor_slices.push_back(slice);
+    if (min_old_row >= 0 && max_old_row >= 0) {
+      int64 row_start = min_old_row;
+      // TODO(weiho): Given the list of old row IDs of interest (the keys of
+      // old_row_to_new_row_map), we could also try something smarter to
+      // find some minimal set of covering ranges for the list of old row IDs
+      // such that the size of each range is less than max_rows_in_memory_.
+      while (row_start <= max_old_row) {
+        const int64 slice_length =
+            max_rows_in_memory_ <= 0
+                // If max_rows_in_memory_ <= 0, we just load the entire chunk.
+                ? max_old_row - row_start + 1
+                : std::min(max_rows_in_memory_, max_old_row - row_start + 1);
+        slice.set_start(0, row_start);
+        slice.set_length(0, slice_length);
+        tensor_slices.push_back(slice);
+        row_start += slice_length;
+      }
     }
 
     // Allocates the output matrix.
@@ -174,52 +197,72 @@ class LoadAndRemapMatrixOp : public OpKernel {
 
     // Iterates through tensor slices and copies over values from the old tensor
     // to the output matrix.
-    Tensor loaded_tensor_t(DT_FLOAT,
-                           TensorShape({1, tensor_shape.dim_size(1)}));
-    for (int i = 0; i < tensor_slices.size(); ++i) {
-      const int64 new_row = old_row_to_new_row_pairs[i].second;
-      if (i % 500000 == 0) {
-        LOG(INFO) << "Processing slice " << i << " of " << tensor_slices.size()
-                  << " - corresponding to old row "
-                  << old_row_to_new_row_pairs[i].first << " of "
-                  << tensor_shape.dim_size(0);
-      }
+    int64 row_index = min_old_row;
+    int64 rows_copied = 0;
+    Tensor loaded_tensor_t;
+    for (const TensorSlice& tensor_slice : tensor_slices) {
+      LOG(INFO) << "Loading slice " << tensor_slice.DebugString();
+      TensorShape slice_shape;
       OP_REQUIRES_OK(context,
-                     reader.LookupSlice(old_tensor_name, tensor_slices[i],
-                                        &loaded_tensor_t));
+                     tensor_slice.SliceTensorShape(tensor_shape, &slice_shape));
+      // Potentially re-allocates the tensor buffer since the last slice may
+      // have fewer rows than the other slices.
+      if (loaded_tensor_t.shape() != slice_shape) {
+        loaded_tensor_t = Tensor(DT_FLOAT, slice_shape);
+      }
+      OP_REQUIRES_OK(context, reader.LookupSlice(old_tensor_name, tensor_slice,
+                                                 &loaded_tensor_t));
 
-      // Copies over the row element-by-element, in case remapping is needed
-      // along the column axis.
-      const auto& loaded_tensor = loaded_tensor_t.flat<float>();
-      for (int old_col = 0; old_col < loaded_tensor.size(); ++old_col) {
-        int64 new_col = old_col;
-        if (remap_cols) {
-          const int64* new_col_ptr =
-              gtl::FindOrNull(old_col_to_new_col_map, old_col);
-          if (new_col_ptr == nullptr) {
-            // Column remapping is specified, but this column is not found in
-            // old_col_to_new_col_map, so we leave it uninitialized, to be
-            // filled in with initializing_values later.
-            continue;
-          }
-          new_col = *new_col_ptr;
+      // Iterates through the old loaded tensor slice row-by-row.
+      for (int row = 0; row < loaded_tensor_t.dim_size(0); ++row, ++row_index) {
+        if (row_index % 500000 == min_old_row) {
+          LOG(INFO) << "Processing old row " << row_index;
         }
 
-        OP_REQUIRES(context,
-                    new_row < num_rows_ && new_col < num_cols_ &&
-                        new_row >= 0 && new_col >= 0,
-                    errors::Internal(strings::StrCat(
-                        "new_row=", new_row, " and new_col=", new_col,
-                        " should have been less than num_rows_=", num_rows_,
-                        " and num_cols_=", num_cols_,
-                        " and non-negative. This should never have happened "
-                        "if the code were correct. Please file a bug.")));
-        output_matrix(new_row, new_col) = loaded_tensor(old_col);
+        // If the old row ID is not found in old_row_to_new_row_map, continue
+        // to the next row; otherwise, copy it to the output matrix.
+        const int64* new_row_ptr =
+            gtl::FindOrNull(old_row_to_new_row_map, row_index);
+        if (new_row_ptr == nullptr) {
+          continue;
+        }
+        ++rows_copied;
+        const int64 new_row = *new_row_ptr;
+
+        // Copies over the row element-by-element, in case remapping is needed
+        // along the column axis.
+        const auto& loaded_tensor = loaded_tensor_t.matrix<float>();
+        for (int old_col = 0; old_col < loaded_tensor_t.dim_size(1);
+             ++old_col) {
+          int64 new_col = old_col;
+          if (remap_cols) {
+            const int64* new_col_ptr =
+                gtl::FindOrNull(old_col_to_new_col_map, old_col);
+            if (new_col_ptr == nullptr) {
+              // Column remapping is specified, but this column is not found in
+              // old_col_to_new_col_map, so we leave it uninitialized, to be
+              // filled in with initializing_values later.
+              continue;
+            }
+            new_col = *new_col_ptr;
+          }
+
+          OP_REQUIRES(context,
+                      new_row < num_rows_ && new_col < num_cols_ &&
+                          new_row >= 0 && new_col >= 0,
+                      errors::Internal(strings::StrCat(
+                          "new_row=", new_row, " and new_col=", new_col,
+                          " should have been less than num_rows_=", num_rows_,
+                          " and num_cols_=", num_cols_,
+                          " and non-negative. This should never have happened "
+                          "if the code were correct. Please file a bug.")));
+          output_matrix(new_row, new_col) = loaded_tensor(row, old_col);
+        }
       }
     }
-    LOG(INFO) << "Copied " << tensor_slices.size()
-              << " rows from old matrix (with " << tensor_shape.dim_size(0)
-              << " rows) to new matrix (with " << num_rows_ << " rows).";
+    LOG(INFO) << "Copied " << rows_copied << " rows from old matrix (with "
+              << tensor_shape.dim_size(0) << " rows) to new matrix (with "
+              << num_rows_ << " rows).";
 
     // At this point, there are potentially whole rows/columns uninitialized
     // (corresponding to the indices where row_id_present/col_id_present are
@@ -232,10 +275,14 @@ class LoadAndRemapMatrixOp : public OpKernel {
     int64 initializing_values_index = 0;
     for (int i = 0; i < num_rows_; ++i) {
       for (int j = 0; j < num_cols_; ++j) {
-        if (!row_id_present[i] || !col_id_present[j]) {
-          output_matrix(i, j) = initializing_values(initializing_values_index);
-          ++initializing_values_index;
-        }
+        if (row_id_present[i] && col_id_present[j]) continue;
+        OP_REQUIRES(
+            context, initializing_values_index < initializing_values.size(),
+            errors::InvalidArgument(
+                "initializing_values contained ", initializing_values.size(),
+                " elements, but more missing values remain."));
+        output_matrix(i, j) = initializing_values(initializing_values_index);
+        ++initializing_values_index;
       }
     }
 
@@ -251,6 +298,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
  private:
   int64 num_rows_;
   int64 num_cols_;
+  int64 max_rows_in_memory_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("LoadAndRemapMatrix").Device(DEVICE_CPU),

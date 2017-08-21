@@ -91,21 +91,71 @@ def horizontal_lstm(images, num_filters_out, scope=None):
     return output
 
 
-def separable_lstm(images, num_filters_out, nhidden=None, scope=None):
+def get_blocks(images, kernel_size):
+  """Split images in blocks
+
+  Args:
+    images: (num_images, height, width, depth) tensor
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
+      of the pooling. Can be an int if both values are the same.
+
+  Returns:
+    (num_images, height/kernel_height, width/kernel_width,
+    depth*kernel_height*kernel_width) tensor
+  """
+  with variable_scope.variable_scope("image_blocks"):
+    batch_size, height, width, chanels = _shape(images)
+
+    if height % kernel_size[0] != 0:
+      offset = array_ops.zeros([batch_size,
+                                kernel_size[0] - (height % kernel_size[0]),
+                                width,
+                                chanels])
+      images = array_ops.concat([images, offset], 1)
+      batch_size, height, width, chanels = _shape(images)
+    if width % kernel_size[1] != 0:
+      offset = array_ops.zeros([batch_size,
+                                height,
+                                kernel_size[1] - (width % kernel_size[1]),
+                                chanels])
+      images = array_ops.concat([images, offset], 2)
+      batch_size, height, width, chanels = _shape(images)
+
+    h, w = int(height / kernel_size[0]), int(width / kernel_size[1])
+    features = kernel_size[1] * kernel_size[0] * chanels
+
+    lines = array_ops.split(images, h, axis=1)
+    line_blocks = []
+    for line in lines:
+      line = array_ops.transpose(line, [0, 2, 3, 1])
+      line = array_ops.reshape(line, [batch_size, w, features])
+      line_blocks.append(line)
+
+    return array_ops.stack(line_blocks, axis=1)
+
+
+def separable_lstm(images, num_filters_out,
+                   kernel_size=None, nhidden=None, scope=None):
   """Run bidirectional LSTMs first horizontally then vertically.
 
   Args:
     images: (num_images, height, width, depth) tensor
     num_filters_out: output layer depth
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
+      of the pooling. Can be an int if both values are the same. Set to None for
+      not using blocks
     nhidden: hidden layer depth
     scope: optional scope name
 
   Returns:
-    (num_images, height, width, num_filters_out) tensor
+    (num_images, height/kernel_height, width/kernel_width,
+    num_filters_out) tensor
   """
   with variable_scope.variable_scope(scope, "SeparableLstm", [images]):
     if nhidden is None:
       nhidden = num_filters_out
+    if kernel_size is not None:
+      images = get_blocks(images, kernel_size)
     hidden = horizontal_lstm(images, nhidden)
     with variable_scope.variable_scope("vertical"):
       transposed = array_ops.transpose(hidden, [0, 2, 1, 3])

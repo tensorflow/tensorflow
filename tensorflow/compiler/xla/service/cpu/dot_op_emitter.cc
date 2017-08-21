@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -44,7 +44,8 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
                            const llvm_ir::IrArray& lhs_array,
                            const llvm_ir::IrArray& rhs_array,
                            llvm::Value* executable_run_options_value,
-                           llvm::IRBuilder<>* ir_builder)
+                           llvm::IRBuilder<>* ir_builder,
+                           const HloModuleConfig& hlo_module_config)
     : dot_(dot),
       transpose_lhs_(transpose_lhs),
       transpose_rhs_(transpose_rhs),
@@ -52,18 +53,20 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
       executable_run_options_value_(executable_run_options_value),
-      ir_builder_(ir_builder) {}
+      ir_builder_(ir_builder),
+      hlo_module_config_(hlo_module_config) {}
 
 /* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
     const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder) {
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+    const HloModuleConfig& hlo_module_config) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(F32 == type || F64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, executable_run_options_value,
-                           ir_builder);
+                           ir_builder, hlo_module_config);
   return dot_emitter.Emit();
 }
 
@@ -233,22 +236,22 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
 
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  bool multi_threaded = flags->xla_cpu_multi_thread_eigen;
+  bool multi_threaded_eigen =
+      hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
     case F32:
-      fn_name = multi_threaded
-                    ? runtime::kEigenMatmulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF32SymbolName;
+      fn_name = multi_threaded_eigen
+                    ? runtime::kEigenMatMulF32SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
-      fn_name = multi_threaded
-                    ? runtime::kEigenMatmulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF64SymbolName;
+      fn_name = multi_threaded_eigen
+                    ? runtime::kEigenMatMulF64SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
       float_type = ir_builder_->getDoubleTy();
       break;
     default:
@@ -279,6 +282,10 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // row major, then use the following identity to compute the product:
   //
   //   (A x B)^T = B^T x A^T
+  //
+  // The connection between this identity and memory layout is that the
+  // transpose operation can also be considered as an operation that changes the
+  // memory layout of a matrix from row-major to column-major or vice versa.
   //
   // Effectively this involves swapping the 'lhs' with 'rhs' and 'm' with 'n'.
 

@@ -17,9 +17,13 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/grappler/inputs/utils.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -27,6 +31,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+const char kTestDataPath[] = "core/grappler/costs/graph_properties_testdata";
 
 class GraphPropertiesTest : public ::testing::Test {
  public:
@@ -158,6 +164,7 @@ TEST_F(GraphPropertiesTest, Variables) {
   item.fetch.push_back("Var");
 
   Tensor initial_val(DT_FLOAT, TensorShape({3, 7}));
+  test::FillIota<float>(&initial_val, 0);
   TF_CHECK_OK(NodeDefBuilder("InitialVal", "Const")
                   .Attr("dtype", DT_FLOAT)
                   .Attr("value", initial_val)
@@ -307,227 +314,240 @@ TEST_F(GraphPropertiesTest, Queues) {
   EXPECT_EQ("float: [1,2,3]", PropToString(props5[2]));
 }
 
-TEST_F(GraphPropertiesTest, Loops) {
+TEST_F(GraphPropertiesTest, MergeWithoutLoops) {
   // Test graph produced in python using:
   /*
-     with tf.Graph().as_default():
-       i = tf.constant(0)
-       c = lambda i: tf.less(i, 10)
-       b = lambda i: tf.add(i, 1)
-       r = tf.while_loop(c, b, [i])
-       with open('/tmp/graph.txt', 'w') as f:
-         f.write(str(tf.get_default_graph().as_graph_def()))
-  */
-  const string gdef_ascii = R"EOF(
-node {
-  name: "Const"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 0
-      }
-    }
-  }
-}
-node {
-  name: "while/Enter"
-  op: "Enter"
-  input: "Const"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "frame_name"
-    value {
-      s: "while/while/"
-    }
-  }
-  attr {
-    key: "is_constant"
-    value {
-      b: false
-    }
-  }
-  attr {
-    key: "parallel_iterations"
-    value {
-      i: 10
-    }
-  }
-}
-node {
-  name: "while/Merge"
-  op: "Merge"
-  input: "while/Enter"
-  input: "while/NextIteration"
-  attr {
-    key: "N"
-    value {
-      i: 2
-    }
-  }
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/Less/y"
-  op: "Const"
-  input: "^while/Merge"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 10
-      }
-    }
-  }
-}
-node {
-  name: "while/Less"
-  op: "Less"
-  input: "while/Merge"
-  input: "while/Less/y"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/LoopCond"
-  op: "LoopCond"
-  input: "while/Less"
-}
-node {
-  name: "while/Switch"
-  op: "Switch"
-  input: "while/Merge"
-  input: "while/LoopCond"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@while/Merge"
-      }
-    }
-  }
-}
-node {
-  name: "while/Identity"
-  op: "Identity"
-  input: "while/Switch:1"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/Add/y"
-  op: "Const"
-  input: "^while/Identity"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 1
-      }
-    }
-  }
-}
-node {
-  name: "while/Add"
-  op: "Add"
-  input: "while/Identity"
-  input: "while/Add/y"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/NextIteration"
-  op: "NextIteration"
-  input: "while/Add"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-node {
-  name: "while/Exit"
-  op: "Exit"
-  input: "while/Switch"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-versions {
-  producer: 11
-}
-  )EOF";
+    with tf.Graph().as_default():
+      x = tf.constant(2)
+      y = tf.constant(5)
+      z = tf.ones([1,1,1])
+      def f1(): return tf.concat([z, z], axis=0)
+      def f2(): return tf.concat([z, z], axis=1)
+      r = tf.cond(tf.less(x, y), f1, f2)
+      tf.concat([r, r], axis=2)
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+   */
 
   GrapplerItem item;
-  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "merge_without_loops.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically());
 
-  const auto props = properties.GetOutputProperties("while/Exit");
-  EXPECT_EQ(1, props.size());
+  std::vector<string> nodes{"cond/Merge", "cond/concat", "cond/concat_1"};
+  std::vector<string> expected_outputs{"float: [-1,-1,1]", "float: [2,1,1]",
+                                       "float: [1,2,1]"};
+  for (int i = 0; i < nodes.size(); i++) {
+    const auto props = properties.GetOutputProperties(nodes[i]);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ(expected_outputs[i], PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, WhileLoop) {
+  // Test graph produced in python using:
+  /*
+     with tf.Graph().as_default():
+       i0 = tf.constant(0)
+       m0 = tf.ones([2, 2])
+       c = lambda i, m: i < 10
+       b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+       r = tf.while_loop(
+              c, b, loop_vars=[i0, m0],
+              shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+       with open('/tmp/graph.pbtxt', 'w') as f:
+         f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "while_loop.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> nodes{"while/Merge_1", "while/NextIteration_1",
+                            "while/Exit_1"};
+  for (const string& node : nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,2]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, NestedLoop) {
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+
+      def inner(j, y):
+        def inner_cond(j, y):
+          return j < 3
+
+        def inner_body(j, y):
+          return j+1, tf.concat([y, y], axis=2)
+
+        return tf.while_loop(inner_cond, inner_body, loop_vars=[j, y],
+                             shape_invariants=[i0.get_shape(),
+                                              tf.TensorShape([None, 1, None])])
+
+      def outer_cond(i, x):
+        return i < 3
+
+      def outer_body(i, x):
+        j, y = inner(0, x)
+        return i+1, tf.concat([x, x], axis=0)
+
+      r = tf.while_loop(outer_cond, outer_body,
+                        loop_vars=[i0, tf.ones([1, 1, 1])],
+                        shape_invariants=[i0.get_shape(),
+                                          tf.TensorShape([None, 1, None])])
+
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "nested_loop.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
+                                  "while/Exit_1"};
+  std::vector<string> inner_nodes{"while/while/Merge_1",
+                                  "while/while/NextIteration_1",
+                                  "while/while/Exit_1"};
+  for (const string& node : outer_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,1,1]", PropToString(prop));
+  }
+  for (const string& node : inner_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,1,-1]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, LoopsAndQueues) {
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      q = tf.FIFOQueue(1, "float")
+
+      def inner(j, y):
+        def inner_cond(j, y):
+          return j < 3
+
+        def inner_body(j, y):
+          return j+1, tf.concat([y, y], axis=0)
+
+        return tf.while_loop(inner_cond, inner_body,
+                             loop_vars=[j, y],
+                             shape_invariants=[i0.get_shape(),
+                                               tf.TensorShape(None)])
+
+      def outer_cond(i, x):
+        return i < 3
+
+      def outer_body(i, x):
+        q.enqueue(x)
+        y = tf.concat([x, x], axis=2)
+        inner(0, q.dequeue())
+        return i+1, y
+
+      i, z = tf.while_loop(outer_cond, outer_body,
+                           loop_vars=[i0, tf.ones([1, 1, 1])],
+                           shape_invariants=[i0.get_shape(),
+                                             tf.TensorShape([None, 1, None])])
+
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+   */
+
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "loops_and_queues.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
+                                  "while/Exit_1"};
+  std::vector<string> inner_nodes{"while/while/Merge_1",
+                                  "while/while/NextIteration_1",
+                                  "while/while/Exit_1"};
+  for (const string& node : outer_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [1,1,-1]", PropToString(prop));
+  }
+  for (const string& node : inner_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,1,-1]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, QueuesAndLoops) {
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      q0 = tf.FIFOQueue(1, "float")
+      q0.enqueue(tf.ones([2, 2]))
+      q1 = tf.FIFOQueue(1, "float")
+
+      def c(i, m):
+        return i < 10
+
+      def b(i, m):
+        return i+1, tf.concat([m, m], axis=0)
+
+      i, m = tf.while_loop(
+          c, b, loop_vars=[i0,  q0.dequeue()],
+          shape_invariants=[i0.get_shape(), tf.TensorShape(None)])
+
+      q1.enqueue(m)
+      v = q1.dequeue();
+      tf.concat([v, v], axis=1)
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "queues_and_loops.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> nodes{"while/Merge_1", "while/NextIteration_1",
+                            "while/Exit_1"};
+
+  for (const string& node : nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,2]", PropToString(prop));
+  }
+
+  const auto props = properties.GetOutputProperties("concat");
   const OpInfo::TensorProperties& prop = props[0];
-  EXPECT_EQ(DT_INT32, prop.dtype());
-  EXPECT_TRUE(prop.shape().unknown_rank());
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_EQ("float: [-1,4]", PropToString(prop));
 }
 
 }  // namespace

@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -259,10 +259,6 @@ class DebugNumericSummaryOpTest : public OpsTestBase {
 
 #if defined(PLATFORM_GOOGLE)
   void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
-
-  void CreateEmptyEnabledSet(const string& grpc_debug_url) {
-    DebugGrpcIO::CreateEmptyEnabledSet(grpc_debug_url);
-  }
 #endif
 };
 
@@ -604,7 +600,6 @@ TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
   ClearEnabledWatchKeys();
-  CreateEmptyEnabledSet("grpc://server:3333");
 
   std::vector<string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
@@ -617,8 +612,9 @@ TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
 
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToNonMatchingWatchKey) {
   ClearEnabledWatchKeys();
-  DebugGrpcIO::EnableWatchKey("grpc://server:3333",
-                              "FakeTensor:1:DebugNumeriSummary");
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      "grpc://server:3333", "FakeTensor:1:DebugNumeriSummary",
+      EventReply::DebugOpStateChange::READ_ONLY);
 
   std::vector<string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
