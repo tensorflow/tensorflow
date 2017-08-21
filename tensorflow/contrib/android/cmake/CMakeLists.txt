@@ -28,7 +28,7 @@ set_target_properties(lib_proto PROPERTIES IMPORTED_LOCATION
 
 add_library(lib_nsync STATIC IMPORTED )
 set_target_properties(lib_nsync PROPERTIES IMPORTED_LOCATION
-    ${TARGET_NSYNC_LIB})
+    ${TARGET_NSYNC_LIB}/lib/libnsync.a)
 
 add_library(lib_tf STATIC IMPORTED )
 set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
