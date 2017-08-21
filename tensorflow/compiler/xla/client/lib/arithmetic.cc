@@ -22,65 +22,85 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
+namespace {
+using InstructionGenerator =
+    ComputationDataHandle (*)(ComputationBuilder*, const ComputationDataHandle&,
+                              const ComputationDataHandle&);
+
+Computation CreateScalarComputation(const string& name, PrimitiveType type,
+                                    ComputationBuilder* builder,
+                                    InstructionGenerator generator) {
+  std::unique_ptr<ComputationBuilder> b;
+  if (type == PRED) {
+    b = builder->CreateSubBuilder(name);
+  } else {
+    b = builder->CreateSubBuilder(
+        tensorflow::strings::StrCat(name, "_", PrimitiveType_Name(type)));
+  }
+
+  const Shape scalar = ShapeUtil::MakeShape(type, {});
+  auto lhs = b->Parameter(0, scalar, "lhs");
+  auto rhs = b->Parameter(1, scalar, "rhs");
+  generator(b.get(), lhs, rhs);
+  return b->BuildAndNoteError();
+}
+}  // namespace
 
 Computation CreateScalarAddComputation(PrimitiveType type,
                                        ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("add_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Add(lhs, rhs);
-  return b->BuildAndNoteError();
+  return CreateScalarComputation(
+      "add", type, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->Add(lhs, rhs); });
+}
+
+Computation CreateScalarMultiplyComputation(PrimitiveType type,
+                                            ComputationBuilder* builder) {
+  return CreateScalarComputation(
+      "add", type, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->Mul(lhs, rhs); });
 }
 
 Computation CreateScalarGeComputation(PrimitiveType type,
                                       ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("ge_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Ge(lhs, rhs);
-  return b->BuildAndNoteError();
+  return CreateScalarComputation(
+      "ge", type, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->Ge(lhs, rhs); });
 }
 
 Computation CreateScalarMaxComputation(PrimitiveType type,
                                        ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("max_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Max(lhs, rhs);
-  return b->BuildAndNoteError();
+  return CreateScalarComputation(
+      "max", type, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->Max(lhs, rhs); });
 }
 
 Computation CreateScalarMinComputation(PrimitiveType type,
                                        ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("min_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Min(lhs, rhs);
-  return b->BuildAndNoteError();
+  return CreateScalarComputation(
+      "min", type, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->Min(lhs, rhs); });
 }
 
 Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(PRED, {});
-  auto b = builder->CreateSubBuilder("logical_and");
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->LogicalAnd(lhs, rhs);
-  return b->BuildAndNoteError();
+  return CreateScalarComputation(
+      "logical_and", PRED, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->LogicalAnd(lhs, rhs); });
 }
 
 Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(PRED, {});
-  auto b = builder->CreateSubBuilder("logical_or");
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->LogicalOr(lhs, rhs);
-  return b->BuildAndNoteError();
+  return CreateScalarComputation(
+      "logical_or", PRED, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->LogicalOr(lhs, rhs); });
 }
 
 StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,

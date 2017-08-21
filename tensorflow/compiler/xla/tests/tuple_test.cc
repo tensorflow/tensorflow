@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,6 +37,25 @@ class TupleTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001};
 };
+
+// Tests a tuple-shaped constant.
+XLA_TEST_F(TupleTest, TupleConstant) {
+  ComputationBuilder builder(client_, TestName());
+
+  const float constant_scalar = 7.3f;
+  std::initializer_list<float> constant_vector = {1.1f, 2.0f, 3.3f};
+  std::initializer_list<std::initializer_list<float>> constant_matrix = {
+      {1.1f, 2.2f, 3.5f},  // row 0
+      {4.8f, 5.0f, 6.7f},  // row 1
+  };
+  auto value =
+      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
+                          Literal::CreateR1<float>(constant_vector).get(),
+                          Literal::CreateR2<float>(constant_matrix).get()});
+
+  auto result = builder.ConstantLiteral(*value);
+  ComputeAndCompareTuple(&builder, *value, {}, error_spec_);
+}
 
 // Tests the creation of tuple data.
 XLA_TEST_F(TupleTest, TupleCreate) {
@@ -417,20 +435,3 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

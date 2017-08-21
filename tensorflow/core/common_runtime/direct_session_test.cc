@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -406,6 +407,34 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
 }
 
+TEST(DirectSessionTest, FetchMultipleTimes) {
+  Graph g(OpRegistry::Global());
+  Tensor seven_tensor(DT_INT32, TensorShape());
+  seven_tensor.flat<int32>()(0) = 7;
+  Node* seven_node = test::graph::Constant(&g, seven_tensor);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  const std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+
+  auto seven = seven_node->name();
+  Status s = session->Run(inputs, {seven, seven}, {}, &outputs);
+  TF_ASSERT_OK(s);
+
+  EXPECT_EQ(2, outputs.size());
+  for (int i = 0; i < outputs.size(); ++i) {
+    const Tensor& t = outputs[i];
+    ASSERT_TRUE(t.IsInitialized()) << i;
+    EXPECT_EQ(7, t.flat<int32>()(0)) << i;
+  }
+}
+
 REGISTER_OP("Darth")
     .Input("x: float")
     .Output("y: float")
@@ -447,7 +476,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -465,7 +494,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -1218,6 +1247,16 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, LocalDeviceManager) {
+  SessionOptions options;
+  std::unique_ptr<Session> session(NewSession(options));
+
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 0);
 }
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls

@@ -38,10 +38,12 @@ namespace tensorflow {
 // Forward declarations.  In particular, we forward declare protos so that their
 // symbols can be removed from .so exports.
 class AllocationDescription;
+class Allocator;
 class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
+class VariantTensorData;
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.
@@ -190,7 +192,7 @@ class Tensor {
   /// The returned tensor shares the underlying tensor buffer with this
   /// tensor.
   ///
-  /// NOTE: The returned tensor may not satisfies the same alignment
+  /// NOTE: The returned tensor may not satisfy the same alignment
   /// requirement as this tensor depending on the shape. The caller
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).

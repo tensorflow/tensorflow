@@ -35,21 +35,22 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-const Shape& HloLocation::shape() const {
+const Shape& HloPosition::shape() const {
   return ShapeUtil::GetSubshape(instruction->shape(), index);
 }
 
-string HloLocation::ToString() const {
+string HloPosition::ToString() const {
   string index_str =
       ShapeUtil::IsTuple(instruction->shape()) ? (" " + index.ToString()) : "";
-  return StrCat(instruction->FullyQualifiedName(), index_str);
+  return StrCat(instruction->name(), index_str);
 }
 
-std::ostream& operator<<(std::ostream& out, const HloLocation& location) {
-  out << location.ToString();
+std::ostream& operator<<(std::ostream& out, const HloPosition& position) {
+  out << position.ToString();
   return out;
 }
 
@@ -58,8 +59,7 @@ string HloUse::ToString() const {
       ShapeUtil::IsTuple(instruction->operand(operand_number)->shape())
           ? (" " + operand_index.ToString())
           : "";
-  return StrCat(instruction->FullyQualifiedName(), ", operand ", operand_number,
-                index_str);
+  return StrCat(instruction->name(), ", operand ", operand_number, index_str);
 }
 
 std::ostream& operator<<(std::ostream& out, const HloUse& use) {
@@ -70,8 +70,8 @@ std::ostream& operator<<(std::ostream& out, const HloUse& use) {
 HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
                    const ShapeIndex& index, bool is_phi)
     : id_(id), is_phi_(is_phi) {
-  // The defining location is always the first element in the locations_ vector.
-  AddLocation(instruction, index);
+  // The defining position is always the first element in the positions_ vector.
+  AddPosition(instruction, index);
 }
 
 bool HloValue::operator==(const HloValue& other) const {
@@ -90,15 +90,15 @@ string HloValue::ToShortString() const {
   string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
                          ? defining_index().ToString()
                          : "";
-  return StrCat(is_phi_ ? "PHI " : "",
-                defining_instruction()->FullyQualifiedName(), index_str);
+  return StrCat(id_, " ", is_phi_ ? "PHI " : "", defining_instruction()->name(),
+                index_str);
 }
 
 string HloValue::ToString(int indent) const {
   string indentation(indent, ' ');
-  string out = StrCat(indentation, ToShortString(), ", locations:\n");
-  for (const HloLocation& location : locations()) {
-    StrAppend(&out, indentation, "  ", location.ToString(), "\n");
+  string out = StrCat(indentation, ToShortString(), ", positions:\n");
+  for (const HloPosition& position : positions()) {
+    StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
   StrAppend(&out, indentation, " uses:\n");
   for (const HloUse& use : uses()) {
@@ -151,22 +151,22 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
 
 }  // namespace
 
-void HloValue::AddLocation(HloInstruction* instruction,
+void HloValue::AddPosition(HloInstruction* instruction,
                            const ShapeIndex& index) {
-  HloLocation new_location{instruction, index};
+  HloPosition new_position{instruction, index};
 
-  // The new location must not already exist in locations_.
-  for (const HloLocation& location : locations_) {
-    DCHECK_NE(location, new_location);
+  // The new position must not already exist in positions_.
+  for (const HloPosition& position : positions_) {
+    DCHECK_NE(position, new_position);
   }
-  // The shape of the new location must match existing locations.
-  if (!locations_.empty()) {
+  // The shape of the new position must match existing positions.
+  if (!positions_.empty()) {
     CHECK(
-        ShapeUtil::Compatible(locations_.front().shape(), new_location.shape()))
-        << "front: " << locations_.front() << " new: " << new_location;
+        ShapeUtil::Compatible(positions_.front().shape(), new_position.shape()))
+        << "front: " << positions_.front() << " new: " << new_position;
   }
 
-  locations_.push_back(std::move(new_location));
+  positions_.push_back(std::move(new_position));
 
   // Update uses.
   for (HloInstruction* user : instruction->users()) {
@@ -195,23 +195,23 @@ void HloValue::AddLocation(HloInstruction* instruction,
   }
 }
 
-void HloValue::RemoveLocation(HloInstruction* instruction,
+void HloValue::RemovePosition(HloInstruction* instruction,
                               const ShapeIndex& index) {
-  // The defining location cannot be removed.
+  // The defining position cannot be removed.
   CHECK(!(instruction == defining_instruction() && index == defining_index()));
 
-  int64 size_before = locations_.size();
-  locations_.erase(
-      std::remove_if(locations_.begin(), locations_.end(),
-                     [instruction, &index](const HloLocation& location) {
-                       return location.instruction == instruction &&
-                              location.index == index;
+  int64 size_before = positions_.size();
+  positions_.erase(
+      std::remove_if(positions_.begin(), positions_.end(),
+                     [instruction, &index](const HloPosition& position) {
+                       return position.instruction == instruction &&
+                              position.index == index;
                      }),
-      locations_.end());
-  // Only a single location should have been removed.
-  CHECK_EQ(locations_.size(), size_before - 1);
+      positions_.end());
+  // Only a single position should have been removed.
+  CHECK_EQ(positions_.size(), size_before - 1);
 
-  //  Update uses which referred to this location.
+  //  Update uses which referred to this position.
   uses_.erase(std::remove_if(uses_.begin(), uses_.end(),
                              [instruction, &index](const HloUse& use) {
                                return use.instruction->operand(
@@ -222,8 +222,8 @@ void HloValue::RemoveLocation(HloInstruction* instruction,
 
   // Returns whether this value is contained in the given instruction's output.
   auto is_contained_in = [this](const HloInstruction* instruction) {
-    for (const HloLocation& location : locations()) {
-      if (location.instruction == instruction) {
+    for (const HloPosition& position : positions()) {
+      if (position.instruction == instruction) {
         return true;
       }
     }
@@ -232,7 +232,7 @@ void HloValue::RemoveLocation(HloInstruction* instruction,
 
   const HloModule& module = *instruction->parent()->parent();
   if (instruction == module.entry_computation()->root_instruction()) {
-    // Value has been removed from a location in the entry root instruction.
+    // Value has been removed from a position in the entry root instruction.
     live_out_of_module_ =
         is_contained_in(module.entry_computation()->root_instruction());
   }
@@ -244,32 +244,61 @@ void HloValue::RemoveLocation(HloInstruction* instruction,
   }
 }
 
+void HloValue::RecomputeUses() {
+  uses_.clear();
+  for (const HloPosition& position : positions()) {
+    for (HloInstruction* user : position.instruction->users()) {
+      for (int64 operand_number : user->OperandIndices(position.instruction)) {
+        if (MayUseOperandValue(operand_number, position.index, user)) {
+          uses_.push_back(HloUse{user, operand_number, position.index});
+        }
+      }
+    }
+  }
+}
+
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {
   out << value.ToShortString();
   return out;
 }
 
 void HloValueSet::SortAndUniquifyValues() {
-  std::sort(value_ids_.begin(), value_ids_.end());
-  value_ids_.erase(std::unique(value_ids_.begin(), value_ids_.end()),
-                   value_ids_.end());
+  std::sort(values_.begin(), values_.end(), HloValue::IdLessThan);
+  values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
+                values_.end());
 }
 
 string HloValueSet::ToString() const {
-  return StrCat("HloValueSet: ", tensorflow::str_util::Join(value_ids_, ", "));
+  return StrCat("HloValueSet: ",
+                Join(values_, ", ", [](string* result, const HloValue* value) {
+                  result->append(value->ToShortString());
+                }));
 }
 
-/*static */
-HloValueSet HloValueSet::Union(
+bool HloValueSet::AssignUnionOf(
     tensorflow::gtl::ArraySlice<const HloValueSet*> inputs) {
   HloValueSet union_set;
   for (const HloValueSet* input : inputs) {
-    for (HloValue::Id value_id : input->value_ids()) {
-      union_set.value_ids_.push_back(value_id);
+    for (const HloValue* value : input->values()) {
+      union_set.values_.push_back(value);
     }
   }
   union_set.SortAndUniquifyValues();
-  return union_set;
+  if (*this != union_set) {
+    *this = union_set;
+    return true;
+  }
+  return false;
+}
+
+bool HloValueSet::AddValue(const HloValue* value) {
+  auto it = std::lower_bound(values_.begin(), values_.end(), value,
+                             HloValue::IdLessThan);
+  if (it == values_.end() || (*it)->id() != value->id()) {
+    values_.insert(it, value);
+    return true;
+  }
+  return false;  // already exists
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
@@ -277,22 +306,25 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   return out;
 }
 
-InstructionValueSet InstructionValueSet::Union(
+bool InstructionValueSet::AssignUnionOf(
     tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
   CHECK_GT(inputs.size(), 0);
   for (int i = 1; i < inputs.size(); ++i) {
-    CHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
+    DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
   }
-  InstructionValueSet union_set(inputs[0]->shape());
-  union_set.ForEachMutableElement(
-      [&inputs](const ShapeIndex& index, HloValueSet* value_set) {
-        std::vector<const HloValueSet*> input_sets;
-        for (const InstructionValueSet* input : inputs) {
-          input_sets.push_back(&input->element(index));
-        }
-        *value_set = HloValueSet::Union(input_sets);
-      });
-  return union_set;
+  bool changed = false;
+  for (auto& pair : *this) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    std::vector<const HloValueSet*> input_value_sets;
+    for (const InstructionValueSet* input : inputs) {
+      input_value_sets.push_back(&input->element(index));
+    }
+    changed |= value_set.AssignUnionOf(input_value_sets);
+  }
+
+  return changed;
 }
 
 std::ostream& operator<<(std::ostream& out,

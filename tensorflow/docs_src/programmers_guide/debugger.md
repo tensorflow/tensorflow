@@ -35,11 +35,13 @@ This code trains a simple neural network for MNIST digit image recognition.
 Notice that the accuracy increases slightly after the first training step, but
 then gets stuck at a low (near-chance) level:
 
-> Accuracy at step 0: 0.1113
-> Accuracy at step 1: 0.3183
-> Accuracy at step 2: 0.098
-> Accuracy at step 3: 0.098
-> Accuracy at step 4: 0.098
+```none
+Accuracy at step 0: 0.1113
+Accuracy at step 1: 0.3183
+Accuracy at step 2: 0.098
+Accuracy at step 3: 0.098
+Accuracy at step 4: 0.098
+```
 
 Wondering what might have gone wrong, you suspect that certain nodes in the
 training graph generated bad numeric values such as `inf`s and `nan`s, because
@@ -138,7 +140,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | Command            | Syntax or Option | Explanation  | Example                   |
 |:-------------------|:---------------- |:------------ |:------------------------- |
 | **`lt`** | | **List dumped tensors.** | `lt` |
-| | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n softmax.*` |
+| | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n Softmax.*` |
 | | `-t <op_pattern>` | List dumped tensors with op types matching given regular-expression pattern. | `lt -t MatMul` |
 | | `s <sort_key>` | Sort the output by given `sort_key`, whose possible values are `timestamp` (default), `dump_size`, `op_type` and `tensor_name`. | `lt -s dump_size` |
 | | `-r` | Sort in reverse order. | `lt -r -s dump_size` |
@@ -147,9 +149,15 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `pt <tensor>[slicing]` | Print a subarray of tensor, using [numpy](http://www.numpy.org/)-style array slicing. | `pt hidden/Relu:0[0:50,:]` |
 | | `-a` | Print the entirety of a large tensor, without using ellipses. (May take a long time for large tensors.) | `pt -a hidden/Relu:0[0:50,:]` |
 | | `-r <range>` | Highlight elements falling into specified numerical range. Multiple ranges can be used in conjunction. | `pt hidden/Relu:0 -a -r [[-inf,-1],[1,inf]]` |
+| | `-s` | Include a summary of the numeric values of the tensor (applicable only to non-empty tensors with Boolean and numeric types such as `int*` and `float*`.) | `pt -s hidden/Relu:0[0:50,:]` |
 | **`@[coordinates]`** | | Navigate to specified element in `pt` output. | `@[10,0]` or `@10,0` |
 | **`/regex`** | |  [less](https://linux.die.net/man/1/less)-style search for given regular expression. | `/inf` |
 | **`/`** | | Scroll to the next line with matches to the searched regex (if any). | `/` |
+| **`pf`** | | **Print a value in the feed_dict to `Session.run`.** | |
+| | `pf <feed_tensor_name>` | Print the value of the feed. Also note that the `pf` command has the `-a`, `-r` and `-s` flags (not listed below), which have the same syntax and semantics as the identically-named flags of `pt`. | `pf input_xs:0` |
+| **eval** | | **Evaluate arbitrary Python and numpy expression.** | |
+| | `eval <expression>` | Evaluate a Python / numpy expression, with numpy available as `np` and debug tensor names enclosed in backticks. | ``eval "np.matmul((`output/Identity:0` / `Softmax:0`).T, `Softmax:0`)"`` |
+| | `-a` | Print a large-sized evaluation result in its entirety, i.e., without using ellipses. | ``eval -a 'np.sum(`Softmax:0`, axis=1)'`` |
 | **`ni`** | | **Display node information.** | |
 | | `-a` | Include node attributes in the output. | `ni -a hidden/Relu` |
 | | `-d` | List the debug dumps available from the node. | `ni -d hidden/Relu` |
@@ -164,7 +172,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-c` | Include recipients via control edges. | `lo -c -r hidden/Relu:0` |
 | **`ls`** | | **List Python source files involved in node creation.** | |
 | | `-p <path_pattern>` | Limit output to source files matching given regular-expression path pattern. | `ls -p .*debug_mnist.*` |
-| | `-n` | Limit output to node names matching given regular-expression pattern. | `ls -n softmax.*` |
+| | `-n` | Limit output to node names matching given regular-expression pattern. | `ls -n Softmax.*` |
 | **`ps`** | | **Print Python source file.** | |
 | | `ps <file_path>` | Print given Python source file source.py, with the lines annotated with the nodes created at each of them (if any). | `ps /path/to/source.py` |
 | | `-t` | Perform annotation with respect to Tensors, instead of the default, nodes. | `ps -t /path/to/source.py` |
@@ -174,9 +182,10 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-n` | Execute through the next `Session.run` without debugging, and drop to CLI right before the run after that. | `run -n` |
 | | `-t <T>` | Execute `Session.run` `T - 1` times without debugging, followed by a run with debugging. Then drop to CLI right after the debugged run. | `run -t 10` |
 | | `-f <filter_name>` | Continue executing `Session.run` until any intermediate tensor triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan` |
-| | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter softmax.*` |
+| | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter Softmax.*` |
 | | `--op_type_filter <pattern>` | Execute the next `Session.run`, watching only nodes with op types matching the given regular-expression pattern. | `run --op_type_filter Variable.*` |
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
+| | `-p` | Execute the next `Session.run` call in profiling mode. | `run -p` |
 | **`ri`** | | **Display information about the run the current run, including fetches and feeds.** | `ri` |
 | **`help`** | | **Print general help information** | `help` |
 | | `help <command>` | Print help for given command. | `help lt` |
@@ -289,6 +298,16 @@ Or, alternatively:
 tfdbg> /(inf|nan)
 ```
 
+You can also use the `-s` or `--numeric_summary` command to get a quick summary
+of the types of numeric values in the tensor:
+
+``` none
+tfdbg> pt -s cross_entropy/Log:0
+```
+
+From the summary, you can see that several of the 1000 elements of the
+`cross_entropy/Log:0` tensor are `-inf`s (negative infinities).
+
 Why did these infinities appear? To further debug, display more information
 about the node `cross_entropy/Log` by clicking the underlined `node_info` menu
 item on the top or entering the equivalent node_info (`ni`) command:
@@ -333,7 +352,7 @@ line:
 diff = y_ * tf.log(y)
 ```
 
-***tfdbg** has a feature that makes it easy to trace Tensors and ops back to
+**tfdbg** has a feature that makes it easy to trace Tensors and ops back to
 lines in Python source files. It can annotate lines of a Python file with
 the ops or Tensors created by them. To use this feature,
 simply click the underlined line numbers in the stack trace output of the
@@ -543,7 +562,7 @@ The `watch_fn` argument accepts a `Callable` that allows you to configure what
 
 ### C++ and other languages
 
-If you model code is written in C++ or other languages, you can also
+If your model code is written in C++ or other languages, you can also
 modify the `debug_options` field of `RunOptions` to generate debug dumps that
 can be inspected offline. See
 [the proto definition](https://www.tensorflow.org/code/tensorflow/core/protobuf/debug.proto)
@@ -587,8 +606,10 @@ python -m tensorflow.python.debug.cli.offline_analyzer \
        graph to record the values of intermediate tensors. These nodes
        slow down the graph execution. If you are interested in profiling your
        model, check out
-       [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
-       and other profiling tools for TensorFlow.
+
+   1. The profiling mode of tfdbg: `tfdbg> run -p`.
+   2. [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler)
+      and other profiling tools for TensorFlow.
 
 **Q**: _How do I link tfdbg against my `Session` in Bazel? Why do I see an
        error such as "ImportError: cannot import name debug"?_

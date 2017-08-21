@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -26,6 +27,7 @@ REGISTER_OP("XlaWhile")
     .Attr("cond: func")
     .Attr("body: func")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 output = input; While (Cond(output)) { output = Body(output) }
 

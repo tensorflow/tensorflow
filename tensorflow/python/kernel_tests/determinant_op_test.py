@@ -20,8 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -34,11 +38,11 @@ class DeterminantOpTest(test.TestCase):
       np_ans = np.ones(shape[:-2]).astype(matrix_x.dtype)
     else:
       np_ans = np.array(np.linalg.det(matrix_x)).astype(matrix_x.dtype)
-    self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
+    self.assertAllClose(np_ans, out, atol=5e-5)
 
   def _compareDeterminant(self, matrix_x):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
 
@@ -66,6 +70,41 @@ class DeterminantOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.float64))
 
+  def testBasicComplex64(self):
+    # 2x2 matrices
+    self._compareDeterminant(
+        np.array([[2., 3.], [3., 4.]]).astype(np.complex64))
+    self._compareDeterminant(
+        np.array([[0., 0.], [0., 0.]]).astype(np.complex64))
+    self._compareDeterminant(
+        np.array([[1. + 1.j, 1. - 1.j], [-1. + 1.j, -1. - 1.j]]).astype(
+            np.complex64))
+    # 5x5 matrices (Eigen forces LU decomposition)
+    self._compareDeterminant(
+        np.array([[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [
+            2., 5., 8., 3., 8.
+        ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.complex64))
+    # A multidimensional batch of 2x2 matrices
+    self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.complex64))
+
+  def testBasicComplex128(self):
+    # 2x2 matrices
+    self._compareDeterminant(
+        np.array([[2., 3.], [3., 4.]]).astype(np.complex128))
+    self._compareDeterminant(
+        np.array([[0., 0.], [0., 0.]]).astype(np.complex128))
+    self._compareDeterminant(
+        np.array([[1. + 1.j, 1. - 1.j], [-1. + 1.j, -1. - 1.j]]).astype(
+            np.complex128))
+    # 5x5 matrices (Eigen forces LU decomposition)
+    self._compareDeterminant(
+        np.array([[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [
+            2., 5., 8., 3., 8.
+        ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.complex128))
+    # A multidimensional batch of 2x2 matrices
+    self._compareDeterminant(
+        np.random.rand(3, 4, 5, 2, 2).astype(np.complex128))
+
   def testOverflow(self):
     max_double = np.finfo("d").max
     huge_matrix = np.array([[max_double, 0.0], [0.0, max_double]])
@@ -88,6 +127,59 @@ class DeterminantOpTest(test.TestCase):
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))
     self._compareDeterminant(np.empty([2, 0, 0]))
+
+
+class MatrixDeterminantBenchmark(test.Benchmark):
+
+  shapes = [
+      (4, 4),
+      (10, 10),
+      (16, 16),
+      (101, 101),
+      (256, 256),
+      (1000, 1000),
+      (1024, 1024),
+      (2048, 2048),
+      (513, 4, 4),
+      (513, 16, 16),
+      (513, 256, 256),
+  ]
+
+  def _GenerateMatrix(self, shape):
+    batch_shape = shape[:-2]
+    shape = shape[-2:]
+    assert shape[0] == shape[1]
+    n = shape[0]
+    matrix = np.ones(shape).astype(np.float32) / (
+        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
+
+  def benchmarkMatrixDeterminantOp(self):
+    for shape in self.shapes:
+      with ops.Graph().as_default(), session.Session() as sess, ops.device(
+          "/cpu:0"):
+        matrix = self._GenerateMatrix(shape)
+        d = linalg_ops.matrix_determinant(matrix)
+        variables.global_variables_initializer().run()
+        self.run_op_benchmark(
+            sess,
+            control_flow_ops.group(
+                d,),
+            min_iters=25,
+            name="matrix_determinant_cpu_{shape}".format(shape=shape))
+
+      if test.is_gpu_available(True):
+        with ops.Graph().as_default(), session.Session() as sess, ops.device(
+            "/gpu:0"):
+          matrix = self._GenerateMatrix(shape)
+          d = linalg_ops.matrix_determinant(matrix)
+          variables.global_variables_initializer().run()
+          self.run_op_benchmark(
+              sess,
+              control_flow_ops.group(
+                  d,),
+              min_iters=25,
+              name="matrix_determinant_gpu_{shape}".format(shape=shape))
 
 
 if __name__ == "__main__":

@@ -21,6 +21,8 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import custom_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -38,9 +40,53 @@ from tensorflow.python.util import compat
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  TODO(apassos): fill this out explaining the semantics and Variable
-  compatibility when the API has settled more.
+  See the ${variables} documentation for more details.
 
+  A `ResourceVariable` allows you to maintain state across subsequent calls to
+  session.run.
+
+  The `ResourceVariable` constructor requires an initial value for the variable,
+  which can be a `Tensor` of any type and shape. The initial value defines the
+  type and shape of the variable. After construction, the type and shape of
+  the variable are fixed. The value can be changed using one of the assign
+  methods.
+
+  Just like any `Tensor`, variables created with `ResourceVariable()` can be
+  used as inputs for other Ops in the graph. Additionally, all the operators
+  overloaded for the `Tensor` class are carried over to variables, so you can
+  also add nodes to the graph by just doing arithmetic on variables.
+
+  Unlike tf.Variable, a tf.ResourceVariable has well-defined semantics. Each
+  usage of a ResourceVariable in a TensorFlow graph adds a read_value operation
+  to the graph. The Tensors returned by a read_value operation are guaranteed
+  to see all modifications to the value of the variable which happen in any
+  operation on which the read_value depends on (either directly, indirectly, or
+  via a control dependency) and guaranteed to not see any modification to the
+  value of the variable on which the read_value operation does not depend on.
+
+  For example, if there is more than one assignment to a ResourceVariable in
+  a single session.run call there is a well-defined value for each operation
+  which uses the variable's value if the assignments and the read are connected
+  by edges in the graph. Consider the following example, in which two writes
+  can cause tf.Variable and tf.ResourceVariable to behave differently:
+
+   ```python
+    a = tf.ResourceVariable(1.0)
+    a.initializer.run()
+
+    assign = a.assign(2.0)
+    with tf.control_dependencies([assign]):
+      b = a.read_value()
+
+    other_assign = a.assign(3.0)
+    with tf.control_dependencies([other_assign]):
+      tf.Print(b, [b]).run()  # Will print 2.0 because the value was read before
+                              # other_assign ran.
+  ```
+
+  To enforce these consistency properties tf.ResourceVariable might make more
+  copies than an equivalent tf.Variable under the hood, so tf.Variable is still
+  not deprecated.
   """
 
   def __init__(self,
@@ -52,7 +98,8 @@ class ResourceVariable(variables.Variable):
                name=None,
                dtype=None,
                variable_def=None,
-               import_scope=None):
+               import_scope=None,
+               constraint=None):
     """Creates a variable.
 
     Args:
@@ -84,6 +131,13 @@ class ResourceVariable(variables.Variable):
         arguments (except for import_scope) are mutually exclusive.
       import_scope: Optional `string`. Name scope to add to the
         ResourceVariable. Only used when `variable_def` is provided.
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -93,15 +147,20 @@ class ResourceVariable(variables.Variable):
       if initial_value:
         raise ValueError("variable_def and initial_value are mutually "
                          "exclusive.")
+      if not context.in_graph_mode():
+        raise ValueError("Creating ResourceVariable from variable_def"
+                         " only supported in GRAPH mode.")
       self._init_from_proto(variable_def, import_scope=import_scope)
     else:
-      self._init_from_args(initial_value=initial_value,
-                           trainable=trainable,
-                           collections=collections,
-                           validate_shape=validate_shape,
-                           caching_device=caching_device,
-                           name=name,
-                           dtype=dtype)
+      self._init_from_args(
+          initial_value=initial_value,
+          trainable=trainable,
+          collections=collections,
+          validate_shape=validate_shape,
+          caching_device=caching_device,
+          name=name,
+          dtype=dtype,
+          constraint=constraint)
 
   # pylint: disable=unused-argument
   def _init_from_args(self,
@@ -111,8 +170,8 @@ class ResourceVariable(variables.Variable):
                       validate_shape=True,
                       caching_device=None,
                       name=None,
-                      dtype=None):
-
+                      dtype=None,
+                      constraint=None):
     """Creates a variable.
 
     Args:
@@ -139,6 +198,13 @@ class ResourceVariable(variables.Variable):
         If None, either the datatype will be kept (if initial_value is
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -154,37 +220,54 @@ class ResourceVariable(variables.Variable):
       raise ValueError(
           "collections argument to Variable constructor must be a list, tuple, "
           "or set. Got %s of type %s" % (collections, type(collections)))
+    if constraint is not None and not callable(constraint):
+      raise ValueError("The `constraint` argument must be a callable.")
+
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     self._save_slice_info = None
+    in_graph_mode = context.in_graph_mode()
     with ops.control_dependencies(None):
-      with ops.name_scope(name, "Variable", [] if init_from_fn else
-                          [initial_value]) as name:
+      with ops.name_scope(name, "Variable", []
+                          if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        true_name = ops._name_from_scope_name(name)
+        handle_name = ops._name_from_scope_name(name)
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          attr = attr_value_pb2.AttrValue(
-              list=attr_value_pb2.AttrValue.ListValue(
-                  s=[compat.as_bytes("loc:@%s" % true_name)]))
-          with ops.get_default_graph()._attr_scope({"_class": attr}):
-            with ops.name_scope("Initializer"), ops.device(None):
-              self._initial_value = ops.convert_to_tensor(
-                  initial_value(), name="initial_value", dtype=dtype)
+          if in_graph_mode:
+            attr = attr_value_pb2.AttrValue(
+                list=attr_value_pb2.AttrValue.ListValue(
+                    s=[compat.as_bytes("loc:@%s" % handle_name)]))
+            with ops.get_default_graph()._attr_scope({"_class": attr}):
+              with ops.name_scope("Initializer"), ops.device(None):
+                initial_value = ops.convert_to_tensor(
+                    initial_value(), name="initial_value", dtype=dtype)
+              self._handle = gen_resource_variable_ops.var_handle_op(
+                  shape=initial_value.get_shape(),
+                  dtype=initial_value.dtype.base_dtype,
+                  shared_name=handle_name,
+                  name=name)
+          else:
+            initial_value = initial_value()
             self._handle = gen_resource_variable_ops.var_handle_op(
-                shape=self._initial_value.get_shape(),
-                dtype=self._initial_value.dtype.base_dtype,
-                shared_name=true_name, name=name)
+                shape=initial_value.get_shape(),
+                dtype=initial_value.dtype.base_dtype,
+                shared_name=handle_name,
+                name=name,
+                container="")
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
         else:
-          self._initial_value = ops.convert_to_tensor(
-              initial_value, name="initial_value", dtype=dtype)
+          with ops.name_scope("Initializer"):
+            initial_value = ops.convert_to_tensor(
+                initial_value, name="initial_value", dtype=dtype)
           # pylint: disable=protected-access
-          if self._initial_value.op._get_control_flow_context() is not None:
+          if (in_graph_mode and
+              initial_value is not None and
+              initial_value.op._get_control_flow_context() is not None):
             raise ValueError(
                 "Initializer for variable %s is from inside a control-flow "
                 "construct, such as a loop or conditional. When creating a "
@@ -192,42 +275,64 @@ class ResourceVariable(variables.Variable):
                 "initializer." % name)
           # pylint: enable=protected-access
           self._handle = gen_resource_variable_ops.var_handle_op(
-              shape=self._initial_value.get_shape(),
-              dtype=self._initial_value.dtype.base_dtype,
-              shared_name=true_name, name=name)
+              shape=initial_value.get_shape(),
+              dtype=initial_value.dtype.base_dtype,
+              shared_name=handle_name,
+              name=name,
+              container="")
 
-        self._dtype = self._initial_value.dtype.base_dtype
+        self._initial_value = initial_value if in_graph_mode else None
+        self._handle_name = handle_name + ":0"
+        self._dtype = initial_value.dtype.base_dtype
+        self._constraint = constraint
 
-        with ops.name_scope("IsInitialized"):
-          self._is_initialized_op = (
-              gen_resource_variable_ops.var_is_initialized_op(self._handle))
-        if initial_value is not None:
-          with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-            self._initializer_op = gen_resource_variable_ops.assign_variable_op(
-                self._handle, self._initial_value, name=n)
-        with ops.name_scope("Read"), ops.colocate_with(self._handle):
-          # Manually assign reads to the handle's device to avoid log messages.
-          with ops.device(self._handle.device):
-            value = gen_resource_variable_ops.read_variable_op(
-                self._handle, dtype=self._dtype)
-          self._graph_element = value
-          if caching_device is not None:
-            # Variables may be created in a tf.device() or ops.colocate_with()
-            # context. At the same time, users would expect caching device to be
-            # independent of this context, and/or would not expect the current
-            # device context to be merged with the caching device spec.
-            # Therefore we reset the colocation stack before creating the cached
-            # value. Note that resetting the colocation stack will also reset
-            # the device stack.
-            with ops.colocate_with(None, ignore_existing=True):
-              with ops.device(caching_device):
-                self._cached_value = array_ops.identity(value)
+        if in_graph_mode:
+          with ops.name_scope("IsInitialized"):
+            self._is_initialized_op = (
+                gen_resource_variable_ops.var_is_initialized_op(self._handle))
+          if initial_value is not None:
+            with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+              self._initializer_op = (
+                  gen_resource_variable_ops.assign_variable_op(
+                      self._handle,
+                      self._build_initializer_expr(initial_value),
+                      name=n))
+          with ops.name_scope("Read"), ops.colocate_with(self._handle):
+            # Manually assign reads to the handle's device to avoid log
+            # messages.
+            with ops.device(self._handle.device):
+              value = read_variable_op(self._handle, dtype=self._dtype)
+            self._graph_element = value
+            if caching_device is not None:
+              # Variables may be created in a tf.device() or ops.colocate_with()
+              # context. At the same time, users would expect caching device to
+              # be independent of this context, and/or would not expect the
+              # current device context to be merged with the caching device
+              # spec.  Therefore we reset the colocation stack before creating
+              # the cached value. Note that resetting the colocation stack will
+              # also reset the device stack.
+              with ops.colocate_with(None, ignore_existing=True):
+                with ops.device(caching_device):
+                  self._cached_value = array_ops.identity(value)
+            else:
+              self._cached_value = None
+        else:
+          gen_resource_variable_ops.assign_variable_op(self._handle,
+                                                       initial_value)
+          self._is_initialized_op = None
+          self._initializer_op = None
+          self._graph_element = None
+          if caching_device:
+            with ops.device(caching_device):
+              self._cached_value = read_variable_op(self._handle,
+                                                    dtype=self._dtype)
           else:
             self._cached_value = None
-          ops.add_to_collections(collections, self)
+        ops.add_to_collections(collections, self)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
+    assert context.in_graph_mode()
     assert isinstance(variable_def, variable_pb2.VariableDef)
     if not variable_def.is_resource:
       raise ValueError("Trying to restore Variable as ResourceVariable.")
@@ -235,15 +340,16 @@ class ResourceVariable(variables.Variable):
     # Create from variable_def.
     g = ops.get_default_graph()
     self._handle = g.as_graph_element(
-        ops.prepend_name_scope(variable_def.variable_name,
-                               import_scope=import_scope))
+        ops.prepend_name_scope(
+            variable_def.variable_name, import_scope=import_scope))
+    self._handle_name = self._handle.name
     self._initializer_op = g.as_graph_element(
-        ops.prepend_name_scope(variable_def.initializer_name,
-                               import_scope=import_scope))
+        ops.prepend_name_scope(
+            variable_def.initializer_name, import_scope=import_scope))
     if variable_def.snapshot_name:
       self._cached_value = g.as_graph_element(
-          ops.prepend_name_scope(variable_def.snapshot_name,
-                                 import_scope=import_scope))
+          ops.prepend_name_scope(
+              variable_def.snapshot_name, import_scope=import_scope))
     else:
       self._cached_value = None
     if variable_def.HasField("save_slice_info_def"):
@@ -254,6 +360,7 @@ class ResourceVariable(variables.Variable):
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
+    self._constraint = None
 
   @property
   def dtype(self):
@@ -273,15 +380,22 @@ class ResourceVariable(variables.Variable):
   @property
   def name(self):
     """The name of the handle for this variable."""
-    return self._handle.name
+    return self._handle_name
 
-  def get_shape(self):
+  @property
+  def shape(self):
     """The shape of this variable."""
-    return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
+    if context.in_graph_mode():
+      return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
+    else:
+      # TODO(agarwal): avoid a call to value here.
+      return self.value().shape
 
   @property
   def create(self):
     """The op responsible for initializing this variable."""
+    if not context.in_graph_mode():
+      raise RuntimeError("Calling create in EAGER mode not supported.")
     return self._initializer_op
 
   @property
@@ -295,8 +409,7 @@ class ResourceVariable(variables.Variable):
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._handle.device):
-        return gen_resource_variable_ops.read_variable_op(
-            self._handle, dtype=self._dtype)
+        return read_variable_op(self._handle, dtype=self._dtype)
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -310,7 +423,19 @@ class ResourceVariable(variables.Variable):
   @property
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable."""
+    if context.in_eager_mode():
+      raise RuntimeError("initial_value not supported in EAGER mode.""")
     return self._initial_value
+
+  @property
+  def constraint(self):
+    """Returns the constraint function associated with this variable.
+
+    Returns:
+      The constraint function that was passed to the variable constructor.
+      Can be `None` if no constraint was passed.
+    """
+    return self._constraint
 
   @property
   def op(self):
@@ -319,6 +444,8 @@ class ResourceVariable(variables.Variable):
 
   def eval(self, session=None):
     """Evaluates and returns the value of this variable."""
+    if context.in_eager_mode():
+      raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
 
   def _set_save_slice_info(self, save_slice_info):
@@ -342,9 +469,17 @@ class ResourceVariable(variables.Variable):
      the read operation.
     """
     with ops.name_scope("Read"):
-      with ops.device(self._handle.device):
-        value = gen_resource_variable_ops.read_variable_op(
-            self._handle, dtype=self._dtype)
+      # In graph mode, ensure we read the variable in the same device as the
+      # handle. In eager mode, however, this sometimes tries to read a GPU
+      # variable in the CPU because the handle is host memory. For now, then, we
+      # need to skip the device block in eager. TODO(apassos) eager should have
+      # separate notions of device and memory, so handle.device can be GPU while
+      # handle.memory_space is always CPU.
+      if context.in_graph_mode():
+        with ops.device(self._handle.device):
+          value = read_variable_op(self._handle, dtype=self._dtype)
+      else:
+        value = read_variable_op(self._handle, dtype=self._dtype)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
@@ -362,32 +497,38 @@ class ResourceVariable(variables.Variable):
     Args:
       export_scope: Optional `string`. Name scope to remove.
 
+    Raises:
+      RuntimeError: If run in EAGER mode.
+
     Returns:
       A `VariableDef` protocol buffer, or `None` if the `Variable` is not
       in the specified name scope.
     """
-    if (export_scope is None or
-        self.handle.name.startswith(export_scope)):
+    if context.in_eager_mode():
+      raise RuntimeError("to_proto not supported in EAGER mode.")
+    if export_scope is None or self.handle.name.startswith(export_scope):
       var_def = variable_pb2.VariableDef()
-      var_def.variable_name = ops.strip_name_scope(
-          self.handle.name, export_scope)
-      var_def.initializer_name = ops.strip_name_scope(
-          self.initializer.name, export_scope)
+      var_def.variable_name = ops.strip_name_scope(self.handle.name,
+                                                   export_scope)
+      var_def.initializer_name = ops.strip_name_scope(self.initializer.name,
+                                                      export_scope)
       if self._cached_value is not None:
-        var_def.snapshot_name = ops.strip_name_scope(
-            self._cached_value.name, export_scope)
+        var_def.snapshot_name = ops.strip_name_scope(self._cached_value.name,
+                                                     export_scope)
       var_def.is_resource = True
       if self._save_slice_info:
-        var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto(
-            export_scope=export_scope))
+        var_def.save_slice_info_def.MergeFrom(
+            self._save_slice_info.to_proto(export_scope=export_scope))
       return var_def
     else:
       return None
 
   @staticmethod
   def from_proto(variable_def, import_scope=None):
-    return ResourceVariable(variable_def=variable_def,
-                            import_scope=import_scope)
+    if context.in_eager_mode():
+      raise RuntimeError("from_proto not supported in EAGER mode.")
+    return ResourceVariable(
+        variable_def=variable_def, import_scope=import_scope)
 
   @staticmethod
   def _OverloadAllOperators():  # pylint: disable=invalid-name
@@ -419,6 +560,7 @@ class ResourceVariable(variables.Variable):
     def _run_op(a, *args):
       # pylint: disable=protected-access
       return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
+
     # Propagate __doc__ to wrapper
     try:
       _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
@@ -433,61 +575,91 @@ class ResourceVariable(variables.Variable):
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    with ops.control_dependencies(
-        [gen_resource_variable_ops.assign_sub_variable_op(
+    with ops.control_dependencies([
+        gen_resource_variable_ops.assign_sub_variable_op(
             self.handle,
-            ops.convert_to_tensor(delta, dtype=self.dtype), name=name)]):
+            ops.convert_to_tensor(delta, dtype=self.dtype),
+            name=name)
+    ]):
       return self.read_value()
 
   def assign_add(self, delta, use_locking=None, name=None):
-    with ops.control_dependencies(
-        [gen_resource_variable_ops.assign_add_variable_op(
+    with ops.control_dependencies([
+        gen_resource_variable_ops.assign_add_variable_op(
             self.handle,
-            ops.convert_to_tensor(delta, dtype=self.dtype), name=name)]):
+            ops.convert_to_tensor(delta, dtype=self.dtype),
+            name=name)
+    ]):
       return self.read_value()
 
   def assign(self, value, use_locking=None, name=None):
-    with ops.control_dependencies(
-        [gen_resource_variable_ops.assign_variable_op(
+    with ops.control_dependencies([
+        gen_resource_variable_ops.assign_variable_op(
             self.handle,
-            ops.convert_to_tensor(value, dtype=self.dtype), name=name)]):
+            ops.convert_to_tensor(value, dtype=self.dtype),
+            name=name)
+    ]):
       return self.read_value()
 
-  def _strided_slice_assign(self,
-                            begin,
-                            end,
-                            strides,
-                            value,
-                            name,
-                            begin_mask,
-                            end_mask,
-                            ellipsis_mask,
-                            new_axis_mask,
+  def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
+                            end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
-    with ops.control_dependencies([gen_array_ops.resource_strided_slice_assign(
-        ref=self.handle,
-        begin=begin,
-        end=end,
-        strides=strides,
-        value=value,
-        name=name,
-        begin_mask=begin_mask,
-        end_mask=end_mask,
-        ellipsis_mask=ellipsis_mask,
-        new_axis_mask=new_axis_mask,
-        shrink_axis_mask=shrink_axis_mask)]):
+    with ops.control_dependencies([
+        gen_array_ops.resource_strided_slice_assign(
+            ref=self.handle,
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=value,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
+    ]):
+      return self.value()
+
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    del name
+    if dtype is not None and dtype != self.value().dtype:
+      print("trying to switch the dtype to ", dtype, " from ",
+            self.value().dtype)
+      return NotImplemented
+    if as_ref:
+      return self.read_value().op.inputs[0]
+    else:
       return self.value()
 
 
-# pylint: disable=unused-argument,protected-access
+@custom_gradient.custom_gradient
+def read_variable_op(handle, dtype):
+  """Reads the value of a variable.
+
+  The tensor returned by this operation is immutable.
+
+  The value returned by this operation is guaranteed to be influenced by all the
+  writes on which this operation depends directly or indirectly, and to not be
+  influenced by any of the writes which depend directly or indirectly on this
+  operation.
+
+  Args:
+    handle: A `Tensor` of type `resource`.
+      handle to the resource in which to store the variable.
+    dtype: A `tf.DType`. the dtype of the value.
+
+  Returns:
+    A `Tensor` of type `dtype`.
+  """
+  result = gen_resource_variable_ops.read_variable_op(handle, dtype)
+  def grad(dresult):
+    return dresult
+  return result, grad
+
+
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
-  if dtype is not None and dtype != var.value().dtype:
-    print("trying to switch the dtype to ", dtype, " from ", var.value().dtype)
-    return NotImplemented
-  if as_ref:
-    return var.read_value().op.inputs[0]
-  return var.value()
-# pylint: enable=unused-argument,protected-access
+  return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -496,8 +668,7 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 # otherwise lead to the wrong behavior.
 ops.register_tensor_conversion_function(ResourceVariable, _dense_var_to_tensor)
 ops.register_tensor_conversion_function(
-    variables.Variable,
-    variables.Variable._TensorConversionFunction)  # pylint: disable=protected-access
+    variables.Variable, variables.Variable._TensorConversionFunction)  # pylint: disable=protected-access
 
 # pylint: disable=protected-access
 ResourceVariable._OverloadAllOperators()
@@ -516,6 +687,9 @@ def _GatherGrad(op, grad):
   # Build appropriately shaped IndexedSlices
   # Walk graph back until the original handle is found.
   # TODO(apassos): more robust way of getting the shape.
+  # TODO(apassos): implement this for EAGER mode.
+  if context.in_eager_mode():
+    raise NotImplementedError("_GatherGrad not implemented for EAGER mode")
   handle = op.inputs[0]
   while handle.op.type != "VarHandleOp":
     handle = handle.op.inputs[0]

@@ -11,6 +11,8 @@ package(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -49,7 +51,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
 )
@@ -60,7 +61,6 @@ cc_test(
     srcs = ["utils/sparse_column_iterable_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -73,7 +73,6 @@ cc_test(
     srcs = ["utils/examples_iterable_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -99,7 +98,6 @@ cc_test(
     srcs = ["utils/dropout_utils_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
@@ -198,7 +196,6 @@ cc_test(
     deps = [
         ":weighted_quantiles",
         "//tensorflow/core",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -212,7 +209,6 @@ cc_test(
     deps = [
         ":weighted_quantiles",
         "//tensorflow/core",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -225,7 +221,6 @@ cc_test(
     srcs = ["quantiles/weighted_quantiles_stream_test.cc"],
     deps = [
         ":weighted_quantiles",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -255,6 +250,65 @@ cc_test(
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+# Learner/batch
+
+py_library(
+    name = "base_split_handler",
+    srcs = ["learner/batch/base_split_handler.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+    ],
+)
+
+py_library(
+    name = "categorical_split_handler",
+    srcs = ["learner/batch/categorical_split_handler.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_split_handler",
+        "//tensorflow/contrib/boosted_trees:quantile_ops_py",
+        "//tensorflow/contrib/boosted_trees:split_handler_ops_py",
+        "//tensorflow/contrib/boosted_trees:stats_accumulator_ops_py",
+    ],
+)
+
+py_test(
+    name = "categorical_split_handler_test",
+    srcs = ["learner/batch/categorical_split_handler_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":categorical_split_handler",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_library(
+    name = "ordinal_split_handler",
+    srcs = ["learner/batch/ordinal_split_handler.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_split_handler",
+        "//tensorflow/contrib/boosted_trees:quantile_ops_py",
+        "//tensorflow/contrib/boosted_trees:split_handler_ops_py",
+        "//tensorflow/contrib/boosted_trees:stats_accumulator_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+    ],
+)
+
+py_test(
+    name = "ordinal_split_handler_test",
+    srcs = ["learner/batch/ordinal_split_handler_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ordinal_split_handler",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -306,7 +360,6 @@ cc_test(
     srcs = ["learner/common/partitioners/example_partitioner_test.cc"],
     deps = [
         ":example_partitioner",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -349,7 +402,6 @@ cc_test(
     ],
     deps = [
         ":feature-column-handlers",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

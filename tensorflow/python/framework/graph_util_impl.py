@@ -79,7 +79,7 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
     if dtype == dtypes.string or dtype == dtypes.int32:
       return True
 
-  if node_def.op == "DynamicStitch":
+  if node_def.op in ["DynamicStitch", "ParallelDynamicStitch"]:
     dtype = node_def.attr["T"].type
     if dtype == dtypes.int32:
       # DynamicStitch on GPU only works for int32 values.
@@ -221,7 +221,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   else:
     returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
-  logging.info("Froze %d variables." % len(returned_variables))
+  logging.info("Froze %d variables.", len(returned_variables))
 
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0

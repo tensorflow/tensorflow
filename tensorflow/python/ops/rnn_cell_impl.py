@@ -260,7 +260,18 @@ class BasicRNNCell(RNNCell):
 
 
 class GRUCell(RNNCell):
-  """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
+  """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
+
+  Args:
+    num_units: int, The number of units in the GRU cell.
+    activation: Nonlinearity to use.  Default: `tanh`.
+    reuse: (optional) Python boolean describing whether to reuse variables
+     in an existing scope.  If not `True`, and the existing scope already has
+     the given variables, an error is raised.
+    kernel_initializer: (optional) The initializer to use for the weight and
+    projection matrices.
+    bias_initializer: (optional) The initializer to use for the bias.
+  """
 
   def __init__(self,
                num_units,
@@ -308,7 +319,8 @@ _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
-  Stores two elements: `(c, h)`, in that order.
+  Stores two elements: `(c, h)`, in that order. Where `c` is the hidden state
+  and `h` is the output.
 
   Only used when `state_is_tuple=True`.
   """
@@ -445,7 +457,7 @@ class LSTMCell(RNNCell):
     """Initialize the parameters for an LSTM cell.
 
     Args:
-      num_units: int, The number of units in the LSTM cell
+      num_units: int, The number of units in the LSTM cell.
       use_peepholes: bool, set True to enable diagonal/peephole connections.
       cell_clip: (optional) A float value, if provided the cell state is clipped
         by this value prior to the cell output activation.
@@ -786,13 +798,18 @@ class DropoutWrapper(RNNCell):
 class ResidualWrapper(RNNCell):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
-  def __init__(self, cell):
+  def __init__(self, cell, residual_fn=None):
     """Constructs a `ResidualWrapper` for `cell`.
 
     Args:
       cell: An instance of `RNNCell`.
+      residual_fn: (Optional) The function to map raw cell inputs and raw cell
+        outputs to the actual cell outputs of the residual network.
+        Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
+        and outputs.
     """
     self._cell = cell
+    self._residual_fn = residual_fn
 
   @property
   def state_size(self):
@@ -807,7 +824,7 @@ class ResidualWrapper(RNNCell):
       return self._cell.zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
-    """Run the cell and add its inputs to its outputs.
+    """Run the cell and then apply the residual_fn on its inputs to its outputs.
 
     Args:
       inputs: cell inputs.
@@ -822,13 +839,14 @@ class ResidualWrapper(RNNCell):
       ValueError: If cell inputs and outputs have different structure (value).
     """
     outputs, new_state = self._cell(inputs, state, scope=scope)
-    nest.assert_same_structure(inputs, outputs)
     # Ensure shapes match
     def assert_shape_match(inp, out):
       inp.get_shape().assert_is_compatible_with(out.get_shape())
-    nest.map_structure(assert_shape_match, inputs, outputs)
-    res_outputs = nest.map_structure(
-        lambda inp, out: inp + out, inputs, outputs)
+    def default_residual_fn(inputs, outputs):
+      nest.assert_same_structure(inputs, outputs)
+      nest.map_structure(assert_shape_match, inputs, outputs)
+      return nest.map_structure(lambda inp, out: inp + out, inputs, outputs)
+    res_outputs = (self._residual_fn or default_residual_fn)(inputs, outputs)
     return (res_outputs, new_state)
 
 

@@ -185,6 +185,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_FLOOR:
     case UNOP_CEIL:
     case UNOP_COS:
+    case UNOP_SIN:
     case UNOP_EXP:
     case UNOP_LOG:
     case UNOP_TANH:
@@ -268,9 +269,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         return InvalidArgument(
             "cannot concatenate arrays that differ in dimensions other than "
             "the one being concatenated (the other array dimensions must be "
-            "the same): %s vs %s",
+            "the same): %s vs %s in dimension %lld",
             ShapeUtil::HumanString(*arg_shape).c_str(),
-            ShapeUtil::HumanString(*shape).c_str());
+            ShapeUtil::HumanString(*shape).c_str(), dimension);
       }
     }
   }
@@ -803,7 +804,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Expected feature_index of batch-norm-training to be "
         "smaller than the rank of operand_shape; "
         "got feature_index %lld, and rank %lld",
-        feature_index, ShapeUtil::Rank(offset_shape));
+        feature_index, ShapeUtil::Rank(operand_shape));
   }
 
   if (feature_index < 0) {
@@ -817,7 +818,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Expected the rank of operand to "
         "batch-norm-training to be at least 1; got %lld",
-        ShapeUtil::Rank(offset_shape));
+        ShapeUtil::Rank(operand_shape));
   }
 
   if (ShapeUtil::Rank(offset_shape) != 1) {
@@ -882,6 +883,304 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return ShapeUtil::MakeTupleShape({operand_shape,
                                     output_shape_for_mean_and_var,
                                     output_shape_for_mean_and_var});
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
+    const Shape& operand_shape, const Shape& offset_shape,
+    const Shape& scale_shape, const Shape& mean_shape,
+    const Shape& variance_shape, int64 feature_index) {
+  TF_RETURN_IF_ERROR(
+      ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm inference"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      offset_shape, "offset input of batch norm inference"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      scale_shape, "scale input of batch norm inference"));
+
+  TF_RET_CHECK(ShapeUtil::ValidateShape(operand_shape) ==
+               tensorflow::Status::OK());
+  TF_RET_CHECK(ShapeUtil::ValidateShape(offset_shape) ==
+               tensorflow::Status::OK());
+  TF_RET_CHECK(ShapeUtil::ValidateShape(scale_shape) ==
+               tensorflow::Status::OK());
+  TF_RET_CHECK(ShapeUtil::ValidateShape(mean_shape) ==
+               tensorflow::Status::OK());
+  TF_RET_CHECK(ShapeUtil::ValidateShape(variance_shape) ==
+               tensorflow::Status::OK());
+
+  if (feature_index >= ShapeUtil::Rank(operand_shape)) {
+    return InvalidArgument(
+        "Expected feature_index of batch-norm-inference to be "
+        "smaller than the rank of operand_shape; "
+        "got feature_index %lld, and rank %lld",
+        feature_index, ShapeUtil::Rank(operand_shape));
+  }
+
+  if (feature_index < 0) {
+    return InvalidArgument(
+        "Expected feature_index of batch-norm-inference to "
+        "be a non-negative number, got %lld",
+        feature_index);
+  }
+
+  if (ShapeUtil::Rank(operand_shape) < 1) {
+    return InvalidArgument(
+        "Expected the rank of operand to "
+        "batch-norm-inference to be at least 1; got %lld",
+        ShapeUtil::Rank(operand_shape));
+  }
+
+  if (ShapeUtil::Rank(offset_shape) != 1) {
+    return InvalidArgument(
+        "Offset input of batch-norm-inference must have"
+        " rank 1, but has rank %lld.",
+        ShapeUtil::Rank(offset_shape));
+  }
+
+  if (ShapeUtil::Rank(scale_shape) != 1) {
+    return InvalidArgument(
+        "Scale input of batch-norm-inference must have"
+        " rank 1, but has rank %lld.",
+        ShapeUtil::Rank(scale_shape));
+  }
+
+  if (!ShapeUtil::ElementIsFloating(operand_shape)) {
+    return InvalidArgument(
+        "The operand to batch-norm-inference must have a floating point "
+        "element type, but the shape is %s",
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(offset_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for "
+        "batch-norm-inference, "
+        "but the shape of offset factor is %s "
+        "and the shape of operand is %s",
+        PrimitiveType_Name(offset_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(scale_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for "
+        "batch-norm-inference, "
+        "but the shape of scale factor is %s "
+        "and the shape of operand is %s",
+        PrimitiveType_Name(scale_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(mean_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for "
+        "batch-norm-inference, "
+        "but the shape of mean is %s "
+        "and the shape of operand is %s",
+        PrimitiveType_Name(mean_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(variance_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for "
+        "batch-norm-inference, "
+        "but the shape of variance is %s "
+        "and the shape of operand is %s",
+        PrimitiveType_Name(mean_shape.element_type()).c_str(),
+        PrimitiveType_Name(variance_shape.element_type()).c_str());
+  }
+
+  const int64 feature_count = operand_shape.dimensions(feature_index);
+  Shape output_shape_for_mean_and_var =
+      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
+
+  if (ShapeUtil::GetDimension(offset_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of offset factor should be the same as feature count,"
+        "but the size of offset factor is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(offset_shape, 0), feature_count);
+  }
+
+  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of scale factor should be the same as feature count,"
+        "but the size of scale factor is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(scale_shape, 0), feature_count);
+  }
+
+  if (ShapeUtil::GetDimension(mean_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of mean should be the same as feature count,"
+        "but the size of mean is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(mean_shape, 0), feature_count);
+  }
+
+  if (ShapeUtil::GetDimension(variance_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of variance should be the same as feature count,"
+        "but the size of variance is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(variance_shape, 0), feature_count);
+  }
+
+  return operand_shape;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBatchNormGradShape(
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& mean_shape, const Shape& var_shape,
+    const Shape& output_grad_shape, int64 feature_index) {
+  TF_RETURN_IF_ERROR(
+      ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm grad"));
+  TF_RETURN_IF_ERROR(
+      ExpectNotTupleOrOpaque(scale_shape, "scale input of batch norm grad"));
+  TF_RETURN_IF_ERROR(
+      ExpectNotTupleOrOpaque(mean_shape, "mean input of batch norm grad"));
+  TF_RETURN_IF_ERROR(
+      ExpectNotTupleOrOpaque(var_shape, "var input of batch norm grad"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      output_grad_shape, "output_grad input of batch norm grad"));
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(operand_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(mean_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(scale_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(var_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(output_grad_shape));
+
+  if (feature_index >= ShapeUtil::Rank(operand_shape)) {
+    return InvalidArgument(
+        "Expected feature_index of batch-norm-grad to be "
+        "smaller than the rank of operand_shape; "
+        "got feature_index %lld, and rank %lld",
+        feature_index, ShapeUtil::Rank(operand_shape));
+  }
+
+  if (ShapeUtil::Rank(operand_shape) != ShapeUtil::Rank(output_grad_shape)) {
+    return InvalidArgument(
+        "Expected operand_shape of batch-norm-grad to have the same rank as"
+        " output_grad_shape; got rank(oprand_shape) %lld, and"
+        " rank(output_grad_shape) %lld",
+        ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(output_grad_shape));
+  }
+
+  if (ShapeUtil::Rank(mean_shape) != 1) {
+    return InvalidArgument(
+        "Mean input of batch-norm-grad must have"
+        " rank 1, but has rank %lld.",
+        ShapeUtil::Rank(mean_shape));
+  }
+
+  if (ShapeUtil::Rank(scale_shape) != 1) {
+    return InvalidArgument(
+        "Scale input of batch-norm-grad must have"
+        " rank 1, but has rank %lld.",
+        ShapeUtil::Rank(scale_shape));
+  }
+
+  if (ShapeUtil::Rank(var_shape) != 1) {
+    return InvalidArgument(
+        "Var input of batch-norm-grad must have"
+        " rank 1, but has rank %lld.",
+        ShapeUtil::Rank(var_shape));
+  }
+
+  if (!ShapeUtil::ElementIsFloating(operand_shape)) {
+    return InvalidArgument(
+        "The operand to batch-norm-grad must have a floating point "
+        "element type, but the shape is %s",
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::ElementIsFloating(output_grad_shape)) {
+    return InvalidArgument(
+        "The output_grad to batch-norm-grad must have a floating point "
+        "element type, but the shape is %s",
+        PrimitiveType_Name(output_grad_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(output_grad_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for batch-norm-grad, "
+        "but the element type of output_grad is %s "
+        "and the element type of operand is %s",
+        PrimitiveType_Name(output_grad_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(scale_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for batch-norm-grad, "
+        "but the element type of scale factor is %s "
+        "and the element type of operand is %s",
+        PrimitiveType_Name(scale_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(mean_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for batch-norm-grad, "
+        "but the element type of mean is %s "
+        "and the element type of operand is %s",
+        PrimitiveType_Name(mean_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  if (!ShapeUtil::SameElementType(var_shape, operand_shape)) {
+    return InvalidArgument(
+        "The inputs should have the same element type for batch-norm-grad, "
+        "but the element type of mean is %s "
+        "and the element type of operand is %s",
+        PrimitiveType_Name(mean_shape.element_type()).c_str(),
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+
+  const int64 feature_count = operand_shape.dimensions(feature_index);
+
+  Shape feature_shape =
+      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
+
+  if (ShapeUtil::GetDimension(mean_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of mean should be the same as feature count,"
+        "but the size of offset factor is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(mean_shape, 0), feature_count);
+  }
+
+  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of scale factor should be the same as feature count,"
+        "but the size of scale factor is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(scale_shape, 0), feature_count);
+  }
+
+  if (ShapeUtil::GetDimension(var_shape, 0) != feature_count) {
+    return InvalidArgument(
+        "The size of variance should be the same as feature count,"
+        "but the size of variance is %lld "
+        "and the feature count is %lld",
+        ShapeUtil::GetDimension(var_shape, 0), feature_count);
+  }
+
+  // Verify operand_shape and output_grad_shape have same bounds.
+  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+    if (ShapeUtil::GetDimension(operand_shape, i) !=
+        ShapeUtil::GetDimension(output_grad_shape, i)) {
+      return InvalidArgument(
+          "The bounds of operand shape should be the same as output_grad's,"
+          "but the bound of operand_shape at dimension %lld is %lld "
+          "and the bound of output_grad_shape is %lld",
+          i, ShapeUtil::GetDimension(operand_shape, i),
+          ShapeUtil::GetDimension(output_grad_shape, i));
+    }
+  }
+
+  return ShapeUtil::MakeTupleShape(
+      {operand_shape, feature_shape, feature_shape});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
@@ -1149,6 +1448,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                            starts.size(), limits.size());
   }
 
+  if (starts.size() != strides.size()) {
+    return InvalidArgument("slice start and strides sizes differ: %zu vs %zu",
+                           starts.size(), strides.size());
+  }
+
   if (starts.size() != ShapeUtil::Rank(arg)) {
     return InvalidArgument(
         "slice index count does not match argument rank: %zu vs %lld",
@@ -1164,9 +1468,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InvalidArgument("negative start index to slice: %lld",
                              start_index);
     }
-    if (stride == 0) {
-      return InvalidArgument("Zero stride");
-    }
     if (limit_index > arg.dimensions(dimension)) {
       return InvalidArgument(
           "limit index (%lld) must be less than or equal to dimension "
@@ -1177,17 +1478,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                            start_index);
     VLOG(2) << tensorflow::strings::Printf("limits[%lld] = %lld", dimension,
                                            limit_index);
-    if (stride > 0) {
-      if (start_index > limit_index) {
-        return InvalidArgument(
-            "limit index (%lld) must be greater or equal to "
-            "start index (%lld) in slice with positive stride",
-            limit_index, start_index);
-      }
-      sizes.push_back((limit_index - start_index + stride - 1) / stride);
-    } else {
-      return InvalidArgument("Negative strides not supported");
+    if (start_index > limit_index) {
+      return InvalidArgument(
+          "limit index (%lld) must be greater or equal to "
+          "start index (%lld) in slice with positive stride",
+          limit_index, start_index);
     }
+    if (stride <= 0) {
+      return InvalidArgument("stride (%lld) must be positive", stride);
+    }
+    sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
 
   return ShapeUtil::MakeShape(arg.element_type(), sizes);

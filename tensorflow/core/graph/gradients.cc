@@ -110,7 +110,9 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
   AddNodeAttr("Tout", n->input_types(), &ndef);
   NameAttrList func;
   func.set_name(n->type_string());
-  *(func.mutable_attr()) = n->def().attr();
+  for (const auto& attr : n->attrs()) {
+    (*func.mutable_attr())[attr.first] = attr.second;
+  }
   AddNodeAttr("f", func, &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);

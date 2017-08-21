@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import function
+from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -84,7 +85,7 @@ class _ExperimentalFuncGraph(function._FuncGraph):
     return op.outputs[tensor.value_index]
 
   def _add_op_and_parents(self, op):
-    op_def = function._get_op_def(op)
+    op_def = graph_to_function_def._get_op_def(op)
     if op_def.is_stateful:
       raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
@@ -178,7 +179,7 @@ class _ExperimentalDefinedFunction(function._DefinedFunction):
     self._sub_functions = temp_graph._functions
 
     # Build the FunctionDef
-    self._definition = function._graph_to_function_def(
+    self._definition = graph_to_function_def.graph_to_function_def(
         temp_graph, temp_graph.get_operations(), inputs, outputs,
         out_names=self._out_names)
 

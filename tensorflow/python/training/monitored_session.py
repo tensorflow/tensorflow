@@ -92,7 +92,7 @@ class Scaffold(object):
 
   * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
-  * `init_fn`: A callable to run run after the init op to perform additional
+  * `init_fn`: A callable to run after the init op to perform additional
     initializations.  The callable will be called as
     `init_fn(scaffold, session)`.
 
@@ -375,7 +375,7 @@ class SessionCreator(object):
 
 
 class ChiefSessionCreator(SessionCreator):
-  """Creates a tf.Session  for a chief."""
+  """Creates a tf.Session for a chief."""
 
   def __init__(self,
                scaffold=None,
@@ -535,7 +535,7 @@ class _MonitoredSession(object):
     # __exit__ should return True to suppress an exception.
     return exception_type is None
 
-  class _CoordinatedSessionCreator(object):
+  class _CoordinatedSessionCreator(SessionCreator):
     """Factory for the _RecoverableSession."""
 
     def __init__(self, session_creator, hooks, stop_grace_period_secs):
@@ -566,6 +566,8 @@ class _MonitoredSession(object):
           h.end(self._coordinated_creator.tf_sess)
     finally:
       try:
+        if self._sess is None:
+          raise RuntimeError('Session is already closed.')
         self._sess.close()
       finally:
         self._sess = None
@@ -575,7 +577,7 @@ class _MonitoredSession(object):
           ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
-    """Return True if the supervised session is closed.  For tests only.
+    """Return True if the monitored session is closed.  For tests only.
 
     Returns:
       A boolean.
@@ -726,7 +728,8 @@ class SingularMonitoredSession(_MonitoredSession):
                master='',
                config=None,
                checkpoint_dir=None,
-               stop_grace_period_secs=120):
+               stop_grace_period_secs=120,
+               checkpoint_filename_with_path=None):
     """Creates a SingularMonitoredSession.
 
     Args:
@@ -739,12 +742,15 @@ class SingularMonitoredSession(_MonitoredSession):
         variables.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `close()` has been called.
+      checkpoint_filename_with_path: A string. Optional path to a checkpoint
+        file from which to restore variables.
     """
     session_creator = ChiefSessionCreator(
         scaffold=scaffold,
         master=master,
         config=config,
-        checkpoint_dir=checkpoint_dir)
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path)
     super(SingularMonitoredSession, self).__init__(
         session_creator, hooks, should_recover=False,
         stop_grace_period_secs=stop_grace_period_secs)
@@ -851,6 +857,27 @@ class _RecoverableSession(_WrappedSession):
                      'or parameter server. A new session will be created. '
                      'Error: %s', e)
 
+  def _check_stop(self):
+    try:
+      if self._sess:
+        return self._sess._check_stop()  # pylint: disable=protected-access
+      else:
+        return True
+    except _PREEMPTION_ERRORS as e:
+      logging.info('An error was raised while considering whether the '
+                   'session is complete. This may be due to a preemption in '
+                   'a connected worker or parameter server. The current '
+                   'session will be closed and a new session will be '
+                   'created. Error: %s', e)
+      self.close()
+      self._sess = self._create_session()
+      # Since we have just recreated the session, the overall computation should
+      # not stop:
+      return False
+    except Exception:  # pylint: disable=broad-except
+      # `should_stop` should return True instead of raising an exception.
+      return True
+
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
       try:
@@ -897,7 +924,10 @@ class _CoordinatedSession(_WrappedSession):
     self._stop_grace_period_secs = stop_grace_period_secs
 
   def _check_stop(self):
-    # Check with the coordinator if we should stop.
+    # If the coordinator was asked to stop due to an exception, then it needs
+    # to be propagated to this stack.
+    self._coord.raise_requested_exception()
+    # At this point, no exceptions are recorded in the coordinator.
     return self._coord.should_stop()
 
   def close(self):
@@ -913,6 +943,24 @@ class _CoordinatedSession(_WrappedSession):
         # We intentionally suppress exceptions from the close() here since
         # useful exceptions are already reported by join().
         pass
+
+  def run(self, *args, **kwargs):
+    try:
+      return self._sess.run(*args, **kwargs)
+    except _PREEMPTION_ERRORS as original_exception:
+      raise original_exception
+    except Exception as original_exception:  # pylint: disable=broad-except
+      # A non-preemption error could have been caused by a preemption error
+      # in the coordinator. If this is the case, raise that exception instead,
+      # since it's the root cause. Otherwise, stick to the `original_exception`.
+      try:
+        self._coord.raise_requested_exception()
+      except _PREEMPTION_ERRORS as preemption_in_coordinator:
+        raise preemption_in_coordinator
+      except Exception:  # pylint: disable=broad-except
+        raise original_exception
+      else:
+        raise original_exception
 
 
 class _HookedSession(_WrappedSession):

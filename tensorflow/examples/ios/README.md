@@ -66,7 +66,7 @@ target 'YourProjectName'
 ```
 
  - Then you run ```pod install``` to download and install the
- TensorFlow-experimental pod, and finaly perform
+ TensorFlow-experimental pod, and finally perform
  ```open YourProjectName.xcworkspace``` and add your code.
 
  - In your apps "Build Settings", make sure to add $(inherited) to sections

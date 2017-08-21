@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -66,22 +67,25 @@ HloComputation::HloComputation(
     HloInstruction* root_instruction, bool is_fusion_computation)
     : name_(name),
       root_instruction_(root_instruction),
-      is_fusion_computation_(is_fusion_computation),
-      instruction_name_uniquer_(/*separator=*/".") {
+      is_fusion_computation_(is_fusion_computation) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
       int64 param_no = instruction->parameter_number();
-      CHECK_GE(param_no, 0);
-      CHECK_LT(param_no, param_instructions_.size());
-      CHECK_EQ(nullptr, param_instructions_[param_no]);
+      CHECK(param_no >= 0 && param_no < parameter_count)
+          << "\nERROR: invalid parameter number.  Expected [0, "
+          << parameter_count << "), got " << param_no;
+      CHECK(param_instructions_[param_no] == nullptr)
+          << "\nERROR: parameter number " << param_no
+          << " already allocated in this computation";
       param_instructions_[param_no] = instruction.get();
     }
     root_found |= instruction.get() == root_instruction_;
     AddInstructionInternal(std::move(instruction));
   }
-  CHECK(root_found);
+  CHECK(root_found)
+      << "\nERROR: root instruction is not present in computation.";
 }
 
 HloInstruction* HloComputation::AddInstruction(
@@ -94,8 +98,10 @@ HloInstruction* HloComputation::AddInstruction(
 
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
-  // Generate a unique name for the instruction.
-  instruction->UniquifyName(&instruction_name_uniquer_);
+  if (parent() != nullptr) {
+    instruction->UniquifyName(&parent()->instruction_name_uniquer());
+    instruction->SetUniqueId(parent()->NewUniqueInstructionId());
+  }
   Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
   instruction_iterators_[pinst] =
@@ -170,10 +176,26 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
       !instruction->control_successors().empty()) {
     return false;
   }
-  const HloOpcode opcode = instruction->opcode();
-  return !((opcode == HloOpcode::kParameter && !is_fusion_computation_) ||
-           opcode == HloOpcode::kRecv || opcode == HloOpcode::kSend ||
-           opcode == HloOpcode::kTrace || opcode == HloOpcode::kOutfeed);
+
+  if (instruction->opcode() == HloOpcode::kParameter &&
+      !is_fusion_computation_) {
+    return false;
+  }
+
+  if (instruction->HasSideEffect()) {
+    return false;
+  }
+
+  return true;
+}
+
+bool HloComputation::HasSideEffect() const {
+  for (auto& instruction : instructions()) {
+    if (instruction->HasSideEffect()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
@@ -206,7 +228,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   VLOG(2) << "Removing instruction " << instruction->name()
           << " from computation " << name();
-  TF_RET_CHECK(IsRemovable(instruction));
+  TF_RET_CHECK(IsRemovable(instruction))
+      << "cannot remove instruction: " << instruction->ToString();
   TF_RET_CHECK(root_instruction() != instruction)
       << "cannot remove root instruction " << instruction->name();
   TF_RET_CHECK(instruction->user_count() == 0)
@@ -238,12 +261,15 @@ Status HloComputation::ReplaceUsesOfInstruction(
 
 void HloComputation::set_root_instruction(
     HloInstruction* new_root_instruction) {
-  // The shape of the root (ignoring layout) is an invariant of the computation.
-  CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
-                              root_instruction_->shape()))
-      << new_root_instruction->shape().ShortDebugString()
-      << " is incompatible with "
-      << root_instruction_->shape().ShortDebugString();
+  // The shape of the root (ignoring layout) is an invariant of the computation
+  // for non-fusion cases.
+  if (!is_fusion_computation_) {
+    CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
+                                root_instruction_->shape()))
+        << new_root_instruction->shape().ShortDebugString()
+        << " is incompatible with "
+        << root_instruction_->shape().ShortDebugString();
+  }
   bool root_found = false;
   for (auto& instruction : instructions_) {
     if (new_root_instruction == instruction.get()) {
@@ -588,6 +614,12 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
       unreachable_roots.push_back(instruction.get());
     }
   }
+  VLOG(3) << "Unreachable roots:"
+          << tensorflow::str_util::Join(
+                 unreachable_roots, "\n\t",
+                 [](string* out, const HloInstruction* hlo) {
+                   tensorflow::strings::StrAppend(out, hlo->ToString());
+                 });
   return unreachable_roots;
 }
 
@@ -596,6 +628,7 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   // visited root, which would invalidate iterators if the unreachable roots
   // weren't computed ahead of time.
   for (HloInstruction* root : CollectUnreachableRoots()) {
+    VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
     TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
@@ -622,9 +655,15 @@ Status HloComputation::AcceptWithOperandOrder(
 Status HloComputation::AcceptOrdered(
     DfsHloVisitor* visitor,
     const std::vector<const HloInstruction*>& order) const {
+  VLOG(3) << "Accepting visitor with order.";
+  for (HloInstruction* root : CollectUnreachableRoots()) {
+    TF_RET_CHECK(std::find(order.begin(), order.end(), root) != order.end())
+        << root->ToString();
+  }
   TF_RET_CHECK(order.size() == instruction_count());
   std::unordered_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
+    VLOG(3) << "Visiting ordered: " << instruction->ToString();
     TF_RET_CHECK(instruction_iterators_.count(instruction) == 1)
         << "Instruction " << instruction->name() << " is not in computation "
         << name();

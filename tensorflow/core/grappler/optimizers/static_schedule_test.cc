@@ -65,13 +65,13 @@ TEST_F(StaticScheduleTest, BasicGraph) {
       EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "x") {
       EXPECT_EQ(Costs::NanoSeconds(250002), time.second);
-    } else if (time.first->name() == "AddN") {
+    } else if (time.first->name() == "Square") {
       EXPECT_EQ(Costs::NanoSeconds(1500005), time.second);
-    } else if (time.first->name() == "AddN_1") {
+    } else if (time.first->name() == "Square_1") {
       EXPECT_EQ(Costs::NanoSeconds(2750008), time.second);
-    } else if (time.first->name() == "AddN_2") {
+    } else if (time.first->name() == "Square_2") {
       EXPECT_EQ(Costs::NanoSeconds(4000011), time.second);
-    } else if (time.first->name() == "AddN_3") {
+    } else if (time.first->name() == "Square_3") {
       EXPECT_EQ(Costs::NanoSeconds(5250014), time.second);
     } else if (time.first->name() == "y") {
       EXPECT_EQ(Costs::NanoSeconds(6500017), time.second);
@@ -117,6 +117,44 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
       EXPECT_EQ(Costs::NanoSeconds(12500028), time.second);
     } else if (time.first->name() == "e") {
       EXPECT_EQ(Costs::NanoSeconds(25000053), time.second);
+    }
+  }
+}
+
+TEST_F(StaticScheduleTest, RequiredTimes) {
+  // This trivial graph is so basic there's nothing to prune.
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+
+  std::unordered_map<const NodeDef*, Costs::NanoSeconds> execution_times;
+  for (const NodeDef& node : item.graph.node()) {
+    execution_times[&node] = 0;
+  }
+  std::unordered_map<const NodeDef*, Costs::NanoSeconds> required_times;
+  Status status = EstimateRequiredTimes(item, cluster.get(), execution_times,
+                                        &required_times);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size(), required_times.size());
+
+  for (auto time : required_times) {
+    if (time.first->name() == "Const/Const") {
+      EXPECT_EQ(Costs::NanoSeconds(-6500016), time.second);
+    } else if (time.first->name() == "x") {
+      EXPECT_EQ(Costs::NanoSeconds(-6250015), time.second);
+    } else if (time.first->name() == "Square") {
+      EXPECT_EQ(Costs::NanoSeconds(-5000012), time.second);
+    } else if (time.first->name() == "Square_1") {
+      EXPECT_EQ(Costs::NanoSeconds(-3750009), time.second);
+    } else if (time.first->name() == "Square_2") {
+      EXPECT_EQ(Costs::NanoSeconds(-2500006), time.second);
+    } else if (time.first->name() == "Square_3") {
+      EXPECT_EQ(Costs::NanoSeconds(-1250003), time.second);
+    } else if (time.first->name() == "y") {
+      EXPECT_EQ(Costs::NanoSeconds(0), time.second);
     }
   }
 }

@@ -83,6 +83,14 @@ class OpsTestBase : public ::testing::Test {
     params_.reset(nullptr);
   }
 
+  // Allow kernel unit tests to run on GPU
+  void SetDevice(const DeviceType& device_type,
+                 std::unique_ptr<Device> device) {
+    CHECK(device_.get()) << "No device provided";
+    device_type_ = device_type;
+    device_ = std::move(device);
+  }
+
   void set_node_def(const NodeDef& node_def) { node_def_.CopyFrom(node_def); }
 
   // Clients can manipulate the underlying NodeDef via this accessor.
@@ -168,6 +176,32 @@ class OpsTestBase : public ::testing::Test {
       CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
       inputs_.push_back({nullptr, input});
     }
+  }
+
+  // Adds a Resource type as input. If <container> is empty, uses the default
+  // container name.
+  template <typename T>
+  void AddResourceInput(const string& container, const string& name,
+                        T* resource) {
+    CHECK_GT(input_types_.size(), inputs_.size())
+        << "Adding more inputs than types; perhaps you need to call MakeOp";
+    ResourceMgr* rm = device_->resource_manager();
+    EXPECT_TRUE(
+        rm->Create(container == "" ? rm->default_container() : container, name,
+                   resource)
+            .ok());
+    TypeIndex type_index = MakeTypeIndex<T>();
+    ResourceHandle handle;
+    handle.set_device(device_->name());
+    handle.set_container(container);
+    handle.set_name(name);
+    handle.set_hash_code(type_index.hash_code());
+    handle.set_maybe_type_name(type_index.name());
+    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
+                               DT_RESOURCE, TensorShape({}));
+    input->scalar<ResourceHandle>()() = handle;
+    tensors_.push_back(input);
+    inputs_.push_back({nullptr, input});
   }
 
   // Runs an operation producing 'num_outputs' outputs.

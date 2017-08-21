@@ -71,6 +71,9 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# Namespaces
+from tensorflow.python.ops import initializers_ns as initializers
+
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
@@ -83,7 +86,9 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.profiler import profiler
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 from tensorflow.python.saved_model import saved_model
@@ -112,6 +117,7 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
+from tensorflow.python.framework import subscribe
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
@@ -152,6 +158,7 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'SummaryMetadata',
     'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
@@ -205,6 +212,7 @@ _allowed_symbols.extend([
     'uint16',
     'uint8',
     'resource',
+    'variant',
 ])
 
 # Export modules and constants.
@@ -212,6 +220,7 @@ _allowed_symbols.extend([
     'app',
     'bitwise',
     'compat',
+    'distributions',
     'errors',
     'estimator',
     'feature_column',
@@ -235,6 +244,8 @@ _allowed_symbols.extend([
     'train',
     'user_ops',
     'layers',
+    'profiler',
+    'initializers',
 ])
 
 # Variables framework.versions:
@@ -248,10 +259,11 @@ _allowed_symbols.extend([
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols, [
     framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
-    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
+    control_flow_ops, confusion_matrix_m, distributions,
+    functional_ops, histogram_ops, io_ops,
     losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
-    train, layers
+    train, layers, profiler
 ])
 
 # Special dunders that we choose to export:

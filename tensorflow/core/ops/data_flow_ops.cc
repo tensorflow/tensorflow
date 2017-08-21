@@ -130,43 +130,48 @@ partitions: Any shape.  Indices in the range `[0, num_partitions)`.
 num_partitions: The number of partitions to output.
 )doc");
 
+namespace {
+
+Status DynamicStitchShapeFunction(InferenceContext* c) {
+  int64 num_partitions;
+  TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
+
+  ShapeHandle extra_shape = c->UnknownShape();
+  for (int64 i = 0; i < num_partitions; ++i) {
+    ShapeHandle indices_shape = c->input(i);
+    ShapeHandle data_shape = c->input(i + num_partitions);
+    if (!c->RankKnown(indices_shape)) {
+      continue;
+    }
+
+    const int64 indices_rank = c->Rank(indices_shape);
+
+    // Assert that data_shape starts with indices_shape.
+    ShapeHandle unused;
+    TF_RETURN_IF_ERROR(
+        c->MergePrefix(data_shape, indices_shape, &unused, &unused));
+
+    // The rest belongs to output.
+    ShapeHandle rest;
+    TF_RETURN_IF_ERROR(c->Subshape(data_shape, indices_rank, &rest));
+    TF_RETURN_IF_ERROR(c->Merge(extra_shape, rest, &extra_shape));
+  }
+
+  ShapeHandle output_shape = c->Vector(c->UnknownDim());
+  TF_RETURN_IF_ERROR(c->Concatenate(output_shape, extra_shape, &output_shape));
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("DynamicStitch")
     .Input("indices: N * int32")
     .Input("data: N * T")
     .Output("merged: T")
     .Attr("N : int >= 1")
     .Attr("T : type")
-    .SetShapeFn([](InferenceContext* c) {
-      int64 num_partitions;
-      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
-
-      ShapeHandle extra_shape = c->UnknownShape();
-      for (int64 i = 0; i < num_partitions; ++i) {
-        ShapeHandle indices_shape = c->input(i);
-        ShapeHandle data_shape = c->input(i + num_partitions);
-        if (!c->RankKnown(indices_shape)) {
-          continue;
-        }
-
-        const int64 indices_rank = c->Rank(indices_shape);
-
-        // Assert that data_shape starts with indices_shape.
-        ShapeHandle unused;
-        TF_RETURN_IF_ERROR(
-            c->MergePrefix(data_shape, indices_shape, &unused, &unused));
-
-        // The rest belongs to output.
-        ShapeHandle rest;
-        TF_RETURN_IF_ERROR(c->Subshape(data_shape, indices_rank, &rest));
-        TF_RETURN_IF_ERROR(c->Merge(extra_shape, rest, &extra_shape));
-      }
-
-      ShapeHandle output_shape = c->Vector(c->UnknownDim());
-      TF_RETURN_IF_ERROR(
-          c->Concatenate(output_shape, extra_shape, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(DynamicStitchShapeFunction)
     .Doc(R"doc(
 Interleave the values from the `data` tensors into a single tensor.
 
@@ -195,7 +200,81 @@ must have `data[i].shape = indices[i].shape + constant`.  In terms of this
 
 Values are merged in order, so if an index appears in both `indices[m][i]` and
 `indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the
-merged result.
+merged result. If you do not need this guarantee, ParallelDynamicStitch might
+perform better on some devices.
+
+For example:
+
+```python
+    indices[0] = 6
+    indices[1] = [4, 1]
+    indices[2] = [[5, 2], [0, 3]]
+    data[0] = [61, 62]
+    data[1] = [[41, 42], [11, 12]]
+    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
+    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
+              [51, 52], [61, 62]]
+```
+
+This method can be used to merge partitions created by `dynamic_partition`
+as illustrated on the following example:
+
+```python
+    # Apply function (increments x_i) on elements for which a certain condition
+    # apply (x_i != -1 in this example).
+    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+    condition_mask=tf.not_equal(x,tf.constant(-1.))
+    partitioned_data = tf.dynamic_partition(
+        x, tf.cast(condition_mask, tf.int32) , 2)
+    partitioned_data[1] = partitioned_data[1] + 1.0
+    condition_indices = tf.dynamic_partition(
+        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+    x = tf.dynamic_stitch(condition_indices, partitioned_data)
+    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+    # unchanged.
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
+</div>
+)doc");
+
+REGISTER_OP("ParallelDynamicStitch")
+    .Input("indices: N * int32")
+    .Input("data: N * T")
+    .Output("merged: T")
+    .Attr("N : int >= 1")
+    .Attr("T : type")
+    .SetShapeFn(DynamicStitchShapeFunction)
+    .Doc(R"doc(
+Interleave the values from the `data` tensors into a single tensor.
+
+Builds a merged tensor such that
+
+```python
+    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+```
+
+For example, if each `indices[m]` is scalar or vector, we have
+
+```python
+    # Scalar indices:
+    merged[indices[m], ...] = data[m][...]
+
+    # Vector indices:
+    merged[indices[m][i], ...] = data[m][i, ...]
+```
+
+Each `data[i].shape` must start with the corresponding `indices[i].shape`,
+and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
+must have `data[i].shape = indices[i].shape + constant`.  In terms of this
+`constant`, the output shape is
+
+    merged.shape = [max(indices)] + constant
+
+Values may be merged in parallel, so if an index appears in both `indices[m][i]`
+and `indices[n][j]`, the result may be invalid. This differs from the normal
+DynamicStitch operator that defines the behavior in that case.
 
 For example:
 
@@ -1140,8 +1219,9 @@ dtype: The data type of accumulated gradients. Needs to correspond to the type
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("Stack")
-    .Output("handle: Ref(string)")
+REGISTER_OP("StackV2")
+    .Input("max_size: int32")
+    .Output("handle: resource")
     .Attr("elem_type: type")
     .Attr("stack_name: string = ''")
     .SetIsStateful()
@@ -1149,14 +1229,16 @@ REGISTER_OP("Stack")
     .Doc(R"doc(
 A stack that produces elements in first-in last-out order.
 
+max_size: The maximum size of the stack if non-negative. If negative, the stack
+  size is unlimited.
 handle: The handle to the stack.
 elem_type: The type of the elements on the stack.
 stack_name: Overrides the name used for the temporary stack resource. Default
 value is the name of the 'Stack' op (which is guaranteed unique).
 )doc");
 
-REGISTER_OP("StackPush")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPushV2")
+    .Input("handle: resource")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
@@ -1174,8 +1256,8 @@ output: The same tensor as the input 'elem'.
 swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
-REGISTER_OP("StackPop")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPopV2")
+    .Input("handle: resource")
     .Output("elem: elem_type")
     .Attr("elem_type: type")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -1187,13 +1269,55 @@ elem: The tensor that is popped from the top of the stack.
 elem_type: The type of the elem that is popped.
 )doc");
 
-REGISTER_OP("StackClose")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackCloseV2")
+    .Input("handle: resource")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
     .Doc(R"doc(
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// Deprecated ref-typed variants of stack.
+
+REGISTER_OP("Stack")
+    .Output("handle: Ref(string)")
+    .Attr("elem_type: type")
+    .Attr("stack_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Deprecated, use StackV2.
+)doc");
+
+REGISTER_OP("StackPush")
+    .Input("handle: Ref(string)")
+    .Input("elem: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("swap_memory: bool = false")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Deprecated, use StackPushV2.
+)doc");
+
+REGISTER_OP("StackPop")
+    .Input("handle: Ref(string)")
+    .Output("elem: elem_type")
+    .Attr("elem_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Deprecated, use StackPopV2.
+)doc");
+
+REGISTER_OP("StackClose")
+    .Input("handle: Ref(string)")
+    .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Doc(R"doc(
+Deprecated, use StackCloseV2.
 )doc");
 
 // --------------------------------------------------------------------------

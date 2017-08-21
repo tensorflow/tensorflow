@@ -28,9 +28,8 @@ import json
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops.summary_ops import _tensor_summary_v2
+from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.python.summary import plugin_asset
-from tensorflow.python.util import deprecation
 
 PLUGIN_NAME = "text"
 
@@ -38,11 +37,6 @@ PLUGIN_NAME = "text"
 _TextPluginData = namedtuple("_TextPluginData", [])
 
 
-@deprecation.deprecated_args(
-    "2017-06-13",
-    "collections is deprecated. Instead of using collections to associate "
-    "plugins to events, add a PluginData field to the SummaryMetadata of a "
-    "Value proto.", "collections")
 def text_summary(name, tensor, collections=None):
   """Summarizes textual data.
 
@@ -62,7 +56,7 @@ def text_summary(name, tensor, collections=None):
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
 
   Returns:
-    A  TensorSummary op that is configured so that TensorBoard will recognize
+    A TensorSummary op that is configured so that TensorBoard will recognize
     that it contains textual data. The TensorSummary is a scalar `Tensor` of
     type `string` which contains `Summary` protobufs.
 
@@ -76,9 +70,9 @@ def text_summary(name, tensor, collections=None):
   summary_metadata = summary_pb2.SummaryMetadata()
   text_plugin_data = _TextPluginData()
   data_dict = text_plugin_data._asdict()  # pylint: disable=protected-access
-  summary_metadata.plugin_data.add(
-      plugin_name=PLUGIN_NAME, content=json.dumps(data_dict))
-  t_summary = _tensor_summary_v2(
+  summary_metadata.plugin_data.plugin_name = PLUGIN_NAME
+  summary_metadata.plugin_data.content = json.dumps(data_dict)
+  t_summary = tensor_summary(
       name=name,
       tensor=tensor,
       summary_metadata=summary_metadata,

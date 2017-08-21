@@ -119,22 +119,15 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
 
   // Ask the XLA compiler to evaluate the data handle to a literal.
-  xla::StatusOr<std::unique_ptr<xla::GlobalData>> computed =
+  xla::StatusOr<std::unique_ptr<xla::Literal>> computed =
       builder()->ComputeConstant(handle, &layout);
   if (!computed.ok()) {
     return errors::InvalidArgument(
         "Error evaluating ", context_->op_kernel().name(), " input ", index,
         ": ", computed.status().error_message());
   }
-  // Fetch the literal from the compiler service.
-  xla::StatusOr<std::unique_ptr<xla::Literal>> constant =
-      builder()->client()->Transfer(*computed.ValueOrDie());
-  if (!constant.ok()) {
-    return errors::InvalidArgument(
-        "Error evaluating ", context_->op_kernel().name(), " input ", index,
-        ": ", constant.status().error_message());
-  }
-  constant_literal->Swap(constant.ValueOrDie().get());
+  constant_literal->Swap(computed.ValueOrDie().get());
+
   return Status::OK();
 }
 
@@ -279,7 +272,8 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  *shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
   return Status::OK();
 }
 
@@ -296,10 +290,11 @@ void XlaOpKernelContext::SetOutput(int index,
   // The step's default allocator is the dummy XlaCompilationAllocator which
   // simply allocates a metadata buffer to hold the expression to which it
   // corresponds.
-  OP_REQUIRES_OK(
-      context_,
-      context_->allocate_output(
-          index, XLAShapeToTensorShape(*shape.ValueOrDie()), &output));
+  TensorShape tensor_shape;
+  OP_REQUIRES_OK(context_,
+                 XLAShapeToTensorShape(*shape.ValueOrDie(), &tensor_shape));
+  OP_REQUIRES_OK(context_,
+                 context_->allocate_output(index, tensor_shape, &output));
 
   // The expression is stored in the tensor's data buffer. Fill in the
   // fields now.

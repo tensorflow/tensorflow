@@ -21,14 +21,15 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -63,7 +64,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsIntegralType(from_type));
+      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED);
       if (from_type == to_type) {
         return operand_value;
       }
@@ -78,7 +79,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
         }
-        if (primitive_util::IsUnsignedIntegralType(from_type)) {
+        if (primitive_util::IsUnsignedIntegralType(from_type) ||
+            from_type == PRED) {
           return ir_builder_->CreateUIToFP(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
@@ -174,6 +176,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           ir_builder_);
     case HloOpcode::kCos:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
+    case HloOpcode::kSin:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {operand_value},
                                           {operand_value->getType()},
                                           ir_builder_);
     case HloOpcode::kFloor:
@@ -287,6 +293,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
+  // TODO(b/64580527): We can do better here if fast-math is enabled.
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, ir_builder_);
@@ -294,6 +301,7 @@ llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
+  // TODO(b/64580527): We can do better here if fast-math is enabled.
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, ir_builder_);
@@ -787,6 +795,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kTanh:
     case HloOpcode::kLogicalNot:
       return [this, hlo, &operand_to_generator](
@@ -947,23 +956,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        IrArray::Index sliced_index(index.size());
-        for (int i = 0; i < index.size(); ++i) {
-          int64 stride = hlo->slice_stride(i);
-          if (stride != 1) {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                ir_builder_->CreateMul(
-                    index[i], llvm::ConstantInt::get(index[i]->getType(),
-                                                     stride)),
-                llvm::ConstantInt::get(index[i]->getType(),
-                                       hlo->slice_starts(i)));
-          } else {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                    index[i],
-                    llvm::ConstantInt::get(index[i]->getType(),
-                                           hlo->slice_starts(i)));
-          }
-        }
+        IrArray::Index sliced_index = index.SourceIndexOfSlice(
+            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*strides=*/hlo->slice_strides(), /*builder=*/ir_builder_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
     case HloOpcode::kDynamicSlice:
@@ -1155,6 +1150,74 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         // of operand_value or padding_value no longer a predecessor of
         // if_data.after_block.
         return ir_builder_->CreateLoad(ret_value_addr);
+      };
+
+    case HloOpcode::kDot:
+      return [=, &operand_to_generator](const IrArray::Index& dot_result_index)
+                 -> StatusOr<llvm::Value*> {
+        auto lhs_generator = operand_to_generator.at(hlo->operand(0));
+        auto rhs_generator = operand_to_generator.at(hlo->operand(1));
+        int64 contracted_dim_size = hlo->operand(0)->shape().dimensions(
+            hlo->operand(0)->shape().dimensions_size() - 1);
+        int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
+        int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
+
+        std::unique_ptr<llvm_ir::ForLoop> inner_loop =
+            llvm_ir::ForLoop::EmitForLoop(
+                "dot.inner", ir_builder_->getInt64(0),
+                ir_builder_->getInt64(contracted_dim_size),
+                ir_builder_->getInt64(1), ir_builder_);
+
+        SetToFirstInsertPoint(inner_loop->GetPreheaderBasicBlock(),
+                              ir_builder_);
+        PrimitiveType primitive_type = hlo->shape().element_type();
+        llvm::Type* primitive_type_llvm =
+            llvm_ir::PrimitiveTypeToIrType(primitive_type, ir_builder_);
+        llvm::Value* accumulator_alloca = llvm_ir::EmitAllocaAtFunctionEntry(
+            primitive_type_llvm, "dot_acc", ir_builder_);
+        ir_builder_->CreateStore(
+            llvm::Constant::getNullValue(primitive_type_llvm),
+            accumulator_alloca);
+
+        SetToFirstInsertPoint(inner_loop->GetBodyBasicBlock(), ir_builder_);
+
+        // This is the inner reduction loop for a dot operation that produces
+        // one element in the output.  If the operands to the dot operation have
+        // shapes [A,B,C,T] and [D,T,E], the result has a shape [A,B,C,D,E].
+        // Given an output index [a,b,c,d,e] in the result, we compute:
+        //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
+
+        IrArray::Index lhs_index, rhs_index;
+
+        for (int64 i = 0; i < lhs_dims - 1; i++) {
+          lhs_index.push_back(dot_result_index[i]);
+        }
+        lhs_index.push_back(inner_loop->GetIndVarValue());
+
+        for (int64 i = 0; i < rhs_dims - 2; i++) {
+          rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
+        }
+        rhs_index.push_back(inner_loop->GetIndVarValue());
+        rhs_index.push_back(dot_result_index.back());
+
+        llvm::Value* current_accumulator =
+            ir_builder_->CreateLoad(accumulator_alloca);
+        TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
+        TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
+        llvm::Value* next_accumulator;
+        if (primitive_util::IsFloatingPointType(primitive_type)) {
+          next_accumulator = ir_builder_->CreateFAdd(
+              current_accumulator,
+              ir_builder_->CreateFMul(lhs_value, rhs_value));
+        } else {
+          next_accumulator = ir_builder_->CreateAdd(
+              current_accumulator,
+              ir_builder_->CreateMul(lhs_value, rhs_value));
+        }
+        ir_builder_->CreateStore(next_accumulator, accumulator_alloca);
+
+        SetToFirstInsertPoint(inner_loop->GetExitBasicBlock(), ir_builder_);
+        return ir_builder_->CreateLoad(accumulator_alloca);
       };
     default:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {

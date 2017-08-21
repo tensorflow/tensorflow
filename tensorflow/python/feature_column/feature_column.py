@@ -1468,11 +1468,11 @@ class _LazyBuilder(object):
   We're trying to use the following `_FeatureColumn`s:
 
   ```python
-    bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
-    keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
-    age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
-    ... = linear_model(features,
-                            [bucketized_age, keywords, age_X_keywords]
+  bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
+  keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
+  age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
+  ... = linear_model(features,
+                          [bucketized_age, keywords, age_X_keywords]
   ```
 
   If we transform each column independently, then we'll get duplication of

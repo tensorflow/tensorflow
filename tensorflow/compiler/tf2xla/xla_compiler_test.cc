@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
@@ -75,6 +77,8 @@ class DummyReadResourceCC {
     scope.UpdateBuilder(&builder);
     scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
     if (!scope.ok()) return;
+    scope.UpdateStatus(scope.DoShapeInference(ret));
+    if (!scope.ok()) return;
     this->output_ = Output(ret, 0);
   }
   Node* node() const { return output_.node(); }
@@ -85,6 +89,7 @@ class DummyReadResourceCC {
 REGISTER_OP("DummyReadResource")
     .Input("input: int32")
     .Output("output: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A dummy Op.
 
@@ -93,6 +98,31 @@ output: dummy output.
 )doc");
 
 REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
+
+// DummyDuplicateOp is present purely to test multiple REGISTER_XLA_OP calls
+// on the same Op name below.
+class DummyDuplicateOp : public XlaOpKernel {
+ public:
+  explicit DummyDuplicateOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, ctx->Input(0));
+  }
+};
+
+REGISTER_OP("DummyDuplicateOp")
+    .Input("input: int32")
+    .Output("output: int32")
+    .Doc(R"doc(
+A dummy Op.
+
+input: dummy input.
+output: dummy output.
+)doc");
+
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
+                DummyDuplicateOp);
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
+                DummyDuplicateOp);
 
 class XlaCompilerTest : public ::testing::Test {
  protected:
@@ -149,10 +179,10 @@ TEST_F(XlaCompilerTest, Simple) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape({2});
+  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -201,7 +231,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   XlaCompiler::Options options = DefaultOptions();
   XlaCompiler compiler(options);
@@ -290,7 +320,7 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   DummyResourceForTest* resource = new DummyResourceForTest();
 

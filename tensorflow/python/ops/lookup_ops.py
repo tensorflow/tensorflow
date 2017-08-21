@@ -236,11 +236,11 @@ class HashTable(InitializableLookupTableBase):
   Example usage:
 
   ```python
-  table = tf.contrib.lookup.HashTable(
-      tf.contrib.lookup.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor).
+  table = tf.HashTable(
+      tf.KeyValueTensorInitializer(keys, values), -1)
+  out = table.lookup(input_tensor)
   table.init.run()
-  print out.eval()
+  print(out.eval())
   ```
   """
 
@@ -709,7 +709,7 @@ class IdTableWithHashBuckets(LookupInterface):
       num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
-  print out.eval()
+  print(out.eval())
   ```
 
   The hash function used for generating out-of-vocabulary buckets ID is handled

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -86,10 +85,13 @@ class MultiOutputFusionTest : public HloTestBase {
     if (manual_fusion) {
       auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
           ArraySlice<HloInstruction*>({sub, add2}, 0, 2)));
-      computation->AddInstruction(
+      auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 0));
-      computation->AddInstruction(
+      auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 1));
+      TF_CHECK_OK(dot->ReplaceOperandWith(0, gte0));
+      TF_CHECK_OK(dot->ReplaceOperandWith(1, gte1));
+
       CHECK_NE(
           computation->CreateFusionInstruction(
               {tuple, sub, add2, broadcast}, HloInstruction::FusionKind::kLoop),
@@ -141,10 +143,13 @@ class MultiOutputFusionTest : public HloTestBase {
       auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
           ArraySlice<HloInstruction*>({sub_U8, add}, 0, 2)));
 
-      computation->AddInstruction(
+      auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_U8, tuple, 0));
-      computation->AddInstruction(
+      auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_F32, tuple, 1));
+      TF_CHECK_OK(sub->ReplaceOperandWith(0, gte0));
+      TF_CHECK_OK(reshape->ReplaceOperandWith(0, gte1));
+
       CHECK_NE(computation->CreateFusionInstruction(
                    {tuple, sub_U8, add, param0_U8, param1_F32},
                    HloInstruction::FusionKind::kLoop),
@@ -171,21 +176,3 @@ XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-
-  return RUN_ALL_TESTS();
-}

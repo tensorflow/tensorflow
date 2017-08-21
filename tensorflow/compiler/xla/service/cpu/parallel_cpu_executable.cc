@@ -24,7 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -62,7 +62,7 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
-    : Executable(std::move(hlo_module), ParallelCpuExecutable::ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       functions_names_(std::move(function_names)),
@@ -407,8 +407,9 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     HloInstruction* instruction = entry.first;
     llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
     TF_RET_CHECK(sym);
-    InsertOrDie(&functions, instruction,
-                reinterpret_cast<ComputeFunctionType>(sym.getAddress()));
+    InsertOrDie(
+        &functions, instruction,
+        reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress())));
   }
 
   // Map containing pointers to result buffers for each instruction.
@@ -440,7 +441,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   // TODO(b/27458679) Manage scheduling based on in-flight concurrency limits.
   // For example, if we expect a library conv/matmul call to run at max
   // concurrency, we should not dispatch runnable instructions until the
-  // libary call is finished (to avoid expensive cache invalidation).
+  // library call is finished (to avoid expensive cache invalidation).
   Executor executor(functions, run_options, &pending, &results,
                     buffer_pointers.data(), profile_counters.data(),
                     assignment_.get());
@@ -565,7 +566,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
                 if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
+                  const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton.
@@ -619,6 +620,11 @@ ParallelCpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& ParallelCpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> ParallelCpuExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

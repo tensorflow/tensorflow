@@ -126,6 +126,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
 
+  Status HandleConstant(HloInstruction* constant,
+                        const Literal& literal) override;
+
   Status HandleCopy(HloInstruction* copy) override;
 
   Status HandleConvert(HloInstruction* convert) override;
@@ -236,6 +239,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction) {
+    VLOG(4) << "Replacing instruction:";
+    VLOG(4) << "  old: " << old_instruction->ToString();
+    VLOG(4) << "  new: " << new_instruction->ToString();
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         old_instruction, std::move(new_instruction)));
     changed_ = true;
@@ -247,6 +253,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Returns the Status representing the result of the replace operation.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction) {
+    VLOG(4) << "Replacing instruction:";
+    VLOG(4) << "  old: " << old_instruction->ToString();
+    VLOG(4) << "  new: " << new_instruction->ToString();
     TF_RETURN_IF_ERROR(
         computation_->ReplaceInstruction(old_instruction, new_instruction));
     changed_ = true;
@@ -407,6 +416,32 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
             concatenate->shape(), operands[operand_to_pad],
             operands[pad_value_operand]->mutable_operand(0), padding_config));
     return ReplaceInstruction(concatenate, pad);
+  }
+  return Status::OK();
+}
+
+static HloInstruction* BuildTupleConstant(HloComputation* computation,
+                                          const Literal& literal) {
+  if (ShapeUtil::IsTuple(literal.shape())) {
+    std::vector<HloInstruction*> elems;
+    elems.reserve(ShapeUtil::TupleElementCount(literal.shape()));
+    for (const Literal& child : literal.tuple_literals()) {
+      elems.push_back(BuildTupleConstant(computation, child));
+    }
+    return computation->AddInstruction(HloInstruction::CreateTuple(elems));
+  } else {
+    return computation->AddInstruction(
+        HloInstruction::CreateConstant(MakeUnique<Literal>(literal)));
+  }
+}
+
+Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant,
+                                                  const Literal& literal) {
+  // Tuple constants aren't directly supported by any backend. Expand them into
+  // explicit Tuple instructions.
+  if (ShapeUtil::IsTuple(constant->shape())) {
+    return ReplaceInstruction(constant,
+                              BuildTupleConstant(computation_, literal));
   }
   return Status::OK();
 }
@@ -1026,6 +1061,9 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
         HloInstruction* reshape_or_broadcast) {
   bool changed = false;
+  if (ShapeUtil::IsScalar(reshape_or_broadcast->shape())) {
+    return false;
+  }
   HloInstruction* operand = reshape_or_broadcast->mutable_operand(0);
   for (HloInstruction* user : reshape_or_broadcast->users()) {
     if (user->user_count() == 0 && user != computation_->root_instruction()) {
@@ -1058,31 +1096,43 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     if (scalar_count != user->operand_count() - 1) {
       continue;
     }
+    VLOG(4) << "Sinking reshape or broadcast after user:";
+    VLOG(4) << "  old reshape/broadcast: " << reshape_or_broadcast->ToString();
+    VLOG(4) << "  old user: " << user->ToString();
     CHECK_EQ(user->operand(reshape_or_broadcast_operand_index),
              reshape_or_broadcast);
-    std::vector<HloInstruction*> new_user_operands = user->operands();
+    auto new_user_operands = user->operands();
     new_user_operands[reshape_or_broadcast_operand_index] = operand;
     auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
-        ShapeUtil::MakeShape(user->shape().element_type(),
-                             AsInt64Slice(operand->shape().dimensions())),
+        ShapeUtil::MakeShapeWithLayout(
+            user->shape().element_type(),
+            AsInt64Slice(operand->shape().dimensions()),
+            AsInt64Slice(operand->shape().layout().minor_to_major())),
         new_user_operands));
+    VLOG(4) << "  new user: " << new_user->ToString();
     HloInstruction* new_reshape_or_broadcast = nullptr;
     if (reshape_or_broadcast->opcode() == HloOpcode::kReshape) {
       new_reshape_or_broadcast =
           computation_->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShape(
+              ShapeUtil::MakeShapeWithLayout(
                   user->shape().element_type(),
-                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
+                  AsInt64Slice(
+                      reshape_or_broadcast->shape().layout().minor_to_major())),
               new_user));
     } else {
       TF_RET_CHECK(reshape_or_broadcast->opcode() == HloOpcode::kBroadcast);
       new_reshape_or_broadcast =
           computation_->AddInstruction(HloInstruction::CreateBroadcast(
-              ShapeUtil::MakeShape(
+              ShapeUtil::MakeShapeWithLayout(
                   user->shape().element_type(),
-                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
+                  AsInt64Slice(
+                      reshape_or_broadcast->shape().layout().minor_to_major())),
               new_user, reshape_or_broadcast->dimensions()));
     }
+    VLOG(4) << "  new reshape/broadcast: "
+            << new_reshape_or_broadcast->ToString();
     TF_RETURN_IF_ERROR(
         computation_->ReplaceUsesOfInstruction(user, new_reshape_or_broadcast));
     changed = true;
@@ -1196,7 +1246,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
     return ReplaceWithNewInstruction(
         reduce,
         HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
-    return Status::OK();
   }
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field.
@@ -1456,8 +1505,8 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   // We cannot insert bitcasts if the layouts will not be compatible.
   // TODO(b/33178038): Consider inserting a transpose if a bitcast would be
   // invalid.
-  if (!valid_bitcast_callback_(lhs->shape(), input_shape) ||
-      !valid_bitcast_callback_(rhs->shape(), new_filter_shape) ||
+  if (!valid_bitcast_callback_(input_shape, new_input_shape) ||
+      !valid_bitcast_callback_(filter_shape, new_filter_shape) ||
       !valid_bitcast_callback_(dot_output_shape, convolution_shape)) {
     return Status::OK();
   }
@@ -1554,6 +1603,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   // module, invalidating iteration.
   std::vector<HloComputation*> computations;
   for (auto& comp : module->computations()) {
+    if (comp->IsFusionComputation()) {
+      continue;
+    }
     computations.push_back(comp.get());
   }
   for (auto& comp : computations) {

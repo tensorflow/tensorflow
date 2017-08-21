@@ -39,4 +39,17 @@ void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
   MakeDataset(ctx, input, output);
 }
 
+void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
+                                        DatasetBase** output) {
+  DatasetBase* input;
+  DatasetBase* another_input;
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
+  OP_REQUIRES_OK(ctx,
+                 LookupResource(ctx, HandleFromInput(ctx, 1), &another_input));
+  core::ScopedUnref unref_input(input);
+  core::ScopedUnref unref_another_input(another_input);
+
+  MakeDataset(ctx, input, another_input, output);
+}
+
 }  // namespace tensorflow

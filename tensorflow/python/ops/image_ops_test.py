@@ -1502,31 +1502,28 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       bounding_box_tf = constant_op.constant(
           bounding_box_np, dtype=dtypes.float32, shape=bounding_box_np.shape)
 
-      # sample_distorted_bounding_box and sample_distorted_bounding_box_v2
-      for op in [image_ops.sample_distorted_bounding_box,
-                 gen_image_ops._sample_distorted_bounding_box_v2]:
-        begin, size, _ = op(
-            image_size=image_size_tf,
-            bounding_boxes=bounding_box_tf,
-            min_object_covered=min_object_covered,
-            aspect_ratio_range=aspect_ratio_range,
-            area_range=area_range)
-        y = array_ops.strided_slice(image_tf, begin, begin + size)
+      begin, size, _ = image_ops.sample_distorted_bounding_box(
+          image_size=image_size_tf,
+          bounding_boxes=bounding_box_tf,
+          min_object_covered=min_object_covered,
+          aspect_ratio_range=aspect_ratio_range,
+          area_range=area_range)
+      y = array_ops.strided_slice(image_tf, begin, begin + size)
 
-        for _ in xrange(num_iter):
-          y_tf = y.eval()
-          crop_height = y_tf.shape[0]
-          crop_width = y_tf.shape[1]
-          aspect_ratio = float(crop_width) / float(crop_height)
-          area = float(crop_width * crop_height)
+      for _ in xrange(num_iter):
+        y_tf = y.eval()
+        crop_height = y_tf.shape[0]
+        crop_width = y_tf.shape[1]
+        aspect_ratio = float(crop_width) / float(crop_height)
+        area = float(crop_width * crop_height)
 
-          aspect_ratios.append(aspect_ratio)
-          area_ratios.append(area / original_area)
-          fraction_object_covered.append(float(np.sum(y_tf)) / bounding_box_area)
+        aspect_ratios.append(aspect_ratio)
+        area_ratios.append(area / original_area)
+        fraction_object_covered.append(float(np.sum(y_tf)) / bounding_box_area)
 
-      # sample_distorted_bounding_box_v2
+      # min_object_covered as tensor
       min_object_covered_placeholder = array_ops.placeholder(dtypes.float32)
-      begin, size, _ = gen_image_ops._sample_distorted_bounding_box_v2(
+      begin, size, _ = image_ops.sample_distorted_bounding_box(
           image_size=image_size_tf,
           bounding_boxes=bounding_box_tf,
           min_object_covered=min_object_covered_placeholder,
@@ -1630,21 +1627,19 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
           [0.0, 0.0, 1.0, 1.0],
           shape=[4],
           dtype=dtypes.float32,)
-      for op in [image_ops.sample_distorted_bounding_box,
-                 gen_image_ops._sample_distorted_bounding_box_v2]:
-        begin, end, bbox_for_drawing = op(
-            image_size=image_size,
-            bounding_boxes=bounding_box,
-            min_object_covered=0.1,
-            aspect_ratio_range=(0.75, 1.33),
-            area_range=(0.05, 1.0))
+      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+          image_size=image_size,
+          bounding_boxes=bounding_box,
+          min_object_covered=0.1,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
 
-        # Test that the shapes are correct.
-        self.assertAllEqual([3], begin.get_shape().as_list())
-        self.assertAllEqual([3], end.get_shape().as_list())
-        self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+      # Test that the shapes are correct.
+      self.assertAllEqual([3], begin.get_shape().as_list())
+      self.assertAllEqual([3], end.get_shape().as_list())
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
 
-      begin, end, bbox_for_drawing = op(
+      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
           bounding_boxes=bounding_box,
           min_object_covered=array_ops.placeholder(dtypes.float32),
@@ -2862,6 +2857,24 @@ class FormatTest(test_util.TensorFlowTestCase):
       for decode in image_ops.decode_jpeg, image_ops.decode_png:
         with self.assertRaisesOpError(r"Got 12 frames"):
           decode(io_ops.read_file(path)).eval()
+
+
+class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
+
+  def testSelectFromThreeClusters(self):
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    max_output_size_np = 3
+    iou_threshold_np = 0.5
+    with self.test_session():
+      boxes = constant_op.constant(boxes_np)
+      scores = constant_op.constant(scores_np)
+      max_output_size = constant_op.constant(max_output_size_np)
+      iou_threshold = constant_op.constant(iou_threshold_np)
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, max_output_size, iou_threshold).eval()
+      self.assertAllClose(selected_indices, [3, 0, 5])
 
 
 if __name__ == "__main__":

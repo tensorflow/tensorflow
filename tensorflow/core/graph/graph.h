@@ -101,6 +101,10 @@ class Node {
   // use assigned_device_name() below.
   const string& requested_device() const;
 
+  // This changes the user requested device but not necessarily the device that
+  // on which the operation will run.
+  void set_requested_device(const string& device);
+
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
@@ -255,6 +259,19 @@ class Node {
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
 };
 
+// Represents an output of a node, i.e., the `index`-th output of `node`. Note
+// that a single `OutputTensor` can correspond to multiple `Edge`s if the output
+// is consumed by multiple destination nodes.
+struct OutputTensor {
+  Node* node;
+  int index;
+
+  OutputTensor(Node* n, int i) : node(n), index(i) {}
+  OutputTensor() : node(nullptr), index(0) {}
+};
+
+// TODO(skyewm): add InputTensor if/when necessary
+
 class Edge {
  public:
   Node* src() const { return src_; }
@@ -274,6 +291,8 @@ class Edge {
   // Return true iff this is an edge that indicates a control-flow
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
+
+  string DebugString() const;
 
  private:
   Edge() {}
@@ -502,7 +521,7 @@ class Graph {
   // TODO(josh11b): uint64 hash() const;
 
  private:
-  bool IsValidNode(Node* node) const;
+  Status IsValidNode(Node* node) const;
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.

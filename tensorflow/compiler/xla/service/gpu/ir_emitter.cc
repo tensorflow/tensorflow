@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Constants.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
@@ -202,18 +202,22 @@ bool IrEmitter::MaybeEmitSpecialAtomicOperation(
   // NVPTX supports atomicMax and atomicMin on only integer types.
   if (root_opcode == HloOpcode::kMaximum &&
       primitive_util::IsIntegralType(element_type)) {
-    // min(integral, integral)
-    ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Max, output_address,
-                                source,
+    // max(integral, integral)
+    auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                      ? llvm::AtomicRMWInst::Max
+                      : llvm::AtomicRMWInst::UMax;
+    ir_builder_.CreateAtomicRMW(opcode, output_address, source,
                                 llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }
 
   if (root_opcode == HloOpcode::kMinimum &&
       primitive_util::IsIntegralType(element_type)) {
-    // max(integral, integral)
-    ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Min, output_address,
-                                source,
+    // min(integral, integral)
+    auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                      ? llvm::AtomicRMWInst::Min
+                      : llvm::AtomicRMWInst::UMin;
+    ir_builder_.CreateAtomicRMW(opcode, output_address, source,
                                 llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }

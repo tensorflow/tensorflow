@@ -835,8 +835,8 @@ TEST_F(LiteralUtilTest, ConvertR4) {
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
   // clang-format on
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<Literal> converted,
-                         original->Convert(U32));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
+                          original->Convert(U32));
 
   EXPECT_TRUE(expected->Equal(*converted));
 }

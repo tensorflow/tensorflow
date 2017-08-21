@@ -70,6 +70,7 @@ Status ShapeOfMergeNode(const Node* node, InferenceContext* c) {
 Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
                    std::queue<const Node*>* new_shapes) {
   auto enter_ctx = shape_refiner->GetContext(node);
+  CHECK_NE(enter_ctx, nullptr);
   for (int i = 0; i < enter_ctx->num_outputs(); i++) {
     TF_RETURN_IF_ERROR(shape_refiner->SetShape(node, i, enter_ctx->input(0)));
   }
@@ -82,7 +83,7 @@ Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
         continue;
       }
       InferenceContext* merge_ctx = shape_refiner->GetContext(dst);
-      DCHECK_NE(merge_ctx, nullptr);
+      CHECK_NE(merge_ctx, nullptr);
       TF_RETURN_IF_ERROR(ShapeOfMergeNode(dst, merge_ctx));
       new_shapes->push(dst);
     }
@@ -181,6 +182,7 @@ Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
+  shape_refiner.set_disable_constant_propagation(true);
   ImportGraphDefOptions options;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);

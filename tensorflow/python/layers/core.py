@@ -57,10 +57,20 @@ class Dense(base.Layer):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
+      If `None` (default), weights are initialized using the default
+      initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
+    kernel_constraint: An optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: An optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
@@ -72,11 +82,13 @@ class Dense(base.Layer):
     units: Python integer, dimensionality of the output space.
     activation: Activation function (callable).
     use_bias: Boolean, whether the layer uses a bias.
-    kernel_initializer: Initializer instance (or name) for the weight matrix.
+    kernel_initializer: Initializer instance (or name) for the kernel matrix.
     bias_initializer: Initializer instance (or name) for the bias.
-    kernel_regularizer: Regularizer instance for the weight matrix (callable)
+    kernel_regularizer: Regularizer instance for the kernel matrix (callable)
     bias_regularizer: Regularizer instance for the bias (callable).
     activity_regularizer: Regularizer instance for the output (callable)
+    kernel_constraint: Constraint function for the kernel matrix.
+    bias_constraint: Constraint function for the bias.
     kernel: Weight matrix (TensorFlow variable or tensor).
     bias: Bias vector, if applicable (TensorFlow variable or tensor).
   """
@@ -89,6 +101,8 @@ class Dense(base.Layer):
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
@@ -101,6 +115,8 @@ class Dense(base.Layer):
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
     self.activity_regularizer = activity_regularizer
+    self.kernel_constraint = kernel_constraint
+    self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(min_ndim=2)
 
   def build(self, input_shape):
@@ -114,6 +130,7 @@ class Dense(base.Layer):
                                     shape=[input_shape[-1].value, self.units],
                                     initializer=self.kernel_initializer,
                                     regularizer=self.kernel_regularizer,
+                                    constraint=self.kernel_constraint,
                                     dtype=self.dtype,
                                     trainable=True)
     if self.use_bias:
@@ -121,6 +138,7 @@ class Dense(base.Layer):
                                     shape=[self.units,],
                                     initializer=self.bias_initializer,
                                     regularizer=self.bias_regularizer,
+                                    constraint=self.bias_constraint,
                                     dtype=self.dtype,
                                     trainable=True)
     else:
@@ -164,6 +182,8 @@ def dense(
     kernel_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
+    kernel_constraint=None,
+    bias_constraint=None,
     trainable=True,
     name=None,
     reuse=None):
@@ -186,10 +206,20 @@ def dense(
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
+      If `None` (default), weights are initialized using the default
+      initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
+    kernel_constraint: An optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: An optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer.
@@ -207,6 +237,8 @@ def dense(
                 kernel_regularizer=kernel_regularizer,
                 bias_regularizer=bias_regularizer,
                 activity_regularizer=activity_regularizer,
+                kernel_constraint=kernel_constraint,
+                bias_constraint=bias_constraint,
                 trainable=trainable,
                 name=name,
                 dtype=inputs.dtype.base_dtype,

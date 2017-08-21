@@ -25,6 +25,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
@@ -41,6 +42,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
+
+
+def no_rewrite_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
 
 
 def line_number_above():
@@ -506,7 +514,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     cls._curr_file_path = os.path.abspath(
         tf_inspect.getfile(tf_inspect.currentframe()))
 
-    cls._sess = session.Session()
+    cls._sess = session.Session(config=no_rewrite_session_config())
     with cls._sess as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
@@ -577,6 +585,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         cls._analyzer.list_source,
         cls._analyzer.get_help("list_source"),
         prefix_aliases=["ls"])
+    cls._registry.register_command_handler(
+        "eval",
+        cls._analyzer.evaluate_expression,
+        cls._analyzer.get_help("eval"),
+        prefix_aliases=["ev"])
 
   @classmethod
   def tearDownClass(cls):
@@ -993,6 +1006,34 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_inputs_node_name=node_name,
         list_outputs_node_name=node_name)
 
+  def testPrintTensorHighlightingRangesAndIncludingNumericSummary(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command(
+        "print_tensor", [tensor_name, "--ranges", "[-inf, 0.0]", "-s"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"%s:DebugIdentity\": " % tensor_name +
+        "Highlighted([-inf, 0.0]): 1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "Numeric summary:",
+        "| - + | total |",
+        "| 1 1 |     2 |",
+        "|  min  max mean  std |",
+        "| -2.0  7.0  2.5  4.5 |",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(10, out.annotations)
+    self.assertIn(11, out.annotations)
+    self.assertEqual([(8, 11, "bold")], out.font_attr_segs[11])
+
   def testPrintTensorWithSlicing(self):
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
@@ -1097,6 +1138,29 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "graphs"
     ], out.lines)
     check_main_menu(self, out, list_tensors_enabled=True)
+
+  def testEvalExpression(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command(
+        "eval", ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name)],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"from eval of expression "
+        "'np.matmul(`simple_mul_add/matmul:0`, "
+        "`simple_mul_add/matmul:0`.T)'\":",
+        "  dtype: float64",
+        "  shape: (2, 2)",
+        "",
+        "Numeric summary:",
+        "| - + | total |",
+        "| 2 2 |     4 |",
+        "|           min           max          mean           std |",
+        "|         -14.0          49.0          6.25 25.7524270701 |",
+        "",
+        "array([[ 49., -14.],",
+        "       [-14.,   4.]])"], out.lines)
 
   def testAddGetTensorFilterLambda(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
@@ -1382,7 +1446,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       # 2400 elements should exceed the default threshold (2000).
       x = constant_op.constant(np.zeros([300, 8]), name="large_tensors/x")
 
@@ -1459,7 +1523,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])
       x_init = constant_op.constant(x_init_val, shape=[2])
       x = variables.Variable(x_init, name="control_deps/x")
@@ -1799,7 +1863,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       loop_var = constant_op.constant(0, name="while_loop_test/loop_var")
       cond = lambda loop_var: math_ops.less(loop_var, 10)
       body = lambda loop_var: math_ops.add(loop_var, 1)

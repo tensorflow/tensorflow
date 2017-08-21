@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import unittest
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -549,7 +548,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
   # [[1, ?, 2]
   #  [?, 3, ?]]
-  # where ? is implictly-zero.
+  # where ? is implicitly-zero.
   ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
   vals = np.array([1, 1, 1]).astype(np.int32)
   dense_shape = np.array([2, 3]).astype(np.int64)
@@ -606,7 +605,6 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, True, False)
     self._compare(sp_t, reduction_axes, ndims, True, True)
 
-  @unittest.skipIf(np.__version__ == "1.13.0", "numpy 1.13 bug")
   def testSimpleAndRandomInputs(self):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
@@ -646,7 +644,6 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError("Invalid reduction dimension 2"):
         sparse_ops.sparse_reduce_max(sp_t, 2).eval()
 
-  @unittest.skipIf(np.__version__ == "1.13.0", "numpy 1.13 bug")
   def testGradient(self):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
@@ -907,6 +904,24 @@ class SparseTransposeTest(test.TestCase):
           dn_trans = sparse_ops.sparse_tensor_to_dense(sp_trans).eval()
           expected_trans = array_ops.transpose(dn_input, perm=perm).eval()
           self.assertAllEqual(dn_trans, expected_trans)
+
+
+class SparsePlaceholderTest(test.TestCase):
+
+  def testPlaceholder(self):
+    foo = array_ops.sparse_placeholder(dtypes.float32, shape=(10, 47))
+    self.assertAllEqual([10, 47], foo.get_shape())
+    self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
+
+  def testPartialShapePlaceholder(self):
+    foo = array_ops.sparse_placeholder(dtypes.float32, shape=(None, 47))
+    self.assertAllEqual([None, None], foo.get_shape().as_list())
+    self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
+
+  def testNoShapePlaceholder(self):
+    foo = array_ops.sparse_placeholder(dtypes.float32, shape=None)
+    self.assertAllEqual(None, foo.get_shape())
+    self.assertAllEqual([None, None], foo.indices.get_shape().as_list())
 
 
 if __name__ == "__main__":
