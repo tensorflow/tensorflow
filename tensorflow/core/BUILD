@@ -102,7 +102,6 @@ load(
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
-    "tf_additional_stream_executor_srcs",
     "tf_additional_cupti_wrapper_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
@@ -918,7 +917,6 @@ filegroup(
             "util/events_writer.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
-            "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -1650,7 +1648,7 @@ cc_header_only_library(
 
 tf_cuda_library(
     name = "stream_executor",
-    srcs = tf_additional_stream_executor_srcs(),
+    srcs = ["platform/stream_executor.h"],
     hdrs = [
         "platform/cuda.h",
         "platform/stream_executor.h",
@@ -1664,7 +1662,7 @@ tf_cuda_library(
 # and does not include any cuda dependencies.
 cc_library(
     name = "stream_executor_no_cuda",
-    srcs = tf_additional_stream_executor_srcs(),
+    srcs = ["platform/stream_executor.h"],
     hdrs = [
         "platform/stream_executor_no_cuda.h",
     ],
