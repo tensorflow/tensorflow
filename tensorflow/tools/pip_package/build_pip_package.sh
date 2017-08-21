@@ -48,10 +48,10 @@ function main() {
   DEST=$(real_path $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
-  GPU_FLAG=""
+  GPU_FLAG="--project_name tensorflow_warpctc"
   while true; do
     if [[ "$1" == "--gpu" ]]; then
-      GPU_FLAG="--project_name tensorflow_gpu"
+      GPU_FLAG="--project_name tensorflow_gpu_warpctc"
     fi
     shift
 

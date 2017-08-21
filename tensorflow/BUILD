@@ -94,6 +94,16 @@ config_setting(
 )
 
 config_setting(
+    name = "rpi3",
+    values = {
+        "host_crosstool_top": "@bazel_tools//tools/cpp:toolchain",
+        "crosstool_top": "//tools/arm_compiler:toolchain",
+        "cpu": "armeabi",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
