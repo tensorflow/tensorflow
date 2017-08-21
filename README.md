@@ -15,11 +15,13 @@ between them.  This flexible architecture lets you deploy computation to one
 or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
 code.  TensorFlow also includes TensorBoard, a data visualization toolkit.
 
-TensorFlow was originally developed by researchers and engineers
-working on the Google Brain team within Google's Machine Intelligence Research
-organization for the purposes of conducting machine learning and deep neural
-networks research.  The system is general enough to be applicable in a wide
-variety of other domains, as well.
+Originally, TensorFlow was developed by the researchers and engineers working on the 
+Google Brain team, within Google's Machine Intelligence Research orginization. 
+Tensorflow was developed for the purposes of conducting 
+machine learning and deep neural networking research.
+Due to the nature of Tensorflow, however,
+it's applicability expands to a large variety of other fields and domains.
+
 
 **If you want to contribute to TensorFlow, be sure to review the [contribution
 guidelines](CONTRIBUTING.md).**
