@@ -41,6 +41,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -52,6 +53,7 @@ from tensorflow.python.training import training
 
 
 _INITIAL_LOSS = 1e7
+_ZERO_LOSS = 0.
 _BATCH_SIZE_KEY = 'batch_size'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
@@ -727,9 +729,8 @@ class _ModelFnWrapper(object):
     """
     eval_metrics = _EvalMetrics()
 
-    def eval_step(loss):
+    def eval_step(total_loss):
       """Evaluation step function for use inside a while loop."""
-      del loss  # unused; required in function signature.
       features, labels = dequeue_fn()
 
       tpu_estimator_spec = self._call_model_fn(features, labels, use_tpu=True)
@@ -743,7 +744,7 @@ class _ModelFnWrapper(object):
       outfeed_ops = tpu_ops.outfeed_enqueue_tuple(eval_metrics.outfeed_tensors)
 
       with ops.control_dependencies([outfeed_ops]):
-        return array_ops.identity(loss)
+        return math_ops.add(total_loss, loss)
     return eval_step, eval_metrics
 
   @property
@@ -1269,15 +1270,18 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
           train_op=control_flow_ops.group(*update_ops))
 
     # Now eval.
-    loss, eval_metric_ops = _eval_on_tpu_system(model_fn_wrapper, dequeue_fn)
+    total_loss, eval_metric_ops = _eval_on_tpu_system(
+        model_fn_wrapper, dequeue_fn)
+    mean_loss = math_ops.div(total_loss,
+                             config.tpu_config.iterations_per_loop)
 
     # Creates a dummy metric update_op for all metrics. Estimator expects all
     # metrics in eval_metric_ops have update_op and calls them one by one. The
     # real metric update_ops are invoked in a separated thread. So, here give
     # Estimator the dummy op for all metrics.
-    with ops.control_dependencies([loss]):
-      # After TPU evaluation computation is done (the loss tensor), reads all
-      # variables back from TPU and updates the eval step counter properly.
+    with ops.control_dependencies([mean_loss]):
+      # After TPU evaluation computation is done (the mean_loss tensor), reads
+      # all variables back from TPU and updates the eval step counter properly.
       internal_ops_to_run = _sync_variables_ops()
       internal_ops_to_run.append(
           _increase_eval_step_op(config.tpu_config.iterations_per_loop))
@@ -1289,14 +1293,11 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
             config, dummy_update_op))
     hooks = [
         TPUInfeedOutfeedSessionHook(config, enqueue_fn, eval_update_ops),
-        training.LoggingTensorHook(
-            {'loss': array_ops.identity(loss)},
-            every_n_secs=30)
     ]
 
     return model_fn_lib.EstimatorSpec(
         mode,
-        loss=loss,
+        loss=mean_loss,
         evaluation_hooks=hooks,
         eval_metric_ops=eval_metric_ops)
   return _model_fn
@@ -1312,7 +1313,7 @@ def _eval_on_tpu_system(model_fn_wrapper, dequeue_fn):
       model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn))
 
   multi_tpu_eval_steps_on_single_shard = (lambda: training_loop.repeat(  # pylint: disable=g-long-lambda
-      iterations_per_loop, single_tpu_eval_step, [_INITIAL_LOSS], name='loop'))
+      iterations_per_loop, single_tpu_eval_step, [_ZERO_LOSS], name='loop'))
 
   (loss,) = tpu.shard(multi_tpu_eval_steps_on_single_shard,
                       inputs=[],
