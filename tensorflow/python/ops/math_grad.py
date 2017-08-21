@@ -1023,6 +1023,19 @@ def _ImagGrad(_, grad):
   return math_ops.complex(zero, grad)
 
 
+@ops.RegisterGradient("Angle")
+def _AngleGrad(op, grad):
+  """Returns -grad / (Im(x) + iRe(x))"""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    re = math_ops.real(x)
+    im = math_ops.imag(x)
+    z = math_ops.reciprocal(math_ops.complex(im, re))
+    zero = constant_op.constant(0, dtype=grad.dtype)
+    complex_grad = math_ops.complex(grad, zero)
+    return -complex_grad * z
+
+
 @ops.RegisterGradient("Conj")
 def _ConjGrad(_, grad):
   """Returns the complex conjugate of grad."""

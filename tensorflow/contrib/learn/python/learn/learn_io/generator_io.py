@@ -31,8 +31,10 @@ def generator_input_fn(x,
                        num_epochs=1,
                        shuffle=True,
                        queue_capacity=1000,
-                       num_threads=1):
-  """Returns input function that returns dicts yielded by a generator.
+                       num_threads=1,
+                       pad_value=None):
+  """Returns input function that returns dicts of numpy arrays
+     yielded from a generator.
 
   It is assumed that every dict of numpy arrays yielded from the dictionary
   represents a single sample. The generator should consume a single epoch of the
@@ -68,6 +70,7 @@ def generator_input_fn(x,
       time.
     queue_capacity: Integer, size of queue to accumulate.
     num_threads: Integer, number of threads used for reading and enqueueing.
+    pad_value: default value for dynamic padding of data samples, if provided.
 
   Returns:
     Function, that returns a feature `dict` with `Tensors` and an optional
@@ -117,7 +120,8 @@ def generator_input_fn(x,
         shuffle=shuffle,
         num_threads=num_threads,
         enqueue_size=batch_size,
-        num_epochs=num_epochs)
+        num_epochs=num_epochs,
+        pad_value=pad_value)
 
     features = (queue.dequeue_many(batch_size)
                 if num_epochs is None else queue.dequeue_up_to(batch_size))

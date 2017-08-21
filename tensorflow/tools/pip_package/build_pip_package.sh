@@ -54,11 +54,10 @@ function main() {
   while true; do
     if [[ "$1" == "--nightly_flag" ]]; then
       NIGHTLY_BUILD=1
-    fi
-    if [[ "$1" == "--gpu" ]]; then
+    elif [[ "$1" == "--gpu" ]]; then
       GPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
-      GPU_FLAG="--project_name tensorflow_gpudirect"
+      PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
     fi
     shift
 

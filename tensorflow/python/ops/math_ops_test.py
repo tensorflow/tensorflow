@@ -317,6 +317,21 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
 
+  def testGrad(self):
+    np.random.seed(42)
+    for num_inputs in range(1, 10):
+      with self.test_session(use_gpu=True) as sess:
+        input_vars = [
+            variables.Variable(10.0 * np.random.random())
+            for i in range(0, num_inputs)
+        ]
+        addn = math_ops.add_n(input_vars)
+        sess.run(variables.global_variables_initializer())
+        add_n_grad = gradients.gradients(addn, input_vars)
+        self.assertAllEqual(
+            np.repeat(1.0, num_inputs),  # d/dx (x + y + ...) = 1
+            [g.eval() for g in add_n_grad])
+
 
 class DivAndModTest(test_util.TensorFlowTestCase):
   # TODO(aselle): Test more types before exposing new division operators.

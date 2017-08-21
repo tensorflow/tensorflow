@@ -561,6 +561,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "angle"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "arg_max"
     argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
@@ -1878,7 +1882,7 @@ tf_module {
   }
   member_method {
     name: "string_split"
-    argspec: "args=[\'source\', \'delimiter\'], varargs=None, keywords=None, defaults=[\' \'], "
+    argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
   }
   member_method {
     name: "string_to_hash_bucket"
