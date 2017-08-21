@@ -737,10 +737,14 @@ TEST_F(CWiseUnaryComplexGradTest, Angle) {
   Tensor x = test::AsTensor<complex64>(
       {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
   Tensor dy = test::AsTensor<float>({11, -12, 13, -14, 15, -16}, {2, 3});
-  Tensor dx_expected = test::AsTensor<complex64>(
-      {{5.5, 5.5}, {3, 3},
-       {2.1666666666666665, 2.1666666666666665}, {1.75, 1.75},
-       {0.9375, 0.9375}, {0.8888888888888888, 0.8888888888888888}}, {2, 3});
+  Tensor dx_expected =
+      test::AsTensor<complex64>({{5.5, 5.5},
+                                 {3, 3},
+                                 {2.1666666666666665, 2.1666666666666665},
+                                 {1.75, 1.75},
+                                 {0.9375, 0.9375},
+                                 {0.8888888888888888, 0.8888888888888888}},
+                                {2, 3});
   TestCWiseGradComplex(ANGLE, x, dy, dx_expected);
 }
 
@@ -925,6 +929,15 @@ class NaryGradTest : public ::testing::Test {
     EXPECT_LT(max_error, 1e-3);
   }
 
+  void RunTest(const Output& x, const Tensor& x_init_value, const Output& y,
+               const TensorShape& y_shape) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, x, x_init_value, y, y_shape, &max_error));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
   Scope scope_;
 };
 
@@ -991,6 +1004,28 @@ TEST_F(NaryGradTest, SquaredDifference) {
   auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
   auto y = SquaredDifference(scope_, x1, x2);
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Maximum) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Maximum(scope_, x, Const(scope_, 1.0f));
+  // Select values away from 1.0f to avoid instability when computing
+  // finite differences.
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NaryGradTest, Minimum) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Minimum(scope_, x, Const(scope_, 1.0f));
+  // Select values away from 1.0f to avoid instability when computing
+  // finite differences.
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
 }
 
 }  // namespace

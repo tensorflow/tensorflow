@@ -481,6 +481,42 @@ Status AddNGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("AddN", AddNGrad);
 
+// MaximumMinimumGradCommon adds shared ops to calculate gradients for
+// the binary Maximum and Minimum ops.
+Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
+                                const std::vector<Output>& grad_inputs,
+                                std::vector<Output>* grad_outputs,
+                                const Output& comparator) {
+  // comparator is a boolean tensor, with
+  // y = x_1 at points where comparator is true, and x_2 otherwise
+  // Therefore
+  // dy/dx_1 = 1 where comparator is true, and 0 otherwise.
+  // dy/dx_2 = 0 where comparator is true, and 1 otherwise.
+  auto grad = grad_inputs[0];
+  auto zeros = ZerosLike(scope, grad);
+  auto gx_1 = Where3(scope, comparator, grad, zeros);
+  auto gx_2 = Where3(scope, LogicalNot(scope, comparator), grad, zeros);
+  return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
+}
+
+Status MaximumGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  auto comparator = GreaterEqual(scope, op.input(0), op.input(1));
+  return MaximumMinimumGradCommon(scope, op, grad_inputs, grad_outputs,
+                                  comparator);
+}
+REGISTER_GRADIENT_OP("Maximum", MaximumGrad);
+
+Status MinimumGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  auto comparator = LessEqual(scope, op.input(0), op.input(1));
+  return MaximumMinimumGradCommon(scope, op, grad_inputs, grad_outputs,
+                                  comparator);
+}
+REGISTER_GRADIENT_OP("Minimum", MinimumGrad);
+
 Status RealGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -513,7 +549,7 @@ Status AngleGrad(const Scope& scope, const Operation& op,
   auto grad = Complex(scope, grad_inputs[0], zero);
   auto dx = Neg(scope, Mul(scope, grad, z_inv));
   grad_outputs->push_back(dx);
-  return scope.status(); 
+  return scope.status();
 }
 REGISTER_GRADIENT_OP("Angle", AngleGrad);
 

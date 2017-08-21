@@ -38,6 +38,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 
 
 KEYS_NAME = 'keys'
@@ -80,7 +81,7 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
             run_context.session.graph.get_operation_by_name(
                 LOSS_NAME).outputs[0])
     return session_run_hook.SessionRunArgs(
-        {'global_step': contrib_framework.get_global_step(),
+        {'global_step': training_util.get_global_step(),
          'current_loss': loss})
 
   def after_run(self, run_context, run_values):

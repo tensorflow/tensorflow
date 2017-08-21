@@ -119,13 +119,9 @@ class ParallelReaderTest(test.TestCase):
     self.assertEquals(count0, num_records_per_file)
     self.assertEquals(count1, num_records_per_file)
     self.assertEquals(count2, num_records_per_file)
-    self.assertEquals(
-        all_keys_count,
-        num_files * num_records_per_file)
+    self.assertEquals(all_keys_count, num_files * num_records_per_file)
     self.assertEquals(all_values_count, all_keys_count)
-    self.assertEquals(
-        count0 + count1 + count2,
-        all_keys_count)
+    self.assertEquals(count0 + count1 + count2, all_keys_count)
 
   def testRandomShuffleQueue(self):
     shared_queue = data_flow_ops.RandomShuffleQueue(
@@ -144,14 +140,16 @@ class ParallelReaderTest(test.TestCase):
         capacity=55,
         min_after_dequeue=28,
         dtypes=[dtypes_lib.string, dtypes_lib.string],
-        shapes=[tensor_shape.scalar(), tensor_shape.scalar()])
+        shapes=[tensor_shape.scalar(),
+                tensor_shape.scalar()])
     self._verify_read_up_to_out(shared_queue)
 
   def testReadUpToFromFIFOQueue(self):
     shared_queue = data_flow_ops.FIFOQueue(
         capacity=99,
         dtypes=[dtypes_lib.string, dtypes_lib.string],
-        shapes=[tensor_shape.scalar(), tensor_shape.scalar()])
+        shapes=[tensor_shape.scalar(),
+                tensor_shape.scalar()])
     self._verify_read_up_to_out(shared_queue)
 
 

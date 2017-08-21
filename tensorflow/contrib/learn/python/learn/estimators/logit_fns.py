@@ -21,7 +21,7 @@ should follow the following signature:
 Args:
 `features`: This is the first item returned from the `input_fn` passed to
             `train`, `evaluate`, and `predict`. This should be a single
-            `Tensor` or `dict` of same.
+            `Tensor` or `dict` of same, and is the only required argument.
 `mode`: Optional. Specifies if this training, evaluation or prediction. See
         `ModeKeys`.
 `params`: Optional `dict` of hyperparameters.  Will receive what is passed to
@@ -39,10 +39,47 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import dnn as dnn_core
 from tensorflow.python.estimator.canned import linear as linear_core
+from tensorflow.python.framework import ops
 
 # pylint: disable=protected-access
 dnn_logit_fn_builder = dnn_core._dnn_logit_fn_builder
 linear_logit_fn_builder = linear_core._linear_logit_fn_builder
 # pylint: enable=protected-access
+
+
+def call_logit_fn(logit_fn, features, mode, params, config):
+  """Calls logit_fn.
+
+  A utility function that calls the provided logit_fn with the relevant subset
+  of provided arguments.  Similar to tf.estimator._call_model_fn().
+
+  Args:
+    logit_fn: A logit_fn as defined above.
+    features: The features dict.
+    mode: TRAIN / EVAL / PREDICT ModeKeys.
+    params: The hyperparameter dict.
+    config: The configuration object.
+
+  Returns:
+    A logit Tensor, the output of logit_fn.
+
+  Raises:
+    ValueError: if logit_fn does not return a Tensor.
+  """
+  logit_fn_args = util.fn_args(logit_fn)
+  kwargs = {}
+  if 'mode' in logit_fn_args:
+    kwargs['mode'] = mode
+  if 'params' in logit_fn_args:
+    kwargs['params'] = params
+  if 'config' in logit_fn_args:
+    kwargs['config'] = config
+  logit_fn_results = logit_fn(features=features, **kwargs)
+
+  if not isinstance(logit_fn_results, ops.Tensor):
+    raise ValueError('model_fn should return a Tensor.')
+
+  return logit_fn_results

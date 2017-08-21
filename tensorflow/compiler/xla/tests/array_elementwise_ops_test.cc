@@ -785,6 +785,17 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
       &builder, {16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f}, {}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
+  SetFastMathDisabled(true);
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<float>({-2.0f, -0.6f, -0.6f, 0.0f});
+  auto rhs = builder.ConstantR1<float>({0.5f, 0.6f, -0.6f, -0.6f});
+  auto minimum = builder.Pow(lhs, rhs);
+
+  ComputeAndCompareR1<float>(&builder, {NAN, NAN, NAN, INFINITY}, {},
+                             error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({});

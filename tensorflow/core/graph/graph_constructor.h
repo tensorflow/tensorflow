@@ -64,7 +64,7 @@ extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
 // TODO(ashankar): Push this mechanism and get rid of Session::Extend()
 // as a means of enhancing an existing Graph.
 struct ImportGraphDefOptions {
-  ImportGraphDefOptions() {}
+  ImportGraphDefOptions() : skip_mapped_nodes(false) {}
 
   // Name prefix to use for nodes imported from the GraphDef.  For example, if
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
@@ -85,6 +85,10 @@ struct ImportGraphDefOptions {
   //
   // TODO(skyewm): add functionality to retrieve unused `input_map` keys
   std::map<TensorId, TensorId> input_map;
+
+  // If true, nodes that will have all output edges removed because of
+  // overrides in `input_map` will not be imported.
+  bool skip_mapped_nodes;
 
   // The names of existing nodes in `g` that the imported graph should have
   // control dependencies on.
