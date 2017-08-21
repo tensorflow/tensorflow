@@ -22,7 +22,9 @@ networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
 **If you want to contribute to TensorFlow, be sure to review the [contribution
-guidelines](CONTRIBUTING.md).**
+guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
+[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
+uphold this code.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs. So please see 
@@ -57,7 +59,7 @@ $ python
 >>> b = tf.constant(32)
 >>> sess.run(a + b)
 42
->>>
+>>> sess.close()
 ```
 
 ## For more information
@@ -69,3 +71,7 @@ $ python
 * [TensorFlow course at Stanford](https://web.stanford.edu/class/cs20si)
 
 Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community) for a few ways to participate.
+
+## License
+
+[Apache License 2.0](LICENSE)
