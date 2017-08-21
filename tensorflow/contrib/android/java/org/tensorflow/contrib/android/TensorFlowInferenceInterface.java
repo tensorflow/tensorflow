@@ -55,7 +55,7 @@ public class TensorFlowInferenceInterface {
    * @param model The filepath to the GraphDef proto representing the model.
    */
   public TensorFlowInferenceInterface(AssetManager assetManager, String model) {
-    prepareNativeRuntime()
+    prepareNativeRuntime();
 
     this.modelName = model;
     this.g = new Graph();
