@@ -104,6 +104,7 @@ operations (Operations are also nodes). For example, we can add our two
 constant nodes and produce a new graph as follows:
 
 ```python
+from __future__ import print_function
 node3 = tf.add(node1, node2)
 print("node3:", node3)
 print("sess.run(node3):", sess.run(node3))
