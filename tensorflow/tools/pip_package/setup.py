@@ -32,6 +32,7 @@ from setuptools.dist import Distribution
 _VERSION = '1.3.0-rc2'
 
 REQUIRED_PACKAGES = [
+    'enum34 >= 1.1.6',
     'numpy >= 1.11.0',
     'six >= 1.10.0',
     'protobuf >= 3.3.0',
