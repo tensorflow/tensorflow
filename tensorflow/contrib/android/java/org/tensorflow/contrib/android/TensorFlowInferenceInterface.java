@@ -95,7 +95,7 @@ public class TensorFlowInferenceInterface {
    * @param is The InputStream to use to load the model.
    */
   public TensorFlowInferenceInterface(InputStream is) {
-    prepareNativeRuntime()
+    prepareNativeRuntime();
 
     this.g = new Graph();
     this.sess = new Session(g);
