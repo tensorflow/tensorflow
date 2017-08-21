@@ -180,6 +180,7 @@ TEST(VariantTest, TensorListTest) {
   x = vec;
 
   EXPECT_EQ(x.TypeName(), "TensorList");
+  EXPECT_EQ(x.DebugString(), "Variant<type: TensorList value: ?>");
   const TensorList& stored_vec = *x.MaybeDecodeAndGet<TensorList>();
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(stored_vec.vec[i].flat<int>()(0), i);
@@ -207,6 +208,9 @@ TEST(VariantTest, TensorListTest) {
   Variant y_unknown = data;
   EXPECT_EQ(y_unknown.TypeName(), "TensorList");
   EXPECT_EQ(y_unknown.TypeId(), MakeTypeIndex<VariantTensorDataProto>());
+  EXPECT_EQ(y_unknown.DebugString(),
+            strings::StrCat(
+                "Variant<type: TensorList value: ", data.DebugString(), ">"));
 
   // Now call a get that internally performs a decode.
   const TensorList& unknown_decoded_vec =
@@ -243,6 +247,7 @@ TEST(VariantTest, PodUpdate) {
   Variant x = Pod{10, 20.f};
   EXPECT_NE(x.MaybeDecodeAndGet<Pod>(), nullptr);
   EXPECT_EQ(x.TypeName(), "POD");
+  EXPECT_EQ(x.DebugString(), "Variant<type: POD value: ?>");
 
   x.MaybeDecodeAndGet<Pod>()->x += x.MaybeDecodeAndGet<Pod>()->y;
   EXPECT_EQ(x.MaybeDecodeAndGet<Pod>()->x, 30);
@@ -282,6 +287,9 @@ TEST(VariantTest, EncodeDecodeTensor) {
 
   Variant y = Tensor();
   y.Decode(serialized);
+  EXPECT_EQ(y.DebugString(),
+            "Variant<type: tensorflow::Tensor value: Tensor<type: int32 shape: "
+            "[] values: 42>>");
   EXPECT_EQ(x.MaybeDecodeAndGet<Tensor>()->flat<int>()(0),
             y.MaybeDecodeAndGet<Tensor>()->flat<int>()(0));
 }

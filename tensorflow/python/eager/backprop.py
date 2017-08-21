@@ -134,6 +134,8 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   Raises:
     An exception on error.
   """
+  if not any(ag_core.isnode(x) for x in inputs):
+    return results
   num_outputs = len(results)
   if num_outputs == 0:
     return results

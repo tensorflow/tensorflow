@@ -23,11 +23,11 @@ from autograd import core as ag_core
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -39,6 +39,8 @@ def _tensor_numpy(t):
 @ag_core.primitive
 def _as_gpu_tensor(t, index=0):
   return t.as_gpu_tensor(gpu_index=index)
+
+
 _as_gpu_tensor.defvjp(
     lambda g, ans, vs, gvs, t, index: g.as_cpu_tensor(), argnum=0)
 
@@ -46,10 +48,18 @@ _as_gpu_tensor.defvjp(
 @ag_core.primitive
 def _as_cpu_tensor(t):
   return t.as_cpu_tensor()
-_as_cpu_tensor.defvjp(
-    lambda g, ans, vs, gvs, t: g.as_gpu_tensor(), argnum=0)
 
 
+_as_cpu_tensor.defvjp(lambda g, ans, vs, gvs, t: g.as_gpu_tensor(), argnum=0)
+
+
+# TODO(apassos,ashankar): The operator overrides here need to be kept in sync
+# with the overrides for ops.Tensor and ops.EagerTensor.
+#
+# Note that we cannot use self.value.__op__() because that would result
+# in an ops.EagerTensor instead of a TensorNode being returned.
+#
+# We need to figure out a way to ensure that the two are in sync.
 class TensorNode(ag_core.Node):
   """A TensorFlow Tensor."""
 
@@ -60,6 +70,7 @@ class TensorNode(ag_core.Node):
 
   shape = property(lambda self: self.value.shape)
   dtype = property(lambda self: self.value.dtype)
+  device = property(lambda self: self.value.device)
 
   def get_shape(self):
     return self.shape
@@ -76,12 +87,6 @@ class TensorNode(ag_core.Node):
   def as_gpu_tensor(self, gpu_index=0):
     return _as_gpu_tensor(self, gpu_index)
 
-  def __bool__(self):
-    return self.value.__bool__()  # pylint: disable=protected-access
-
-  def __nonzero__(self):
-    return self.__bool__()
-
   def __len__(self):
     return len(self.value)
 
@@ -92,7 +97,11 @@ class TensorNode(ag_core.Node):
     return math_ops.abs(self)  # pylint: disable=protected-access
 
   def __invert__(self):
-    return self.value.__invert__()
+    # ops.Tensor used math_ops.logical_not as of August 2017.
+    # Now that bitwise_ops.invert exists, it might make sense
+    # for both ops.Tensor and TensorNode to use that if the
+    # type is compatible.
+    return math_ops.logical_not(self)
 
   def __hash__(self):
     return id(self)
@@ -154,10 +163,20 @@ class TensorNode(ag_core.Node):
     return math_ops.floordiv(other, self)
 
   def __eq__(self, other):
-    return control_flow_ops.equal(self, other)  # pylint: disable=protected-access
+    # math_ops.equal raises an error if shapes are not compatible, so check that
+    # explicitly first.
+    if common_shapes.is_broadcast_compatible(
+        self.shape, ops.convert_to_tensor(other).shape):
+      return math_ops.equal(self, other)
+    return False
 
   def __ne__(self, other):
-    return control_flow_ops.not_equal(self, other)  # pylint: disable=protected-access
+    # math_ops.not_equal raises an error if shapes are not compatible, so check
+    # explicitly first.
+    if common_shapes.is_broadcast_compatible(
+        self.shape, ops.convert_to_tensor(other).shape):
+      return math_ops.not_equal(self, other)
+    return True
 
   def __gt__(self, other):
     return math_ops.greater(self, other)
@@ -171,6 +190,7 @@ class TensorNode(ag_core.Node):
   def __le__(self, other):
     return math_ops.less_equal(self, other)
 
+
 ag_core.register_node(TensorNode, tensor.Tensor)
 ag_core.register_node(TensorNode, ops.Tensor)
 
@@ -182,12 +202,13 @@ def _zeros(shape, dtype):
 
 
 def _ones(shape, dtype):
-  return array_ops.fill(tensor.Tensor(shape, dtype=dtypes.int32),
-                        tensor.Tensor(1, dtype=dtype))
+  return array_ops.fill(
+      tensor.Tensor(shape, dtype=dtypes.int32), tensor.Tensor(1, dtype=dtype))
 
 
 def _lazy_zero_tensor(zero):
   return _zeros(zero.shape, zero.dtype)
+
 
 tensor.LazyZero.tensor = _lazy_zero_tensor
 
@@ -196,8 +217,8 @@ def _lazy_zero_to_tensor(lazy_zero, dtype=None, name=None, as_ref=False):
   del as_ref, name, dtype
   return _zeros(lazy_zero.shape, lazy_zero.dtype)
 
-ops.register_tensor_conversion_function(tensor.LazyZero,
-                                        _lazy_zero_to_tensor)
+
+ops.register_tensor_conversion_function(tensor.LazyZero, _lazy_zero_to_tensor)
 
 
 def _indexed_slices_to_tensor(value):
@@ -216,8 +237,8 @@ def _indexed_slices_to_tensor(value):
     raise ValueError(
         "Tensor conversion requested for IndexedSlices without dense_shape: %s"
         % str(value))
-  return math_ops.unsorted_segment_sum(
-      value.values, value.indices, value.dense_shape[0])
+  return math_ops.unsorted_segment_sum(value.values, value.indices,
+                                       value.dense_shape[0])
 
 
 class TensorVSpace(ag_core.VSpace):
@@ -270,6 +291,7 @@ class TensorVSpace(ag_core.VSpace):
     if isinstance(y, ops.IndexedSlices):
       y = _indexed_slices_to_tensor(y)
     return math_ops.add(x, y)
+
 
 ag_core.register_vspace(TensorVSpace, tensor.Tensor)
 ag_core.register_vspace(TensorVSpace, ops.Tensor)

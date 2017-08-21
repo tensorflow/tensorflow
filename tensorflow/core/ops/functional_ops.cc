@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -65,4 +66,22 @@ to x_i.
 (Needs some math expert to say the comment above better.)
 )doc");
 
+REGISTER_OP("RemoteCall")
+    .Input("target: string")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("Tin: list(type)")
+    .Attr("Tout: list(type)")
+    .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Runs function `f` on a remote device indicated by `target`.
+
+target: A fully specified device name where we want to run the function.
+args: A list of arguments for the function.
+output: A list of return values.
+Tin: The type list for the arguments.
+Tout: The type list for the return values.
+f: The function to run remotely.
+)doc");
 }  // end namespace tensorflow

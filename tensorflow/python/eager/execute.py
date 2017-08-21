@@ -67,10 +67,15 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
                                             num_outputs)
     # pylint: enable=protected-access
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
-    raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+    if name is not None:
+      message = e.message + " name: " + name
+    else:
+      message = e.message
+    raise core._status_to_exception(e.code, message)  # pylint: disable=protected-access
   # pylint: enable=protected-access
 
   tensors = [tensor._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
+  # TODO(alive, cais): Use the execution callback mechanism.
   if core.active_trace() is not None:
     trace_name = name if name else op_name
     for t in tensors:
@@ -80,6 +85,12 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
                                         t._device_name(),
                                         t.shape.num_elements())
       # pylint: enable=protected-access
+
+  # TODO(cais): Optimize this, perhaps by replacing this execute function with
+  # a different one when there are execution callback(s).
+  for callback in ctx.post_execution_callbacks:
+    callback(op_name, name, attrs, inputs, tensors)
+
   return tensors
 
 

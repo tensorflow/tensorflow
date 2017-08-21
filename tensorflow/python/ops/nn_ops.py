@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -1378,7 +1379,8 @@ def _flatten_outer_dims(logits):
         break
       else:
         product *= d
-    if product_valid:
+    # Only need to set shape if in graph mode
+    if product_valid and context.in_graph_mode():
       output_shape = [product, shape[-1]]
       output.set_shape(output_shape)
 
@@ -1603,7 +1605,7 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
-  if shape is not None and shape.dims is not None:
+  if shape is not None and shape.dims is not None and context.in_graph_mode():
     shape = shape.as_list()
     del shape[dim]
     cost.set_shape(shape)
