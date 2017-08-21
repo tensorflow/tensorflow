@@ -1133,13 +1133,14 @@ class Estimator(BaseEstimator):
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
-  def _call_model_fn(self, features, labels, mode):
+  def _call_model_fn(self, features, labels, mode, metrics=None):
     """Calls model function with support of 2, 3 or 4 arguments.
 
     Args:
       features: features dict.
       labels: labels dict.
       mode: ModeKeys
+      metrics: Dict of metrics.
 
     Returns:
       A `ModelFnOps` object. If model_fn returns a tuple, wraps them up in a
@@ -1162,17 +1163,24 @@ class Estimator(BaseEstimator):
     model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
-      return model_fn_results
+      model_fn_ops = model_fn_results
+    else:
+      # Here model_fn_results should be a tuple with 3 elements.
+      if len(model_fn_results) != 3:
+        raise ValueError('Unrecognized value returned by model_fn, '
+                         'please return ModelFnOps.')
+      model_fn_ops = model_fn_lib.ModelFnOps(
+          mode=mode,
+          predictions=model_fn_results[0],
+          loss=model_fn_results[1],
+          train_op=model_fn_results[2])
 
-    # Here model_fn_results should be a tuple with 3 elements.
-    if len(model_fn_results) != 3:
-      raise ValueError('Unrecognized value returned by model_fn, '
-                       'please return ModelFnOps.')
-    return model_fn_lib.ModelFnOps(
-        mode=mode,
-        predictions=model_fn_results[0],
-        loss=model_fn_results[1],
-        train_op=model_fn_results[2])
+    # Custom metrics should overwrite defaults.
+    if metrics:
+      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
+        metrics, features, labels, model_fn_ops.predictions))
+
+    return model_fn_ops
 
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
@@ -1216,13 +1224,7 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `labels`.
     """
     model_fn_ops = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL)
-
-    features, labels = self._feature_engineering_fn(features, labels)
-    # Custom metrics should overwrite defaults.
-    if metrics:
-      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
-          metrics, features, labels, model_fn_ops.predictions))
+        features, labels, model_fn_lib.ModeKeys.EVAL, metrics)
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
