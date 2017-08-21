@@ -21,6 +21,3 @@ they would live in `tensorflow/python/ops/foo_ops.py` and
 `tensorflow/python/kernel_tests/foo_ops_test.py`. In `contrib/`, they are part
 of project `foo`, and their full paths are `contrib/foo/python/ops/foo_ops.py`
 and `contrib/foo/python/kernel_tests/foo_ops_test.py`.
-
-For every function for which a direct equivalent exists outside of contrib, we
-should deprecate the contrib version.
