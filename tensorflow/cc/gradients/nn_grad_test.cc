@@ -113,5 +113,23 @@ TEST_F(NNGradTest, SeluGrad) {
   RunTest(x, x_init_value, y, shape);
 }
 
+TEST_F(NNGradTest, BiasAddGradHelper) {
+  TensorShape shape({4, 5});
+  TensorShape bias_shape({5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  Tensor bias1  = test::AsTensor<float>(
+    {-0.9f, -0.5f, 0.1f, 0.3f, 0.5f},
+    {5});
+  auto y1 = BiasAdd(scope_, x1, bias1);
+  auto x2  = test::AsTensor<float>(
+    {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f,
+     -0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+    {4, 5});
+  auto bias2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(bias_shape));
+  auto y2 = BiasAdd(scope_, x2, bias2);
+  RunTest(x1, shape, y1, shape);
+  RunTest(bias2, bias_shape, y2, shape);
+}
+
 }  // namespace
 }  // namespace tensorflow
