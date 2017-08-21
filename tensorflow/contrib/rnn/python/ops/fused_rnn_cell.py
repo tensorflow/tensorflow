@@ -146,7 +146,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
   def __init__(self, cell):
     self._cell = cell
 
-  def _reverse(self, t, lengths):
+  def _reverse(self, t, lengths, time_major):
     """Time reverse the provided tensor or list of tensors.
 
     Assumes the top dimension is the time dimension.
@@ -164,20 +164,24 @@ class TimeReversedFusedRNN(FusedRNNCell):
       if lengths is None:
         return array_ops.reverse_v2(t, [0])
       else:
-        return array_ops.reverse_sequence(t, lengths, 0, 1)
+        if (time_major == True):
+          return array_ops.reverse_sequence(t, lengths, 0, 1)
+        else:
+          return array_ops.reverse_sequence(t, lengths, 1, 0)
 
   def __call__(self,
                inputs,
                initial_state=None,
                dtype=None,
                sequence_length=None,
-               scope=None):
-    inputs = self._reverse(inputs, sequence_length)
+               scope=None,
+               time_major=True):
+    inputs = self._reverse(inputs, sequence_length, time_major)
     outputs, state = self._cell(
         inputs,
         initial_state=initial_state,
         dtype=dtype,
         sequence_length=sequence_length,
         scope=scope)
-    outputs = self._reverse(outputs, sequence_length)
+    outputs = self._reverse(outputs, sequence_length, time_major)
     return outputs, state
