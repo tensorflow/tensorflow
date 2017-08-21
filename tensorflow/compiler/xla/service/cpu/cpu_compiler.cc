@@ -260,6 +260,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddPass<BatchNormRewriter>(
         /*rewrite_training_op=*/true,
+        /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
         /*use_fusion=*/false);
     pass.AddPass<AlgebraicSimplifier>(

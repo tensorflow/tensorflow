@@ -30,6 +30,7 @@ py_library(
         ":execute",
         ":function",
         ":graph_only_ops",
+        ":tape",
         ":tensor",
         ":test",
         "//tensorflow/python:pywrap_tensorflow",
@@ -55,13 +56,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
-        ":core",
-        ":tape",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:framework_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -110,6 +105,19 @@ py_test(
 )
 
 cuda_py_test(
+    name = "backprop_test",
+    srcs = ["backprop_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+cuda_py_test(
     name = "core_test",
     srcs = ["core_test.py"],
     additional_deps = [
@@ -125,6 +133,21 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "function_test",
+    srcs = ["function_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":function",
+        ":tape",
+        ":tensor",
+        ":test",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
 py_library(
     name = "test",
     srcs = ["test.py"],
@@ -132,6 +155,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":core",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -152,6 +176,18 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "execution_callbacks",
+    srcs = ["execution_callbacks.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -276,7 +312,7 @@ py_library(
         ":tape",
         ":tensor",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:common_shapes",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -312,6 +348,7 @@ py_test(
     srcs = ["benchmarks_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":backprop",
         ":context",
         ":function",
         ":tensor",

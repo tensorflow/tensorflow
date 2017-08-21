@@ -24,7 +24,7 @@ namespace tensorflow {
 template <>
 void* Variant::MaybeDecodeAndGet() {
   mutex_lock lock(mu_);
-  if (is_empty()) {
+  if (IsEmptyLocked()) {
     return nullptr;
   }
   return value_->RawPtr();
@@ -33,7 +33,7 @@ void* Variant::MaybeDecodeAndGet() {
 template <>
 const void* Variant::MaybeDecodeAndGet() const {
   mutex_lock lock(mu_);
-  if (is_empty()) {
+  if (IsEmptyLocked()) {
     return nullptr;
   }
   return value_->RawPtr();

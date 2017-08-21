@@ -104,9 +104,11 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
   // Create the function library runtime.
-  std::unique_ptr<FunctionLibraryRuntime> flib(NewFunctionLibraryRuntime(
-      dvc_mgr.get(), env, devices[0], inlined_graph_def.versions().producer(),
-      &function_library, *optimizer_opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
+                                        inlined_graph_def.versions().producer(),
+                                        &function_library, *optimizer_opts));
+  FunctionLibraryRuntime* flr = pflr->GetFLR(devices[0]->name());
 
   // Create the GraphOptimizer to optimize the graph def.
   GraphConstructorOptions graph_ctor_opts;
@@ -122,8 +124,7 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
 
   // Optimize the graph.
   GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flib.get(), env, devices[0], &graphptr,
-                     /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, devices[0], &graphptr, /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
   return Status::OK();

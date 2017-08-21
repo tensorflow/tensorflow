@@ -12335,6 +12335,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -12346,7 +12348,7 @@ op {
     }
   }
   summary: "Solves one or more linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach} } }\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform real or complex matrices of size `[M, N]`. `Rhs` is a tensor of the same\ntype as `matrix` and shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations\n`matrix[..., :, :]` * `output[..., :, :]` = `rhs[..., :, :]`\nin the least squares sense.\n\nWe use the following notation for (complex) matrix and right-hand sides\nin the batch:\n\n`matrix`=\\\\(A \\in \\mathbb{C}^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\mathbb{C}^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\mathbb{C}^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda \\in \\mathbb{R}\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^H A + \\lambda I)^{-1} A^H B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^H (A A^H + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\mathbb{C}^{n \\times k} } ||Z||_F^2 \\\\),\nsubject to \\\\(A Z = B\\\\). Notice that the fast path is only numerically stable\nwhen \\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach} } }\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "MatrixTriangularSolve"
@@ -19645,6 +19647,44 @@ op {
     }
   }
   summary: "Computes rectified linear gradients for a Relu operation."
+}
+op {
+  name: "RemoteCall"
+  input_arg {
+    name: "target"
+    description: "A fully specified device name where we want to run the function."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "args"
+    description: "A list of arguments for the function."
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    description: "A list of return values."
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    description: "The type list for the arguments."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    description: "The type list for the return values."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "The function to run remotely."
+  }
+  summary: "Runs function `f` on a remote device indicated by `target`."
 }
 op {
   name: "RemoteFusedGraphExecute"

@@ -32,6 +32,7 @@ from setuptools.dist import Distribution
 _VERSION = '1.3.0'
 
 REQUIRED_PACKAGES = [
+    'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.3.0',
@@ -183,7 +184,8 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'external/eigen_archive')))
+           list(find_files('*', 'external/eigen_archive')) +
+           list(find_files('*.h', 'external/nsync/public')))
 
 
 setup(

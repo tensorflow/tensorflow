@@ -46,6 +46,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -273,6 +274,58 @@ def enable_c_api(fn):
   return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
 
 
+def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
+                                 use_gpu=False, force_gpu=False):
+  """Runs the test in both graph and eager modes.
+
+  Args:
+    __unused__: Prevents sliently skipping tests.
+    graph: Optional graph to use during the returned session.
+    config: An optional config_pb2.ConfigProto to use to configure the
+      session.
+    use_gpu: If True, attempt to run as many ops as possible on GPU.
+    force_gpu: If True, pin all ops to `/device:GPU:0`.
+
+  Returns:
+    Returns a decorator that will run the decorated test function
+        using both a graph and using eager execution.
+  """
+
+  assert not __unused__, "Add () after run_in_graph_and_eager_modes."
+
+  def decorator(f):
+    """Test method decorator."""
+    def decorated(self):
+      """Decorated the test method."""
+      with context.graph_mode():
+        with self.test_session(graph, config, use_gpu, force_gpu):
+          f(self)
+
+      def run_eager_mode():
+        if force_gpu:
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/device:GPU:0"
+          with context.device(gpu_name):
+            f(self)
+        elif use_gpu:
+          # TODO(xpan): Support softplacement and gpu by default when available.
+          f(self)
+        else:
+          with context.device("/device:CPU:0"):
+            f(self)
+
+      with context.eager_mode():
+        if graph is None:
+          run_eager_mode()
+        else:
+          with graph.as_default():
+            run_eager_mode()
+
+    return decorated
+  return decorator
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -385,6 +438,25 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg = "%r does not start with %r" % (actual, expected_start)
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
+
+  def evaluate(self, tensors):
+    """Evaluates tensors and returns numpy values.
+
+    Args:
+      tensors: A Tensor or a list of Tensors.
+
+    Returns:
+      tensors numpy values.
+    """
+    if context.in_eager_mode():
+      if isinstance(tensors, list):
+        assert all(isinstance(t, ops.EagerTensor) for t in tensors)
+        return [t.numpy() for t in tensors]
+      assert isinstance(tensors, ops.EagerTensor), "Must be list or EagerTensor"
+      return tensors.numpy()
+    else:
+      sess = ops.get_default_session()
+      return sess.run(tensors)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
