@@ -35,6 +35,13 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@enable_eager_execution
 
 @@custom_gradient
+
+@@add_execution_callback
+@@clear_execution_callbacks
+@@inf_callback
+@@inf_nan_callback
+@@nan_callback
+@@seterr
 """
 
 from __future__ import absolute_import
@@ -53,6 +60,12 @@ from tensorflow.python.eager.context import device
 from tensorflow.python.eager.context import enable_eager_execution
 from tensorflow.python.eager.context import run
 from tensorflow.python.eager.core import enable_tracing
+from tensorflow.python.eager.execution_callbacks import add_execution_callback
+from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
+from tensorflow.python.eager.execution_callbacks import inf_callback
+from tensorflow.python.eager.execution_callbacks import inf_nan_callback
+from tensorflow.python.eager.execution_callbacks import nan_callback
+from tensorflow.python.eager.execution_callbacks import seterr
 
 
 def list_devices():

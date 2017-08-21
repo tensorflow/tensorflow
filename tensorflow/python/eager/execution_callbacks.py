@@ -18,12 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.platform import tf_logging as logging
+
+_DEFAULT_CALLBACK_ACTION = "raise"
+_VALID_CALLBACK_ACTIONS = (None, "ignore", "print", "raise", "warn")
 
 
 # TODO(cais): Consider moving this exception class to errors_impl.py.
@@ -104,7 +109,7 @@ def inf_nan_callback(op_type,
                      outputs,
                      check_inf=True,
                      check_nan=True,
-                     action="raise"):
+                     action=_DEFAULT_CALLBACK_ACTION):
   """An execution callback that checks for `inf`s and `nan`s in output tensors.
 
   This callback can be used with `tfe.add_execute_callback` to check for invalid
@@ -128,9 +133,9 @@ def inf_nan_callback(op_type,
     check_nan: (`bool`) Whether this callback should check for `nan` values in
       the output tensor values.
     action: (`str`) Action to be taken by the callback when `inf` or `nan`
-      values are detected. Possible values {"raise", "log", "print"}
+      values are detected. Possible values {"raise", "warn", "print"}
       `"raise"`: Raise a `InfOrNanError`.
-      `"log"`: Log a warning using `tf.logging.warn`.
+      `"warn"`: Log a warning using `tf.logging.warn`.
       `"print"`: Print a message to `sys.stdout`.
 
   Raises:
@@ -170,29 +175,129 @@ def inf_nan_callback(op_type,
         error = InfOrNanError(op_type, op_name, index, len(outputs), value)
         if action == "print":
           print("Warning: %s" % str(error))
-        elif action == "log":
+        elif action == "warn":
           logging.warn(str(error))
         elif action == "raise":
           raise error
         else:
           raise ValueError(
               "Invalid action for inf_nan_callback: %s. Valid actions are: "
-              "{print | log | raise}" % action)
+              "{print | warn | raise}" % action)
 
 
-def inf_callback(op_type, op_name, attrs, inputs, outputs, action="raise"):
+def inf_callback(op_type,
+                 op_name,
+                 attrs,
+                 inputs,
+                 outputs,
+                 action=_DEFAULT_CALLBACK_ACTION):
   """A specialization of `inf_nan_callback` that checks for `inf`s only."""
   inf_nan_callback(
       op_type, op_name, attrs, inputs, outputs, check_inf=True, check_nan=False,
       action=action)
 
 
-def nan_callback(op_type, op_name, attrs, inputs, outputs, action="raise"):
+def nan_callback(op_type,
+                 op_name,
+                 attrs,
+                 inputs,
+                 outputs,
+                 action=_DEFAULT_CALLBACK_ACTION):
   """A specialization of `inf_nan_callback` that checks for `nan`s only."""
   inf_nan_callback(
       op_type, op_name, attrs, inputs, outputs, check_inf=False, check_nan=True,
       action=action)
 
 
-# TODO(cais): (b/64674139) Provide an alias, perhaps called seterr(), for
-# add_execute_callback(inf_nan_hook).
+def add_execution_callback(callback):
+  """Add an execution callback to the default eager context.
+
+  An execution callback is invoked immediately after an eager operation or
+  function has finished execution, providing access to the op's type, name
+  input and output tensors. Multiple execution callbacks can be added, in
+  which case the callbacks will be invoked in the order in which they are
+  added.
+
+  Args:
+    callback: a callable of the signature
+      `f(op_type, op_name, attrs, inputs, outputs)`.
+      `op_type` is the type of the operation that was just executed (e.g.,
+        `MatMul`).
+      `op_name` is the name of the operation that has was just executed. This
+        name is set by the client who created the operation and can be `None` if
+        it is unset.
+      `attrs` contains the attributes of the operation as a `tuple` of
+        alternating attribute name and attribute value.
+      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
+      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+       Return value(s) from the callback are ignored.
+  """
+  context.get_default_context().add_post_execution_callback(callback)
+
+
+def clear_execution_callbacks():
+  """Clear all execution callbacks from the default eager context."""
+  context.get_default_context().clear_post_execution_callbacks()
+
+
+def seterr(inf_or_nan=None):
+  """Set how abnormal conditions are handled by the default eager context.
+
+  Example:
+  ``` python
+  tfe.seterr(inf_or_nan="raise")
+  a = tfe.Tensor(10.0)
+  b = tfe.Tensor(0.0)
+  c = a / b  # <-- Raises InfOrNanError.
+
+  tfe.seterr(inf_or_nan="ignore")
+  c = a / b  # <-- Does NOT raise exception anymore.
+  ```
+
+  Args:
+    inf_or_nan: Set action for infinity (`inf`) and NaN (`nan`) values.
+      Possible values: `{"ignore", "print", "raise", "warn"}`.
+      `"ignore"`: take no action when `inf` values appear.
+      `"print"`: print a warning to `stdout`.
+      `"raise"`: raise an `InfOrNanError`.
+      `"warn"`: print a warning using `tf.logging.warn`.
+      A value of `None` leads to no change in the action of the condition.
+
+  Returns:
+    A dictionary of old actions.
+
+  Raises:
+    ValueError: If the value of any keyword arguments is invalid.
+  """
+  if inf_or_nan not in _VALID_CALLBACK_ACTIONS:
+    raise ValueError(
+        "Invalid action value for inf_or_nan: %s. "
+        "Valid actions are %s." % (inf_or_nan, _VALID_CALLBACK_ACTIONS))
+
+  old_settings = {"inf_or_nan": "ignore"}
+  default_context = context.get_default_context()
+
+  carryover_callbacks = []
+  for callback in default_context.post_execution_callbacks:
+    # Check whether the callback is inf_nan_callback or a partial object of
+    # inf_nan_callback.
+    if (callback == inf_nan_callback or
+        isinstance(callback, functools.partial) and
+        callback.func == inf_nan_callback):
+      if callback == inf_nan_callback:
+        old_settings["inf_or_nan"] = _DEFAULT_CALLBACK_ACTION
+      else:
+        old_settings["inf_or_nan"] = callback.keywords.get(
+            "action", _DEFAULT_CALLBACK_ACTION)
+    elif inf_or_nan is not None:
+      carryover_callbacks.append(callback)
+
+  if inf_or_nan is not None:
+    default_context.clear_post_execution_callbacks()
+    for callback in carryover_callbacks:
+      default_context.add_post_execution_callback(callback)
+    if inf_or_nan != "ignore":
+      default_context.add_post_execution_callback(
+          functools.partial(inf_nan_callback, action=inf_or_nan))
+
+  return old_settings

@@ -13,6 +13,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:custom_gradient",
+        "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:function",
     ],
 )

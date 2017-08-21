@@ -400,34 +400,3 @@ def enable_eager_execution():
   global _default_mode
   assert _default_mode == GRAPH_MODE
   _default_mode = EAGER_MODE
-
-
-def add_execution_callback(callback):
-  """Add an execution callback to the default eager context.
-
-  An execution callback is invoked immediately after an eager operation or
-  function has finished execution, providing access to the op's type, name
-  input and output tensors. Multiple execution callbacks can be added, in
-  which case the callbacks will be invoked in the order in which they are
-  added.
-
-  Args:
-    callback: a callable of the signature
-      `f(op_type, op_name, attrs, inputs, outputs)`.
-      `op_type` is the type of the operation that was just executed (e.g.,
-        `MatMul`).
-      `op_name` is the name of the operation that has was just executed. This
-        name is set by the client who created the operation and can be `None` if
-        it is unset.
-      `attrs` contains the attributes of the operation as a `tuple` of
-        alternating attribute name and attribute value.
-      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
-      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
-       Return value(s) from the callback are ignored.
-  """
-  get_default_context().add_post_execution_callback(callback)
-
-
-def clear_execution_callbacks():
-  """Clear all execution callbacks from the default eager context."""
-  get_default_context().clear_post_execution_callbacks()
