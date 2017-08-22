@@ -156,24 +156,18 @@ def _MinLSTMParamSize(num_layers,
 
 def _CreateCudnnCompatibleCanonicalRNN(cudnn_model,
                                        inputs,
-                                       use_block_cell,
                                        scope="rnn"):
   model = cudnn_model.rnn_mode
   if model not in (cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU):
     raise ValueError("%s is not supported!" % model)
-  if model == cudnn_rnn_ops.CUDNN_GRU and use_block_cell:
-    raise ValueError("gru is not supported when using block cell!")
 
   num_units = cudnn_model.num_units
   num_layers = cudnn_model.num_layers
   # To reuse cuDNN-trained models, must use cudnn compatible rnn cells.
-  if use_block_cell:
-    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMBlockCell(num_units)
+  if model == cudnn_rnn_ops.CUDNN_LSTM:
+    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
   else:
-    if model == cudnn_rnn_ops.CUDNN_LSTM:
-      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
-    else:
-      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units)
+    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units)
   cell = rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(num_layers)])
   return rnn_lib.dynamic_rnn(
       cell, inputs, dtype=dtypes.float32, time_major=True, scope=scope)
@@ -469,21 +463,18 @@ class CudnnRNNTestCompatibleRnnCells(TensorFlowTestCase):
             "batch_size": 1,
         },
     ]
-    for rnn, cfg, use_block_cell in itertools.product(
-        (cudnn_rnn_ops.CUDNN_LSTM,), configs, (True, False,)):
+    for rnn, cfg in itertools.product((cudnn_rnn_ops.CUDNN_LSTM,), configs):
       self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
                                         cfg["num_units"], cfg["input_size"],
-                                        cfg["batch_size"], rnn, use_block_cell)
+                                        cfg["batch_size"], rnn)
     # TODO(jamesqin): Add CudnnCompatibleGRUBlockCell.
-    for rnn, cfg, use_block_cell in itertools.product(
-        (cudnn_rnn_ops.CUDNN_GRU,), configs, (False,)):
+    for rnn, cfg in itertools.product((cudnn_rnn_ops.CUDNN_GRU,), configs):
       self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
                                         cfg["num_units"], cfg["input_size"],
-                                        cfg["batch_size"], rnn, use_block_cell)
+                                        cfg["batch_size"], rnn)
 
   def _testCudnnCompatibleRnnCells(self, num_layers, seq_length, num_units,
-                                   input_size, batch_size, rnn_mode,
-                                   use_block_cell):
+                                   input_size, batch_size, rnn_mode):
     has_state_c = rnn_mode == cudnn_rnn_ops.CUDNN_LSTM
     np.random.seed(0)
     # Train graph
@@ -550,7 +541,7 @@ class CudnnRNNTestCompatibleRnnCells(TensorFlowTestCase):
       cell_inputs = array_ops.placeholder(
           dtypes.float32, shape=[seq_length, batch_size, input_size])
       (output, states) = _CreateCudnnCompatibleCanonicalRNN(
-          cudnn_model, cell_inputs, use_block_cell)
+          cudnn_model, cell_inputs)
       saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
 
       with self.test_session(
