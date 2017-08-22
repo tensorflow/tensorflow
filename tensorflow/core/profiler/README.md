@@ -206,9 +206,8 @@ Timeline file is written to <filename>.
 Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
-<left>
+
 ![Timeline](g3doc/graph_timeline.png)
-</left>
 
 ```
 # The following example generates a pprof graph (only supported by code view).
@@ -226,9 +225,7 @@ tfprof> code -select accelerator_micros -max_depth 100000 -output pprof:outfile=
 pprof -png --nodecount=100 --sample_index=1 <filename>
 ```
 
-<left>
 ![PprofGraph](g3doc/pprof.jpg)
-</left>
 
 ### Feature Request and Bug Report
 
