@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-void StartAbortRendevous(BaseRemoteRendezvous* rendez, const Status& s) {
+static void StartAbortRendevous(BaseRemoteRendezvous* rendez, const Status& s) {
   rendez->StartAbort(s);
   rendez->Unref();
 }
