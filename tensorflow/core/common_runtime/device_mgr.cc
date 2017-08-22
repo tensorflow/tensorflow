@@ -26,15 +26,15 @@ namespace tensorflow {
 
 DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
     : name_backing_store_(128) {
-  for (Device* d : devices) {
+  for (auto d : devices) {
     devices_.push_back(d);
 
     // Register under the (1) full name, (2) canonical name, and (3) local name.
-    for (const string& name :
+    for (auto& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
       device_map_[CopyToBackingStore(name)] = d;
     }
-    string lname = DeviceNameUtils::LocalName(d->name());
+    auto lname = DeviceNameUtils::LocalName(d->name());
     device_map_[CopyToBackingStore(lname)] = d;
     device_type_counts_[d->device_type()]++;
   }
@@ -42,12 +42,12 @@ DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
 
 DeviceMgr::~DeviceMgr() {
   // TODO(b/37437134): Remove destructor after converting to std::unique_ptr.
-  for (Device* p : devices_) delete p;
+  for (auto p : devices_) delete p;
 }
 
 StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
-  size_t n = s.size();
-  char* space = name_backing_store_.Alloc(n);
+  auto n = s.size();
+  auto space = name_backing_store_.Alloc(n);
   memcpy(space, s.data(), n);
   return StringPiece(space, n);
 }
@@ -55,7 +55,7 @@ StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
 void DeviceMgr::ListDeviceAttributes(
     std::vector<DeviceAttributes>* devices) const {
   devices->reserve(devices_.size());
-  for (Device* dev : devices_) {
+  for (auto dev : devices_) {
     devices->emplace_back(dev->attributes());
   }
 }
@@ -66,7 +66,7 @@ std::vector<Device*> DeviceMgr::ListDevices() const {
 
 string DeviceMgr::DebugString() const {
   string out;
-  for (Device* dev : devices_) {
+  for (auto dev : devices_) {
     strings::StrAppend(&out, dev->name(), "\n");
   }
   return out;
@@ -74,7 +74,7 @@ string DeviceMgr::DebugString() const {
 
 string DeviceMgr::DeviceMappingString() const {
   string out;
-  for (Device* dev : devices_) {
+  for (auto dev : devices_) {
     if (!dev->attributes().physical_device_desc().empty()) {
       strings::StrAppend(&out, dev->name(), " -> ",
                          dev->attributes().physical_device_desc(), "\n");
@@ -101,12 +101,12 @@ Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
 
 void DeviceMgr::ClearContainers(gtl::ArraySlice<string> containers) const {
   Status s;
-  for (Device* dev : devices_) {
+  for (auto dev : devices_) {
     if (containers.empty()) {
       s.Update(dev->resource_manager()->Cleanup(
           dev->resource_manager()->default_container()));
     } else {
-      for (const string& c : containers) {
+      for (auto& c : containers) {
         s.Update(dev->resource_manager()->Cleanup(c));
       }
     }
