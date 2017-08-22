@@ -146,6 +146,7 @@ class Estimator(object):
     # Model directory.
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
+        # TODO(alanyee): remove this suppression after it is no longer needed
         # pylint: disable=g-doc-exception
         raise ValueError(
             "model_dir are set both in constructor and RunConfig, but with "
