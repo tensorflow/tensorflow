@@ -21,6 +21,7 @@ from __future__ import print_function
 from autograd import core as ag_core
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import custom_gradient
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.framework import common_shapes
@@ -43,6 +44,15 @@ def _as_gpu_tensor(t, index=0):
 
 _as_gpu_tensor.defvjp(
     lambda g, ans, vs, gvs, t, index: g.as_cpu_tensor(), argnum=0)
+
+
+@custom_gradient.custom_gradient
+def _tensor_copy(t, ctx=None, device_name=None):
+
+  def grad(dresult):
+    return dresult._copy(device_name=t.device)  # pylint: disable=protected-access
+
+  return t.value._copy(ctx=ctx, device_name=device_name), grad  # pylint: disable=protected-access
 
 
 @ag_core.primitive
@@ -86,6 +96,9 @@ class TensorNode(ag_core.Node):
 
   def as_gpu_tensor(self, gpu_index=0):
     return _as_gpu_tensor(self, gpu_index)
+
+  def _copy(self, ctx=None, device_name=None):
+    return _tensor_copy(self, ctx, device_name)
 
   def __len__(self):
     return len(self.value)

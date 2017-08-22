@@ -309,6 +309,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":custom_gradient",
         ":tape",
         ":tensor",
         "//tensorflow/python:array_ops",
