@@ -729,7 +729,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(b, a, rtol=rtol, atol=atol, err_msg=msg)
+      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
@@ -824,7 +824,7 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
-      np.testing.assert_array_equal(b, a)
+      np.testing.assert_array_equal(a, b)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
