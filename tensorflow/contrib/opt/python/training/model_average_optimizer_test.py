@@ -100,7 +100,7 @@ class ModelAverageOptimizerTest(test.TestCase):
                                               replicas_to_aggregate, workers)
     var_0 = graphs[0].get_tensor_by_name("k:0")
     var_1 = graphs[1].get_tensor_by_name("k:0")
-    var_g = graphs[0].get_tensor_by_name("modelAverage_g0:0")
+    var_g = graphs[0].get_tensor_by_name("modelAverage/g/k:0")
 
     self.assertAllEqual(0.0, sessions[0]._tf_sess().run(var_0))
 
@@ -128,6 +128,7 @@ class ModelAverageOptimizerTest(test.TestCase):
   def testPS2TasksWithClusterSpecClass(self):
     with ops.device(
         model_average_optimizer.model_average_device_setter(
+            ps_tasks=0,
             cluster=self._cluster_spec)):
       v = variables.Variable([1, 2], name="modelAverage_v")
       v_1 = variables.Variable([1, 2], name="modelAverage_v_1")

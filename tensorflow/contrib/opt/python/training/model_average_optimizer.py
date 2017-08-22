@@ -71,6 +71,7 @@ class _ModelAverageDeviceChooser(object):
     node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
     # TODO(chen meng): only global variables should be placed on ps. Now we just
     # do this according to substring in var name.
+    # put global variables on ps
     if self._ps_tasks and self._ps_device and node_def.op in self._ps_ops \
        and node_def.name.find('modelAverage') != -1:
       ps_device = pydev.DeviceSpec.from_string(self._ps_device)
@@ -82,6 +83,7 @@ class _ModelAverageDeviceChooser(object):
       ps_device.merge_from(current_device)
       return ps_device.to_string()
 
+    # put internal model average variables on worker
     worker_device = pydev.DeviceSpec.from_string(self._worker_device or "")
     worker_device.merge_from(current_device)
     return worker_device.to_string()
@@ -311,7 +313,7 @@ class ModelAverageOptimizer(object):
     # Clear global_variables list.
     ops.get_default_graph().clear_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     # Generate new global variables dependent on trainable variables.
-    for i, v in enumerate(variables.trainable_variables()):
+    for v in variables.trainable_variables():
       if v.op.name.find(self._name) != -1:
         raise AssertionError('%s: cannot use \'%s\' as a substr of a name for '
                              'any ops or variables when calling an '
@@ -320,17 +322,17 @@ class ModelAverageOptimizer(object):
       # variable.  They are supposed to be placed on PS device. v_g is used to
       # store averaged model parameters.
       v_g = variable_scope.get_variable(
-          name='%s_g%d' % (self._name, i),
+          name='%s/g/%s' % (self._name, v.op.name),
           initializer=v.initialized_value(),
           trainable=False,
           collections=[ops.GraphKeys.GLOBAL_VARIABLES, 'global_model'])
       v_block_grad = variable_scope.get_variable(
-          name='%s_block_grad%d' % (self._name, i), shape=v.get_shape(),
+          name='%s/block_grad/%s' % (self._name, v.op.name), shape=v.get_shape(),
           initializer=init_ops.constant_initializer(0.0, dtype=v.dtype),
           trainable=False,
           collections=[ops.GraphKeys.GLOBAL_VARIABLES, 'block_grad'])
       v_nesterov = variable_scope.get_variable(
-          name='%s_nesterov%d' % (self._name, i),
+          name='%s/nesterov/%s' % (self._name, v.op.name),
           initializer=v_g.initialized_value(),
           trainable=False,
           collections=[ops.GraphKeys.GLOBAL_VARIABLES, 'nesterov'])
