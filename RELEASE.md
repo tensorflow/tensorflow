@@ -1,5 +1,7 @@
 # Release 1.3.0
 
+See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/tag/0.1.4) release notes.
+
 ## Major Features and Improvements
 * Added canned estimators to Tensorflow library. List of added estimators:
   * `DNNClassifier`
@@ -8,7 +10,7 @@
   * `LinearRegressor`
   * `DNNLinearCombinedClassifier`
   * `DNNLinearCombinedRegressor`.
-* All our prebuilt binaries have been built with cuDNN 6.
+* All our prebuilt binaries have been built with cuDNN 6. We anticipate releasing TensorFlow 1.4 with cuDNN 7.
 * `import tensorflow` now goes much faster.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
