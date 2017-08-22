@@ -67,8 +67,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Filter")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -83,12 +85,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         // NOTE(mrry): This method is thread-safe as long as
         // `input_impl_` and `f` are thread-safe. However, if multiple
         // threads enter this method, outputs may be observed in a
@@ -122,7 +125,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           Notification n;
           Status ret;
           std::vector<Tensor> result;
-          ret = dataset()->captured_func_->Run(opts, *out_tensors, &result);
+          ret = dataset()->captured_func_->Run(opts, *out_tensors, &result,
+                                               prefix());
 
           if (!ret.ok()) {
             return ret;

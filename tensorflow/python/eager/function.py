@@ -76,19 +76,21 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
   Raises:
     ValueError: if called outside a defun context.
   """
+  if context.in_eager_mode():
+    return value
   _ = as_ref
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
     raise ValueError(
         "Trying to use tfe.Tensor objects in a graph outside graph mode. "
-        "To build a graph use tfe.defun or tfe.func_to_object.")
-  captured_value = tensor_map.get(tape.tensor_id(value), None)
+        "To build a graph use tfe.defun or tfe.make_template.")
+  captured_value = tensor_map.get(ops.tensor_id(value), None)
   if captured_value is None:
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes.resource:
       captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
-    tensor_map[tape.tensor_id(value)] = (value, captured_value)
+    tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
   return captured_value
@@ -266,7 +268,7 @@ class _GraphModeFunction(object):
     side_outputs = outputs[len(self._returns):]
     watched_extra_inputs = []
     for t in self._extra_inputs:
-      tid = tape.tensor_id(t)
+      tid = ops.tensor_id(t)
       for t in tape._tape_stack.stack:  # pylint: disable=protected-access
         w = t.value.tensors.get(tid, None)
         if w is not None:

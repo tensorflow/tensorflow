@@ -437,7 +437,15 @@ class FunctionLibraryRuntime {
 
   // Returns the graph version number.
   virtual int graph_def_version() = 0;
+
+  typedef uint64 LocalHandle;
 };
+
+const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
+const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
+typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
+                             std::unique_ptr<OpKernel>*)>
+    CustomKernelCreator;
 
 // To register a gradient function for a builtin op, one should use
 //   REGISTER_OP_GRADIENT(<op_name>, <c++ grad factory>);

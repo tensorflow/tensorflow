@@ -988,7 +988,6 @@ class IdentityTest(test_util.TensorFlowTestCase):
         self.skipTest("No GPUs found")
 
       def _test(x, y, device):
-        self.assertIsNot(x, y)
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())
 

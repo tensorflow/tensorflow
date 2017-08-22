@@ -60,7 +60,7 @@ prepare inputs for training a model as follows:
 
 We recommend using the @{tf.contrib.data.Dataset.shuffle$`shuffle`}
 and @{tf.contrib.data.Dataset.batch$`batch`} methods of a
-@{tf.contrib.data.Dataset$`Dataset`} to acomplish this. However, if you'd prefer
+@{tf.contrib.data.Dataset$`Dataset`} to accomplish this. However, if you'd prefer
 to use a queue-based version instead, you can find a full implementation in the
 @{tf.train.shuffle_batch} function.
 

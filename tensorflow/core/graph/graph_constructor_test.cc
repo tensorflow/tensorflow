@@ -1433,6 +1433,86 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
       &refiner);
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_SkipMappedNodes_FullyMapped) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.skip_mapped_nodes = true;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 1);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+  // `new_input` node is not imported because we set skip_mapped_nodes = true
+  // and all of its inputs are mapped
+  EXPECT_FALSE(HasNode("new_input"));
+
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 1));
+  // Test that t2 is unaffected
+  EXPECT_TRUE(HasEdge("t1", 0, "t2", 0));
+
+  // Check that t1's NodeDef is consistent with graph
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "input:1");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_SkipMappedNodes_NotFullyMapped) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.skip_mapped_nodes = true;
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+  // `new_input` node is imported because not all of its inputs are mapped
+  EXPECT_TRUE(HasNode("new_input"));
+
+  EXPECT_FALSE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 1));
+  EXPECT_TRUE(HasEdge("new_input", 0, "t1", 0));
+  EXPECT_FALSE(HasEdge("new_input", 1, "t1", 1));
+  // Test that t2 is unaffected
+  EXPECT_TRUE(HasEdge("t1", 0, "t2", 0));
+
+  // Check that t1's NodeDef is consistent with graph
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "new_input:0");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 

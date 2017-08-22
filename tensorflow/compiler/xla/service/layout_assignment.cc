@@ -628,9 +628,8 @@ Status CheckLayouts(
       const PointsToSet& points_to_set =
           points_to_analysis->GetPointsToSet(instruction.get());
       TF_RETURN_IF_ERROR(points_to_set.ForEachElementWithStatus(
-          [&instruction](
-              ShapeIndex index,
-              const std::vector<const LogicalBuffer*>& buffers) -> Status {
+          [&instruction](ShapeIndex index,
+                         const PointsToSet::BufferList& buffers) -> Status {
             if (ShapeUtil::IsLeafIndex(instruction->shape(), index)) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
@@ -934,7 +933,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   return points_to_set.ForEachElementWithStatus(
       [this, &shape_layout, constraints](
           const ShapeIndex& index,
-          const std::vector<const LogicalBuffer*>& buffers) -> Status {
+          const PointsToSet::BufferList& buffers) -> Status {
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {
           for (const LogicalBuffer* buffer : buffers) {
             if (constraints->BufferLayout(*buffer) == nullptr &&
@@ -1076,7 +1075,7 @@ StatusOr<Layout> InferArrayLayout(
   TF_RET_CHECK(
       !points_to_analysis.InstructionDefinesBufferAtIndex(instruction, index));
 
-  const std::vector<const LogicalBuffer*>& source_buffers =
+  const auto& source_buffers =
       points_to_analysis.GetPointsToSet(instruction).element(index);
   TF_RET_CHECK(!source_buffers.empty());
 
@@ -1303,18 +1302,17 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
 }
 
 Status LayoutAssignment::RunOnComputation(
-    const ComputationLayout& computation_layout, HloComputation* computation) {
+    const ComputationLayout& computation_layout,
+    const TuplePointsToAnalysis& points_to_analysis,
+    HloComputation* computation) {
   DCHECK(computation_layout.LayoutIsSet());
   InsertOrDie(&computation_layouts_, computation, computation_layout);
   VLOG(2) << "LayoutAssignment::RunOnComputation(" << computation->name()
           << ")";
   VLOG(2) << "  ComputationLayout = " << computation_layout.ToString();
 
-  TF_ASSIGN_OR_RETURN(auto points_to_analysis,
-                      TuplePointsToAnalysis::Run(computation->parent()));
-
   // Construct LayoutConstraints with all layout constraints of the computation.
-  LayoutConstraints constraints(*points_to_analysis, computation);
+  LayoutConstraints constraints(points_to_analysis, computation);
 
   // Add constraints required for correctness on all backends (eg, entry
   // parameter layout constraints).
@@ -1335,7 +1333,7 @@ Status LayoutAssignment::RunOnComputation(
     // Arbitrarily pick the first unconstrained buffer and give it the default
     // layout. By construction unconstrained_buffers() has a stable sort based
     // on LogicalBuffer::Id.
-    const LogicalBuffer& buffer = points_to_analysis->GetBuffer(
+    const LogicalBuffer& buffer = points_to_analysis.GetBuffer(
         *constraints.unconstrained_buffer_ids().begin());
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(
         LayoutUtil::GetDefaultLayoutForShape(buffer.shape()), buffer,
@@ -1364,12 +1362,16 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
                                 module->config().debug_options());
   }
 
+  TF_ASSIGN_OR_RETURN(auto points_to_analysis,
+                      TuplePointsToAnalysis::Run(module));
+
   // Assign layouts to computations in an order such that a callee computation
   // is handled before its caller computation. This ensures that the layout of
   // all callers of a computation will agree.
   for (auto* computation : module->MakeComputationPostOrder()) {
     if (computation == module->entry_computation()) {
       TF_RETURN_IF_ERROR(RunOnComputation(*entry_computation_layout_,
+                                          *points_to_analysis,
                                           module->entry_computation()));
     } else if (computation->IsFusionComputation()) {
       continue;
@@ -1378,7 +1380,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
       // Setting all embedded computations to the default layout is potentially
       // suboptimal.
       computation_layout.SetToDefaultLayout();
-      TF_RETURN_IF_ERROR(RunOnComputation(computation_layout, computation));
+      TF_RETURN_IF_ERROR(RunOnComputation(computation_layout,
+                                          *points_to_analysis, computation));
     }
   }
 

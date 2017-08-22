@@ -67,6 +67,7 @@ load(
     "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
+    "if_mobile",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -262,6 +263,7 @@ cc_library(
         "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
         "lib/gtl/cleanup.h",
+        "lib/gtl/compactptrset.h",
         "lib/gtl/flatmap.h",
         "lib/gtl/flatset.h",
         "lib/gtl/inlined_vector.h",
@@ -291,6 +293,7 @@ cc_library(
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
+        "platform/abi.h",
         "platform/cpu_feature_guard.h",
         "platform/cpu_info.h",
         "platform/dynamic_annotations.h",
@@ -513,8 +516,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps =
         [
-            "//tensorflow/core/platform/default/build_config:minimal",
+            "@nsync//:nsync_cpp",
+        ] + [
             "//third_party/eigen3",
+            "//tensorflow/core/platform/default/build_config:minimal",
         ],
 )
 
@@ -807,12 +812,14 @@ cc_library(
     name = "testlib",
     testonly = 1,
     srcs = [
+        "common_runtime/function_testlib.cc",
         "common_runtime/kernel_benchmark_testlib.cc",
         "framework/fake_input.cc",
         "framework/function_testlib.cc",
         "graph/testlib.cc",
     ],
     hdrs = [
+        "common_runtime/function_testlib.h",
         "common_runtime/kernel_benchmark_testlib.h",
         "framework/fake_input.h",
         "framework/function_testlib.h",
@@ -953,6 +960,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -974,7 +982,10 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1057,6 +1068,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
     ],
     alwayslink = 1,
 )
@@ -1196,6 +1208,27 @@ tf_pyclif_proto_library(
     name = "framework/tensor_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/tensor.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/node_def_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/node_def.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/types_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/types.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -1598,10 +1631,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    includes = ["../../external/nsync/public"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
         ":reader_base",
+        "@nsync//:nsync_headers",
     ],
 )
 
@@ -2058,6 +2093,7 @@ tf_cc_tests(
         "lib/core/threadpool_test.cc",
         "lib/gtl/array_slice_test.cc",
         "lib/gtl/cleanup_test.cc",
+        "lib/gtl/compactptrset_test.cc",
         "lib/gtl/edit_distance_test.cc",
         "lib/gtl/flatmap_test.cc",
         "lib/gtl/flatset_test.cc",
@@ -2124,6 +2160,22 @@ tf_cc_test(
     size = "small",
     srcs = ["platform/env_test.cc"],
     deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "platform_abi_test",
+    size = "small",
+    srcs = ["platform/abi_test.cc"],
+    deps = [
+        ":framework",
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
@@ -2504,6 +2556,35 @@ tf_cc_test_gpu(
     ],
 )
 
+tf_cc_test_gpu(
+    name = "variant_op_copy_test",
+    size = "small",
+    srcs = ["framework/variant_op_copy_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:array",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cc_test(
     name = "common_runtime_constant_folding_test",
     size = "small",
@@ -2587,17 +2668,14 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:dense_update_ops",
-        "//tensorflow/core/kernels:fifo_queue_op",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:queue_ops",
-        "//tensorflow/core/kernels:session_ops",
-        "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
     ],
 )
@@ -3054,6 +3132,9 @@ filegroup(
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
+        # JPEG data for jpeg benchmark.
+        "lib/jpeg/testdata/small.jpg",
+        "lib/jpeg/testdata/medium.jpg",
         # Corrupted JPEG files for tests
         "lib/jpeg/testdata/bad_huffman.jpg",
         "lib/jpeg/testdata/corrupt.jpg",

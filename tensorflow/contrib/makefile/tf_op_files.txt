@@ -38,6 +38,8 @@ tensorflow/core/kernels/stack_ops.cc
 tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
 tensorflow/core/kernels/split_lib_cpu.cc
+tensorflow/core/kernels/spectrogram_op.cc
+tensorflow/core/kernels/spectrogram.cc
 tensorflow/core/kernels/sparse_to_dense_op.cc
 tensorflow/core/kernels/sparse_matmul_op.cc
 tensorflow/core/kernels/softsign_op.cc
@@ -100,6 +102,10 @@ tensorflow/core/kernels/mirror_pad_op_cpu_impl_2.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_3.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_4.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_5.cc
+tensorflow/core/kernels/mfcc_op.cc
+tensorflow/core/kernels/mfcc_mel_filterbank.cc
+tensorflow/core/kernels/mfcc_dct.cc
+tensorflow/core/kernels/mfcc.cc
 tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/matmul_op.cc
 tensorflow/core/kernels/lrn_op.cc
@@ -117,6 +123,7 @@ tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/fifo_queue.cc
 tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/example_parsing_ops.cc
+tensorflow/core/kernels/encode_wav_op.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/decode_bmp_op.cc
@@ -124,6 +131,7 @@ tensorflow/core/kernels/depthtospace_op.cc
 tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
+tensorflow/core/kernels/decode_wav_op.cc
 tensorflow/core/kernels/xsmm_conv2d.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/cwise_op_tanh.cc

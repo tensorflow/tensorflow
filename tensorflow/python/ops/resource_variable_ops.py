@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import custom_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -39,9 +40,53 @@ from tensorflow.python.util import compat
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  TODO(apassos): fill this out explaining the semantics and Variable
-  compatibility when the API has settled more.
+  See the ${variables} documentation for more details.
 
+  A `ResourceVariable` allows you to maintain state across subsequent calls to
+  session.run.
+
+  The `ResourceVariable` constructor requires an initial value for the variable,
+  which can be a `Tensor` of any type and shape. The initial value defines the
+  type and shape of the variable. After construction, the type and shape of
+  the variable are fixed. The value can be changed using one of the assign
+  methods.
+
+  Just like any `Tensor`, variables created with `ResourceVariable()` can be
+  used as inputs for other Ops in the graph. Additionally, all the operators
+  overloaded for the `Tensor` class are carried over to variables, so you can
+  also add nodes to the graph by just doing arithmetic on variables.
+
+  Unlike tf.Variable, a tf.ResourceVariable has well-defined semantics. Each
+  usage of a ResourceVariable in a TensorFlow graph adds a read_value operation
+  to the graph. The Tensors returned by a read_value operation are guaranteed
+  to see all modifications to the value of the variable which happen in any
+  operation on which the read_value depends on (either directly, indirectly, or
+  via a control dependency) and guaranteed to not see any modification to the
+  value of the variable on which the read_value operation does not depend on.
+
+  For example, if there is more than one assignment to a ResourceVariable in
+  a single session.run call there is a well-defined value for each operation
+  which uses the variable's value if the assignments and the read are connected
+  by edges in the graph. Consider the following example, in which two writes
+  can cause tf.Variable and tf.ResourceVariable to behave differently:
+
+   ```python
+    a = tf.ResourceVariable(1.0)
+    a.initializer.run()
+
+    assign = a.assign(2.0)
+    with tf.control_dependencies([assign]):
+      b = a.read_value()
+
+    other_assign = a.assign(3.0)
+    with tf.control_dependencies([other_assign]):
+      tf.Print(b, [b]).run()  # Will print 2.0 because the value was read before
+                              # other_assign ran.
+  ```
+
+  To enforce these consistency properties tf.ResourceVariable might make more
+  copies than an equivalent tf.Variable under the hood, so tf.Variable is still
+  not deprecated.
   """
 
   def __init__(self,
@@ -256,8 +301,7 @@ class ResourceVariable(variables.Variable):
             # Manually assign reads to the handle's device to avoid log
             # messages.
             with ops.device(self._handle.device):
-              value = gen_resource_variable_ops.read_variable_op(
-                  self._handle, dtype=self._dtype)
+              value = read_variable_op(self._handle, dtype=self._dtype)
             self._graph_element = value
             if caching_device is not None:
               # Variables may be created in a tf.device() or ops.colocate_with()
@@ -280,8 +324,8 @@ class ResourceVariable(variables.Variable):
           self._graph_element = None
           if caching_device:
             with ops.device(caching_device):
-              self._cached_value = gen_resource_variable_ops.read_variable_op(
-                  self._handle, dtype=self._dtype)
+              self._cached_value = read_variable_op(self._handle,
+                                                    dtype=self._dtype)
           else:
             self._cached_value = None
         ops.add_to_collections(collections, self)
@@ -365,8 +409,7 @@ class ResourceVariable(variables.Variable):
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._handle.device):
-        return gen_resource_variable_ops.read_variable_op(
-            self._handle, dtype=self._dtype)
+        return read_variable_op(self._handle, dtype=self._dtype)
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -426,9 +469,17 @@ class ResourceVariable(variables.Variable):
      the read operation.
     """
     with ops.name_scope("Read"):
-      with ops.device(self._handle.device):
-        value = gen_resource_variable_ops.read_variable_op(
-            self._handle, dtype=self._dtype)
+      # In graph mode, ensure we read the variable in the same device as the
+      # handle. In eager mode, however, this sometimes tries to read a GPU
+      # variable in the CPU because the handle is host memory. For now, then, we
+      # need to skip the device block in eager. TODO(apassos) eager should have
+      # separate notions of device and memory, so handle.device can be GPU while
+      # handle.memory_space is always CPU.
+      if context.in_graph_mode():
+        with ops.device(self._handle.device):
+          value = read_variable_op(self._handle, dtype=self._dtype)
+      else:
+        value = read_variable_op(self._handle, dtype=self._dtype)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
@@ -579,6 +630,31 @@ class ResourceVariable(variables.Variable):
       return self.read_value().op.inputs[0]
     else:
       return self.value()
+
+
+@custom_gradient.custom_gradient
+def read_variable_op(handle, dtype):
+  """Reads the value of a variable.
+
+  The tensor returned by this operation is immutable.
+
+  The value returned by this operation is guaranteed to be influenced by all the
+  writes on which this operation depends directly or indirectly, and to not be
+  influenced by any of the writes which depend directly or indirectly on this
+  operation.
+
+  Args:
+    handle: A `Tensor` of type `resource`.
+      handle to the resource in which to store the variable.
+    dtype: A `tf.DType`. the dtype of the value.
+
+  Returns:
+    A `Tensor` of type `dtype`.
+  """
+  result = gen_resource_variable_ops.read_variable_op(handle, dtype)
+  def grad(dresult):
+    return dresult
+  return result, grad
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):

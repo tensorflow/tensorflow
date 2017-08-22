@@ -88,7 +88,7 @@ class FuzzSession {
     }
     initialized_ = true;
 
-    Scope root = Scope::NewRootScope().ExitOnError();
+    Scope root = Scope::DisabledShapeInferenceScope().ExitOnError();
     SessionOptions options;
     session_ = std::unique_ptr<Session>(NewSession(options));
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
@@ -91,10 +92,12 @@ class JITSymbolTable {
     ADD_JIT_SYMBOL_TO_TABLE(ReleaseInfeedBufferAfterDequeue);
     ADD_JIT_SYMBOL_TO_TABLE(AcquireOutfeedBufferForPopulation);
     ADD_JIT_SYMBOL_TO_TABLE(ReleaseOutfeedBufferAfterPopulation);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV8F32);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32AVX);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV8F32AVX);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32SSE);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32SSE);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32NEON);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32NEON);
     ADD_JIT_SYMBOL_TO_TABLE(EigenConvF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF64);
@@ -162,8 +165,9 @@ llvm::StringRef GetHostCpuName() {
 
 CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
   CompilerFunctor::VectorIntrinsics intrinsics;
-  intrinsics.sse_intrinsics = (&__xla_cpu_runtime_ExpV4F32 != nullptr);
-  intrinsics.avx_intrinsics = (&__xla_cpu_runtime_ExpV8F32 != nullptr);
+  intrinsics.sse_intrinsics = (&__xla_cpu_runtime_ExpV4F32SSE != nullptr);
+  intrinsics.avx_intrinsics = (&__xla_cpu_runtime_ExpV8F32AVX != nullptr);
+  intrinsics.neon_intrinsics = (&__xla_cpu_runtime_ExpV4F32NEON != nullptr);
   return intrinsics;
 }
 

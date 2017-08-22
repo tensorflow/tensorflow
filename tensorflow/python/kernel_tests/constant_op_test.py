@@ -23,6 +23,7 @@ import numpy as np
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
@@ -107,6 +108,30 @@ class ConstantTest(test.TestCase):
         np.array([compat.as_bytes(str(x)) for x in np.arange(-15, 15)]).reshape(
             [2, 3, 5]))
     self._testCpu(np.empty((2, 0, 5)).astype(np.str_))
+
+  def testVariant(self):
+    # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
+    # copying between CPU and GPU is supported.
+    with self.test_session(use_gpu=False):
+      variant_tensor = tensor_pb2.TensorProto(
+          dtype=dtypes_lib.variant.as_datatype_enum,
+          tensor_shape=tensor_shape.TensorShape([]).as_proto(),
+          variant_val=[tensor_pb2.VariantTensorDataProto(
+              type_name=b"int",
+              metadata=np.array(1, dtype=np.int32).tobytes())])
+      const_op = constant_op.constant(variant_tensor).op
+      const_value = const_op.get_attr("value")
+
+      # Ensure we stored the tensor proto properly.
+      self.assertProtoEquals(variant_tensor, const_value)
+
+      # Smoke test -- ensure this executes without trouble.
+      # Right now, non-numpy-compatible objects cannot be returned from a
+      # session.run call; similarly, objects that can't be converted to
+      # native numpy types cannot be passed to ops.convert_to_tensor.
+      # TODO(ebrevdo): Add registration mechanism for
+      # ops.convert_to_tensor and for session.run output.
+      const_op.run()
 
   def testStringWithNulls(self):
     with self.test_session():
