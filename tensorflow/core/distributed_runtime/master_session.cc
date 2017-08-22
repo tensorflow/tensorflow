@@ -1215,7 +1215,7 @@ void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                                    RCGMap* rcg_map) {
   VLOG(1) << "Discarding all reffed graphs";
   for (auto p : *rcg_map) {
-    ReffedClientGraph* rcg = p.second;
+    auto rcg = p.second;
     if (to_unref) {
       to_unref->push_back(rcg);
     } else {
@@ -1593,7 +1593,7 @@ Status MasterSession::Close() {
     ClearRunsTable(&to_unref, &run_graphs_);
     ClearRunsTable(&to_unref, &partial_run_graphs_);
   }
-  for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
+  for (auto rcg : to_unref) rcg->Unref();
   return Status::OK();
 }
 
