@@ -12,7 +12,7 @@ load("@%ws%//third_party:common.bzl", "template_rule")
 cc_library(
     name = "aws",
     srcs = select({
-        ":linux_x86_64": glob([
+        "@%ws%//tensorflow:linux_x86_64": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
             "aws-cpp-sdk-core/source/*.cpp",
             "aws-cpp-sdk-core/source/auth/**/*.cpp",
@@ -36,20 +36,20 @@ cc_library(
             "aws-cpp-sdk-s3/source/**/*.cpp",
         ]),
     }),
-    includes = [
-        "aws-cpp-sdk-core/include/",
-        "aws-cpp-sdk-s3/include/",
+    hdrs = [
+        "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
     ],
     defines = select({
-        ":linux_x86_64": [
+        "@%ws%//tensorflow:linux_x86_64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
         ],
         "//conditions:default": [],
     }),
-    hdrs = [
-        "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
+    includes = [
+        "aws-cpp-sdk-core/include/",
+        "aws-cpp-sdk-s3/include/",
     ],
     deps = [
         "@curl//:curl",
@@ -63,10 +63,4 @@ template_rule(
     substitutions = {
         "cmakedefine": "define",
     },
-)
-
-config_setting(
-    name = "linux_x86_64",
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
 )

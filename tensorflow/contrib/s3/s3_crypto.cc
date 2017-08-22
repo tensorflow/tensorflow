@@ -57,7 +57,7 @@ class S3Sha256OpenSSLImpl : public Aws::Utils::Crypto::Hash {
       const Aws::String& str) override {
     SHA256_CTX sha256;
     SHA256_Init(&sha256);
-    SHA256_Update(&sha256, str.c_str(), str.size());
+    SHA256_Update(&sha256, str.data(), str.size());
 
     Aws::Utils::ByteBuffer hash(SHA256_DIGEST_LENGTH);
     SHA256_Final(hash.GetUnderlyingData(), &sha256);

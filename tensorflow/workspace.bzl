@@ -638,7 +638,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   temp_workaround_http_archive(
-      name = "aws_sdk_cpp_git",
+      name = "aws",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/aws/aws-sdk-cpp/archive/1.0.90.tar.gz",
           "https://github.com/aws/aws-sdk-cpp/archive/1.0.90.tar.gz",
@@ -646,11 +646,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "ffa501fa00e18d789cd10c768b55a2907c314816f09bcaf96e6d816a5b67f6e7",
       strip_prefix = "aws-sdk-cpp-1.0.90",
       build_file = str(Label("//third_party:aws.BUILD")),
-  )
-
-  native.bind(
-      name = "aws",
-      actual = "@aws_sdk_cpp_git//:aws",
   )
 
   java_import_external(

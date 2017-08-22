@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/s3/s3_file_system.h"
 #include "tensorflow/contrib/s3/s3_crypto.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/FileSystemUtils.h>
@@ -29,31 +30,30 @@ limitations under the License.
 #include <aws/s3/model/PutObjectRequest.h>
 
 #include <cstdlib>
-#include <mutex>
 
 namespace tensorflow {
 
-static const char* S3FileSystemAllocationTag = "S3FileSystemAllocation";
-static const size_t S3ReadAppendableFileBufferSize = 1024 * 1024;
-static const int S3GetChildrenMaxKeys = 100;
+static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
+static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
+static const int kS3GetChildrenMaxKeys = 100;
 
 Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
-  static std::mutex cfg_lock;
+  static mutex cfg_lock;
   static bool init(false);
   static Aws::Client::ClientConfiguration cfg;
 
-  std::lock_guard<std::mutex> lock(cfg_lock);
+  std::lock_guard<mutex> lock(cfg_lock);
 
   if (!init) {
-    const char* endpoint = getenv("TFS3_ENDPOINT");
+    const char* endpoint = getenv("S3_ENDPOINT");
     if (endpoint) {
       cfg.endpointOverride = Aws::String(endpoint);
     }
-    const char* region = getenv("TFS3_REGION");
+    const char* region = getenv("S3_REGION");
     if (region) {
       cfg.region = Aws::String(region);
     }
-    const char* use_https = getenv("TFS3_USE_HTTPS");
+    const char* use_https = getenv("S3_USE_HTTPS");
     if (use_https) {
       if (use_https[0] == '0') {
         cfg.scheme = Aws::Http::Scheme::HTTP;
@@ -61,7 +61,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
         cfg.scheme = Aws::Http::Scheme::HTTPS;
       }
     }
-    const char* verify_ssl = getenv("TFS3_VERIFY_SSL");
+    const char* verify_ssl = getenv("S3_VERIFY_SSL");
     if (verify_ssl) {
       if (verify_ssl[0] == '0') {
         cfg.verifySSL = false;
@@ -111,13 +111,10 @@ class S3RandomAccessFile : public RandomAccessFile {
     Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     Aws::S3::Model::GetObjectRequest getObjectRequest;
     getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
-    char buffer[50];
-    memset(buffer, 0x00, sizeof(buffer));
-    snprintf(buffer, sizeof(buffer) - 1, "bytes=%lld-%lld", offset,
-             offset + n - 1);
-    getObjectRequest.SetRange(buffer);
+    string bytes = strings::StrCat("bytes=", offset, "-", offset + n - 1);
+    getObjectRequest.SetRange(bytes.c_str());
     getObjectRequest.SetResponseStreamFactory([]() {
-      return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
+      return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag);
     });
     auto getObjectOutcome = s3Client.GetObject(getObjectRequest);
     if (!getObjectOutcome.IsSuccess()) {
@@ -146,7 +143,7 @@ class S3WritableFile : public WritableFile {
         object_(object),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
-            S3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
+            kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 
@@ -196,10 +193,10 @@ class S3WritableFile : public WritableFile {
     outfile_->clear();
     outfile_->seekp(offset);
     if (!putObjectOutcome.IsSuccess()) {
-      std::stringstream ss;
-      ss << putObjectOutcome.GetError().GetExceptionName() << ": "
-         << putObjectOutcome.GetError().GetMessage();
-      return errors::Internal(ss.str());
+      string error = strings::StrCat(
+          putObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
+          putObjectOutcome.GetError().GetMessage().c_str());
+      return errors::Internal(error);
     }
     return Status::OK();
   }
@@ -261,7 +258,7 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
                                        std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
-  std::unique_ptr<char[]> buffer(new char[S3ReadAppendableFileBufferSize]);
+  std::unique_ptr<char[]> buffer(new char[kS3ReadAppendableFileBufferSize]);
   Status status;
   uint64 offset = 0;
   StringPiece read_chunk;
@@ -271,11 +268,11 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
   result->reset(new S3WritableFile(bucket, object));
 
   while (true) {
-    status = reader->Read(offset, S3ReadAppendableFileBufferSize, &read_chunk,
+    status = reader->Read(offset, kS3ReadAppendableFileBufferSize, &read_chunk,
                           buffer.get());
     if (status.ok()) {
       (*result)->Append(read_chunk);
-      offset += S3ReadAppendableFileBufferSize;
+      offset += kS3ReadAppendableFileBufferSize;
     } else if (status.code() == error::OUT_OF_RANGE) {
       (*result)->Append(read_chunk);
       break;
@@ -323,19 +320,19 @@ Status S3FileSystem::GetChildren(const string& dir,
   Aws::S3::Model::ListObjectsRequest listObjectsRequest;
   listObjectsRequest.WithBucket(bucket.c_str())
       .WithPrefix(prefix.c_str())
-      .WithMaxKeys(S3GetChildrenMaxKeys)
+      .WithMaxKeys(kS3GetChildrenMaxKeys)
       .WithDelimiter("/");
   listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
     auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      std::stringstream ss;
-      ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
-         << listObjectsOutcome.GetError().GetMessage();
-      return errors::Internal(ss.str());
+      string error = strings::StrCat(
+          listObjectsOutcome.GetError().GetExceptionName().c_str(), ": ",
+          listObjectsOutcome.GetError().GetMessage().c_str());
+      return errors::Internal(error);
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -370,10 +367,10 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     headBucketRequest.WithBucket(bucket.c_str());
     auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
-      std::stringstream ss;
-      ss << headBucketOutcome.GetError().GetExceptionName() << ": "
-         << headBucketOutcome.GetError().GetMessage();
-      return errors::Internal(ss.str());
+      string error = strings::StrCat(
+          headBucketOutcome.GetError().GetExceptionName().c_str(), ": ",
+          headBucketOutcome.GetError().GetMessage().c_str());
+      return errors::Internal(error);
     }
     stats->length = 0;
     stats->is_directory = 1;
@@ -385,7 +382,7 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   Aws::S3::Model::HeadObjectRequest headObjectRequest;
   headObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
   headObjectRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
   auto headObjectOutcome = s3Client.HeadObject(headObjectRequest);
   if (headObjectOutcome.IsSuccess()) {
     stats->length = headObjectOutcome.GetResult().GetContentLength();
@@ -403,7 +400,7 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
       .WithPrefix(prefix.c_str())
       .WithMaxKeys(1);
   listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
   auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
@@ -428,10 +425,10 @@ Status S3FileSystem::DeleteFile(const string& fname) {
 
   auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
   if (!deleteObjectOutcome.IsSuccess()) {
-    std::stringstream ss;
-    ss << deleteObjectOutcome.GetError().GetExceptionName() << ": "
-       << deleteObjectOutcome.GetError().GetMessage();
-    return errors::Internal(ss.str());
+    string error = strings::StrCat(
+        deleteObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
+        deleteObjectOutcome.GetError().GetMessage().c_str());
+    return errors::Internal(error);
   }
   return Status::OK();
 }
@@ -474,7 +471,7 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
       .WithPrefix(prefix.c_str())
       .WithMaxKeys(2);
   listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
   auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     auto contents = listObjectsOutcome.GetResult().GetContents();
@@ -523,18 +520,18 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
   Aws::S3::Model::ListObjectsRequest listObjectsRequest;
   listObjectsRequest.WithBucket(src_bucket.c_str())
       .WithPrefix(src_object.c_str())
-      .WithMaxKeys(S3GetChildrenMaxKeys);
+      .WithMaxKeys(kS3GetChildrenMaxKeys);
   listObjectsRequest.SetResponseStreamFactory(
-      []() { return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag); });
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
     auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      std::stringstream ss;
-      ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
-         << listObjectsOutcome.GetError().GetMessage();
-      return errors::Internal(ss.str());
+      string error = strings::StrCat(
+          listObjectsOutcome.GetError().GetExceptionName().c_str(), ": ",
+          listObjectsOutcome.GetError().GetMessage().c_str());
+      return errors::Internal(error);
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -550,10 +547,10 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
 
       auto copyObjectOutcome = s3Client.CopyObject(copyObjectRequest);
       if (!copyObjectOutcome.IsSuccess()) {
-        std::stringstream ss;
-        ss << copyObjectOutcome.GetError().GetExceptionName() << ": "
-           << copyObjectOutcome.GetError().GetMessage();
-        return errors::Internal(ss.str());
+        string error = strings::StrCat(
+            copyObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
+            copyObjectOutcome.GetError().GetMessage().c_str());
+        return errors::Internal(error);
       }
 
       deleteObjectRequest.SetBucket(src_bucket.c_str());
@@ -561,10 +558,10 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
 
       auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
       if (!deleteObjectOutcome.IsSuccess()) {
-        std::stringstream ss;
-        ss << deleteObjectOutcome.GetError().GetExceptionName() << ": "
-           << deleteObjectOutcome.GetError().GetMessage();
-        return errors::Internal(ss.str());
+        string error = strings::StrCat(
+            deleteObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
+            deleteObjectOutcome.GetError().GetMessage().c_str());
+        return errors::Internal(error);
       }
     }
     listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
