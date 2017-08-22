@@ -611,7 +611,7 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
 
   SchedClosure([sessions_to_close, done]() {
     Status s;
-    for (MasterSession* session : sessions_to_close) {
+    for (auto session : sessions_to_close) {
       s.Update(session->Close());
       session->Unref();
     }
