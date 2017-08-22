@@ -83,12 +83,14 @@ def stack_bidirectional_rnn(cells_fw,
     raise ValueError("cells_bw must be a list of RNNCells (one per layer).")
   if len(cells_fw) != len(cells_bw):
     raise ValueError("Forward and Backward cells must have the same depth.")
-  if initial_states_fw is not None and (not isinstance(cells_fw, list) or
-                                        len(cells_fw) != len(cells_fw)):
+  if (initial_states_fw is not None and
+      (not isinstance(initial_states_fw, list) or
+       len(initial_states_fw) != len(cells_fw))):
     raise ValueError(
         "initial_states_fw must be a list of state tensors (one per layer).")
-  if initial_states_bw is not None and (not isinstance(cells_bw, list) or
-                                        len(cells_bw) != len(cells_bw)):
+  if (initial_states_bw is not None and
+      (not isinstance(initial_states_bw, list) or
+       len(initial_states_bw) != len(cells_bw))):
     raise ValueError(
         "initial_states_bw must be a list of state tensors (one per layer).")
   states_fw = []
@@ -186,12 +188,14 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
     raise ValueError("cells_bw must be a list of RNNCells (one per layer).")
   if len(cells_fw) != len(cells_bw):
     raise ValueError("Forward and Backward cells must have the same depth.")
-  if initial_states_fw is not None and (not isinstance(cells_fw, list) or
-                                        len(cells_fw) != len(cells_fw)):
+  if (initial_states_fw is not None and
+      (not isinstance(initial_states_fw, list) or
+       len(initial_states_fw) != len(cells_fw))):
     raise ValueError(
         "initial_states_fw must be a list of state tensors (one per layer).")
-  if initial_states_bw is not None and (not isinstance(cells_bw, list) or
-                                        len(cells_bw) != len(cells_bw)):
+  if (initial_states_bw is not None and
+      (not isinstance(initial_states_bw, list) or
+       len(initial_states_bw) != len(cells_bw))):
     raise ValueError(
         "initial_states_bw must be a list of state tensors (one per layer).")
 
