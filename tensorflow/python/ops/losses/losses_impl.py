@@ -276,64 +276,6 @@ def cosine_distance(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-def focal_loss(labels, predictions, gamma=2, weights=1.0, epsilon=1e-7,
-               scope=None, loss_collection=ops.GraphKeys.LOSSES,
-               reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Adds a Focal Loss term to the training procedure.
-
-  For each value x in `predictions`, and the corresponding l in `labels`,
-  the following is calculated:
-
-  ```
-    pt = 1 - x                  if l == 0
-    pt = x                      if l == 1
-
-    focal_loss = -(1 - pt)**g * log(pt)
-  ```
-
-  where g is `gamma`.
-
-  See: https://arxiv.org/pdf/1708.02002.pdf
-
-  `weights` acts as a coefficient for the loss. If a scalar is provided, then
-  the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weights` vector. If the shape of
-  `weights` matches the shape of `predictions`, then the loss of each
-  measurable element of `predictions` is scaled by the corresponding value of
-  `weights`.
-
-  Args:
-    labels: The ground truth output tensor, same dimensions as 'predictions'.
-    predictions: The predicted outputs.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
-    epsilon: A small increment to add to avoid taking a log of zero.
-    scope: The scope for the operations performed in computing the loss.
-    loss_collection: collection to which the loss will be added.
-    reduction: Type of reduction to apply to loss.
-
-  Returns:
-    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
-    shape as `labels`; otherwise, it is scalar.
-
-  Raises:
-    ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.
-  """
-  with ops.name_scope(scope, "focal_loss",
-                      (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    preds = array_ops.where(
-        math_ops.equal(labels, 1), predictions, 1. - predictions)
-    losses = -(1. - preds)**gamma * math_ops.log(preds + epsilon)
-    return compute_weighted_loss(
-        losses, weights, scope, loss_collection, reduction=reduction)
-
-
 def hinge_loss(labels, logits, weights=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
