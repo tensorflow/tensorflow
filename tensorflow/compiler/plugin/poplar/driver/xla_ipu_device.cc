@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/tf2xla/kernels/gather_op.h"
 
 namespace se = ::perftools::gputools;
 
@@ -66,5 +67,12 @@ static bool OpFilter(KernelDef* kdef) {
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaDeviceLaunchOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 REGISTER_XLA_BACKEND(DEVICE_IPU_XLA_JIT, kIpuAllTypes, OpFilter);
+
+// Additional ops not explicitly defined by standard JIT
+
+REGISTER_XLA_OP(Name("Gather")
+        .TypeConstraint("Tparams", DT_FLOAT)
+        .Device(DEVICE_IPU_XLA_JIT),
+        GatherOpDynamicSlice);
 
 }  // namespace tensorflow
