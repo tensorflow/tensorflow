@@ -96,7 +96,10 @@ public class TensorFlowInferenceInterface {
    */
   public TensorFlowInferenceInterface(InputStream is) {
     prepareNativeRuntime();
-
+    
+    // modelName is redundant for model loading from input stream, here is for
+    // avoiding error in initialization as modelName is marked final.
+    this.modelName = "";
     this.g = new Graph();
     this.sess = new Session(g);
     this.runner = sess.runner();
