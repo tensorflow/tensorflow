@@ -193,13 +193,28 @@ class SliceR1Test : public ClientLibraryTestBase,
   }
 };
 
-XLA_TEST_P(SliceR1Test, DoIt) {
-  Run<float>(GetParam());
-  Run<double>(GetParam());
-  Run<uint32>(GetParam());
-  Run<int32>(GetParam());
-  Run<uint64>(GetParam());
-  Run<int64>(GetParam());
+XLA_TEST_P(SliceR1Test, DoIt_float) {
+Run<float>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_double) {
+Run<double>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_uint32) {
+Run<uint32>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_int32) {
+Run<int32>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_uint64) {
+Run<uint64>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_int64) {
+Run<int64>(GetParam());
 }
 
 INSTANTIATE_TEST_CASE_P(                  //

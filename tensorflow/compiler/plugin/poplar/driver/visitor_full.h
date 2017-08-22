@@ -78,11 +78,6 @@ public:
                                   HloInstruction* update,
                                   HloInstruction* start_indices) override;
 
-  Status HandleMap(HloInstruction* inst,
-                   tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                   HloComputation* function,
-                   tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
-
   Status HandleReduceWindow(HloInstruction* inst,
                             HloInstruction* operand,
                             const Window& window,

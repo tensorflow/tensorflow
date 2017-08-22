@@ -70,8 +70,10 @@ GetConvolutionParameters(const HloInstruction* inst) {
   unsigned int dw_x = window.dimensions(1).window_dilation();
 
   popconv::ConvParams params(dtype,
-                             {n_b, n_y, n_x, n_i},
-                             {f_y, f_x, n_o, n_i},
+                             n_b,
+                             {n_y, n_x},
+                             {f_y, f_x},
+                             n_i, n_o,
                              {s_y, s_x},
                              {pl_y, pl_x},
                              {pu_y, pu_x},
@@ -144,10 +146,10 @@ CreateConv2D(poplar::Graph &graph,
   poplar::program::Sequence prog;
 
   std::vector<unsigned int> shuffle(4);
-  shuffle[d.batch_dimension()] = 0;
-  shuffle[d.spatial_dimensions(0)] = 1;
-  shuffle[d.spatial_dimensions(1)] = 2;
-  shuffle[d.feature_dimension()] = 3;
+  shuffle[0] = d.batch_dimension();
+  shuffle[1] = d.spatial_dimensions(0);
+  shuffle[2] = d.spatial_dimensions(1);
+  shuffle[3] = d.feature_dimension();
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
@@ -174,7 +176,7 @@ CreateConv2D(poplar::Graph &graph,
 
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
-                                            false, prog, "", opts);
+                                            false, prog, inst->name(), opts);
 
   shuffle[d.batch_dimension()] = 0;
   shuffle[d.spatial_dimensions(0)] = 1;

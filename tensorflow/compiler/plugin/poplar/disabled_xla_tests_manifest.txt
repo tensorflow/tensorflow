@@ -7,6 +7,8 @@ DotOperationTest.OneElementVectorDotF64    POPLAR // F64
 DotOperationTest.VectorDotF64    POPLAR // F64
 ConvertTest.ConvertR1F32ToR1F64 POPLAR // F64
 ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
+SliceR1Test.DoIt_double POPLAR // F64
+
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
@@ -56,7 +58,6 @@ DynamicSliceTest.Int64R3 POPLAR // S64
 DynamicSliceTest.Int64R2 POPLAR // S64
 DynamicSliceTest.Int64R1 POPLAR // S64
 
-
 ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
 DynamicUpdateSliceTest.UInt64R3 POPLAR // U64
 DynamicUpdateSliceTest.UInt64R2 POPLAR // U64
@@ -73,10 +74,14 @@ ConvertTest.ConvertR1U8ToR1F32 POPLAR // U8
 ConvertTest.ConvertR1U8ToR1S32 POPLAR // U8
 ConvertTest.ConvertR1U8ToR1U32 POPLAR // U8
 
-ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3d conv
+ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid  POPLAR // 3D conv
+ConvolutionVariantsTest.BackwardFilterEvenPadding3D POPLAR // 3D conv
+ConvolutionVariantsTest.BackwardInputEvenPadding3D POPLAR // 3D conv
 
-ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1d conv
-ConvolutionTest.Convolve1D_Valid  POPLAR // 1d conv
+ConvolutionTest.Convolve1D_1x2x5_1x2x2_Valid POPLAR // 1D conv
+ConvolutionTest.Convolve1D_Valid  POPLAR // 1D conv
+ConvolutionVariantsTest.BackwardInputEvenPadding1D POPLAR // 1D conv
+ConvolutionVariantsTest.BackwardFilterEvenPadding1D POPLAR // 1D conv
 
 DotOperationTest POPLAR // Test hangs
 
@@ -87,3 +92,4 @@ CustomCallTest POPLAR // Don't support this
 
 DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR // Bad test
 DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR // Bad test
+DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test

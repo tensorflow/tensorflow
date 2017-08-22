@@ -42,6 +42,8 @@ public:
       return Status::OK();
     } else if (inst->opcode() == HloOpcode::kCall) {
       return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kMap) {
+      return Status::OK();
     } else {
       LOG(INFO) << "Map didn't have a parallel computation " << inst->name();
       _is_ok = false;
@@ -106,7 +108,6 @@ CreateCallOp(poplar::Graph &graph,
   if (subcomp_visitor == res.computation_map.end()) {
     // Inline the sub-computation
 
-    int64 op_count(inst->operand_count());
     std::vector <poplar::Tensor> inputs;
 
     for (int64 i = 0; i < op_count; i++) {
@@ -116,7 +117,7 @@ CreateCallOp(poplar::Graph &graph,
     }
 
     InlineCallVisitor inline_visitor(&graph, res, inputs);
-    TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&inline_visitor));
+    TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
     seq.add(inline_visitor.sequence);
 
@@ -145,6 +146,39 @@ CreateCallOp(poplar::Graph &graph,
 
   return seq;
 }
+
+port::StatusOr<poplar::program::Program>
+CreateFusionOp(poplar::Graph &graph,
+               CompilerResources& res,
+               const HloInstruction *inst,
+               const xla::Shape& output,
+               TensorMap& tensor_map) {
+
+  int64 op_count(inst->operand_count());
+  HloComputation* comp = inst->fused_instructions_computation();
+  poplar::program::Sequence seq;
+
+  std::vector <poplar::Tensor> inputs;
+
+  for (int64 i = 0; i < op_count; i++) {
+    poplar::Tensor t;
+    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
+    inputs.push_back(t);
+  }
+
+  InlineCallVisitor inline_visitor(&graph, res, inputs);
+  TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
+
+  seq.add(inline_visitor.sequence);
+
+  for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
+                                       inline_visitor.outputs()[i]));
+  }
+
+  return seq;
+}
+
 
 
 port::StatusOr<poplar::program::Program>
@@ -202,7 +236,15 @@ CreateWhileOp(poplar::Graph &graph,
   // Body
   poplar::program::Sequence body_seq;
   for (unsigned int i=0; i<param_count; i++) {
-    body_seq.add(poplar::program::Copy(body_outputs[i], body_inputs[i]));
+    if (body_outputs[i] != body_inputs[i]) {
+      if (body_outputs[i].intersectsWith(body_inputs[i])) {
+        poplar::Tensor temp = graph.clone(body_outputs[i]);
+        body_seq.add(poplar::program::Copy(body_outputs[i], temp));
+        body_seq.add(poplar::program::Copy(temp, body_inputs[i]));
+      } else {
+        body_seq.add(poplar::program::Copy(body_outputs[i], body_inputs[i]));
+      }
+    }
   }
   body_seq.add(body->second.sequence);
 

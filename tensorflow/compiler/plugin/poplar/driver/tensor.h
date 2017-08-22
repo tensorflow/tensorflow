@@ -34,6 +34,9 @@ XlaShapeFromPoplarShape(PrimitiveType element_type,
 std::vector<xla::Shape>
 FlattenedXlaShape(const xla::Shape& shape);
 
+poplar::Tensor
+ShuffleLayout(const Shape& shape, poplar::Tensor tensor);
+
 bool
 PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                            const xla::Shape& shape);

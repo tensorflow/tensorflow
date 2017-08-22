@@ -168,6 +168,13 @@ CreateCallOp(poplar::Graph &graph,
              TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateFusionOp(poplar::Graph &graph,
+               CompilerResources& res,
+               const HloInstruction *inst,
+               const xla::Shape& output,
+               TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateWhileOp(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
