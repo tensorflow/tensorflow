@@ -417,6 +417,80 @@ Predictions: [ 33.30348587  17.04452896  22.56370163  34.74345398  14.55953979
   19.58005714]
 ```
 
+### Using Python reader
+
+Often in real-life one needs to read data using some existing tools, e.g. when integrating tensorflow into products in industry. In such cases you want to make sure that you create an op for iteratively getting sample after sample. The following example is a very simple network, of no importance but demonstrating how to integrate the external reader `self.reader` with `tf.contrib.learn.Estimator`'s `input_fn` and `model_fn`:
+
+```python
+import tensorflow as tf
+import numpy as np
+modekeys = tf.contrib.learn.ModeKeys
+tf.logging.set_verbosity(tf.logging.DEBUG)
+# Tested on python 2.7.9, tf 1.1.0
+
+class inputExample:
+    def __init__(self):
+        self.status = 0.0 # tracing which value was recently 'pushed' to the net
+        self.model_dir = 'temp_dir'
+        self.get_estimator()
+
+    def input_fn(self):
+        # returns features and labels dictionaries as expected by tf Estimator's model_fn
+        data, labels = tf.py_func(func=self.input_fn_np, inp=[], Tout=[tf.float32, tf.float32], stateful=True)
+        data.set_shape([1,3,3,1]) # shapes are unknown and need to be set for integrating into the network
+        labels.set_shape([1,1,1,1])
+        return dict(data=data), dict(labels=labels)
+
+    def input_fn_np(self):
+        # returns a dictionary of numpy matrices
+        batch_data = self.reader()
+        return batch_data['data'], batch_data['labels']
+
+    def model_fn(self, features, labels, mode):
+        # using tf 2017 convention of dictionaries of features/labels as inputs
+        features_in = features['data']
+        labels_in = labels['labels']
+        pred_layer = tf.layers.conv2d(name='pred', inputs=features_in, filters=1, kernel_size=3)
+        tf.summary.scalar(name='label', tensor=tf.squeeze(labels_in))
+        tf.summary.scalar(name='pred', tensor=tf.squeeze(pred_layer))
+        loss = None
+        if mode != modekeys.INFER:
+            loss = tf.losses.mean_squared_error(labels=labels_in, predictions=pred_layer)
+        train_op = None
+        if mode == modekeys.TRAIN:
+            train_op = tf.contrib.layers.optimize_loss(
+                loss=loss,
+                learning_rate = 0.01,
+                optimizer = 'SGD',
+                global_step = tf.contrib.framework.get_global_step()
+            )
+        predictions = {'estim_exp': pred_layer}
+        return tf.contrib.learn.ModelFnOps(mode=mode, predictions=predictions, loss=loss, train_op=train_op)
+
+    def reader(self):
+        self.status += 1
+        if self.status > 1000.0:
+            self.status = 1.0
+        return dict(
+            data = np.random.randn(1,3,3,1).astype(dtype=np.float32),
+            labels = np.sin(np.ones([1,1,1,1], dtype=np.float32)*self.status)
+        )
+    def get_estimator(self):
+        self.Estimator = tf.contrib.learn.Estimator(
+            model_fn = self.model_fn,
+            model_dir = self.model_dir,
+            config = tf.contrib.learn.RunConfig(
+                save_checkpoints_steps = 10,
+                save_summary_steps = 10,
+                save_checkpoints_secs = None
+            )
+        )
+
+if __name__ == '__main__':
+    ex = inputExample()
+    ex.Estimator.fit(input_fn=ex.input_fn)
+```
+
 ## Additional Resources
 
 This tutorial focused on creating an `input_fn` for a neural network regressor.
