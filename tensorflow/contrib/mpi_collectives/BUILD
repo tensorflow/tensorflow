@@ -40,15 +40,15 @@ tf_custom_op_library(
     srcs = [
         "mpi_ops.cc",
         "ring.cc",
-        "ring.h"
+        "ring.h",
     ],
     gpu_srcs = [
         "ring.cu.cc",
-        "ring.h"
+        "ring.h",
     ],
     deps = [
-        "//third_party/mpi",
         ":mpi_message_proto_cc",
+        "//third_party/mpi",
     ],
 )
 
