@@ -280,15 +280,14 @@ print(sess.run([W, b]))
 ```
 results in the final model parameters:
 ```
-[array([-0.9999969], dtype=float32), array([ 0.99999082],
- dtype=float32)]
+[array([-0.9999969], dtype=float32), array([ 0.99999082], dtype=float32)]
 ```
 
-Now we have done actual machine learning!  Although doing this simple linear
-regression doesn't require much TensorFlow core code, more complicated models
-and methods to feed data into your model necessitate more code. Thus TensorFlow
-provides higher level abstractions for common patterns, structures, and
-functionality. We will learn how to use some of these abstractions in the
+Now we have done actual machine learning!  Although this simple linear
+regression model does not require much TensorFlow core code, more complicated
+models and methods to feed data into your models necessitate more code. Thus,
+TensorFlow provides higher level abstractions for common patterns, structures,
+and functionality. We will learn how to use some of these abstractions in the
 next section.
 
 ### Complete program
@@ -355,9 +354,9 @@ Notice how much simpler the linear regression program becomes with
 `tf.estimator`:
 
 ```python
-import tensorflow as tf
 # NumPy is often used to load, manipulate and preprocess data.
 import numpy as np
+import tensorflow as tf
 
 # Declare list of features. We only have one numeric feature. There are many
 # other types of columns that are more complicated and useful.
@@ -394,10 +393,10 @@ eval_metrics = estimator.evaluate(input_fn=eval_input_fn)
 print("train metrics: %r"% train_metrics)
 print("eval metrics: %r"% eval_metrics)
 ```
-When run, it produces
+When run, it produces something like
 ```
-train metrics: {'loss': 1.2712867e-09, 'global_step': 1000}
-eval metrics: {'loss': 0.0025279333, 'global_step': 1000}
+train metrics: {'average_loss': 1.4833182e-08, 'global_step': 1000, 'loss': 5.9332727e-08}
+eval metrics: {'average_loss': 0.0025353201, 'global_step': 1000, 'loss': 0.01014128}
 ```
 Notice how our eval data has a higher loss, but it is still close to zero.
 That means we are learning properly.
