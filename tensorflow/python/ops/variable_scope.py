@@ -184,11 +184,11 @@ class _ReuseMode(enum.Enum):
   # REUSE_TRUE = 3
 
 AUTO_REUSE = _ReuseMode.AUTO_REUSE
-AUTO_REUSE.__doc__ = """
-When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
-get_variable() should create the requested variable if it doesn't exist or, if
-it does exist, simply return it.
-"""
+#AUTO_REUSE.__doc__ = """
+#When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
+#get_variable() should create the requested variable if it doesn't exist or, if
+#it does exist, simply return it.
+#"""
 
 
 class _VariableStore(object):
