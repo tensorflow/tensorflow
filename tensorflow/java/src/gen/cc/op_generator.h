@@ -27,31 +27,23 @@ namespace tensorflow {
 /// \brief A generator of Java operation wrappers.
 ///
 /// Such generator is normally ran only once per executable, outputting
-/// wrappers for the ops library it has been linked with. Nonetheless,
-/// it is designed to support multiple runs, giving a different list of
-/// operations on each cycle.
+/// wrappers for the all registered operations it has been compiled with.
+/// Nonetheless, it is designed to support multiple runs, giving a different
+/// list of operations on each cycle.
 class OpGenerator {
  public:
-  /// \brief Create a new generator, giving an environment and an
-  /// output directory path.
-  explicit OpGenerator(Env* env, const string& output_dir);
+  OpGenerator();
   virtual ~OpGenerator();
 
   /// \brief Generates wrappers for the given list of 'ops'.
   ///
-  /// The list of operations should be issued from the library whose
-  /// file name starts with 'ops_file' (see /core/ops/*.cc).
-  ///
-  /// Generated files are output under this directory:
-  ///   <output_dir>/src/main/java/org/tensorflow/java/op/<group>
-  /// where
-  ///   'output_dir' is the directory passed in the constructor and
-  ///   'group' is extracted from the 'ops_file' name
-  Status Run(const string& ops_file, const OpList& ops);
+  /// Output files are generated in <output_dir>/<base_package>/<lib_package>,
+  /// where 'lib_package' is derived from 'lib_name'.
+  Status Run(const OpList& ops, const string& lib_name,
+      const string& base_package, const string& output_dir);
 
  private:
   Env* env;
-  const string output_path;
 };
 
 }  // namespace tensorflow

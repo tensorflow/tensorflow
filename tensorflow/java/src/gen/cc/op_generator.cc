@@ -20,25 +20,46 @@ limitations under the License.
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
+namespace op_gen {
 
-OpGenerator::OpGenerator(Env* env, const string& output_dir)
-  : env(env), output_path(output_dir + "/src/main/java/") {
+string CamelCase(const string& str, char delimiter, bool upper) {
+  string result;
+  bool cap = upper;
+  for (string::const_iterator it = str.begin(); it != str.end(); ++it) {
+    const char c = *it;
+    if (c == delimiter) {
+      cap = true;
+    } else if (cap) {
+      result += toupper(c);
+      cap = false;
+    } else {
+      result += c;
+    }
+  }
+  return result;
+}
+
+}  // namespace op_gen
+
+OpGenerator::OpGenerator()
+  : env(Env::Default()) {
 }
 
 OpGenerator::~OpGenerator() {}
 
-Status OpGenerator::Run(const string& ops_file, const OpList& ops) {
-  const string& lib_name = ops_file.substr(0, ops_file.find_last_of('_'));
-  const string package_name =
-      str_util::StringReplace("org.tensorflow.op." + lib_name, "_", "", true);
+Status OpGenerator::Run(const OpList& ops, const string& lib_name,
+    const string& base_package, const string& output_dir) {
+  const string package =
+      base_package + '.' + str_util::StringReplace(lib_name, "_", "", true);
   const string package_path =
-      output_path + str_util::StringReplace(package_name, ".", "/", true);
+      output_dir + '/' + str_util::StringReplace(package, ".", "/", true);
+  const string group = op_gen::CamelCase(lib_name, '_', false);
 
   if (!env->FileExists(package_path).ok()) {
     TF_CHECK_OK(env->RecursivelyCreateDir(package_path));
   }
 
-  LOG(INFO) << "Generating Java wrappers for \"" << lib_name << "\" operations";
+  LOG(INFO) << "Generating Java wrappers for '" << lib_name << "' operations";
   // TODO(karllessard) generate wrappers from list of ops
 
   return Status::OK();

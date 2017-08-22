@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 # Then, combine all those source files into a single archive (.srcjar).
 #
 # For example:
-#  java_op_gen_srcjar("gen_sources", "gen_tool", [ "array_ops", "math_ops" ])
+#  tf_java_op_gen_srcjar("gen_sources", "gen_tool", [ "array_ops", "math_ops" ])
 #
 # will create a genrule named "gen_sources" that first generate source files:
 #     ops/src/main/java/org/tensorflow/op/array/*.java
@@ -17,18 +17,21 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 # and then archive those source files in:
 #     ops/gen_sources.srcjar
 #
-def java_op_gen_srcjar(name,
-                       gen_tool,
-                       ops_libs=[],
-                       ops_libs_pkg="//tensorflow/core",
-                       out_dir="ops/",
-                       visibility=["//tensorflow/java:__pkg__"]):
+def tf_java_op_gen_srcjar(name,
+                          gen_tool,
+                          gen_base_package,
+                          ops_libs=[],
+                          ops_libs_pkg="//tensorflow/core",
+                          out_dir="ops/",
+                          out_src_dir="src/main/java/",
+                          visibility=["//tensorflow/java:__pkg__"]):
 
   gen_tools = []
   gen_cmds = ["rm -rf $(@D)"] # Always start from fresh when generating source files
 
   # Construct an op generator binary for each ops library.
   for ops_lib in ops_libs:
+    gen_lib = ops_lib[:ops_lib.rfind('_')]
     out_gen_tool = out_dir + ops_lib + "_gen_tool"
 
     native.cc_binary(
@@ -39,7 +42,10 @@ def java_op_gen_srcjar(name,
         deps=[gen_tool, ops_libs_pkg + ":" + ops_lib + "_op_lib"])
 
     gen_tools += [":" + out_gen_tool]
-    gen_cmds += ["$(location :" + out_gen_tool + ") --output=$(@D) --file=" + ops_lib]
+    gen_cmds += ["$(location :" + out_gen_tool + ")" +
+                 " --output_dir=$(@D)/" + out_src_dir +
+                 " --lib_name=" + gen_lib +
+                 " --base_package=" + gen_base_package]
 
   # Generate a source archive containing generated code for these ops.
   gen_srcjar = out_dir + name + ".srcjar"
