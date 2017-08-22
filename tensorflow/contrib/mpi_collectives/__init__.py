@@ -270,4 +270,7 @@ class Session(tf.Session):
 
         # Initialize MPI on the relevant device.
         # TODO: Move this to library load and eliminate mpi.Session()
-        self.run(init())
+        if graph is None:
+            graph = tf.get_default_graph()
+        with graph.as_default():
+            self.run(init())
