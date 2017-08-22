@@ -624,15 +624,18 @@ Status EncapsulateSubgraphsPass::Run(
   FunctionLibraryDefinition* const library = options.flib_def;
 
   OptimizerOptions opts;
-  std::unique_ptr<FunctionLibraryRuntime> flr(
-      NewFunctionLibraryRuntime(nullptr, options.session_options->env, nullptr,
-                                TF_GRAPH_DEF_VERSION, library, opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(nullptr, options.session_options->env,
+                                        TF_GRAPH_DEF_VERSION, library, opts));
+  FunctionLibraryRuntime* flr =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
-  auto rewrite_subgraph = [&flr](
-      std::unique_ptr<Graph>* subgraph, std::vector<int>* input_permutation,
-      std::vector<int>* output_permutation, NodeDef* node) {
+  auto rewrite_subgraph = [flr](std::unique_ptr<Graph>* subgraph,
+                                std::vector<int>* input_permutation,
+                                std::vector<int>* output_permutation,
+                                NodeDef* node) {
     // Optimize the subgraph.
-    OptimizeGraph(flr.get(), subgraph);
+    OptimizeGraph(flr, subgraph);
 
     const int num_args = input_permutation->size();
     std::vector<bool> const_args(num_args);

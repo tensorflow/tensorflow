@@ -93,8 +93,17 @@ Status AddArgNodes(Graph* graph, const NodeMap& node_map,
     // All feeds have been replaced by placeholders.
     const int output_index = 0;
 
-    const auto remap_it = feed_remapping.find(TensorIdToString(feed.id()));
+    const string key = TensorIdToString(feed.id());
+    const auto remap_it = feed_remapping.find(key);
     auto node_it = node_map.find(remap_it->second);
+    if (node_it == node_map.end()) {
+      // Strip off the aot_feed_#/ prefix.
+      StringPiece name(remap_it->second);
+      const auto index = name.find('/');
+      if (index > 0) name.remove_prefix(index + 1);
+      return errors::InvalidArgument(
+          "Node is fed but not needed for fetching: ", name);
+    }
     const Node* feed_node = node_it->second;
 
     // TODO(toddw): Invoke shape inference in AddPlaceholdersForFeeds and add a

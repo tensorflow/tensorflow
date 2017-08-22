@@ -51,28 +51,7 @@ bool IsTrivialOp(const NodeDef& node) {
 
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* pruned_graph) {
-
-  std::unordered_set<string> nodes_to_preserve;
-  for (const auto& node : item.fetch) {
-    nodes_to_preserve.insert(NodeName(node));
-  }
-  for (const auto& feed : item.feed) {
-    nodes_to_preserve.insert(NodeName(feed.first));
-  }
-  for (const auto& node : item.init_ops) {
-    nodes_to_preserve.insert(NodeName(node));
-  }
-  for (const auto& queue_runner : item.queue_runners) {
-    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
-      nodes_to_preserve.insert(NodeName(enqueue_op));
-    }
-    if (!queue_runner.close_op_name().empty()) {
-      nodes_to_preserve.insert(NodeName(queue_runner.close_op_name()));
-    }
-    if (!queue_runner.cancel_op_name().empty()) {
-      nodes_to_preserve.insert(NodeName(queue_runner.cancel_op_name()));
-    }
-  }
+  std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
 
   // Prune all the nodes that won't be executed, ie all the nodes that aren't in
   // the fanin of a fetch node. If fetch nodes aren't specified, we'll assume

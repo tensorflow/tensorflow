@@ -19,8 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
-import numpy as np
-
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -47,86 +46,73 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx = context.Context()
     self.assertFalse(ctx.in_graph_mode())
     self.assertTrue(ctx.in_eager_mode())
+
     self.assertEqual('', ctx.scope_name)
-    self.assertEqual(-1, ctx._device_index)  # pylint: disable=protected-access
-    self.assertFalse(ctx.recording_summaries)
+    ctx.scope_name = 'foo'
+    self.assertEqual('foo', ctx.scope_name)
+
     self.assertIsNone(ctx.summary_writer_resource)
+    ctx.summary_writer_resource = 'mock'
+    self.assertEqual('mock', ctx.summary_writer_resource)
+
+    self.assertFalse(ctx.recording_summaries)
+    ctx.recording_summaries = True
+    self.assertTrue(ctx.recording_summaries)
+
+    self.assertEqual('', ctx.device_name)
+    self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+    with ctx.device('GPU:0'):
+      self.assertEqual('/job:localhost/replica:0/task:0/device:GPU:0',
+                       ctx.device_name)
+      self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+      with ctx.device(None):
+        self.assertEqual('', ctx.device_name)
+        self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+        with ctx.device('CPU:0'):
+          self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                           ctx.device_name)
+          self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+
+    has_cpu_device = False
+    for x in ctx.devices():
+      has_cpu_device = has_cpu_device or 'CPU' in x
+    self.assertTrue(has_cpu_device)
     del ctx
 
-  def testDefaultContext(self):
-    orig = context.get_default_context()
-    self.assertIs(context.get_default_context(), orig)
-    c0 = context.Context()
-    self.assertIs(context.get_default_context(), orig)
-    context_manager_0 = c0.as_default()
-    self.assertIs(context.get_default_context(), orig)
-    with context_manager_0 as c0:
-      self.assertIs(context.get_default_context(), c0)
-      with context.Context().as_default() as c1:
-        self.assertIs(context.get_default_context(), c1)
-      self.assertIs(context.get_default_context(), c0)
-    self.assertIs(context.get_default_context(), orig)
+  def _runInThread(self, target, args):
+    t = threading.Thread(target=target, args=args)
+    try:
+      t.start()
+      t.join()
+    except Exception as e:
+      raise e
 
-  def testContextWithThreads(self):
+  # Test that different thread local values are initialized to the same values
+  # in different threads.
+  def testContextThreadLocalMembers(self):
 
-    def run_fn(ctx1):
-      ctx2 = context.get_default_context()
-      # Default context created in different threads are different.
-      self.assertIsNot(ctx1, ctx2)
-      # Check that default values of the context created in a different thread
-      # are set correctly.
-      self.assertFalse(ctx2.in_graph_mode())
-      self.assertTrue(ctx2.in_eager_mode())
-      self.assertEqual('', ctx2.scope_name)
-      self.assertEqual(-1, ctx2._device_index)  # pylint: disable=protected-access
-      self.assertFalse(ctx2.recording_summaries)
-      self.assertIsNone(ctx2.summary_writer_resource)
+    def get_context_values(ctx):
+      return [
+          ctx.in_graph_mode(),
+          ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
+          ctx.recording_summaries, ctx.device_name,
+          ctx.num_gpus()
+      ]
 
-    ctx1 = context.get_default_context()
-    t = threading.Thread(target=run_fn, args=(ctx1,))
-    t.start()
-    t.join()
+    def get_values(ctx, values):
+      values.extend(get_context_values(ctx))
 
-  def testScalarTensor(self):
-    t = tensor.Tensor(3)
-    self.assertEqual(t.numpy(), tensor.Tensor(np.array(3)).numpy())
-    self.assertEqual(dtypes.int32, t.dtype)
-    self.assertEqual(0, t.shape.ndims)
-    self.assertAllEqual([], t.shape.as_list())
+    context_values = []
+    ctx = context.Context()
+    self._runInThread(get_values, (ctx, context_values))
+    self.assertAllEqual(context_values, get_context_values(ctx))
 
-  def testTensorAndNumpyMatrix(self):
-    expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
-    actual = tensor.Tensor([[1.0, 2.0], [3.0, 4.0]])
-    self.assertAllEqual(expected, actual.numpy())
-    self.assertEqual(np.float32, actual.numpy().dtype)
-    self.assertEqual(dtypes.float32, actual.dtype)
-    self.assertAllEqual([2, 2], actual.shape.as_list())
-
-  def testFloatDowncast(self):
-    # Unless explicitly specified, float64->float32
-    t = tensor.Tensor(3.0)
-    self.assertEqual(dtypes.float32, t.dtype)
-    t = tensor.Tensor(3.0, dtype=dtypes.float64)
-    self.assertEqual(dtypes.float64, t.dtype)
-
-  def testBool(self):
-    t = tensor.Tensor(False)
-    if t:
-      self.assertFalse(True)
-
-  def testIntDowncast(self):
-    t = tensor.Tensor(3)
-    self.assertEqual(dtypes.int32, t.dtype)
-    t = tensor.Tensor(3, dtype=dtypes.int64)
-    self.assertEqual(dtypes.int64, t.dtype)
-    t = tensor.Tensor(2**33)
-    self.assertEqual(dtypes.int64, t.dtype)
-
-  def testTensorCreationFailure(self):
-    with self.assertRaises(Exception):
-      # Should fail because the each row of the Python object has a different
-      # number of columns.
-      self.assertEqual(None, tensor.Tensor([[1], [1, 2]]))
+  def testContextConfig(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    ctx = context.Context(config=config_pb2.ConfigProto(
+        device_count={'GPU': 0}))
+    self.assertEquals(0, ctx.num_gpus())
 
   def testTensorPlacement(self):
     if not context.context().num_gpus():
@@ -140,11 +126,6 @@ class TFETest(test_util.TensorFlowTestCase):
         'Add', 1, inputs=[x, y],
         attrs=('T', x.dtype.as_datatype_enum))[0].as_cpu_tensor().numpy()
     self.assertEqual(3, result)
-
-  def testNumpyOrderHandling(self):
-    n = np.array([[1, 2], [3, 4]], order='F')
-    t = tensor.Tensor(n)
-    self.assertAllEqual([[1, 2], [3, 4]], t.numpy())
 
   def testCopyBetweenDevices(self):
     if not context.context().num_gpus():

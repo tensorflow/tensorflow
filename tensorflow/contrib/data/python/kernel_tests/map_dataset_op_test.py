@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import threading
+import warnings
 
 import numpy as np
 
@@ -214,6 +215,28 @@ class MapDatasetTest(test.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
                     num_threads=2))
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(3):
+        sess.run(get_next)
+
+  def testParallelMapUnspecifiedThreads(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    with warnings.catch_warnings(record=True) as w:
+      dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+                 .map(lambda x: array_ops.check_numerics(x, "message"),
+                      output_buffer_size=2))
+      self.assertTrue(len(w) >= 1)
+      self.assertTrue(
+          ("Dataset.map() is ignoring output_buffer_size since the argument "
+           "num_threads was not set. To buffer elements, set num_threads >= 1")
+          in [str(x.message) for x in w])
+
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -525,6 +548,41 @@ class MapDatasetTest(test.TestCase):
           self.assertEqual(i * i, sess.run(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
+
+  def testReturnList(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: [x, constant_op.constant(37.0)])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testMultiOutputPyFunc(self):
+    # The `tf.py_func()` op returns a list of tensors for its outputs.
+    def _map_fn(x_tensor):
+      def _map_py_func(x):
+        return x, np.array(37.0, dtype=np.float64)
+      return script_ops.py_func(
+          _map_py_func, [x_tensor], [dtypes.int64, dtypes.float64])
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_map_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
 
 if __name__ == "__main__":

@@ -277,9 +277,7 @@ string GenEagerPythonOp::Code() {
   AddDocStringArgs();
   AddDocStringInputs();
   AddDocStringAttrs();
-  strings::StrAppend(
-      &result_,
-      "    name: A name for the operation (optional, only for graph mode).\n");
+  AddDocStringNameArg();
   AddOutputGlobals();
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
@@ -626,8 +624,8 @@ void GenEagerPythonOp::AddEagerInputCasts() {
     const string fn = arg.number_attr().empty() ? "" : "n_";
     const string dtype =
         python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-    strings::StrAppend(&result_, "    ", param, " = _tensor.convert_", fn,
-                       "to_eager_tensor(", param, ", ", dtype, ")\n");
+    strings::StrAppend(&result_, "    ", param, " = _ops.convert_", fn,
+                       "to_tensor(", param, ", ", dtype, ")\n");
   }
 }
 

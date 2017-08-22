@@ -125,6 +125,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
+            arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS),
         original_metagraph)
     self.assertGreater(
@@ -146,6 +147,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
+            arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS,
             memory_optimizer_target_node_name_prefix='optimizer/gradients/'),
         original_metagraph)

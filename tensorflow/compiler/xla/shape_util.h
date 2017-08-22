@@ -125,7 +125,7 @@ class ShapeUtil {
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
-  static StatusOr<Shape> ParseShapeString(const string& s);
+  static StatusOr<Shape> ParseShapeString(tensorflow::StringPiece s);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
@@ -257,13 +257,20 @@ class ShapeUtil {
   static bool ElementIsSigned(const Shape& shape);
 
   // Returns whether the shape is a tuple.
-  static bool IsTuple(const Shape& shape);
+  static bool IsTuple(const Shape& shape) {
+    return shape.element_type() == TUPLE;
+  }
+
+  // Returns whether the shape is an opaque value (i.e. an 'existential' typed
+  // value that is passed to CustomCall operations).
+  static bool IsOpaque(const Shape& shape) {
+    return shape.element_type() == OPAQUE;
+  }
 
   // Returns whether the shape is an array.
-  static bool IsArray(const Shape& shape);
-
-  // Returns whether the shape is an opaque.
-  static bool IsOpaque(const Shape& shape);
+  static bool IsArray(const Shape& shape) {
+    return !IsTuple(shape) && !IsOpaque(shape);
+  }
 
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.

@@ -157,6 +157,8 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
         "//third_party/py/numpy",
     ],
 )

@@ -1101,7 +1101,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     VLOG(4) << "  old user: " << user->ToString();
     CHECK_EQ(user->operand(reshape_or_broadcast_operand_index),
              reshape_or_broadcast);
-    std::vector<HloInstruction*> new_user_operands = user->operands();
+    auto new_user_operands = user->operands();
     new_user_operands[reshape_or_broadcast_operand_index] = operand;
     auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
         ShapeUtil::MakeShapeWithLayout(
@@ -1505,9 +1505,9 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   // We cannot insert bitcasts if the layouts will not be compatible.
   // TODO(b/33178038): Consider inserting a transpose if a bitcast would be
   // invalid.
-  if (!valid_bitcast_callback_(input_shape, lhs->shape()) ||
-      !valid_bitcast_callback_(new_filter_shape, rhs->shape()) ||
-      !valid_bitcast_callback_(convolution_shape, dot_output_shape)) {
+  if (!valid_bitcast_callback_(input_shape, new_input_shape) ||
+      !valid_bitcast_callback_(filter_shape, new_filter_shape) ||
+      !valid_bitcast_callback_(dot_output_shape, convolution_shape)) {
     return Status::OK();
   }
 

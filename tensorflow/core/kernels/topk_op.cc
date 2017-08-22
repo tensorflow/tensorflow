@@ -135,8 +135,17 @@ struct TopKFunctor<CPUDevice, T> {
     auto SortIndices = [&, context](int start_batch, int limit_batch) {
       for (int32 b = start_batch; b < limit_batch; ++b) {
         const T* input_data = &input(b, 0);
+        const auto stable_comp = [input_data](const int32 a, const int32 b) {
+          if (input_data[b] < input_data[a]) {
+            return true;
+          } else if (input_data[b] > input_data[a]) {
+            return false;
+          } else {
+            return a < b;
+          }
+        };
         const auto comp = [input_data](const int32 a, const int32 b) {
-          return input_data[a] > input_data[b];
+          return input_data[b] < input_data[a];
         };
         // TODO(ebrevdo): For large k < num_cols, instead of using
         // TopN, it may be faster to create a temporary vector of
@@ -144,13 +153,30 @@ struct TopKFunctor<CPUDevice, T> {
         // of this into indices. Choosing the appropriate minimum k or
         // ratio of k/num_cols will require some experimentation.
         if (k == num_cols) {
+          auto* begin = &indices(b, 0);
+          auto* end = &indices(b, k);
           // Set the initial array of indices 0 ... k - 1.
-          std::iota(&indices(b, 0), &indices(b, k), 0);
-          // Use an in-place sort.
-          std::sort(&indices(b, 0), &indices(b, k), comp);
+          std::iota(begin, end, 0);
+          // We want an in-place sort, but we can cheat because we're sorting
+          // indices that started out sorted.  First, do a std::sort, which
+          // is notably faster than std::stable_sort.
+          std::sort(begin, end, comp);
+          // Then, for runs of adjacent elements that were equal, sort the
+          // indices in those runs in increasing order.
+          for (auto* run_begin = begin; run_begin != end;) {
+            auto* run_end = run_begin + 1;
+            if (run_end == end) break;
+            if (input_data[*run_begin] == input_data[*run_end]) {
+              while (++run_end != end) {
+                if (input_data[*run_begin] != input_data[*run_end]) break;
+              }
+              std::sort(run_begin, run_end);
+            }
+            run_begin = run_end;
+          }
         } else {
           // Use the TopN heap object to sort.
-          gtl::TopN<int32, decltype(comp)> filter(k, comp);
+          gtl::TopN<int32, decltype(stable_comp)> filter(k, stable_comp);
           filter.reserve(num_cols);
           for (int32 c = 0; c < num_cols; ++c) {
             filter.push(c);

@@ -507,6 +507,15 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(test_layer.input_shape, [(None, 32), (None, 32)])
     self.assertEqual(test_layer.output_shape, (None, 32))
 
+  def test_count_params(self):
+    dense = core_layers.Dense(16)
+    dense.build((None, 4))
+    self.assertEqual(dense.count_params(), 16 * 4 + 16)
+
+    dense = core_layers.Dense(16)
+    with self.assertRaises(ValueError):
+      dense.count_params()
+
 
 class NetworkTest(test.TestCase):
 

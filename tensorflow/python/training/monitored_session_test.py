@@ -1414,6 +1414,12 @@ class MonitoredSessionTest(test.TestCase):
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
         self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
 
+  def test_with_statement_and_close(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/12224
+    # where close() inside the with should have a better error message.
+    with self.assertRaisesRegexp(RuntimeError, 'Session is already closed'):
+      with monitored_session.MonitoredSession() as session:
+        session.close()
 
 class SingularMonitoredSessionTest(test.TestCase):
   """Tests SingularMonitoredSession."""

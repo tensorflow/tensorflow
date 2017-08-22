@@ -48,19 +48,24 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
       if (count_ < 0) {
-        return input_->MakeIterator();
+        // Pass through
+        return input_->MakeIterator(prefix);
       } else if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(new EmptyIterator(this));
+        return std::unique_ptr<IteratorBase>(
+            new EmptyIterator({this, strings::StrCat(prefix, "::EmptyTake")}));
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(this));
+        return std::unique_ptr<IteratorBase>(new FiniteIterator(
+            {this, strings::StrCat(prefix, "::FiniteTake")}));
       }
     }
 
     const DataTypeVector& output_dtypes() const override {
       return input_->output_dtypes();
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return input_->output_shapes();
     }
@@ -70,10 +75,11 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
    private:
     class EmptyIterator : public DatasetIterator<Dataset> {
      public:
-      explicit EmptyIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      explicit EmptyIterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         *end_of_sequence = true;
         return Status::OK();
       }
@@ -81,13 +87,14 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
 
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
-      explicit FiniteIterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
+      explicit FiniteIterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
             i_(0),
-            input_impl_(dataset->input_->MakeIterator()) {}
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
         while (i_ < dataset()->count_) {
           TF_RETURN_IF_ERROR(
