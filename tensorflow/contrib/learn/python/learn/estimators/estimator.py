@@ -29,7 +29,6 @@ import numpy as np
 import six
 
 from google.protobuf import message
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
@@ -58,6 +57,7 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
@@ -97,8 +97,7 @@ def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
 
-    if contrib_framework.is_tensor(x) or (y is not None and
-                                          contrib_framework.is_tensor(y)):
+    if tensor_util.is_tensor(x) or y is not None and tensor_util.is_tensor(y):
       raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
 
     if feed_fn is not None:
@@ -847,7 +846,7 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
@@ -908,7 +907,7 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      contrib_framework.create_global_step(g)
+      training_util.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
@@ -978,7 +977,7 @@ class BaseEstimator(
     self._graph = ops.Graph()
     with self._graph.as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
       model_fn_ops = self._get_train_ops(features, labels)
