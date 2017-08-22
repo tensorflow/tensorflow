@@ -39,19 +39,19 @@ def _load_library(name, op_list=None):
     NameError if one of the required ops is missing.
   """
   try:
-      filename = resource_loader.get_path_to_datafile(name)
-      library = load_library.load_op_library(filename)
-      for expected_op in (op_list or []):
-          for lib_op in library.OP_LIST.op:
-              if lib_op.name == expected_op:
-                  break
-          else:
-              raise NameError(
-                  'Could not find operator %s in dynamic library %s' %
-                  (expected_op, name))
-      return library
+    filename = resource_loader.get_path_to_datafile(name)
+    library = load_library.load_op_library(filename)
+    for expected_op in (op_list or []):
+      for lib_op in library.OP_LIST.op:
+        if lib_op.name == expected_op:
+          break
+      else:
+        raise NameError(
+          'Could not find operator %s in dynamic library %s' %
+          (expected_op, name))
+    return library
   except errors.NotFoundError:
-      logging.warning('%s file could not be loaded.', name)
+    logging.warning('%s file could not be loaded.', name)
 
 
 MPI_LIB = _load_library('mpi_collectives.so', ['MPISize', 'MPIRank',

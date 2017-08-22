@@ -27,8 +27,7 @@ class AllreduceTest(test.TestCase):
                     wrong_count += 1
                 print("{}\t{}\t{}\t{}\t{}\t{}"
                       .format(my_rank, i, j, out_loc_red[i][j],
-                              out_all_red[i][j], suffix),
-                      flush=True)
+                              out_all_red[i][j], suffix), flush=True)
                 if max_wrong_count > 0 and wrong_count >= max_wrong_count:
                     return
 

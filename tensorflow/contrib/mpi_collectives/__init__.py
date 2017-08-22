@@ -132,145 +132,142 @@ from tensorflow.contrib.mpi_collectives.mpi_ops import init
 
 
 def allreduce(tensor, average=True):
-    """Perform an MPI allreduce on a tf.Tensor or tf.IndexedSlices.
+  """Perform an MPI allreduce on a tf.Tensor or tf.IndexedSlices.
 
-    Arguments:
-        tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
-        The shape of the input must be identical across all ranks.
-        average: If True, computes the average over all ranks.
-                 Otherwise, computes the sum over all ranks.
+  Arguments:
+  tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
+          The shape of the input must be identical across all ranks.
+  average: If True, computes the average over all ranks.
+           Otherwise, computes the sum over all ranks.
 
-    This function performs a bandwidth-optimal ring allreduce on the input
-    tensor. If the input is an tf.IndexedSlices, the function instead does an
-    allgather on the values and the indices, effectively doing an allreduce on
-    the represented tensor.
-    """
-    if isinstance(tensor, tf.IndexedSlices):
-        # For IndexedSlices, do two allgathers intead of an allreduce.
-        mpi_size = tf.cast(size(), tensor.values.dtype)
-        values = allgather(tensor.values)
-        indices = allgather(tensor.indices)
+  This function performs a bandwidth-optimal ring allreduce on the input
+  tensor. If the input is an tf.IndexedSlices, the function instead does an
+  allgather on the values and the indices, effectively doing an allreduce on
+  the represented tensor.
+  """
+  if isinstance(tensor, tf.IndexedSlices):
+    # For IndexedSlices, do two allgathers intead of an allreduce.
+    mpi_size = tf.cast(size(), tensor.values.dtype)
+    values = allgather(tensor.values)
+    indices = allgather(tensor.indices)
 
-        # To make this operation into an average, divide all gathered values by
-        # the MPI size.
-        new_values = tf.div(values, mpi_size) if average else values
-        return tf.IndexedSlices(new_values, indices,
-                                dense_shape=tensor.dense_shape)
-    else:
-        mpi_size = tf.cast(size(), tensor.dtype)
-        summed_tensor = _allreduce(tensor)
-        new_tensor = (tf.div(summed_tensor, mpi_size)
-                      if average else summed_tensor)
-        return new_tensor
+    # To make this operation into an average, divide all gathered values by
+    # the MPI size.
+    new_values = tf.div(values, mpi_size) if average else values
+    return tf.IndexedSlices(new_values, indices,
+                            dense_shape=tensor.dense_shape)
+  else:
+    mpi_size = tf.cast(size(), tensor.dtype)
+    summed_tensor = _allreduce(tensor)
+    new_tensor = (tf.div(summed_tensor, mpi_size)
+                  if average else summed_tensor)
+    return new_tensor
 
 
 class DistributedOptimizer(tf.train.Optimizer):
-    """An optimizer that wraps another tf.Optimizer, using an MPI allreduce to
-    average gradient values before applying gradients to model weights."""
+  """An optimizer that wraps another tf.Optimizer, using an MPI allreduce to
+  average gradient values before applying gradients to model weights."""
 
-    def __init__(self, optimizer, name=None, use_locking=False):
-        """Construct a new DistributedOptimizer, which uses another optimizer
-        under the hood for computing single-process gradient values and
-        applying gradient updates after the gradient values have been averaged
-        across all the MPI ranks.
+  def __init__(self, optimizer, name=None, use_locking=False):
+    """Construct a new DistributedOptimizer, which uses another optimizer
+    under the hood for computing single-process gradient values and
+    applying gradient updates after the gradient values have been averaged
+    across all the MPI ranks.
 
-        Args:
-          optimizer:
-            Optimizer to use for computing gradients and applying updates.
-          name:
-            Optional name prefix for the operations created when applying
-            gradients. Defaults to "Distributed" followed by the provided
-            optimizer type.
-          use_locking:
-            Whether to use locking when updating variables.
-            See Optimizer.__init__ for more info.
-        """
-        if name is None:
-            name = "Distributed{}".format(type(optimizer).__name__)
+    Args:
+    optimizer: Optimizer to use for computing gradients and applying updates.
+    name: Optional name prefix for the operations created when applying
+          gradients. Defaults to "Distributed" followed by the provided
+          optimizer type.
+    use_locking: Whether to use locking when updating variables. See
+                 Optimizer.__init__ for more info.
+    """
+    if name is None:
+      name = "Distributed{}".format(type(optimizer).__name__)
 
-        self._optimizer = optimizer
-        super(DistributedOptimizer, self).__init__(
-            name=name, use_locking=use_locking)
+    self._optimizer = optimizer
+    super(DistributedOptimizer, self).__init__(
+        name=name, use_locking=use_locking)
 
-    def compute_gradients(self, *args, **kwargs):
-        """Compute gradients of all trainable variables.
+  def compute_gradients(self, *args, **kwargs):
+    """Compute gradients of all trainable variables.
 
-        See Optimizer.compute_gradients() for more info.
+    See Optimizer.compute_gradients() for more info.
 
-        In DistributedOptimizer, compute_gradients() is overriden to also
-        allreduce the gradients before returning them.
-        """
-        gradients = (super(DistributedOptimizer, self)
-                     .compute_gradients(*args, **kwargs))
-        return [(allreduce(gradient), var) for (gradient, var) in gradients]
+    In DistributedOptimizer, compute_gradients() is overriden to also
+    allreduce the gradients before returning them.
+    """
+    gradients = (super(DistributedOptimizer, self)
+                 .compute_gradients(*args, **kwargs))
+    return [(allreduce(gradient), var) for (gradient, var) in gradients]
 
-    def _apply_dense(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._apply_dense(*args, **kwargs)
+  def _apply_dense(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._apply_dense(*args, **kwargs)
 
-    def _apply_sparse(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._apply_sparse(*args, **kwargs)
+  def _apply_sparse(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._apply_sparse(*args, **kwargs)
 
-    def _apply_sparse_duplicate_indices(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._apply_sparse_duplicate_indices(*args,
-                                                               **kwargs)
+  def _apply_sparse_duplicate_indices(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._apply_sparse_duplicate_indices(*args,
+                                                           **kwargs)
 
-    def _prepare(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._prepare(*args, **kwargs)
+  def _prepare(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._prepare(*args, **kwargs)
 
-    def _create_slots(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._create_slots(*args, **kwargs)
+  def _create_slots(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._create_slots(*args, **kwargs)
 
-    def _valid_dtypes(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._valid_dtypes(*args, **kwargs)
+  def _valid_dtypes(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._valid_dtypes(*args, **kwargs)
 
-    def _finish(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer._finish(*args, **kwargs)
+  def _finish(self, *args, **kwargs):
+    """Calls this same method on the underlying optimizer."""
+    return self._optimizer._finish(*args, **kwargs)
 
 
 class Session(tf.Session):
-    """A class for running TensorFlow operations, with copies of the same graph
-    running distributed across different MPI nodes.
+  """A class for running TensorFlow operations, with copies of the same graph
+  running distributed across different MPI nodes.
 
-    The primary difference between `tf.Session` and
-    `tf.contrib.mpi_collectives.Session` is that the MPI `Session` ensures that
-    the `Session` options are correct for use with `tf.contrib.mpi`, and
-    initializes MPI immediately upon the start of the session.
+  The primary difference between `tf.Session` and
+  `tf.contrib.mpi_collectives.Session` is that the MPI `Session` ensures that
+  the `Session` options are correct for use with `tf.contrib.mpi`, and
+  initializes MPI immediately upon the start of the session.
+  """
+
+  def __init__(self, target='', graph=None, config=None):
+    """Creates a new TensorFlow MPI session.
+
+    Unlike a normal `tf.Session`, an MPI Session may only use a single GPU,
+    which must be specified in advance before the session is initialized.
+    In addition, it only uses a single graph evaluation thread, and
+    initializes MPI immediately upon starting.
+
+    If no `graph` argument is specified when constructing the session,
+    the default graph will be launched in the session. If you are
+    using more than one graph (created with `tf.Graph()` in the same
+    process, you will have to use different sessions for each graph,
+    but each graph can be used in multiple sessions. In this case, it
+    is often clearer to pass the graph to be launched explicitly to
+    the session constructor.
+
+    Args:
+    target: (Optional.) The execution engine to connect to.
+    graph: (Optional.) The `Graph` to be launched (described above).
+    config: (Optional.) A `ConfigProto` protocol buffer with configuration
+    options for the session.
     """
+    super(Session, self).__init__(target, graph, config=config)
 
-    def __init__(self, target='', graph=None, config=None):
-        """Creates a new TensorFlow MPI session.
-
-        Unlike a normal `tf.Session`, an MPI Session may only use a single GPU,
-        which must be specified in advance before the session is initialized.
-        In addition, it only uses a single graph evaluation thread, and
-        initializes MPI immediately upon starting.
-
-        If no `graph` argument is specified when constructing the session,
-        the default graph will be launched in the session. If you are
-        using more than one graph (created with `tf.Graph()` in the same
-        process, you will have to use different sessions for each graph,
-        but each graph can be used in multiple sessions. In this case, it
-        is often clearer to pass the graph to be launched explicitly to
-        the session constructor.
-
-        Args:
-        target: (Optional.) The execution engine to connect to.
-        graph: (Optional.) The `Graph` to be launched (described above).
-        config: (Optional.) A `ConfigProto` protocol buffer with configuration
-        options for the session.
-        """
-        super(Session, self).__init__(target, graph, config=config)
-
-        # Initialize MPI on the relevant device.
-        # TODO: Move this to library load and eliminate mpi.Session()
-        if graph is None:
-            graph = tf.get_default_graph()
-        with graph.as_default():
-            self.run(init())
+    # Initialize MPI on the relevant device.
+    # TODO: Move this to library load and eliminate mpi.Session()
+    if graph is None:
+      graph = tf.get_default_graph()
+    with graph.as_default():
+      self.run(init())

@@ -37,10 +37,17 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 tf_custom_op_library(
     name = "mpi_collectives.so",
-    srcs = ["mpi_ops.cc", "ring.cc", "ring.h"],
-    gpu_srcs = ["ring.cu.cc", "ring.h"],
+    srcs = [
+        "mpi_ops.cc",
+        "ring.cc",
+        "ring.h"
+    ],
+    gpu_srcs = [
+        "ring.cu.cc",
+        "ring.h"
+    ],
     deps = [
-        "//third_party/mpi:mpi",
+        "//third_party/mpi",
         ":mpi_message_proto_cc",
     ],
 )
