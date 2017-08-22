@@ -274,7 +274,7 @@ Status RewriteGraphForExecution(
   }
 
   std::unordered_set<string> endpoints;
-  for (const string& endpoint_name : fed_outputs) {
+  for (auto& endpoint_name : fed_outputs) {
     auto result = endpoints.insert(endpoint_name);
     if (!result.second) {
       return errors::InvalidArgument("Endpoint \"", endpoint_name,
@@ -282,7 +282,7 @@ Status RewriteGraphForExecution(
     }
   }
 
-  for (const auto& fetch : fetch_outputs) {
+  for (auto& fetch : fetch_outputs) {
     if (endpoints.count(fetch) > 0) {
       return errors::InvalidArgument(fetch, " is both fed and fetched.");
     }
@@ -292,7 +292,7 @@ Status RewriteGraphForExecution(
   // FetchOutputs, and PruneForTargets
   NameIndex name_index;
   name_index.reserve(g->num_nodes());
-  for (Node* n : g->nodes()) {
+  for (auto n : g->nodes()) {
     name_index[n->name()] = n;
   }
 
