@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
@@ -352,7 +353,7 @@ Node* Graph::CopyNode(Node* node) {
 }
 
 void Graph::RemoveNode(Node* node) {
-  DCHECK(IsValidNode(node)) << node->DebugString();
+  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
 
@@ -367,8 +368,8 @@ void Graph::RemoveNode(Node* node) {
 }
 
 const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
-  DCHECK(IsValidNode(source)) << source->DebugString();
-  DCHECK(IsValidNode(dest)) << dest->DebugString();
+  TF_DCHECK_OK(IsValidNode(source)) << source->DebugString();
+  TF_DCHECK_OK(IsValidNode(dest)) << dest->DebugString();
 
   // source/sink must only be linked via control slots, and
   // control slots must only be linked to control slots.
@@ -398,8 +399,8 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
 }
 
 void Graph::RemoveEdge(const Edge* e) {
-  DCHECK(IsValidNode(e->src_)) << e->src_->DebugString();
-  DCHECK(IsValidNode(e->dst_)) << e->dst_->DebugString();
+  TF_DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
+  TF_DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
@@ -443,6 +444,9 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
   *graph_def->mutable_library() = ops_.ToProto();
+
+  graph_def->mutable_node()->Reserve(std::max(1, num_nodes() - from_node_id));
+
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
   for (auto id = from_node_id; id < num_node_ids(); ++id) {
@@ -476,6 +480,8 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
       }
     }
     node_def->clear_input();
+    node_def->mutable_input()->Reserve(inputs.size());
+
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
@@ -497,11 +503,24 @@ string Graph::NewName(StringPiece prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
 }
 
-bool Graph::IsValidNode(Node* node) const {
-  if (node == nullptr) return false;
+Status Graph::IsValidNode(Node* node) const {
+  if (node == nullptr) {
+    return errors::InvalidArgument("Node is null");
+  }
   const int id = node->id();
-  if (id < 0 || static_cast<size_t>(id) >= nodes_.size()) return false;
-  return nodes_[id] == node;
+  if (id < 0) {
+    return errors::InvalidArgument("node id ", id, "is less than zero");
+  }
+  if (static_cast<size_t>(id) >= nodes_.size()) {
+    return errors::InvalidArgument(
+        "node id ", id, "is >= than number of nodes in graph ", nodes_.size());
+  }
+  if (nodes_[id] != node) {
+    return errors::InvalidArgument("Node with id ", id,
+                                   " is different from the passed in node. "
+                                   "Does it belong to a different graph?");
+  }
+  return Status::OK();
 }
 
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
@@ -523,7 +542,7 @@ Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
 }
 
 void Graph::ReleaseNode(Node* node) {
-  DCHECK(IsValidNode(node)) << node->DebugString();
+  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
   --num_nodes_;
@@ -550,6 +569,11 @@ int Graph::InternDeviceName(const string& device_name) {
   index_cell = index;
   device_names_.push_back(device_name);
   return index;
+}
+
+string Edge::DebugString() const {
+  return strings::Printf("Edge %d %s:%d -> %s:%d", id_, src_->name().c_str(),
+                         src_output_, dst_->name().c_str(), dst_input_);
 }
 
 }  // namespace tensorflow

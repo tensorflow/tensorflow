@@ -199,6 +199,18 @@ class Scope {
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.
   Status ToGraph(Graph* g) const;
+
+  // Calls AddNode() using this scope's ShapeRefiner. This exists in the public
+  // API to prevent custom op wrappers from needing access to shape_refiner.h or
+  // scope_internal.h.
+  // TODO(skyewm): remove this from public API
+  Status DoShapeInference(Node* node) const;
+
+  // Creates a new root scope that causes all DoShapeInference() calls to return
+  // Status::OK() (on the returned scope and any subscopes). Used for testing.
+  // TODO(skyewm): fix tests that still require this and eventually remove, or
+  // at least remove from public API
+  static Scope DisabledShapeInferenceScope();
   // END_SKIP_DOXYGEN
 
   const std::vector<Operation>& control_deps() const;

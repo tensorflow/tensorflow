@@ -102,6 +102,7 @@ cc_library(
         ":compiler_functor",
         ":cpu_runtime",
         ":cpu_runtime_avx",
+        ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
         ":disassembler",
         ":runtime_conv2d",
@@ -284,6 +285,7 @@ cc_library(
     deps = [
         ":cpu_runtime",
         ":cpu_runtime_avx",
+        ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
         ":disassembler",
         ":llvm_ir_runtime",
@@ -309,11 +311,11 @@ cc_library(
     srcs = ["cpu_runtime_sse4_1.cc"],
     hdrs = ["cpu_runtime_sse4_1.h"],
     copts = ["-DEIGEN_AVOID_STL_ARRAY"],
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -321,11 +323,24 @@ cc_library(
     srcs = ["cpu_runtime_avx.cc"],
     hdrs = ["cpu_runtime_avx.h"],
     copts = ["-DEIGEN_AVOID_STL_ARRAY"],
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
+)
+
+cc_library(
+    name = "cpu_runtime_neon",
+    srcs = ["cpu_runtime_neon.cc"],
+    hdrs = ["cpu_runtime_neon.h"],
+    # runtime_copts() enables -mfpu=neon
+    copts = ["-DEIGEN_AVOID_STL_ARRAY"] + runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -437,6 +452,19 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "cpu_instruction_fusion_test",
+    size = "small",
+    srcs = ["cpu_instruction_fusion_test.cc"],
+    deps = [
+        ":cpu_instruction_fusion",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:transpose_folding",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
     ],
 )
 

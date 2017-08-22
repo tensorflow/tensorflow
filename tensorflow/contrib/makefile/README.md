@@ -104,6 +104,9 @@ Then, execute the following:
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
 tensorflow/contrib/makefile/compile_android_protobuf.sh -c
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB=`CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
+	tensorflow/contrib/makefile/compile_nsync.sh -t android -a armeabi-v7a`
 make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID
 ```
 
@@ -196,6 +199,12 @@ Next, you will need to compile protobufs for iOS:
 tensorflow/contrib/makefile/compile_ios_protobuf.sh 
 ```
 
+Then, you will need to compile the nsync library for iOS:
+
+```export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
+```
+
 Then, you can run the makefile specifying iOS as the target, along with the
 architecture you want to build for:
 
@@ -220,7 +229,8 @@ library in a simple app.
 #### Universal binaries
 
 In some situations, you will need a universal library.  In that case, you will
-still need to run `compile_ios_protobuf.sh`, but this time follow it with:
+still need to run `compile_ios_protobuf.sh` and `compile_nsync.sh`, but this
+time follow it with:
 
 ```bash
 compile_ios_tensorflow.sh
@@ -258,6 +268,8 @@ make
 sudo make install
 sudo ldconfig  # refresh shared library cache
 cd ../../../../..
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB="$HOST_NSYNC_LIB"
 ```
 
 Once that's done, you can use make to build the library and example:

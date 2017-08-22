@@ -231,6 +231,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "decode_jpeg_op_test",
+    srcs = ["decode_jpeg_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:platform",
+    ],
+    data = ["//tensorflow/core:image_testdata"],
+)
+
+tf_py_test(
     name = "decode_image_op_test",
     size = "small",
     srcs = ["decode_image_op_test.py"],
@@ -901,6 +913,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
     tags = ["no_windows"],
@@ -1050,6 +1063,8 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tensor",
     ],
     shard_count = 10,
 )
@@ -1152,6 +1167,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "constant_op_eager_test",
+    size = "small",
+    srcs = ["constant_op_eager_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
     name = "control_flow_ops_py_test",
     size = "small",
     srcs = ["control_flow_ops_py_test.py"],
@@ -1174,6 +1207,7 @@ cuda_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:logging_ops_gen",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:state_ops",

@@ -39,7 +39,7 @@ std::vector<const LogicalBuffer*> UniqueOperandSourceBuffers(
   for (const HloInstruction* operand : instruction->operands()) {
     points_to_analysis.GetPointsToSet(operand).ForEachElement(
         [&](const ShapeIndex& /*index*/,
-            const std::vector<const LogicalBuffer*>& points_to) {
+            const PointsToSet::BufferList& points_to) {
           buffers.insert(buffers.end(), points_to.begin(), points_to.end());
         });
   }
@@ -107,7 +107,7 @@ Status HeapSimulator::RunComputation(
   FlatMap<const LogicalBuffer*, FlatSet<const HloInstruction*>> live_buffers;
 
   const HloInstruction* root = computation.root_instruction();
-  FlatSet<const LogicalBuffer*> output_source_buffers =
+  auto output_source_buffers =
       points_to_analysis.GetPointsToSet(root).CreateFlattenedSet();
 
   std::vector<const LogicalBuffer*> dead_buffers_to_free;

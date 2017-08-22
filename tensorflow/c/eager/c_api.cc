@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -53,6 +55,7 @@ struct TFE_Context {
 
   // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
   TF_Session* session;
+  tensorflow::Rendezvous* rendezvous;
 
   tensorflow::mutex functions_mu;
   tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
@@ -61,19 +64,14 @@ struct TFE_Context {
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
-  std::vector<std::unique_ptr<tensorflow::FunctionLibraryRuntime> > func_libs;
+  std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
 
   std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
                      tensorflow::Fprint128Hasher>
       kernel_cache;
 
   tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
-    for (int i = 0; i < session->devices.size(); ++i) {
-      if (session->devices[i] == d) {
-        return func_libs[i].get();
-      }
-    }
-    return nullptr;
+    return pflr->GetFLR(d->name());
   }
 
   const std::vector<tensorflow::Device*>& devices() { return session->devices; }
@@ -129,12 +127,11 @@ TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
   }
 
   TFE_Context* ret = new TFE_Context(session);
-  ret->func_libs.resize(ret->devices().size());
-  for (int i = 0; i < ret->devices().size(); ++i) {
-    ret->func_libs[i] = tensorflow::NewFunctionLibraryRuntime(
-        ret->session->device_mgr, opts->options.env, ret->devices()[i],
-        TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {});
-  }
+  ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
+      ret->session->device_mgr, opts->options.env, TF_GRAPH_DEF_VERSION,
+      &ret->func_lib_def, {}));
+  ret->rendezvous =
+      new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
 
   return ret;
 }
@@ -145,6 +142,7 @@ void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
   TF_Graph* graph = ctx->session->graph;
   TF_DeleteSession(ctx->session, status);
   TF_DeleteGraph(graph);
+  ctx->rendezvous->Unref();
   delete ctx;
 }
 
@@ -196,9 +194,11 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::Device* dstd = nullptr;
-  status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
-  if (!status->status.ok()) return nullptr;
+  tensorflow::Device* dstd = ctx->devices()[0];
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
+    if (!status->status.ok()) return nullptr;
+  }
 
   tensorflow::Device* srcd = h->d == nullptr ? ctx->devices()[0] : h->d;
   bool is_same_device =
@@ -287,8 +287,10 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
 void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
                      TF_Status* status) {
   tensorflow::Device* d = nullptr;
-  status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
-  if (!status->status.ok()) return;
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    if (!status->status.ok()) return;
+  }
   TFE_OpSetDeviceHelper(op, d, status);
 }
 
@@ -470,7 +472,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
       tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
-    kernel = new tensorflow::KernelAndDevice();
+    kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
     if (!op->is_function()) {
       status->status =
           tensorflow::KernelAndDevice::InitOp(device, ndef, kernel);

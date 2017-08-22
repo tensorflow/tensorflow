@@ -29,7 +29,9 @@ tf_kernel_library(
         "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
+        "gather_op.cc",
         "identity_op.cc",
+        "is_finite_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
@@ -67,6 +69,8 @@ tf_kernel_library(
     ],
     hdrs = [
         "cwise_ops.h",
+        "gather_op.h",
+        "gather_op_helpers.h",
         "reduction_ops.h",
     ],
     deps = [
@@ -121,7 +125,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = [
-        "gather_op.cc",
         "index_ops.cc",
     ],
     deps = [

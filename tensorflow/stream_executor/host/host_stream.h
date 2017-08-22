@@ -48,7 +48,7 @@ class HostStream : public internal::StreamInterface {
 
   mutex mu_;
   int pending_tasks_ GUARDED_BY(mu_) = 0;
-  ConditionVariableForMutex completion_condition_;
+  condition_variable completion_condition_;
 };
 
 }  // namespace host

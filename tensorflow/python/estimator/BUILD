@@ -22,7 +22,6 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
-        ":util",
         "//tensorflow/python:util",
     ],
 )
@@ -44,11 +43,12 @@ py_library(
     srcs = ["model_fn.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":export",
+        ":export_output",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/saved_model:signature_constants",
         "@six_archive//:six",
     ],
 )
@@ -59,12 +59,14 @@ py_test(
     srcs = ["model_fn_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":export_output",
         ":model_fn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
@@ -72,6 +74,10 @@ py_library(
     name = "run_config",
     srcs = ["run_config.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(
@@ -81,6 +87,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":run_config",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -102,6 +109,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -131,6 +139,8 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -154,8 +164,10 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -164,8 +176,10 @@ py_library(
     srcs = ["canned/dnn_linear_combined.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dnn",
         ":estimator",
         ":head",
+        ":linear",
         ":model_fn",
         ":optimizers",
         "//tensorflow/python:control_flow_ops",
@@ -179,6 +193,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -204,8 +219,11 @@ py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -237,7 +255,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":export",
+        ":export_export",
         ":model_fn",
         ":run_config",
         ":util",
@@ -253,6 +271,8 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -262,19 +282,20 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
-        ":export",
+        ":export_export",
+        ":export_output",
         ":model_fn",
         ":numpy_io",
         ":run_config",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
@@ -288,6 +309,8 @@ py_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -298,9 +321,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -312,7 +336,7 @@ py_test(
     deps = [
         ":parsing_utils",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python/feature_column",
     ],
@@ -323,7 +347,10 @@ py_library(
     srcs = ["export/export_output.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/saved_model:signature_def_utils",
+        "@six_archive//:six",
     ],
 )
 
@@ -334,7 +361,12 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":export_output",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/saved_model:signature_constants",
     ],
 )
@@ -348,6 +380,7 @@ py_library(
     deps = [
         ":export_export",
         ":export_output",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -358,11 +391,14 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":export_output",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "@six_archive//:six",
     ],
 )
 
@@ -374,7 +410,17 @@ py_test(
     deps = [
         ":export_export",
         ":export_output",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
     ],
 )
 
@@ -389,7 +435,6 @@ py_library(
         ":prediction_keys",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
@@ -404,6 +449,7 @@ py_library(
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
+        "@six_archive//:six",
     ],
 )
 
@@ -425,6 +471,7 @@ py_test(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -432,7 +479,10 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
         "//tensorflow/python/saved_model:signature_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -459,6 +509,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -475,19 +526,25 @@ py_library(
         ":numpy_io",
         ":pandas_io",
         ":run_config",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
     ],
 )
 
@@ -501,28 +558,9 @@ py_test(
         "noasan",  # times out b/63680444
     ],
     deps = [
-        ":estimator",
-        ":export_export",
         ":linear",
         ":linear_testing_utils",
-        ":metric_keys",
-        ":numpy_io",
-        ":pandas_io",
-        ":run_config",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
     ],
 )
 
@@ -553,7 +591,7 @@ py_test(
         ":numpy_io",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -563,6 +601,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 
@@ -594,7 +633,6 @@ py_test(
         ":pandas_io",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
     ],
 )
@@ -614,7 +652,18 @@ py_library(
         "inputs/queues/feeding_queue_runner.py",
     ],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:training"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(
@@ -627,7 +676,6 @@ py_test(
     deps = [
         ":inputs_queues",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -639,7 +687,8 @@ py_test(
     deps = [
         ":inputs_queues",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
     ],
 )

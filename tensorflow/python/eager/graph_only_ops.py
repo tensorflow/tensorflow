@@ -22,6 +22,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 
 
 def graph_zeros_like(tensor):
@@ -29,8 +30,8 @@ def graph_zeros_like(tensor):
   g = ops._get_graph_from_inputs([tensor])  # pylint: disable=protected-access
   with g.as_default(), ops.name_scope(None, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    dtype = tensor.dtype.base_dtype.as_datatype_enum
-    dtype_value = attr_value_pb2.AttrValue(type=dtype)
+    dtype = tensor.dtype.base_dtype
+    dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
     op = g.create_op("ZerosLike", [tensor], [dtype], input_types=[dtype],
                      attrs={"T": dtype_value}, name=name)
   result, = op.outputs
@@ -39,8 +40,11 @@ def graph_zeros_like(tensor):
 
 def graph_placeholder(dtype, shape, name=None):
   """Graph-only version of tf.placeholder(), for internal use only."""
-  dtype = dtype.base_dtype.as_datatype_enum
-  dtype_value = attr_value_pb2.AttrValue(type=dtype)
+  dtype = dtype.base_dtype
+  dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
+  if isinstance(shape, (list, tuple)):
+    shape = tensor_shape.TensorShape(shape)
+  assert isinstance(shape, tensor_shape.TensorShape)
   shape = attr_value_pb2.AttrValue(shape=shape.as_proto())
   g = ops.get_default_graph()
   with ops.name_scope(name, "placeholder", []) as name:

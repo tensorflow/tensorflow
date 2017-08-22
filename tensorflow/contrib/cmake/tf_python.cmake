@@ -142,7 +142,6 @@ RELATIVE_PROTOBUF_GENERATE_PYTHON(
 file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
@@ -210,6 +209,7 @@ add_python_module("tensorflow/python/debug/cli")
 add_python_module("tensorflow/python/debug/examples")
 add_python_module("tensorflow/python/debug/lib")
 add_python_module("tensorflow/python/debug/wrappers")
+add_python_module("tensorflow/python/eager")
 add_python_module("tensorflow/python/estimator")
 add_python_module("tensorflow/python/estimator/canned")
 add_python_module("tensorflow/python/estimator/export")
@@ -460,6 +460,11 @@ add_python_module("tensorflow/contrib/nccl/kernels")
 add_python_module("tensorflow/contrib/nccl/ops")
 add_python_module("tensorflow/contrib/nccl/python")
 add_python_module("tensorflow/contrib/nccl/python/ops")
+add_python_module("tensorflow/contrib/nearest_neighbor/kernels")
+add_python_module("tensorflow/contrib/nearest_neighbor/ops")
+add_python_module("tensorflow/contrib/nearest_neighbor/python")
+add_python_module("tensorflow/contrib/nearest_neighbor/python/kernel_tests")
+add_python_module("tensorflow/contrib/nearest_neighbor/python/ops")
 add_python_module("tensorflow/contrib/opt")
 add_python_module("tensorflow/contrib/opt/python")
 add_python_module("tensorflow/contrib/opt/python/training")
@@ -573,6 +578,9 @@ add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
 # tf_python_op_gen_main library
 ########################################################
 set(tf_python_op_gen_main_srcs
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
@@ -704,6 +712,8 @@ GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_nccl_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nccl/ops/gen_nccl_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_nearest_neighbor_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nearest_neighbor/ops/gen_nearest_neighbor_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_resampler_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/resampler/ops/gen_resampler_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
@@ -765,6 +775,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
@@ -882,6 +894,22 @@ target_link_libraries(pywrap_tensorflow_internal PRIVATE
     tf_python_protos_cc
     ${PYTHON_LIBRARIES}
 )
+
+if(WIN32)
+    # include contrib/nearest_neighbor as .so
+    #
+    set(tf_nearest_neighbor_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/heap.h"
+        "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.h"
+        "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/ops/nearest_neighbor_ops.cc"
+    )
+
+    AddUserOps(TARGET _nearest_neighbor_ops
+        SOURCES "${tf_nearest_neighbor_srcs}"
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nearest_neighbor/python/ops/)
+endif(WIN32)
 
 if(WIN32)
     # include contrib/rnn as .so

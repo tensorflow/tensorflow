@@ -76,6 +76,7 @@ class GraphConstructor {
                      ? in.prefix
                      : in.prefix + "/"),
           input_map(in.input_map),
+          skip_mapped_nodes(in.skip_mapped_nodes),
           control_dependencies(in.control_dependencies),
           return_tensors(in.return_tensors),
           importing(true) {}
@@ -85,6 +86,7 @@ class GraphConstructor {
 
     string prefix;
     std::map<TensorId, TensorId> input_map;
+    bool skip_mapped_nodes;
     std::vector<string> control_dependencies;
     std::vector<TensorId> return_tensors;
 
@@ -158,6 +160,7 @@ class GraphConstructor {
 
   void Undo();
 
+  Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
   Status ValidateColocationConstraints(const NodeDef& node_def);
   Status MakeNode(const NodeDef& node_def, Node** node);
   Status MakeEdge(Node* src, int output_index, Node* dst, int input_index);
@@ -668,6 +671,36 @@ void GraphConstructor::AddPrefixToNodeDef(
   }
 }
 
+Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
+                                           bool* is_node_mapped) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def.op(), &op_def));
+  for (int i = 0; i < op_def->output_arg_size(); ++i) {
+    if (opts_.input_map.find({node_def.name(), i}) == opts_.input_map.end()) {
+      *is_node_mapped = false;
+      return Status::OK();
+    }
+  }
+  *is_node_mapped = true;
+  return Status::OK();
+}
+
+namespace {
+
+void UpdatePendingCountAndReady(
+    const std::vector<gtl::InlinedVector<int, 4>>& outputs, int o,
+    std::vector<int>* pending_count, std::vector<int>* ready) {
+  for (size_t i = 0; i < outputs[o].size(); ++i) {
+    const int output = outputs[o][i];
+    (*pending_count)[output]--;
+    if ((*pending_count)[output] == 0) {
+      ready->push_back(output);
+    }
+  }
+}
+
+}  // anonymous namespace
+
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
@@ -703,6 +736,17 @@ Status GraphConstructor::Convert() {
     input_already_exists.resize(original_node_def.input_size(), false);
 
     if (opts_.importing) {
+      if (opts_.skip_mapped_nodes) {
+        bool is_node_mapped = false;
+        TF_RETURN_IF_ERROR(
+            IsNodeFullyMapped(original_node_def, &is_node_mapped));
+        if (is_node_mapped) {
+          // Skip this node after updating pending_count_ for outputs
+          UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
+          continue;
+        }
+      }
+
       // TODO(ashankar): The line below means an additional copy of the NodeDef,
       // which can be expensive if the NodeDef contains large tensors in it.
       // Might make sense to change the API for ImportGraphDef to take a mutable
@@ -789,13 +833,7 @@ Status GraphConstructor::Convert() {
     }
 
     // Update pending_count_ for outputs.
-    for (size_t i = 0; i < outputs_[o].size(); ++i) {
-      const int output = outputs_[o][i];
-      pending_count_[output]--;
-      if (pending_count_[output] == 0) {
-        ready_.push_back(output);
-      }
-    }
+    UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
   }
 
   if (processed < node_defs_.size()) {
