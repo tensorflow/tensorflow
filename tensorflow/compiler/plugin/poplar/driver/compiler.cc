@@ -219,7 +219,7 @@ private:
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("IPU");
-  pipeline.AddPass<BatchNormRewriter>(true, true, false);
+  pipeline.AddPass<BatchNormRewriter>(true, true, true, false);
   pipeline.AddPass<HloCSE>(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
