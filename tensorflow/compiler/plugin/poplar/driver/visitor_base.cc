@@ -512,6 +512,11 @@ Status BaseVisitor::HandleRecv(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleBatchNormInference(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+
 Status BaseVisitor::HandleBatchNormTraining(HloInstruction* inst) {
   return Unimplemented(inst);
 }

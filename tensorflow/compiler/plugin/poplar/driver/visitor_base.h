@@ -152,6 +152,8 @@ public:
 
   Status HandleRecv(HloInstruction* inst) override;
 
+  Status HandleBatchNormInference(HloInstruction* batchNormInference) override;
+
   Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
 
   Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override;

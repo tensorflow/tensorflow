@@ -29,6 +29,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:xla_headers_lib",
+        "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
@@ -79,6 +80,7 @@ cc_library(
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla:xla_headers_lib",
+        "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
         "@local_config_cuda//cuda:cuda_headers",
@@ -95,6 +97,7 @@ cc_library(
     deps = [
         ":driver",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
+        "//tensorflow/core:framework_headers_lib",
     ],
     linkopts = [
         "$(locations @local_config_poplar//poplar:poplar_lib)",
