@@ -584,7 +584,7 @@ inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
   context->set_output(idx_data_out, output);
 }
 
-inline void FowardTfTensorInToOut(OpKernelContext* context,
+inline void ForwardTfTensorInToOut(OpKernelContext* context,
                                   int idx_in, int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
@@ -601,7 +601,7 @@ inline void FowardTfTensorInToOut(OpKernelContext* context,
   }
 }
 
-inline void ForwarMklTensorInToOut(OpKernelContext* context,
+inline void ForwardMklTensorInToOut(OpKernelContext* context,
                                    int idx_in, int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
