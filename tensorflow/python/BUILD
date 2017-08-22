@@ -3981,6 +3981,7 @@ py_library(
         "grappler/tf_optimizer.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [":pywrap_tensorflow_internal"],
 )
 
