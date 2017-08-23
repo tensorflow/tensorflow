@@ -115,6 +115,9 @@ class MklAddNOp : public OpKernel {
                               mkl_context.lt_input1, &coeff[0]),
              E_SUCCESS);
 
+    Tensor mkl_tmp_input1_buf_tensor, mkl_tmp_input2_buf_tensor;
+    mkl_context.MklPrepareAddNInputs(ctx, &mkl_tmp_input1_buf_tensor,
+    &mkl_tmp_input2_buf_tensor);
     Tensor* output = nullptr;
     if (input1_in_mkl_format || input2_in_mkl_format) {
      TensorShape tf_shape;
@@ -123,9 +126,13 @@ class MklAddNOp : public OpKernel {
 
      mkl_context.output_shape.SetTfLayout(
         mkl_context.in_dims, mkl_context.in1_sizes, mkl_context.in1_strides);
-
-     mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims);
-
+     if (input1_in_mkl_format == true) {
+     mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
+     mkl_context.input1_shape.GetTfToMklDimMap());
+     } else {
+     mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
+     mkl_context.input2_shape.GetTfToMklDimMap());
+     }
      tf_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                         mkl_context.output_shape.GetMklLayout())) /
                     sizeof(T));
@@ -133,7 +140,7 @@ class MklAddNOp : public OpKernel {
      AllocateOutputSetMklShape(ctx, 0, &output, tf_shape,
                               mkl_context.output_shape);
     } else {
-     const TensorShape& o_shape = input0.shape();
+     const TensorShape& o_shape = input1.shape();
      mkl_context.output_shape.SetMklTensor(false);
      AllocateOutputSetMklShape(ctx, 0, &output, o_shape,
                                 mkl_context.output_shape);
@@ -142,10 +149,6 @@ class MklAddNOp : public OpKernel {
 
     mkl_context.Eltwise_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
-
-    Tensor mkl_tmp_input1_buf_tensor, mkl_tmp_input2_buf_tensor;
-    mkl_context.MklPrepareAddNInputs(ctx, &mkl_tmp_input1_buf_tensor,
-                                     &mkl_tmp_input2_buf_tensor);
 
     // Execute convolution
     CHECK_EQ(dnnExecute_F32(mkl_context.Eltwise, mkl_context.Eltwise_res),
