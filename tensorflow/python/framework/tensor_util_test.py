@@ -315,6 +315,7 @@ class TensorUtilTest(test.TestCase):
                   dtype=dtype)))
 
   def testIntMixedWithDimension(self):
+    # Github issue: 11974
     dtype = dtypes.int32
     nptype = np.int32
     t = tensor_util.make_tensor_proto([10, tensor_shape.Dimension(20), 30],
