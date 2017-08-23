@@ -906,7 +906,7 @@ class _BinaryLogisticHead(_SingleHead):
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.accuracy(classes, labels, weights))
+          metrics_lib.accuracy(labels, classes, weights))
       metrics[_summary_key(self.head_name, mkey.PREDICTION_MEAN)] = (
           _predictions_streaming_mean(logistic, weights))
       metrics[_summary_key(self.head_name, mkey.LABEL_MEAN)] = (
@@ -1135,8 +1135,7 @@ class _MultiClassHead(_SingleHead):
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.accuracy(
-              classes, self._labels(labels), weights))
+          metrics_lib.accuracy(self._labels(labels), classes, weights))
 
       if not self._label_keys:
         # Classes are IDs. Add some metrics.
@@ -1295,7 +1294,7 @@ class _BinarySvmHead(_SingleHead):
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       classes = predictions[prediction_key.PredictionKey.CLASSES]
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.accuracy(classes, labels, weights))
+          metrics_lib.accuracy(labels, classes, weights))
       # TODO(sibyl-vie3Poto): add more metrics relevant for svms.
 
     return metrics
@@ -1400,7 +1399,7 @@ class _MultiLabelHead(_SingleHead):
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.accuracy(classes, labels, weights))
+          metrics_lib.accuracy(labels, classes, weights))
       metrics[_summary_key(self.head_name, mkey.AUC)] = _streaming_auc(
           probabilities, labels, weights)
       metrics[_summary_key(self.head_name, mkey.AUC_PR)] = _streaming_auc(
@@ -1945,7 +1944,7 @@ def _indicator_labels_streaming_mean(labels, weights=None, class_id=None):
     if weights is not None:
       weights = weights[:, class_id]
     labels = labels[:, class_id]
-  return metrics_lib.mean(labels, weights=weights)
+  return metrics_lib.mean(labels, weights)
 
 
 def _predictions_streaming_mean(predictions,
@@ -1959,7 +1958,7 @@ def _predictions_streaming_mean(predictions,
     if weights is not None:
       weights = weights[:, class_id]
     predictions = predictions[:, class_id]
-  return metrics_lib.mean(predictions, weights=weights)
+  return metrics_lib.mean(predictions, weights)
 
 
 # TODO(ptucker): Add support for SparseTensor labels.
@@ -2005,8 +2004,7 @@ def _streaming_auc(predictions, labels, weights=None, class_id=None,
       weights = weights[:, class_id]
     predictions = predictions[:, class_id]
     labels = labels[:, class_id]
-  return metrics_lib.auc(
-      predictions, labels, weights=weights, curve=curve)
+  return metrics_lib.auc(labels, predictions, weights, curve=curve)
 
 
 def _assert_class_id(class_id, num_classes=None):
@@ -2023,21 +2021,18 @@ def _assert_class_id(class_id, num_classes=None):
 def _streaming_accuracy_at_threshold(predictions, labels, weights, threshold):
   threshold_predictions = math_ops.to_float(
       math_ops.greater_equal(predictions, threshold))
-  return metrics_lib.accuracy(
-      predictions=threshold_predictions, labels=labels, weights=weights)
+  return metrics_lib.accuracy(labels, threshold_predictions, weights)
 
 
 def _streaming_precision_at_threshold(predictions, labels, weights, threshold):
   precision_tensor, update_op = metrics_lib.precision_at_thresholds(
-      predictions, labels=labels, thresholds=(threshold,),
-      weights=_float_weights_or_none(weights))
+      labels, predictions, (threshold,),_float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 
 def _streaming_recall_at_threshold(predictions, labels, weights, threshold):
   precision_tensor, update_op = metrics_lib.recall_at_thresholds(
-      predictions, labels=labels, thresholds=(threshold,),
-      weights=_float_weights_or_none(weights))
+      labels, predictions, (threshold,),_float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 
