@@ -507,6 +507,53 @@ UserComputation::AddBatchNormTrainingInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle>
+UserComputation::AddBatchNormInferenceInstruction(
+    const BatchNormInferenceRequest& batch_norm_inference_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(batch_norm_inference_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* scale,
+                      LookUpRequest(batch_norm_inference_request.scale()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* offset,
+                      LookUpRequest(batch_norm_inference_request.offset()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* mean,
+                      LookUpRequest(batch_norm_inference_request.mean()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* variance,
+                      LookUpRequest(batch_norm_inference_request.variance()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                      ShapeInference::InferBatchNormInferenceShape(
+                          operand->output_shape(), scale->output_shape(),
+                          offset->output_shape(), mean->output_shape(),
+                          variance->output_shape(),
+                          batch_norm_inference_request.feature_index()));
+
+  *request.mutable_output_shape() = inferred_shape;
+
+  *request.mutable_output_handle() = handle;
+
+  *request.mutable_request()->mutable_batch_norm_inference_request() =
+      batch_norm_inference_request;
+
+  VLOG(1) << "AddBatchNormInferenceInstruction ("
+          << GetVersionedHandleInternal() << "), data handle "
+          << handle.handle() << ": "
+          << batch_norm_inference_request.ShortDebugString();
+
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddBatchNormGradInstruction(
     const BatchNormGradRequest& batch_norm_grad_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1678,6 +1725,25 @@ void ConstantVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kBatchNormInferenceRequest: {
+      const BatchNormInferenceRequest& batch_norm_inference_request =
+          request.request().batch_norm_inference_request();
+      ConstantVisitor(session_computation,
+                      batch_norm_inference_request.operand(), visited,
+                      is_constant);
+      ConstantVisitor(session_computation, batch_norm_inference_request.scale(),
+                      visited, is_constant);
+      ConstantVisitor(session_computation,
+                      batch_norm_inference_request.offset(), visited,
+                      is_constant);
+      ConstantVisitor(session_computation, batch_norm_inference_request.mean(),
+                      visited, is_constant);
+      ConstantVisitor(session_computation,
+                      batch_norm_inference_request.variance(), visited,
+                      is_constant);
+      break;
+    }
+
     case OpRequest::kBatchNormGradRequest: {
       const BatchNormGradRequest& batch_norm_grad_request =
           request.request().batch_norm_grad_request();
@@ -2116,6 +2182,18 @@ static void ForEachOperand(
       apply(batch_norm_training_request.operand());
       apply(batch_norm_training_request.scale());
       apply(batch_norm_training_request.offset());
+      break;
+    }
+
+    case OpRequest::kBatchNormInferenceRequest: {
+      const BatchNormInferenceRequest& batch_norm_inference_request =
+          request.request().batch_norm_inference_request();
+
+      apply(batch_norm_inference_request.operand());
+      apply(batch_norm_inference_request.scale());
+      apply(batch_norm_inference_request.offset());
+      apply(batch_norm_inference_request.mean());
+      apply(batch_norm_inference_request.variance());
       break;
     }
 
@@ -2644,6 +2722,28 @@ void ComputationLowerer::Visit(
           request.output_shape(), operand, scale, offset,
           batch_norm_training_request.epsilon(),
           batch_norm_training_request.feature_index()));
+      break;
+    }
+
+    case OpRequest::kBatchNormInferenceRequest: {
+      const BatchNormInferenceRequest& batch_norm_inference_request =
+          request.request().batch_norm_inference_request();
+      HloInstruction* operand =
+          lookup_instruction(batch_norm_inference_request.operand());
+      HloInstruction* scale =
+          lookup_instruction(batch_norm_inference_request.scale());
+      HloInstruction* offset =
+          lookup_instruction(batch_norm_inference_request.offset());
+      HloInstruction* mean =
+          lookup_instruction(batch_norm_inference_request.mean());
+      HloInstruction* variance =
+          lookup_instruction(batch_norm_inference_request.variance());
+
+      hlo_instruction =
+          add_instruction(HloInstruction::CreateBatchNormInference(
+              request.output_shape(), operand, scale, offset, mean, variance,
+              batch_norm_inference_request.epsilon(),
+              batch_norm_inference_request.feature_index()));
       break;
     }
 

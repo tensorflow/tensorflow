@@ -71,7 +71,7 @@ class CreatedContexts {
  public:
   // Returns whether context is a member of the live set.
   static bool Has(CUcontext context) {
-    shared_lock lock{mu_};
+    tf_shared_lock lock{mu_};
     return Live()->find(context) != Live()->end();
   }
 

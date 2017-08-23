@@ -122,6 +122,7 @@ include(jsoncpp)
 include(farmhash)
 include(fft2d)
 include(highwayhash)
+include(nsync)
 include(protobuf)
 include(re2)
 include(cub)
@@ -139,6 +140,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${farmhash_STATIC_LIBRARIES}
     ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
+    ${nsync_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
 )
@@ -151,6 +153,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     jsoncpp
     farmhash_copy_headers_to_destination
     highwayhash_copy_headers_to_destination
+    nsync_copy_headers_to_destination
     protobuf
     eigen
     gemmlowp
@@ -175,6 +178,7 @@ include_directories(
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
     ${cub_INCLUDE_DIR}
+    ${nsync_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
 )

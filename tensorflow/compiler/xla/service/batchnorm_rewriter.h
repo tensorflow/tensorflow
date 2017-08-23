@@ -30,8 +30,10 @@ class BatchNormRewriter : public HloPassInterface {
  public:
   // When use_fusion is set, a multi-output fusion node is created.
   BatchNormRewriter(bool rewrite_training_op = false,
+                    bool rewrite_inference_op = false,
                     bool rewrite_grad_op = false, bool use_fusion = true)
       : rewrite_training_op_(rewrite_training_op),
+        rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op),
         use_fusion_(use_fusion) {}
   ~BatchNormRewriter() = default;
@@ -43,6 +45,7 @@ class BatchNormRewriter : public HloPassInterface {
 
  private:
   bool rewrite_training_op_;
+  bool rewrite_inference_op_;
   bool rewrite_grad_op_;
   bool use_fusion_;
 };

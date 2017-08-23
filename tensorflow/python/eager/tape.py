@@ -24,14 +24,9 @@ from autograd import container_types
 from autograd import core as ag_core
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
-
-
-def tensor_id(t):
-  """Returns a unique identifier for this Tensor."""
-  t = ag_core.getval(t)
-  return t._id  # pylint: disable=protected-access
 
 
 class ImplicitTape(object):
@@ -58,7 +53,7 @@ def _watch_with_tape(tape, tensor):
   """Wraps a watched Tensor and keeps track of it in the implicit tape."""
   w = _watch_with_tape_internal(tape, tensor)
   if ag_core.isnode(tape):
-    tape.value.tensors[tensor_id(tensor)] = w
+    tape.value.tensors[ops.tensor_id(tensor)] = w
   return w
 
 
@@ -162,7 +157,7 @@ def pop_tape():
 
 def any_tape_has(tensor):
   for t in _tape_stack.stack:
-    if tensor_id(tensor) in t.value.tensors:
+    if ops.tensor_id(tensor) in t.value.tensors:
       return True
   return False
 

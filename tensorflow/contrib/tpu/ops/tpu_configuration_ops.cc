@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -154,7 +155,10 @@ global_tpu_array: A two-dimensional array. For each host (the outer
 dimension) the array lists the global ids of the TPUs on that host.
 )doc");
 
-REGISTER_OP("_ShutdownDistributedTPU").SetIsStateful().Doc(R"doc(
+REGISTER_OP("_ShutdownDistributedTPU")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
 An op that shuts down a running distributed TPU system. The Op returns
 an error if no system is running. This Op must be run on the same
 TPU_SYSTEM device as the corresponding _ConfigureDistributedTPU was run
@@ -184,6 +188,7 @@ tpu_ids: A vector containing the global TPU id of each TPU on the host.
 REGISTER_OP("_DisconnectHostFromDistributedTPUSystem")
     .Output("number_of_tpu_chips: int32")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 An op that disconnects the TPUs on a host from a running distributed
 TPU system.
@@ -196,6 +201,7 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Output("global_tpu_array: int32")
     .Attr("embedding_config: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 An op that sets up the centralized structures for a distributed TPU
 system.
@@ -205,7 +211,10 @@ dimension) the array lists the global ids of the TPUs on that host.
 embedding_config: Internal use.
 )doc");
 
-REGISTER_OP("ShutdownDistributedTPU").SetIsStateful().Doc(R"doc(
+REGISTER_OP("ShutdownDistributedTPU")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
 An op that shuts down a running distributed TPU system. The Op returns
 an error if no system is running.
 )doc");
