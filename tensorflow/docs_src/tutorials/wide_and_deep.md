@@ -15,7 +15,7 @@ combines the strengths of memorization and generalization. It's useful for
 generic large-scale regression and classification problems with sparse input
 features (e.g., categorical features with a large number of possible feature
 values). If you're interested in learning more about how Wide & Deep Learning
-works, please check out our [research paper](http://arxiv.org/abs/1606.07792).
+works, please check out our [research paper](https://arxiv.org/abs/1606.07792).
 
 ![Wide & Deep Spectrum of Models](https://www.tensorflow.org/images/wide_n_deep.svg "Wide & Deep")
 
@@ -58,7 +58,7 @@ To try the code for this tutorial:
         $ sudo pip install pandas
 
     If you have trouble installing pandas, consult the
-    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    [instructions](https://pandas.pydata.org/pandas-docs/stable/install.html)
     on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
@@ -320,5 +320,5 @@ Note that this tutorial is just a quick example on a small dataset to get you
 familiar with the API. Wide & Deep Learning will be even more powerful if you
 try it on a large dataset with many sparse feature columns that have a large
 number of possible feature values. Again, feel free to take a look at our
-[research paper](http://arxiv.org/abs/1606.07792) for more ideas about how to
+[research paper](https://arxiv.org/abs/1606.07792) for more ideas about how to
 apply Wide & Deep Learning in real-world large-scale machine learning problems.

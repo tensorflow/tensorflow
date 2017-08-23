@@ -174,6 +174,16 @@ TEST_F(CApiWhileLoopTest, BasicLoop) {
   EXPECT_TRUE(outputs_[1].oper != nullptr);
   EXPECT_GE(outputs_[1].index, 0);
 
+  // Check that cond and body inputs are not present
+  for (int i = 0; i < params_->ninputs; ++i) {
+    string cond_name =
+        ::tensorflow::strings::StrCat(params_->name, "/cond/cond_input", i);
+    string body_name =
+        ::tensorflow::strings::StrCat(params_->name, "/body/body_input", i);
+    EXPECT_TRUE(TF_GraphOperationByName(graph_, cond_name.c_str()) == nullptr);
+    EXPECT_TRUE(TF_GraphOperationByName(graph_, body_name.c_str()) == nullptr);
+  }
+
   // Run the graph
   Run({-9, 2});
   ExpectOutputValue(0, 3);

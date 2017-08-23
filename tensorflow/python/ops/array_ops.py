@@ -82,6 +82,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -100,7 +101,6 @@ from tensorflow.python.ops import gen_math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.util import deprecation
-from tensorflow.python.util.deprecation import deprecated
 # pylint: enable=wildcard-import
 
 # Used for slicing to specify a new 1 size dimension
@@ -124,8 +124,9 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   if context.in_graph_mode():
     return gen_array_ops.identity(input, name=name)
   else:
-    # TODO(apassos): make sure this works ok with gradients.
-    return input._copy()  # pylint: disable=protected-access
+    if context.context().device_name != input.device:
+      return input._copy()  # pylint: disable=protected-access
+    return input
 
 
 # pylint: disable=redefined-builtin,protected-access
@@ -191,8 +192,10 @@ def expand_dims(input, axis=None, name=None, dim=None):
 
 # Aliases for some automatically-generated names.
 # pylint: disable=protected-access
-@deprecated("2016-11-30", "This op will be removed after the deprecation date. "
-            "Please switch to tf.setdiff1d().")
+@deprecation.deprecated(
+    "2016-11-30",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.setdiff1d().")
 def listdiff(x, y, out_idx=None, name=None):
   return gen_array_ops._list_diff(x, y, out_idx, name)
 
@@ -723,7 +726,10 @@ def strided_slice(input_,
         new_axis_mask=new_axis_mask,
         shrink_axis_mask=shrink_axis_mask)
 
-  op.assign = assign
+  if context.in_graph_mode():
+    # TODO(apassos) In eager mode assignment will be done by overriding
+    # __setitem__ instead.
+    op.assign = assign
   return op
 
 
@@ -1320,9 +1326,10 @@ def transpose(a, perm=None, name="transpose"):
       ret = gen_array_ops.transpose(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
-      input_shape = ret.op.inputs[0].get_shape().dims
-      if input_shape is not None:
-        ret.set_shape(input_shape[::-1])
+      if context.in_graph_mode():
+        input_shape = ret.op.inputs[0].get_shape().dims
+        if input_shape is not None:
+          ret.set_shape(input_shape[::-1])
     else:
       ret = gen_array_ops.transpose(a, perm, name=name)
     return ret
@@ -1635,8 +1642,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
           shape=[None],
           name=(name + "/values") if name is not None else None),
       indices=placeholder(
-          dtypes.int64,
-          shape=[None, None],
+          dtypes.int64, shape=[None, rank],
           name=(name + "/indices") if name is not None else None),
       dense_shape=shape)
 
@@ -2256,7 +2262,8 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
     lengths = ops.convert_to_tensor(lengths)
     if lengths.get_shape().ndims != 1:
-      raise ValueError("lengths must be 1D for sequence_mask")
+      raise ValueError("lengths must be 1D for sequence_mask. Got shape %s" %
+                       lengths.get_shape())
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, [0])

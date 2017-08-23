@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
@@ -46,14 +47,12 @@ namespace xla {
 // nested tuple). Each node in this tree corresponds to a single buffer in the
 // instruction's output and contains the set of Buffers which might define
 // the corresponding buffer.
-class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
+class PointsToSet {
  public:
   // Construct our ShapeTree with a pointer rather than a reference to a Shape
   // because this is very hot code, and copying (and then destroying) all these
   // Shapes is slow.
-  explicit PointsToSet(const Shape* shape)
-      : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
-        tuple_sources_(shape) {}
+  explicit PointsToSet(const Shape* shape) : tree_(shape) {}
 
   // Returns true if any points-to sets for any subshape element is not a
   // singleton.
@@ -69,7 +68,8 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 
   // Creates a set containing the union of all LogicalBuffers contained in the
   // PointsToSet.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> CreateFlattenedSet() const;
+  using BufferSet = tensorflow::gtl::CompactPointerSet<const LogicalBuffer*>;
+  BufferSet CreateFlattenedSet() const;
 
   // Returns true if the given buffer is in the points-to set at the given
   // index.
@@ -102,13 +102,49 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
   // tuple_sources() at the index of an array shape (not a tuple) returns the
   // empty set. The instructions in the set returned by tuple_sources
   // necessarily are either Tuple instructions, constants, or parameters.
-  const std::set<HloInstruction*>& tuple_sources(const ShapeIndex& index) const;
+  using SourceSet = tensorflow::gtl::CompactPointerSet<HloInstruction*>;
+  const SourceSet& tuple_sources(const ShapeIndex& index) const;
 
   // Add a tuple source instruction for the given index.
   void add_tuple_source(const ShapeIndex& index, HloInstruction* tuple);
 
+  using BufferList = tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+
+  // Return the list of logical buffers for the subshape at index.
+  const BufferList& element(const ShapeIndex& index) const {
+    return tree_.element(index).buffers;
+  }
+  BufferList* mutable_element(const ShapeIndex& index) {
+    return &tree_.mutable_element(index)->buffers;
+  }
+
+  // Call fn(index, buflist) for every subshape index.
+  template <typename Fn>
+  void ForEachElement(const Fn& fn) const {
+    tree_.ForEachElement([&fn](const ShapeIndex& index, const Elem& elem) {
+      fn(index, elem.buffers);
+    });
+  }
+  template <typename Fn>
+  void ForEachMutableElement(const Fn& fn) {
+    tree_.ForEachMutableElement([&fn](const ShapeIndex& index, Elem* elem) {
+      fn(index, &elem->buffers);
+    });
+  }
+  template <typename Fn>
+  Status ForEachElementWithStatus(const Fn& fn) const {
+    return tree_.ForEachElementWithStatus(
+        [&fn](const ShapeIndex& index, const Elem& elem) {
+          return fn(index, elem.buffers);
+        });
+  }
+
  private:
-  ShapeTree<std::set<HloInstruction*>> tuple_sources_;
+  struct Elem {
+    BufferList buffers;
+    SourceSet tuple_sources;
+  };
+  ShapeTree<Elem> tree_;
 
   // PointsToSet contains references (const LogicalBuffer*) to elements within
   // TuplePointsToAnalysis so disable copying.

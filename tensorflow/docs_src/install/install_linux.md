@@ -231,7 +231,7 @@ Python is automatically installed on Ubuntu.  Take a moment to confirm
 versions is already installed on your system:
 
   * Python 2.7
-  * Python 3.3+
+  * Python 3.4+
 
 The pip or pip3 package manager is *usually* installed on Ubuntu.  Take a
 moment to confirm (by issuing a `pip -V` or `pip3 -V` command)
