@@ -17,6 +17,10 @@ build:sycl_nodouble --define=using_sycl=true --cxxopt -DTENSORFLOW_SYCL_NO_DOUBL
 build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl_asan --define=using_sycl=true --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
 
+build:rpi3 --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+build:rpi3 --crosstool_top=//tools/arm_compiler:toolchain
+build:rpi3 --cpu=rpi-armeabi
+
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
