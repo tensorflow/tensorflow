@@ -703,9 +703,11 @@ class GbdtTest(test_util.TensorFlowTestCase):
           -1.32643198967
       ]
       self.assertAllClose(expected_leaf_1,
-                          output.trees[0].nodes[1].leaf.vector.value)
+                          output.trees[0].nodes[1].leaf.vector.value,
+                          rtol=1e-3, atol=1e-3)
       self.assertAllClose(expected_leaf_2,
-                          output.trees[0].nodes[2].leaf.vector.value)
+                          output.trees[0].nodes[2].leaf.vector.value,
+                          rtol=1e-3, atol=1e-3)
 
   def testTrainFnMulticlassDiagonalHessian(self):
     """Tests the GBDT train for multiclass diagonal hessian."""
