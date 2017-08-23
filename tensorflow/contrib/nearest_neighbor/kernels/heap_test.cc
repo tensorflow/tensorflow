@@ -15,15 +15,10 @@ limitations under the License.
 
 #include "tensorflow/contrib/nearest_neighbor/kernels/heap.h"
 
-#include <vector>
-
 #include "tensorflow/core/kernels/ops_testutil.h"
 
-using std::vector;
-
-using tensorflow::nearest_neighbor::SimpleHeap;
-using tensorflow::nearest_neighbor::AugmentedHeap;
-
+namespace tensorflow {
+namespace nearest_neighbor {
 namespace {
 
 TEST(HeapTest, SimpleHeapTest1) {
@@ -189,3 +184,5 @@ TEST(HeapTest, AugmentedHeapTest1) {
 }
 
 }  // namespace
+}  // namespace nearest_neighbor
+}  // namespace tensorflow

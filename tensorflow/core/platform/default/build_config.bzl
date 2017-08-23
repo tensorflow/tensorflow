@@ -182,9 +182,6 @@ def tf_env_time_srcs():
       ], exclude = []),
   })
 
-def tf_additional_stream_executor_srcs():
-  return ["platform/default/stream_executor.h"]
-
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 

@@ -102,7 +102,6 @@ load(
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
-    "tf_additional_stream_executor_srcs",
     "tf_additional_cupti_wrapper_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
@@ -359,6 +358,7 @@ tf_cuda_library(
         "framework/allocator.h",
         "framework/variant.h",
         "framework/variant_encode_decode.h",
+        "framework/variant_op_registry.h",
         "framework/variant_tensor_data.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
@@ -528,6 +528,7 @@ tf_gen_op_libs(
     op_lib_names = [
         "bitwise_ops",
         "candidate_sampling_ops",
+        "checkpoint_ops",
         "control_flow_ops",
         "ctc_ops",
         "data_flow_ops",
@@ -606,6 +607,7 @@ cc_library(
         ":audio_ops_op_lib",
         ":bitwise_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
+        ":checkpoint_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
         ":data_flow_ops_op_lib",
@@ -736,6 +738,7 @@ cc_library(
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
+        "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
@@ -918,7 +921,6 @@ filegroup(
             "util/events_writer.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
-            "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -1631,7 +1633,6 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
-    includes = ["../../external/nsync/public"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -1650,7 +1651,7 @@ cc_header_only_library(
 
 tf_cuda_library(
     name = "stream_executor",
-    srcs = tf_additional_stream_executor_srcs(),
+    srcs = ["platform/stream_executor.h"],
     hdrs = [
         "platform/cuda.h",
         "platform/stream_executor.h",
@@ -1664,7 +1665,7 @@ tf_cuda_library(
 # and does not include any cuda dependencies.
 cc_library(
     name = "stream_executor_no_cuda",
-    srcs = tf_additional_stream_executor_srcs(),
+    srcs = ["platform/stream_executor.h"],
     hdrs = [
         "platform/stream_executor_no_cuda.h",
     ],
@@ -2341,6 +2342,7 @@ tf_cc_tests(
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",
         "framework/unique_tensor_references_test.cc",
+        "framework/variant_op_registry_test.cc",
         "framework/variant_test.cc",
         "graph/algorithm_test.cc",
         "graph/edgeset_test.cc",

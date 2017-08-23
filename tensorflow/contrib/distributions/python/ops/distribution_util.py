@@ -26,11 +26,57 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
 
 def _convert_to_tensor(x, name):
   return None if x is None else ops.convert_to_tensor(x, name=name)
+
+
+def mixture_stddev(mixture_weight_vector, mean_vector, stddev_vector):
+  """Computes the standard deviation of a mixture distribution.
+
+  This function works regardless of the component distribution, so long as
+  each component's mean and standard deviation can be provided.
+
+  Args:
+    mixture_weight_vector: A 2D tensor with shape [batch_size, num_components]
+    mean_vector: A 2D tensor of mixture component means. Has shape
+      `[batch_size, num_components]`.
+    stddev_vector: A 2D tensor of mixture component standard deviations. Has
+      shape `[batch_size, num_components]`.
+  Returns:
+    A 1D tensor of shape `[batch_size]` representing the standard deviation of
+    the mixture distribution with given weights and component means and standard
+    deviations.
+  Raises:
+    ValueError: If the shapes of the input tensors are not as expected.
+  """
+  mixture_weight_vector.shape.assert_has_rank(2)
+  if not mean_vector.shape.is_compatible_with(mixture_weight_vector.shape):
+    raise ValueError("Expecting means to have same shape as mixture weights.")
+  if not stddev_vector.shape.is_compatible_with(mixture_weight_vector.shape):
+    raise ValueError("Expecting stddevs to have same shape as mixture weights.")
+
+  # Reshape the distribution parameters for batched vectorized dot products.
+  pi_for_dot_prod = array_ops.expand_dims(mixture_weight_vector, axis=1)
+  mu_for_dot_prod = array_ops.expand_dims(mean_vector, axis=2)
+  sigma_for_dot_prod = array_ops.expand_dims(stddev_vector, axis=2)
+
+  # weighted average of component means under mixture distribution.
+  mean_wa = math_ops.matmul(pi_for_dot_prod, mu_for_dot_prod)
+  mean_wa = array_ops.reshape(mean_wa, (-1,))
+  # weighted average of component variances under mixture distribution.
+  var_wa = math_ops.matmul(pi_for_dot_prod,
+                           math_ops.square(sigma_for_dot_prod))
+  var_wa = array_ops.reshape(var_wa, (-1,))
+  # weighted average of component squared means under mixture distribution.
+  sq_mean_wa = math_ops.matmul(pi_for_dot_prod,
+                               math_ops.square(mu_for_dot_prod))
+  sq_mean_wa = array_ops.reshape(sq_mean_wa, (-1,))
+  mixture_variance = var_wa + sq_mean_wa - math_ops.square(mean_wa)
+  return math_ops.sqrt(mixture_variance)
 
 
 def make_tril_scale(

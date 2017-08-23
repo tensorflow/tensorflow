@@ -20,7 +20,6 @@ from __future__ import print_function
 import abc
 import collections
 import threading
-import warnings
 
 import numpy as np
 
@@ -1218,12 +1217,17 @@ class Dataset(object):
       output_buffer_size: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the maximum number of processed elements that will be
         buffered when processing in parallel.
-        Note that this argument is ignored if 'num_threads' is not set.
 
     Returns:
       A `Dataset`.
     """
-    return MapDataset(self, map_func, num_threads, output_buffer_size)
+    if num_threads is None:
+      ret = MapDataset(self, map_func)
+    else:
+      ret = ParallelMapDataset(self, map_func, num_threads)
+    if output_buffer_size is not None:
+      ret = ret.prefetch(output_buffer_size)
+    return ret
 
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result.
@@ -1965,11 +1969,7 @@ class GroupByWindowDataset(Dataset):
 class MapDataset(Dataset):
   """A `Dataset` that maps a function over elements in its input."""
 
-  def __init__(self,
-               input_dataset,
-               map_func,
-               num_threads=None,
-               output_buffer_size=None):
+  def __init__(self, input_dataset, map_func):
     """See `Dataset.map()` for details."""
     super(MapDataset, self).__init__()
     self._input_dataset = input_dataset
@@ -2015,41 +2015,15 @@ class MapDataset(Dataset):
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
-    if num_threads is not None:
-      self._num_threads = ops.convert_to_tensor(
-          num_threads, dtype=dtypes.int32, name="num_threads")
-      if output_buffer_size is not None:
-        self._output_buffer_size = ops.convert_to_tensor(
-            output_buffer_size, dtype=dtypes.int64, name="output_buffer_size")
-      else:
-        self._output_buffer_size = ops.convert_to_tensor(
-            num_threads, dtype=dtypes.int64, name="output_buffer_size")
-    else:
-      self._num_threads = None
-      if output_buffer_size is not None:
-        warnings.warn(
-            "Dataset.map() is ignoring output_buffer_size since the argument "
-            "num_threads was not set. To buffer elements, set num_threads >= 1")
-      self._output_buffer_size = None
 
   def make_dataset_resource(self):
     input_resource = self._input_dataset.make_dataset_resource()
-    if self._num_threads is None:
-      return gen_dataset_ops.map_dataset(
-          input_resource,
-          self._map_func.captured_inputs,
-          f=self._map_func,
-          output_types=nest.flatten(self.output_types),
-          output_shapes=nest.flatten(self.output_shapes))
-    else:
-      return gen_dataset_ops.parallel_map_dataset(
-          input_resource,
-          self._map_func.captured_inputs,
-          f=self._map_func,
-          num_threads=self._num_threads,
-          output_buffer_size=self._output_buffer_size,
-          output_types=nest.flatten(self.output_types),
-          output_shapes=nest.flatten(self.output_shapes))
+    return gen_dataset_ops.map_dataset(
+        input_resource,
+        self._map_func.captured_inputs,
+        f=self._map_func,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
 
   @property
   def output_shapes(self):
@@ -2058,6 +2032,29 @@ class MapDataset(Dataset):
   @property
   def output_types(self):
     return self._output_types
+
+
+class ParallelMapDataset(MapDataset):
+  """A `Dataset` that maps a function over elements in its input in parallel."""
+
+  def __init__(self, input_dataset, map_func, num_parallel_calls):
+    """See `Dataset.map()` for details."""
+    super(ParallelMapDataset, self).__init__(input_dataset, map_func)
+
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
+
+  def make_dataset_resource(self):
+    input_resource = self._input_dataset.make_dataset_resource()
+    # pylint: disable=protected-access
+    return gen_dataset_ops.parallel_map_dataset(
+        input_resource,
+        self._map_func.captured_inputs,
+        f=self._map_func,
+        num_parallel_calls=self._num_parallel_calls,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+    # pylint: enable=protected-access
 
 
 class FlatMapDataset(Dataset):
