@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -30,36 +29,8 @@ using namespace ops;  // NOLINT(build/namespaces)
 
 namespace {
 
-class VariableHelper {
- protected:
-  Variable ThreeNodeVariable(const Scope& scope, TensorShape shape,
-                             DataType dtype, const Output& const_var,
-                             std::vector<Output>* assign_vars = nullptr) {
-    auto var = Variable(scope, shape, dtype);
-    auto assign_var = Assign(scope, var, const_var);
-    if (assign_vars != nullptr) {
-      assign_vars->push_back(assign_var);
-    }
-    return var;
-  }
-
-  Variable ThreeNodeVariable(const Scope& scope, const Input::Initializer& val,
-                             std::vector<Output>* assign_vars = nullptr) {
-    return ThreeNodeVariable(scope, val.tensor.shape(), val.tensor.dtype(),
-                             Const(scope, val), assign_vars);
-  }
-
-  template <typename T>
-  Variable ThreeNodeVariable(const Scope& scope, const T& v, TensorShape shape,
-                             std::vector<Output>* assign_vars = nullptr) {
-    auto const_var = Const(scope, v, shape);
-    return ThreeNodeVariable(scope, shape, DataTypeToEnum<T>::v(), const_var,
-                             assign_vars);
-  }
-};
-
 // TODO(andydavis) Add more unit tests once more gradient functions are ported.
-class GradientsTest : public ::testing::Test, public VariableHelper {
+class GradientsTest : public ::testing::Test {
  protected:
   GradientsTest()
       : scope_expected_(Scope::NewRootScope()),
@@ -106,10 +77,9 @@ TEST_F(GradientsTest, OneMatMul) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
-    auto x = ThreeNodeVariable(scope, {{1.0, 2.0}, {3.0, 4.0}});
-    auto y = ThreeNodeVariable(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto x = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
+    auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
-
     TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
 
@@ -132,12 +102,10 @@ TEST_F(GradientsTest, OneMatMul) {
 TEST_F(GradientsTest, OneMatMul_InferGradInputs) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
-
     // Construct forward graph.
-    auto x = ThreeNodeVariable(scope, {{1.0, 2.0}, {3.0, 4.0}});
-    auto y = ThreeNodeVariable(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto x = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
+    auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
-
     TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
 
@@ -161,11 +129,11 @@ TEST_F(GradientsTest, TwoMatMuls_Chained) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
-    auto u = ThreeNodeVariable(scope, {{1.0, 2.0}, {3.0, 4.0}});
-    auto v = ThreeNodeVariable(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto u = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
+    auto v = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto x = MatMul(scope, u, v);
 
-    auto y = ThreeNodeVariable(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
 
     TF_ASSERT_OK(scope.status());
@@ -194,14 +162,14 @@ TEST_F(GradientsTest, TwoMatMuls_Independent) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
-    auto t = ThreeNodeVariable(scope, {{1.0, 2.0}, {3.0, 4.0}});
-    auto u = ThreeNodeVariable(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto t = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
+    auto u = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto v = MatMul(scope, t, u);
     TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(v.node());
 
-    auto x = ThreeNodeVariable(scope, {{5.0, 6.0}, {7.0, 8.0}});
-    auto y = ThreeNodeVariable(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto x = Const(scope, {{5.0, 6.0}, {7.0, 8.0}});
+    auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
     TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
@@ -231,11 +199,11 @@ TEST_F(GradientsTest, StackUnstack_Chained) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
-    auto a = ThreeNodeVariable(scope, 1, {4, 2});
-    auto b = ThreeNodeVariable(scope, 2, {4, 2});
-    auto c = ThreeNodeVariable(scope, 3, {4, 2});
+    auto a = Const(scope, 1, {4, 2});
+    auto b = Const(scope, 2, {4, 2});
+    auto c = Const(scope, 3, {4, 2});
 
-    auto pack = Stack(scope, std::initializer_list<Input>{a, b, c});
+    auto pack = Stack(scope, {a, b, c});
     auto unpack = Unstack(scope, pack.output, 3);
     TF_ASSERT_OK(scope.status());
 
@@ -264,11 +232,11 @@ TEST_F(GradientsTest, StackUnstack_StopBackprop) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
-    auto a = ThreeNodeVariable(scope, 1, {4, 2});
-    auto b = ThreeNodeVariable(scope, 2, {4, 2});
-    auto c = ThreeNodeVariable(scope, 3, {4, 2});
+    auto a = Const(scope, 1, {4, 2});
+    auto b = Const(scope, 2, {4, 2});
+    auto c = Const(scope, 3, {4, 2});
 
-    auto pack = Stack(scope, std::initializer_list<Input>{a, b, c});
+    auto pack = Stack(scope, {a, b, c});
     auto unpack = Unstack(scope, pack.output, 3);
     TF_ASSERT_OK(scope.status());
 
@@ -299,7 +267,7 @@ TEST_F(GradientsTest, StackUnstack_SubsetOfUnstackOutputs) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
-    auto c = ThreeNodeVariable(scope, 1, {3, 4, 2});
+    auto c = Const(scope, 1, {3, 4, 2});
     auto unpack = Unstack(scope, c, 3);
     auto x = Identity(scope, unpack.output[0]);
     auto y = Identity(scope, unpack.output[1]);
@@ -332,15 +300,12 @@ TEST_F(GradientsTest, DependentGradOutputs) {
   // Tests that dependent gradients (in this case the gradients w.r.t to the
   // output and one input of MatMul) are computed properly.
 
-  // save the assign node to init the graph before the run
-  std::vector<Output> assign_vars;
-
   // Create two chained MatMul ops.
-  auto u = ThreeNodeVariable(scope_test_.WithOpName("u"), {{2}}, &assign_vars);
-  auto v = ThreeNodeVariable(scope_test_.WithOpName("v"), {{3}}, &assign_vars);
+  auto u = Const(scope_test_, {{2}});
+  auto v = Const(scope_test_, {{3}});
   auto x = MatMul(scope_test_, u, v);
 
-  auto y = ThreeNodeVariable(scope_test_.WithOpName("y"), {{4}}, &assign_vars);
+  auto y = Const(scope_test_, {{4}});
   auto z = MatMul(scope_test_, x, y);
 
   TF_ASSERT_OK(scope_test_.status());
@@ -355,8 +320,7 @@ TEST_F(GradientsTest, DependentGradOutputs) {
       AddSymbolicGradients(scope_test_, {z}, {v, x}, {dz}, &grad_outputs));
 
   std::vector<Tensor> outputs;
-  test::GetTensors(scope_test_, assign_vars, {grad_outputs[0], grad_outputs[1]},
-                   &outputs);
+  test::GetTensors(scope_test_, {grad_outputs[0], grad_outputs[1]}, &outputs);
 
   // The gradients w.r.t to 'dz' are passed into AddSymbolicGradients as '5'.
   // Since z = MatMul(x, y), the gradients w.r.t 'x' are computed as:
@@ -368,11 +332,8 @@ TEST_F(GradientsTest, DependentGradOutputs) {
 }
 
 TEST_F(GradientsTest, MultipleNodeOutputGrads) {
-  // save the assign node to init the graph before the run
-  std::vector<Output> assign_vars;
-
   // Tests that gradients for multiple outputs of the same node are returned.
-  auto x = ThreeNodeVariable(scope_test_, 1, {3, 4, 2}, &assign_vars);
+  auto x = Const(scope_test_, 1, {3, 4, 2});
   auto unpack = Unstack(scope_test_, x, 3);
   auto pack = Stack(scope_test_, unpack.output);
 
@@ -388,7 +349,7 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
                                     &grad_outputs));
 
   std::vector<Tensor> outputs;
-  test::GetTensors(scope_test_, assign_vars,
+  test::GetTensors(scope_test_,
                    {grad_outputs[0], grad_outputs[1], grad_outputs[2]},
                    &outputs);
 
@@ -404,15 +365,20 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
 }
 
 TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
-  // save the assign node to init the graph before the run
-  std::vector<Output> assign_vars;
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
 
-  auto x = ThreeNodeVariable(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}},
-                             &assign_vars);
-  auto y = ThreeNodeVariable(scope_test_, {{1.0}, {2.0}, {3.0}}, &assign_vars);
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
   auto m1 = MatMul(scope_test_, x, y);
 
-  auto z = ThreeNodeVariable(scope_test_, {{9.0, 10.0, 11.0}}, &assign_vars);
+  auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
   auto m2 = MatMul(scope_test_, y, z);
 
   auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
@@ -422,22 +388,28 @@ TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
       AddSymbolicGradients(scope_test_, {m1}, {y}, {dm1}, &grad_outputs));
 
   std::vector<Tensor> outputs;
-  test::GetTensors(scope_test_, assign_vars, {grad_outputs[0]}, &outputs);
+  test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
+                   {grad_outputs[0]}, &outputs);
 
   test::ExpectTensorNear<double>(
       outputs[0], test::AsTensor<double>({2.5, 3.5, 4.5}, {3, 1}), 1e-5);
 }
 
 TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
-  // save the assign node to init the graph before the run
-  std::vector<Output> assign_vars;
-  
-  auto x = ThreeNodeVariable(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}},
-                             &assign_vars);
-  auto y = ThreeNodeVariable(scope_test_, {{1.0}, {2.0}, {3.0}}, &assign_vars);
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
+
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
   auto m1 = MatMul(scope_test_, x, y);
 
-  auto z = ThreeNodeVariable(scope_test_, {{9.0, 10.0, 11.0}}, &assign_vars);
+  auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
   auto m2 = MatMul(scope_test_, y, z);
 
   auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
@@ -449,7 +421,8 @@ TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
                                     &grad_outputs));
 
   std::vector<Tensor> outputs;
-  test::GetTensors(scope_test_, assign_vars, {grad_outputs[0]}, &outputs);
+  test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
+                   {grad_outputs[0]}, &outputs);
 
   // the gradients from m1 and m2 will be summed to compute the gradient
   // w.r.t y
@@ -460,20 +433,16 @@ TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
 // 'NoGradient' (induced by StopGradient op) returned along multiple edges from
 // a single nodes output.
-class StopGradientSingleOutputMultiEdgeTest : public ::testing::Test,
-                                              public VariableHelper {
+class StopGradientSingleOutputMultiEdgeTest : public ::testing::Test {
  protected:
   StopGradientSingleOutputMultiEdgeTest() : scope_(Scope::NewRootScope()) {}
 
   void CheckGrad(const std::vector<bool>& stop_outputs,
                  const Tensor& expected_grad) {
-    // save the assign node to init the graph before the run
-    std::vector<Output> assign_vars;
-
     CHECK_EQ(3, stop_outputs.size());
 
-    auto x = ThreeNodeVariable(scope_, {{1, 0}, {0, 1}}, &assign_vars);
-    auto y = ThreeNodeVariable(scope_, {{1, 0}, {0, 1}}, &assign_vars);
+    auto x = Const(scope_, {{1, 0}, {0, 1}});
+    auto y = Const(scope_, {{1, 0}, {0, 1}});
     auto z = MatMul(scope_, x, y);
 
     // Create three output going edges from 'z'.
@@ -499,7 +468,7 @@ class StopGradientSingleOutputMultiEdgeTest : public ::testing::Test,
 
     if (expected_grad.NumElements() > 0) {
       Tensor output;
-      test::GetTensor(scope_, assign_vars, grad_outputs[0], &output);
+      test::GetTensor(scope_, grad_outputs[0], &output);
       test::ExpectTensorEqual<int>(output, expected_grad);
     } else {
       EXPECT_EQ(NoGradient(), grad_outputs[0]);
@@ -546,18 +515,14 @@ TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradAllEdges) {
 
 // StopGradientMultiOutputTest tests combinations of valid and 'NoGradient'
 // (induced by StopGradient op) returned along a single nodes multiple outputs.
-class StopGradientMultiOutputTest : public ::testing::Test,
-                                    public VariableHelper {
+class StopGradientMultiOutputTest : public ::testing::Test {
  protected:
   StopGradientMultiOutputTest() : scope_(Scope::NewRootScope()) {}
 
   void CheckGrad(const std::vector<bool>& stop_outputs,
                  const Tensor& expected_grad) {
-    // save the assign node to init the graph before the run
-    std::vector<Output> assign_vars;
-
     CHECK_EQ(3, stop_outputs.size());
-    auto x = ThreeNodeVariable(scope_, 1, {3, 2, 4}, &assign_vars);
+    auto x = ops::Const(scope_, 1, {3, 2, 4});
     auto y = Unstack(scope_, x, 3);
     TF_ASSERT_OK(scope_.status());
 
@@ -580,7 +545,7 @@ class StopGradientMultiOutputTest : public ::testing::Test,
 
     if (expected_grad.NumElements() > 0) {
       Tensor output;
-      test::GetTensor(scope_, assign_vars, grad_outputs[0], &output);
+      test::GetTensor(scope_, grad_outputs[0], &output);
       test::ExpectTensorEqual<int>(output, expected_grad);
     } else {
       EXPECT_EQ(NoGradient(), grad_outputs[0]);
