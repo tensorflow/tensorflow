@@ -51,14 +51,16 @@ TF_Tensor* Int32Tensor(int32_t v, const tensorflow::TensorShape shape) {
 }
 
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name,
-                          const tensorflow::TensorShape shape) {
+                          const tensorflow::PartialTensorShape shape) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", name);
   TF_SetAttrType(desc, "dtype", TF_INT32);
   int num_dims = shape.dims();
-  int64_t* dims = new int64_t[num_dims];
-  for (int i = 0; i < num_dims; ++i)
-    dims[i] = reinterpret_cast<int64_t>(shape.dim_size(i));
-  TF_SetAttrShape(desc, "shape", const_cast<const int64_t*>(dims), num_dims);
+  if (num_dims > 0) {
+    int64_t* dims = new int64_t[num_dims];
+    for (int i = 0; i < num_dims; ++i)
+      dims[i] = reinterpret_cast<int64_t>(shape.dim_size(i));
+    TF_SetAttrShape(desc, "shape", const_cast<const int64_t*>(dims), num_dims);
+  }
   return TF_FinishOperation(desc, s);
 }
 

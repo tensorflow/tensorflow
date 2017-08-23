@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -38,7 +39,7 @@ TF_Tensor* Int32Tensor(int32_t v, const tensorflow::TensorShape shape = {});
 
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
                           const char* name = "feed",
-                          const tensorflow::TensorShape shape = {});
+                          const tensorflow::PartialTensorShape shape = tensorflow::PartialTensorShape());
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");
