@@ -79,6 +79,46 @@ func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
+// VariableShapeAttr is an optional argument to VariableShape.
+type VariableShapeAttr func(optionalAttr)
+
+// VariableShapeOutType sets the optional out_type attribute to value.
+// If not specified, defaults to DT_INT32
+func VariableShapeOutType(value tf.DataType) VariableShapeAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Returns the shape of the variable pointed to by `resource`.
+//
+// This operation returns a 1-D integer tensor representing the shape of `input`.
+//
+// For example:
+//
+// ```
+// # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+// shape(t) ==> [2, 2, 3]
+// ```
+func VariableShape(scope *Scope, input tf.Output, optional ...VariableShapeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "VariableShape",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Checks whether a resource handle-based variable has been initialized.
 //
 // Arguments:
