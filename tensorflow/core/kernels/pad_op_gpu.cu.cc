@@ -35,7 +35,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::Pad<GPUDevice, T, 5>; \
   template struct functor::Pad<GPUDevice, T, 6>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_qint8(DEFINE_GPU_SPECS) TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 }  // namespace tensorflow
 
