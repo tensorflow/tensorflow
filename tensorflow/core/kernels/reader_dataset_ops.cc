@@ -91,8 +91,10 @@ class TextLineDatasetOp : public OpKernel {
           use_compression_(use_compression),
           options_(options) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -111,11 +113,12 @@ class TextLineDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next line.
@@ -251,8 +254,10 @@ class FixedLengthRecordDatasetOp : public OpKernel {
           record_bytes_(record_bytes),
           footer_bytes_(footer_bytes) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -273,11 +278,12 @@ class FixedLengthRecordDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.
@@ -389,8 +395,10 @@ class TFRecordDatasetOp : public OpKernel {
           options_(io::RecordReaderOptions::CreateRecordReaderOptions(
               compression_type)) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -409,11 +417,12 @@ class TFRecordDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.

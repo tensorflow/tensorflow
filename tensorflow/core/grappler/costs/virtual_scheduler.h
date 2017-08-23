@@ -254,9 +254,6 @@ class VirtualScheduler {
 
   // Pool of NodeDefs for SendRecv and Identity ops created.
   std::vector<std::unique_ptr<NodeDef>> additional_nodes_;
-  // Cache of nodes transferred to another device.
-  std::unordered_map<const NodeDef*, std::unordered_map<string, const NodeDef*>>
-      cached_recv_nodes_;
 
   // Stats:
   std::map<string, int> op_counts_;  // Op counts with key with input shape.

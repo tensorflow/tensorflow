@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-
 namespace {
 
 // Checks that arguments `args` match types `types`.
@@ -89,21 +88,23 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
+
                                                       FunctionDefLibrary{}));
-  local_flib_runtime_.reset(NewFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), device_, options.graph_def_version,
+  local_pflr_.reset(new ProcessFunctionLibraryRuntime(
+      &device_mgr_, Env::Default(), options.graph_def_version,
       local_flib_def_.get(), OptimizerOptions(),
       nullptr /* custom_kernel_creator */));
-  flib_runtime_.reset(NewFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), device_, options.graph_def_version,
-      options.flib_def, OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
+  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
+      OptimizerOptions(), nullptr /* custom_kernel_creator */));
+
+  local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
+  flib_runtime_ = pflr_->GetFLR(device_->name());
 }
 
 XlaCompiler::~XlaCompiler() = default;
 
 int64 XlaCompiler::NextStepId() {
-  mutex_lock l(mu_);
   return next_step_id_++;
 }
 
@@ -139,8 +140,8 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  if (!GetFunctionBody(function, local_flib_runtime_.get(), &fbody).ok()) {
-    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_.get(), &fbody));
+  if (!GetFunctionBody(function, local_flib_runtime_, &fbody).ok()) {
+    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_, &fbody));
   }
 
   TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
@@ -161,8 +162,8 @@ Status XlaCompiler::CompileFunction(
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
-                     /*device=*/nullptr, &graph);
+  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
+                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
@@ -466,7 +467,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   context->set_args(std::move(context_args));
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
-                                  flib_runtime_.get(), NextStepId()));
+                                  flib_runtime_, NextStepId()));
 
   int num_nonconst_outputs;
   int num_computation_outputs;
@@ -553,7 +554,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
 Status XlaCompiler::GetChannelHandle(const string& key,
                                      xla::ChannelHandle* channel) {
-  mutex_lock lock(mu_);
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second, client()->CreateChannelHandle());

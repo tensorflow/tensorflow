@@ -5,10 +5,6 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 package_group(
@@ -38,6 +34,7 @@ cc_library(
         ":conv_canonicalization",
         ":cpu_executable",
         ":cpu_instruction_fusion",
+        ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
         ":ir_emission_utils",
@@ -53,9 +50,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:batchnorm_rewriter",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
-        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -72,6 +69,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:inliner",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
@@ -103,6 +102,7 @@ cc_library(
         ":compiler_functor",
         ":cpu_runtime",
         ":cpu_runtime_avx",
+        ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
         ":disassembler",
         ":runtime_conv2d",
@@ -113,6 +113,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@llvm//:core",
+        "@llvm//:execution_engine",
         "@llvm//:mc",  # fixdeps: keep
         "@llvm//:orc_jit",
         "@llvm//:support",
@@ -184,6 +185,7 @@ cc_library(
         "ir_emitter.h",
     ],
     deps = [
+        ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
         ":elemental_ir_emitter",
@@ -211,6 +213,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
+        "@llvm//:target",
     ],
 )
 
@@ -282,15 +285,19 @@ cc_library(
     deps = [
         ":cpu_runtime",
         ":cpu_runtime_avx",
+        ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
         ":disassembler",
+        ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:analysis",
         "@llvm//:core",
+        "@llvm//:execution_engine",
         "@llvm//:ipo",
         "@llvm//:mc",
         "@llvm//:object",
@@ -304,12 +311,11 @@ cc_library(
     srcs = ["cpu_runtime_sse4_1.cc"],
     hdrs = ["cpu_runtime_sse4_1.h"],
     copts = ["-DEIGEN_AVOID_STL_ARRAY"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -317,12 +323,24 @@ cc_library(
     srcs = ["cpu_runtime_avx.cc"],
     hdrs = ["cpu_runtime_avx.h"],
     copts = ["-DEIGEN_AVOID_STL_ARRAY"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
+)
+
+cc_library(
+    name = "cpu_runtime_neon",
+    srcs = ["cpu_runtime_neon.cc"],
+    hdrs = ["cpu_runtime_neon.h"],
+    # runtime_copts() enables -mfpu=neon
+    copts = ["-DEIGEN_AVOID_STL_ARRAY"] + runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -347,6 +365,21 @@ cc_library(
 )
 
 cc_library(
+    name = "llvm_ir_runtime",
+    srcs = [
+        "llvm_ir_runtime.cc",
+    ],
+    hdrs = [
+        "llvm_ir_runtime.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+        "@llvm//:transform_utils",
+    ],
+)
+
+cc_library(
     name = "runtime_conv2d",
     srcs = [
         "runtime_conv2d.cc",
@@ -356,13 +389,11 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -372,12 +403,10 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -390,12 +419,10 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -405,11 +432,9 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_test(
@@ -431,11 +456,25 @@ cc_test(
 )
 
 cc_test(
+    name = "cpu_instruction_fusion_test",
+    size = "small",
+    srcs = ["cpu_instruction_fusion_test.cc"],
+    deps = [
+        ":cpu_instruction_fusion",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:transpose_folding",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
     name = "xfeed_manager_test",
     size = "small",
     srcs = ["xfeed_manager_test.cc"],
     deps = [
         ":cpu_runtime",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -562,6 +601,16 @@ cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "cpu_options",
+    srcs = ["cpu_options.cc"],
+    hdrs = ["cpu_options.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(

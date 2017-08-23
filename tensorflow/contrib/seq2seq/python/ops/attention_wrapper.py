@@ -299,7 +299,7 @@ def _luong_score(query, keys, scale):
   #   [batch_size, 1, depth] . [batch_size, depth, max_time]
   # resulting in an output shape of:
   #   [batch_time, 1, max_time].
-  # we then squeee out the center singleton dimension.
+  # we then squeeze out the center singleton dimension.
   score = math_ops.matmul(query, keys, transpose_b=True)
   score = array_ops.squeeze(score, [1])
 
@@ -979,9 +979,9 @@ def _compute_attention(attention_mechanism, cell_output, previous_alignments,
   # alignments shape is
   #   [batch_size, 1, memory_time]
   # attention_mechanism.values shape is
-  #   [batch_size, memory_time, attention_mechanism.num_units]
+  #   [batch_size, memory_time, memory_size]
   # the batched matmul is over memory_time, so the output shape is
-  #   [batch_size, 1, attention_mechanism.num_units].
+  #   [batch_size, 1, memory_size].
   # we then squeeze out the singleton dim.
   context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
   context = array_ops.squeeze(context, [1])

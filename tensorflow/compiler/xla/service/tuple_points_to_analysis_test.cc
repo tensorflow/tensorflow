@@ -35,8 +35,8 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-using ::testing::UnorderedElementsAreArray;
 using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAreArray;
 
 class TuplePointsToAnalysisTest : public HloTestBase {
  protected:
@@ -62,7 +62,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // index. CHECKs if no buffer is defined at that point.
   const LogicalBuffer* const GetBuffer(const HloInstruction* instruction,
                                        const ShapeIndex& index) {
-    const std::vector<const LogicalBuffer*>& pointed_to =
+    const auto& pointed_to =
         points_to_analysis_->GetPointsToSet(instruction).element(index);
     CHECK_EQ(1, pointed_to.size());
     CHECK_EQ(instruction, pointed_to[0]->instruction());
@@ -73,7 +73,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Checks that the given points-to set contains exactly (unordered) the given
   // LogicalBuffers.
   void ExpectHasBuffers(
-      const std::vector<const LogicalBuffer*>& points_to_set,
+      const PointsToSet::BufferList& points_to_set,
       tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
     EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
@@ -82,22 +82,22 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Checks that the given points-to set contains exactly (unordered) the
   // top-level buffers of the given instructions.
   void ExpectHasTopLevelBuffers(
-      const std::vector<const LogicalBuffer*>& points_to_set,
+      const PointsToSet::BufferList& points_to_set,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-    std::vector<const LogicalBuffer*> buffers;
+    PointsToSet::BufferList buffers;
     for (auto instruction : instructions) {
       buffers.push_back(GetBuffer(instruction, /*index=*/{}));
     }
     ExpectHasBuffers(points_to_set, buffers);
   }
 
-  // Overload which takes a std::set instead of a std::vector.
+  // Overload which takes a set instead of a vector.
   void ExpectHasTopLevelBuffers(
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& points_to_set,
+      const PointsToSet::BufferSet& points_to_set,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-    ExpectHasTopLevelBuffers(std::vector<const LogicalBuffer*>(
-                                 points_to_set.begin(), points_to_set.end()),
-                             instructions);
+    ExpectHasTopLevelBuffers(
+        PointsToSet::BufferList(points_to_set.begin(), points_to_set.end()),
+        instructions);
   }
 
   // Checks that the buffer defined at the given instruction and index has

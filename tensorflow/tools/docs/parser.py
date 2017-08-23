@@ -507,7 +507,7 @@ def _parse_function_details(docstring):
   pairs = list(_gen_pairs(parts[1:]))
 
   function_details = []
-  item_re = re.compile(r'^  (\w+):', re.MULTILINE)
+  item_re = re.compile(r'^  (\*?\*?\w+):', re.MULTILINE)
 
   for keyword, content in pairs:
     content = item_re.split(content)
@@ -1488,7 +1488,7 @@ class _GeneratedFile(object):
 def _get_defined_in(py_object, parser_config):
   """Returns a description of where the passed in python object was defined.
 
-  Arguments:
+  Args:
     py_object: The Python object.
     parser_config: A ParserConfig object.
 

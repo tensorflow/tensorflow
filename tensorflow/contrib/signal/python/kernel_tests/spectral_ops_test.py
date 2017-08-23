@@ -220,15 +220,14 @@ class SpectralOpsTest(test.TestCase):
       # stft_bound, inverse_stft_bound).
       # TODO(rjryan): Investigate why STFT gradient error is so high.
       test_configs = [
-          (512, 64, 32, 64, 2e-3, 3e-5),
-          (512, 64, 64, 64, 2e-3, 3e-5),
-          (512, 64, 25, 64, 2e-3, 3e-5),
-          (512, 25, 15, 36, 2e-3, 3e-5),
-          (123, 23, 5, 42, 2e-3, 4e-5),
+          (64, 16, 8, 16),
+          (64, 16, 16, 16),
+          (64, 16, 7, 16),
+          (64, 7, 4, 9),
+          (29, 5, 1, 10),
       ]
 
-      for (signal_length, frame_length, frame_step, fft_length,
-           stft_bound, inverse_stft_bound) in test_configs:
+      for (signal_length, frame_length, frame_step, fft_length) in test_configs:
         signal_shape = [signal_length]
         signal = random_ops.random_uniform(signal_shape)
         stft_shape = [max(0, 1 + (signal_length - frame_length) // frame_step),
@@ -242,8 +241,8 @@ class SpectralOpsTest(test.TestCase):
                                                  stft, stft_shape)
         inverse_stft_error = test.compute_gradient_error(
             stft, stft_shape, inverse_stft, inverse_stft_shape)
-        self.assertLess(stft_error, stft_bound)
-        self.assertLess(inverse_stft_error, inverse_stft_bound)
+        self.assertLess(stft_error, 2e-3)
+        self.assertLess(inverse_stft_error, 5e-4)
 
 
 if __name__ == "__main__":

@@ -1395,34 +1395,6 @@ void wrapper_libxsmm_spmdm_compute_generic_thread(
                                            block_id, tid, nthreads);
 }
 
-class PinnedToCurrentCPU {
-  bool valid;
-  cpu_set_t old_cpu_set;
-
- public:
-  PinnedToCurrentCPU() : valid(false) {
-    int ret = 0;
-    ret = sched_getaffinity(0, sizeof(cpu_set_t), &old_cpu_set);
-    if (ret != 0) {
-      VLOG(WARNING) << "sched_getaffinity";
-      return;
-    }
-    valid = true;
-    cpu_set_t new_cpu_set;
-    CPU_ZERO(&new_cpu_set);
-    CPU_SET(sched_getcpu(), &new_cpu_set);
-    ret = sched_setaffinity(0, sizeof(cpu_set_t), &new_cpu_set);
-    if (ret != 0) {
-      VLOG(WARNING) << "sched_setaffinity";
-    }
-  }
-  ~PinnedToCurrentCPU() {
-    if (!valid) return;
-    // No reason to trap errors here
-    sched_setaffinity(0, sizeof(cpu_set_t), &old_cpu_set);
-  }
-};
-
 template <typename TL, typename TR>
 inline void LibxsmmSparseMatMul<TL, TR>::Compute(
     typename LibxsmmSparseMatMul<TL, TR>::TensorInfoCache* cache,
@@ -1467,7 +1439,6 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
   std::atomic<int> cur_create_block_number;
   cur_create_block_number.store(0);
   do_on_all_threads(thread_pool, [&](int i) {
-    PinnedToCurrentCPU pin;
     while (true) {
       int work_item = cur_create_block_number.fetch_add(1);
       if (work_item >= total_num_creation_blocks) break;
@@ -1483,7 +1454,6 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
   std::atomic<int> cur_mult_block_number;
   cur_mult_block_number.store(0);
   do_on_all_threads(thread_pool, [&](int i) {
-    PinnedToCurrentCPU pin;
     while (true) {
       int work_item = cur_mult_block_number.fetch_add(1);
       if (work_item >= total_num_mult_blocks) break;

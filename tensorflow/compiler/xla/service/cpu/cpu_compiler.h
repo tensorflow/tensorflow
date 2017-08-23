@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
@@ -104,7 +104,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
 // The compiler translates XLA HLO code into LLVM IR and uses LLVM's JIT
 // infrastructure to create an executable "blob" that can then be returned
 // wrapped in CpuExecutable and actually invoked.
-class CpuCompiler : public Compiler {
+class CpuCompiler : public LLVMCompiler {
  public:
   CpuCompiler();
   ~CpuCompiler() override {}

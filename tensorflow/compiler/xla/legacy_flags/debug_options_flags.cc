@@ -39,6 +39,7 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_backend_optimization_level(3);
   flags->set_xla_cpu_multi_thread_eigen(true);
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
+  flags->set_xla_eliminate_hlo_implicit_broadcast(true);
 }
 }  // namespace
 
@@ -115,12 +116,6 @@ void AllocateFlags() {
            bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
            flag_values->xla_hlo_graph_addresses(),
            "With xla_generate_hlo_graph, show addresses of HLO ops in "
-           "graph dump."),
-       tensorflow::Flag(
-           "xla_hlo_graph_layout",
-           bool_setter_for(&DebugOptions::set_xla_hlo_graph_layout),
-           flag_values->xla_hlo_graph_layout(),
-           "With xla_generate_hlo_graph, show layout of HLO ops in "
            "graph dump."),
        tensorflow::Flag(
            "xla_hlo_graph_path", flag_values->mutable_xla_hlo_graph_path(),

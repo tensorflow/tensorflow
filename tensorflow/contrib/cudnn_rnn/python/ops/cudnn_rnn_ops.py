@@ -38,10 +38,6 @@ _cudnn_rnn_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
 
 _flatten_transpose = lambda t: array_ops.reshape(array_ops.transpose(t), [-1])
-# pylint: disable=g-long-lambda
-_transpose_reshape = lambda t, shape: array_ops.transpose(
-    array_ops.reshape(t, shape))
-# pylint: enable=g-long-lambda
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -131,7 +127,8 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
         for param, param_name in zip(params, param_names)
     ]
-    super(RNNParamsSaveable, self).__init__(None, specs, name)
+    super(RNNParamsSaveable, self).__init__(
+        array_ops.identity(param_variables[0]), specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
     if (self._cudnn_rnn.direction == CUDNN_RNN_UNIDIRECTION and
@@ -241,8 +238,6 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     transformed_weights, transformed_biases = [], []
     for i in range(self._cudnn_rnn.num_layers):
       base_idx = i * 8
-      num_units = self._cudnn_rnn.num_units
-      input_size = self._cudnn_rnn.input_size if i == 0 else num_units
       # cuDNN tensor shapes per time_step:
       # input.shape:         [batch_size, input_size],
       # input_weights.shape: [num_units, input_size] (first layer)
@@ -259,16 +254,11 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
 
       # Stitch weights together in this layer.
       stitched_w = []
+
       for j in range(4):
         stitched_w.append(
             array_ops.concat(
-                [
-                    array_ops.reshape(weights[base_idx + j],
-                                      [num_units, input_size]),
-                    array_ops.reshape(weights[base_idx + j + 4],
-                                      [num_units, num_units])
-                ],
-                axis=1))
+                [weights[base_idx + j], weights[base_idx + j + 4]], axis=1))
       # cuDNN weights are in ifco order, convert to icfo order.
       self._switch_inner(stitched_w, 0)
       transformed_weights.append(
@@ -306,8 +296,6 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     transformed_weights, transformed_biases = [], []
     for i in range(self._cudnn_rnn.num_layers):
       base_idx = i * 6
-      num_units = self._cudnn_rnn.num_units
-      input_size = self._cudnn_rnn.input_size if i == 0 else num_units
       # cuDNN tensor shapes per time_step:
       # input.shape:         [batch_size, input_size],
       # input_weights.shape: [num_units, input_size] (first layer)
@@ -334,19 +322,14 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         stitched_w.append(
             array_ops.concat(
                 [
-                    array_ops.reshape(weights[base_idx + j],
-                                      [num_units, input_size]),
-                    array_ops.reshape(weights[base_idx + j + 3],
-                                      [num_units, num_units])
-                ],
-                axis=1))
+                    weights[base_idx + j],
+                    weights[base_idx + j + 3],
+                ], axis=1))
       transformed_weights.append(
           array_ops.transpose(array_ops.concat(stitched_w[:2], axis=0)))
       # weights for new memory gate are kept separate.
-      transformed_weights.append(
-          _transpose_reshape(weights[base_idx + 2], [num_units, input_size]))
-      transformed_weights.append(
-          _transpose_reshape(weights[base_idx + 5], [num_units, num_units]))
+      transformed_weights.append(array_ops.transpose(weights[base_idx + 2]))
+      transformed_weights.append(array_ops.transpose(weights[base_idx + 5]))
 
       # Bias for reset and update gates.
       b_r = array_ops.concat(biases[base_idx:base_idx + 2], axis=0)
@@ -547,7 +530,12 @@ class _CudnnRNN(object):
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
+    Raises:
+      ValueError: if direction is invalid.
     """
+    if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
+      raise ValueError("Invalid direction: %s, expect %s or %s",
+                       direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION)
     self._num_layers = num_layers
     self._num_units = num_units
     self._input_size = input_size
@@ -643,6 +631,9 @@ class _CudnnRNN(object):
     Returns:
       A function for the specific-to-canonical conversion.
     """
+    num_params = self._num_layers * self._NUM_PARAMS_PER_LAYER
+    if self._direction != CUDNN_RNN_UNIDIRECTION:
+      num_params *= 2
     weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -651,7 +642,7 @@ class _CudnnRNN(object):
         dropout=self._dropout,
         seed=self._seed,
         seed2=self._seed2,
-        num_params=self._num_layers * self._NUM_PARAMS_PER_LAYER,
+        num_params=num_params,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
         direction=self._direction)

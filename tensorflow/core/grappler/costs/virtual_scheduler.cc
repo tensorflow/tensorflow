@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -56,6 +57,32 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
           << " max_per_op_streaming=" << result.max_per_op_streaming;
   return result;
 }
+
+// Key to the cached _Recv ops map, and its hash and predicate structures.
+struct RecvNodeDescriptor {
+  const NodeDef* node;
+  const int port_num;
+  const string device;
+
+  RecvNodeDescriptor(const NodeDef* node_, const int port_num_,
+                     const string& device_)
+      : node(node_), port_num(port_num_), device(device_) {}
+};
+
+struct RecvNodeDescritorHash {
+  std::size_t operator()(const RecvNodeDescriptor& recv_node) const {
+    return std::hash<const NodeDef*>()(recv_node.node) ^
+           std::hash<int>()(recv_node.port_num) ^
+           std::hash<string>()(recv_node.device);
+  }
+};
+
+struct RecvNodeDescriptorEqual {
+  bool operator()(const RecvNodeDescriptor& a,
+                  const RecvNodeDescriptor& b) const {
+    return a.node == b.node && a.port_num == b.port_num && a.device == b.device;
+  }
+};
 }  // namespace
 
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
@@ -93,6 +120,12 @@ Status VirtualScheduler::Init() {
 
   const auto& graph = grappler_item_->graph;
   const auto& fetch_nodes = grappler_item_->fetch;
+  std::set<string> feed_nodes;
+  for (const auto& f : grappler_item_->feed) {
+    auto iter_and_inserted_flag = feed_nodes.insert(f.first);
+    QCHECK(iter_and_inserted_flag.second)
+        << "Duplicate feed node found: " << f.first;
+  }
 
   // Get the nodes that would run to output fetch_nodes.
   std::vector<const NodeDef*> nodes =
@@ -108,6 +141,11 @@ Status VirtualScheduler::Init() {
   for (const auto& node : nodes) {
     name_to_node[node->name()] = node;
   }
+
+  // To reuse _Recv ops.
+  std::unordered_map<RecvNodeDescriptor, const NodeDef*, RecvNodeDescritorHash,
+                     RecvNodeDescriptorEqual>
+      cached_recv_nodes;
 
   // Build node_map; for each node, create its NodeState and connect its inputs
   // and outputs.
@@ -131,12 +169,13 @@ Status VirtualScheduler::Init() {
         auto& input_node_state = GetNodeStateOrCreateIt(input_node);
         input_node_state.outputs[input_node_port_num].push_back(curr_node);
       } else {
-        if (cached_recv_nodes_.count(input_node) > 0 &&
-            cached_recv_nodes_[input_node].count(curr_node_device) > 0) {
+        RecvNodeDescriptor recv_node(input_node, input_node_port_num,
+                                     curr_node_device);
+        auto it = cached_recv_nodes.find(recv_node);
+        if (it != cached_recv_nodes.end()) {
           // Different device, but found an already-cached copy (a _Recv op);
           // connect the _Recv to curr_node.
-          const auto* recv_op =
-              cached_recv_nodes_[input_node][curr_node_device];
+          const NodeDef* recv_op = it->second;
           // recv_op's output port is hard-coded to zero.
           curr_node_state.inputs.push_back(std::make_pair(recv_op, 0));
           auto& input_node_state = node_map_.at(recv_op);
@@ -156,16 +195,25 @@ Status VirtualScheduler::Init() {
           input_node_state.outputs[input_node_port_num].push_back(send);
 
           // Cache the _Recv op for future use.
-          cached_recv_nodes_[input_node][curr_node_device] = recv;
+          cached_recv_nodes[recv_node] = recv;
         }
       }
     }
 
-    if (curr_node->input().empty()) {
-      // Node without input: ready at time 0.
+    // Special case: given feed nodes are ready at time 0.
+    const bool given_as_feed =
+        feed_nodes.find(curr_node->name()) != feed_nodes.end();
+
+    // Default case: node without inputs are ready at time 0.
+    const bool has_no_inputs = curr_node->input().empty();
+
+    if (given_as_feed || has_no_inputs) {
       curr_node_state.time_ready = Costs::Duration();
       ready_nodes_->AddNode(curr_node);
+      VLOG(1) << "Added ready node: " << curr_node->name();
     }
+
+    feed_nodes.erase(curr_node->name());
 
     if (IsPersistentNode(curr_node)) {
       auto& device_state = device_[curr_node_device];
@@ -180,6 +228,9 @@ Status VirtualScheduler::Init() {
   if (ready_nodes_->Empty()) {
     return Status(error::UNAVAILABLE, "No ready nodes in the graph.");
   }
+
+  CHECK(feed_nodes.empty()) << "Some feed nodes were not found in the graph: "
+                            << str_util::Join(feed_nodes, ",");
 
   initialized_ = true;
   return Status::OK();
@@ -269,10 +320,16 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   // input names, attrs, etc.
 
   auto input_node_port_num = NodePosition(input_name);
+  string src_name;
+  if (input_node_port_num >= 0) {
+    src_name = strings::StrCat(from->name(), ":", input_node_port_num);
+  } else {
+    src_name = strings::StrCat(from->name(), ":minus1");
+  }
 
   // _Send op.
   auto* send = new NodeDef();
-  send->set_name("Send " + from->name() + " from " + DeviceName(from) + " to " +
+  send->set_name("Send " + src_name + " from " + DeviceName(from) + " to " +
                  DeviceName(to));
   send->set_op("_Send");
   send->add_input(from->name());
@@ -284,7 +341,7 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
 
   // _Recv op.
   auto* recv = new NodeDef();
-  recv->set_name("Recv " + from->name() + " on " + DeviceName(to));
+  recv->set_name("Recv " + src_name + " on " + DeviceName(to));
   recv->set_op("_Recv");
   recv->add_input(send->name());
   recv->set_device(DeviceName(to));
@@ -484,7 +541,11 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
     for (auto* output_node : port_num_output_pair.second) {
       auto& output_state = node_map_[output_node];
       output_state.num_inputs_ready++;
-      if (output_state.num_inputs_ready == output_state.inputs.size()) {
+      // Execute a node as soon as all its inputs are ready. Merge nodes are
+      // special since they run as soon as one of their inputs becomes
+      // available.
+      if (output_state.num_inputs_ready == output_state.inputs.size() ||
+          IsMerge(*output_node)) {
         // This output node is now ready.
         output_state.time_ready = curr_time;
         ready_nodes_->AddNode(output_node);

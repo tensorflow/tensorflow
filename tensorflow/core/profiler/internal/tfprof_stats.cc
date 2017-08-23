@@ -25,6 +25,22 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+namespace {
+bool CreateRunMetadataNode(const string& name, NodeDef* def) {
+  // TODO(xpan): Better solution than blacklisting this 2 nodes. They
+  // actually cost some resources, maybe include them. Some nodes, such
+  // as _SOURCE appear in multiple devices, which breaks tfprof's assumption.
+  if (name == "RecvTensor" || name == "_SOURCE" ||
+      name.find("MEMCPY") != name.npos) {
+    return false;
+  }
+  def->set_name(name);
+  // TODO(xpan): Better operation type.
+  def->set_op("RunTimeOp");
+  return true;
+}
+}  // namespace
+
 TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<RunMetadata> run_meta,
                  std::unique_ptr<OpLogProto> op_log,
@@ -177,9 +193,8 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
     fprintf(stderr, "Invalid RunMetadata for step %lld\n", step);
     return;
   }
-  if (steps_.find(step) != steps_.end()) {
-    fprintf(stderr, "The same step %lld has been added before.\n", step);
-    return;
+  if (steps_.find(step) == steps_.end()) {
+    steps_.insert(step);
   }
   steps_.insert(step);
 
@@ -192,7 +207,16 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
         name = node_stat.node_name().substr(0, split_pos);
       }
       auto node = nodes_map_.find(name);
-      if (node != nodes_map_.end()) {
+      if (node == nodes_map_.end()) {
+        NodeDef def;
+        if (CreateRunMetadataNode(name, &def)) {
+          NodeDef* ndef = graph_->mutable_node()->Add();
+          ndef->MergeFrom(def);
+          nodes_map_[name] =
+              std::unique_ptr<TFGraphNode>(new TFGraphNode(ndef));
+          nodes_map_.at(name)->AddStepStat(step, dev_stat.device(), node_stat);
+        }
+      } else {
         node->second->AddStepStat(step, dev_stat.device(), node_stat);
       }
     }

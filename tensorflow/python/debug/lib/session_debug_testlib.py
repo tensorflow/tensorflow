@@ -711,7 +711,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     # Test node name list lookup of the DebugDumpDir object.
     if test_util.gpu_device_name():
       node_names = dump.nodes(
-          device_name="/job:localhost/replica:0/task:0/gpu:0")
+          device_name="/job:localhost/replica:0/task:0/device:GPU:0")
     else:
       node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
@@ -1280,7 +1280,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1292,7 +1292,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"2 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary:"):
+          r"__dbg_.:0_0_DebugNumericSummary:"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1304,7 +1304,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
   def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):

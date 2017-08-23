@@ -88,6 +88,9 @@ class ShapeRefiner {
   void set_require_shape_inference_fns(bool require_shape_inference_fns) {
     require_shape_inference_fns_ = require_shape_inference_fns;
   }
+  void set_disable_constant_propagation(bool disable) {
+    disable_constant_propagation_ = disable;
+  }
 
  private:
   friend class ShapeRefinerTest;
@@ -177,6 +180,7 @@ class ShapeRefiner {
   std::unordered_map<string, Tensor> const_tensor_map_;
 
   bool require_shape_inference_fns_ = true;
+  bool disable_constant_propagation_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };

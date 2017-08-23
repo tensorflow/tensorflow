@@ -134,6 +134,60 @@ class RunConfigTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, _TF_RANDOM_SEED_ERR):
       config.replace(tf_random_seed=1.0)
 
+  def test_init_with_allowed_properties(self):
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+
+    config = run_config_lib.RunConfig(
+        tf_random_seed=11,
+        save_summary_steps=12,
+        save_checkpoints_secs=14,
+        session_config=session_config,
+        keep_checkpoint_max=16,
+        keep_checkpoint_every_n_hours=17)
+    self.assertEqual(11, config.tf_random_seed)
+    self.assertEqual(12, config.save_summary_steps)
+    self.assertEqual(14, config.save_checkpoints_secs)
+    self.assertEqual(session_config, config.session_config)
+    self.assertEqual(16, config.keep_checkpoint_max)
+    self.assertEqual(17, config.keep_checkpoint_every_n_hours)
+
+  def test_init_none_value(self):
+    config = run_config_lib.RunConfig(
+        tf_random_seed=None,
+        model_dir=None,
+        save_summary_steps=None,
+        save_checkpoints_secs=None,
+        save_checkpoints_steps=None,
+        session_config=None,
+        keep_checkpoint_max=None,
+        keep_checkpoint_every_n_hours=None)
+    self.assertIsNone(config.tf_random_seed)
+    self.assertIsNone(config.model_dir)
+    self.assertIsNone(config.save_summary_steps)
+    self.assertIsNone(config.save_checkpoints_secs)
+    self.assertIsNone(config.save_checkpoints_steps)
+    self.assertIsNone(config.session_config)
+    self.assertIsNone(config.keep_checkpoint_max)
+    self.assertIsNone(config.keep_checkpoint_every_n_hours)
+
+  def test_init_invalid_values(self):
+    with self.assertRaisesRegexp(ValueError, _MODEL_DIR_ERR):
+      run_config_lib.RunConfig(model_dir='')
+    with self.assertRaisesRegexp(ValueError, _SAVE_SUMMARY_STEPS_ERR):
+      run_config_lib.RunConfig(save_summary_steps=-1)
+    with self.assertRaisesRegexp(ValueError, _SAVE_CKPT_STEPS_ERR):
+      run_config_lib.RunConfig(save_checkpoints_steps=-1)
+    with self.assertRaisesRegexp(ValueError, _SAVE_CKPT_SECS_ERR):
+      run_config_lib.RunConfig(save_checkpoints_secs=-1)
+    with self.assertRaisesRegexp(ValueError, _SESSION_CONFIG_ERR):
+      run_config_lib.RunConfig(session_config={})
+    with self.assertRaisesRegexp(ValueError, _KEEP_CKPT_MAX_ERR):
+      run_config_lib.RunConfig(keep_checkpoint_max=-1)
+    with self.assertRaisesRegexp(ValueError, _KEEP_CKPT_HOURS_ERR):
+      run_config_lib.RunConfig(keep_checkpoint_every_n_hours=0)
+    with self.assertRaisesRegexp(ValueError, _TF_RANDOM_SEED_ERR):
+      run_config_lib.RunConfig(tf_random_seed=1.0)
+
 
 class RunConfigSaveCheckpointsTest(test.TestCase):
 
@@ -157,6 +211,10 @@ class RunConfigSaveCheckpointsTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, _SAVE_CKPT_ERR):
       empty_config.replace(save_checkpoints_steps=100,
                            save_checkpoints_secs=200)
+
+    with self.assertRaisesRegexp(ValueError, _SAVE_CKPT_ERR):
+      run_config_lib.RunConfig(save_checkpoints_steps=100,
+                               save_checkpoints_secs=200)
 
   def test_save_checkpoint_both_steps_and_secs_are_none(self):
     config_with_secs = run_config_lib.RunConfig()

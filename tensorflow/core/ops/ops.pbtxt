@@ -499,7 +499,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -593,6 +593,45 @@ op {
   is_stateful: true
 }
 op {
+  name: "Angle"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns the argument of a complex number."
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the argument of each element in `input`. All elements in\n`input` must be complex numbers of the form \\(a + bj\\), where *a*\nis the real part and *b* is the imaginary part.\n\nThe argument returned by this operation is of the form \\(atan2(b, a)\\).\n\nFor example:\n```\n # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.angle(input) ==> [2.0132, 1.056]\n```"
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -601,7 +640,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1048,67 +1087,6 @@ op {
   }
   summary: "Update \'*var\' according to the centered RMSProp algorithm."
   description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\n\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nmg <- rho * mg_{t-1} + (1-rho) * grad\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)\nvar <- var - mom"
-}
-op {
-  name: "ApplyDelayCompensatedGradientDescent"
-  input_arg {
-    name: "var"
-    description: "Should be from a Variable()."
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "alpha"
-    description: "Scaling factor. Must be a scalar."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "delta"
-    description: "The change."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "lambda"
-    description: "The variance parameter."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "shadow"
-    description: "Same as \"var\"."
-    type: DT_RESOURCE
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT64
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_UINT16
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_HALF
-      }
-    }
-  }
-  attr {
-    name: "use_locking"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
-  }
-  summary: "var -= alpha * (delta + lambda * delta * (var - shadow))"
-  description: "Update \'*shadow\' by changing it to the new value of \'var\'"
-  is_stateful: true
 }
 op {
   name: "ApplyFtrl"
@@ -1691,7 +1669,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1757,7 +1735,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -4407,6 +4385,43 @@ op {
   description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
+  name: "CompareAndBitpack"
+  input_arg {
+    name: "input"
+    description: "Values to compare against `threshold` and bitpack."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "threshold"
+    description: "Threshold to compare against."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The bitpacked comparisons."
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of the input and threshold."
+    allowed_values {
+      list {
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Compare values of `input` to `threshold` and pack resulting bits into a `uint8`."
+  description: "Each comparison returns a boolean `true` (if `input_value > threshold`)\nor and `false` otherwise.\n\nThis operation is useful for Locality-Sensitive-Hashing (LSH) and other\nalgorithms that use hashing approximations of cosine and `L2` distances;\ncodes can be generated from an input via:\n\n```python\ncodebook_size = 50\ncodebook_bits = codebook_size * 32\ncodebook = tf.get_variable(\'codebook\', [x.shape[-1].value, codebook_bits],\n                           dtype=x.dtype,\n                           initializer=tf.orthogonal_initializer())\ncodes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)\ncodes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32\n# now codes has shape x.shape[:-1] + [codebook_size]\n```\n\n**NOTE**: Currently, the innermost dimension of the tensor must be divisible\nby 8.\n\nGiven an `input` shaped `[s0, s1, ..., s_n]`, the output is\na `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`."
+}
+op {
   name: "Complex"
   input_arg {
     name: "real"
@@ -5656,10 +5671,12 @@ op {
   name: "Cumprod"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5672,6 +5689,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumprod."
   }
   attr {
     name: "reverse"
@@ -5679,6 +5697,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5722,10 +5741,12 @@ op {
   name: "Cumsum"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5738,6 +5759,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumsum."
   }
   attr {
     name: "reverse"
@@ -5745,6 +5767,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5783,6 +5806,24 @@ op {
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
+}
+op {
+  name: "DebugGradientIdentity"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Identity op for gradient debugging."
+  description: "This op is hidden from public in Python. It is used by TensorFlow Debugger to\nregister gradient tensors for gradient debugging."
+  allows_uninitialized_input: true
 }
 op {
   name: "DebugIdentity"
@@ -7072,7 +7113,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels (height x width) and the bounding\nbox is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of\nthe bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -7131,7 +7172,7 @@ op {
     type: "type"
   }
   summary: "Interleave the values from the `data` tensors into a single tensor."
-  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
+  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result. If you do not need this guarantee, ParallelDynamicStitch might\nperform better on some devices.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
 }
 op {
   name: "EditDistance"
@@ -7597,7 +7638,7 @@ op {
   }
   input_arg {
     name: "dim"
-    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
+    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`. Must be in the range\n`[-rank(input) - 1, rank(input)]`."
     type_attr: "Tdim"
   }
   output_arg {
@@ -9821,6 +9862,25 @@ op {
   summary: "Return a tensor with the same shape and contents as the input tensor or value."
 }
 op {
+  name: "IdentityN"
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Returns a list of tensors with the same shapes and contents as the input"
+  description: "tensors.\n\nThis op can be used to override the gradient for complicated functions. For\nexample, suppose y = f(x) and we wish to apply a custom function g for backprop\nsuch that dx = g(dy). In Python,\n\n```python\nwith tf.get_default_graph().gradient_override_map(\n    {\'IdentityN\': \'OverrideGradientWithG\'}):\n  y, _ = identity_n([f(x), x])\n\n@tf.RegisterGradient(\'OverrideGradientWithG\')\ndef ApplyG(op, dy, _):\n  return [None, g(dy)]  # Do not backprop to f(x).\n```"
+}
+op {
   name: "IdentityReader"
   output_arg {
     name: "reader_handle"
@@ -10101,6 +10161,44 @@ op {
     name: "k"
     type: "int"
     description: "Number of top elements to look at for computing precision."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Says whether the targets are in the top `K` predictions."
+  description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
+}
+op {
+  name: "InTopKV2"
+  input_arg {
+    name: "predictions"
+    description: "A `batch_size` x `classes` tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "targets"
+    description: "A `batch_size` vector of class ids."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "Number of top elements to look at for computing precision."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "precision"
+    description: "Computed precision at `k` as a `bool Tensor`."
+    type: DT_BOOL
   }
   attr {
     name: "T"
@@ -12069,7 +12167,7 @@ op {
       }
     }
   }
-  summary: "Computes the determinant of one ore more square matrices."
+  summary: "Computes the determinant of one or more square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
@@ -12237,6 +12335,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -12248,7 +12348,7 @@ op {
     }
   }
   summary: "Solves one or more linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach} } }\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform real or complex matrices of size `[M, N]`. `Rhs` is a tensor of the same\ntype as `matrix` and shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations\n`matrix[..., :, :]` * `output[..., :, :]` = `rhs[..., :, :]`\nin the least squares sense.\n\nWe use the following notation for (complex) matrix and right-hand sides\nin the batch:\n\n`matrix`=\\\\(A \\in \\mathbb{C}^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\mathbb{C}^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\mathbb{C}^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda \\in \\mathbb{R}\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^H A + \\lambda I)^{-1} A^H B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^H (A A^H + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\mathbb{C}^{n \\times k} } ||Z||_F^2 \\\\),\nsubject to \\\\(A Z = B\\\\). Notice that the fast path is only numerically stable\nwhen \\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach} } }\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "MatrixTriangularSolve"
@@ -12307,7 +12407,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -12818,6 +12918,82 @@ op {
   summary: "Computes second-order gradients of the maxpooling function."
 }
 op {
+  name: "MaxPoolGradGradV2"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "4-D.  Gradients of gradients w.r.t. the input of `max_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    description: "The size of the window for each dimension of the input tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients of gradients w.r.t. the input to `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
   name: "MaxPoolGradGradWithArgmax"
   input_arg {
     name: "input"
@@ -12894,6 +13070,85 @@ op {
   summary: "Computes second-order gradients of the maxpooling function."
 }
 op {
+  name: "MaxPoolGradV2"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "4-D.  Gradients w.r.t. the output of `max_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    description: "The size of the window for each dimension of the input tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients w.r.t. the input to `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes gradients of the maxpooling function."
+}
+op {
   name: "MaxPoolGradWithArgmax"
   input_arg {
     name: "input"
@@ -12968,6 +13223,75 @@ op {
     }
   }
   summary: "Computes gradients of the maxpooling function."
+}
+op {
+  name: "MaxPoolV2"
+  input_arg {
+    name: "input"
+    description: "4-D input to pool over."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    description: "The size of the window for each dimension of the input tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "The max pooled output tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  summary: "Performs max pooling on the input."
 }
 op {
   name: "MaxPoolWithArgmax"
@@ -13084,7 +13408,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13275,7 +13599,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -14885,6 +15209,35 @@ op {
   description: "The input tensors are all required to have size 1 in the first dimension.\n\nFor example:\n\n```\n# \'x\' is [[1, 4]]\n# \'y\' is [[2, 5]]\n# \'z\' is [[3, 6]]\nparallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\n```\n\nThe difference between concat and parallel_concat is that concat requires all\nof the inputs be computed before the operation will begin but doesn\'t require\nthat the input shapes be known during graph construction.  Parallel concat\nwill copy pieces of the input into the output as they become available, in\nsome situations this can provide a performance benefit."
 }
 op {
+  name: "ParallelDynamicStitch"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "data"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "merged"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Interleave the values from the `data` tensors into a single tensor."
+  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues may be merged in parallel, so if an index appears in both `indices[m][i]`\nand `indices[n][j]`, the result may be invalid. This differs from the normal\nDynamicStitch operator that defines the behavior in that case.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
+}
+op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
@@ -15419,6 +15772,33 @@ op {
   description: "The polygamma function is defined as:\n\n\n\\\\(\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\\\\)\n\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
 }
 op {
+  name: "PopulationCount"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Computes element-wise population count (a.k.a. popcount, bitsum, bitcount)."
+  description: "For each entry in `x`, calculates the number of `1` (on) bits in the binary\nrepresentation of that entry.\n\n**NOTE**: It is more efficient to first `tf.bitcast` your tensors into\n`int32` or `int64` and perform the bitcount on the result, than to feed in\n8- or 16-bit inputs and then aggregate the resulting counts."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
@@ -15449,6 +15829,36 @@ op {
   }
   summary: "Computes the power of one value to another."
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
+}
+op {
+  name: "PrefetchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The maximum number of elements to buffer in an iterator over\nthis dataset."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that asynchronously prefetches elements from `input_dataset`."
+  is_stateful: true
 }
 op {
   name: "PreventGradient"
@@ -15644,7 +16054,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -19239,6 +19649,44 @@ op {
   summary: "Computes rectified linear gradients for a Relu operation."
 }
 op {
+  name: "RemoteCall"
+  input_arg {
+    name: "target"
+    description: "A fully specified device name where we want to run the function."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "args"
+    description: "A list of arguments for the function."
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    description: "A list of return values."
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    description: "The type list for the arguments."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    description: "The type list for the return values."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "The function to run remotely."
+  }
+  summary: "Runs function `f` on a remote device indicated by `target`."
+}
+op {
   name: "RemoteFusedGraphExecute"
   input_arg {
     name: "inputs"
@@ -19489,7 +19937,7 @@ op {
     description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
   }
   summary: "Resize `images` to `size` using area interpolation."
-  description: "Input images can be of different types but output images are always float."
+  description: "Input images can be of different types but output images are always float.\n\nEach output pixel is computed by first transforming the pixel\'s footprint into\nthe input tensor and then averaging the pixels that intersect the footprint. An\ninput pixel\'s contribution to the average is weighted by the fraction of its\narea that intersects the footprint.  This is the same as OpenCV\'s INTER_AREA."
 }
 op {
   name: "ResizeBicubic"
@@ -21690,7 +22138,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "1-D. The indices of the dimensions to reverse."
+    description: "1-D. The indices of the dimensions to reverse. Must be in the range\n`[-rank(tensor), rank(tensor))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -23292,6 +23740,60 @@ op {
   }
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
   description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```python\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+}
+op {
+  name: "Selu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`"
+  description: "if < 0, `scale * features` otherwise.\n\nSee [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
+}
+op {
+  name: "SeluGrad"
+  input_arg {
+    name: "gradients"
+    description: "The backpropagated gradients to the corresponding Selu operation."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "outputs"
+    description: "The outputs of the corresponding Selu operation."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    description: "The gradients: `gradients * (outputs + scale * alpha)`\nif outputs < 0, `scale * gradients` otherwise."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes gradients for the scaled exponential linear (Selu) operation."
 }
 op {
   name: "SerializeManySparse"
@@ -27242,7 +27744,7 @@ op {
       list {
       }
     }
-    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1."
+    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1. Must\nbe in the range `[-rank(input), rank(input))`."
     has_minimum: true
   }
   summary: "Removes dimensions of size 1 from the shape of a tensor."
@@ -28232,7 +28734,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {

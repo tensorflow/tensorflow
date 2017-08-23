@@ -59,7 +59,7 @@ class LossesTest(test_util.TensorFlowTestCase):
       pos_loss = loss_for_positives.eval()
       neg_loss = loss_for_negatives.eval()
       # For positive labels, points <= 0.3 get max loss of e.
-      # For negative labels, these points have minimum loss  of 1/e.
+      # For negative labels, these points have minimum loss of 1/e.
       for i in range(2):
         self.assertEqual(math.exp(1), pos_loss[i])
         self.assertEqual(math.exp(-1), neg_loss[i])

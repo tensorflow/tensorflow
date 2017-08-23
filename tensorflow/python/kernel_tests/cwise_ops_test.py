@@ -70,10 +70,25 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   return sparse_tensor.SparseTensor(
       indices=x_indices, values=x_values, dense_shape=x_shape), x_values
 
+def _default_tolerance(dtype):
+  """Returns a sensible default tolerance for comparing results of a given
+  type"""
+  if dtype == np.float16:
+    return 5e-3
+  elif dtype in (np.float32, np.complex64):
+    return 1e-3
+  elif dtype in (np.float64, np.complex128):
+    return 1e-5
+  else:
+    return None # Fail fast for unexpected types
 
 class UnaryOpTest(test.TestCase):
 
-  def _compareCpu(self, x, np_func, tf_func):
+  def _compareCpu(self, x, np_func, tf_func, grad_rtol=None, grad_atol=None):
+    if grad_rtol is None:
+      grad_rtol = _default_tolerance(x.dtype)
+    if grad_atol is None:
+      grad_atol = _default_tolerance(x.dtype)
     np_ans = np_func(x)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
@@ -100,19 +115,19 @@ class UnaryOpTest(test.TestCase):
         inxf = ops.convert_to_tensor(xf)
         yf = tf_func(inxf)
         _, jacob_n = gradient_checker.compute_gradient(
-            inxf, s, yf, s, x_init_value=xf)
+            inxf, s, yf, s, x_init_value=xf, delta=1e-2)
         jacob_n = jacob_n.astype(np.float16)
-        self.assertAllClose(jacob_t, jacob_n, rtol=5e-3, atol=5e-3)
+        self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
       elif x.dtype in (np.float32, np.complex64):
         s = list(np.shape(x))
         jacob_t, jacob_n = gradient_checker.compute_gradient(
-            inx, s, y, s, x_init_value=x)
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+            inx, s, y, s, x_init_value=x, delta=1e-3)
+        self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
       elif x.dtype in (np.float64, np.complex128):
         s = list(np.shape(x))
         jacob_t, jacob_n = gradient_checker.compute_gradient(
-            inx, s, y, s, x_init_value=x)
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+            inx, s, y, s, x_init_value=x, delta=1e-5)
+        self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
 
   def _check(self, result_tensor, result_np, input_sp_t, tol):
     self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
@@ -184,7 +199,7 @@ class UnaryOpTest(test.TestCase):
 
   def testFloatBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
-    w = x - x.min() + 1.01 # all greater than 1
+    w = x - x.min() + 1.02  # all greater than 1
     y = (x + .5).astype(np.float32)  # no zero
     z = (x + 15.5).astype(np.float32)  # all positive
     k = np.arange(-0.90, 0.90, 0.25).astype(np.float32)  # between -1 and 1
@@ -204,10 +219,9 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sinh, math_ops.sinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
-    # b/63457572: failing under CUDA.
-    # self._compareBoth(x, np.arcsinh, math_ops.asinh)
-    # self._compareBoth(w, np.arccosh, math_ops.acosh)
-    # self._compareBoth(k, np.arctanh, math_ops.atanh)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
+    self._compareBoth(w, np.arccosh, math_ops.acosh)
+    self._compareBoth(k, np.arctanh, math_ops.atanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(x, self._log_sigmoid, math_ops.log_sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
@@ -253,8 +267,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.log, math_ops.log)
     self._compareBoth(x, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.sinh, math_ops.sinh)
-    # b/63457572.
-    # self._compareBoth(x, np.arcsinh, math_ops.asinh)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
@@ -280,7 +293,7 @@ class UnaryOpTest(test.TestCase):
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
-    w = x - x.min() + 1.01 # all greater than 1
+    w = x - x.min() + 1.02  # all greater than 1
     y = (x + .5).astype(np.float64)  # no zero
     z = (x + 15.5).astype(np.float64)  # all positive
     k = np.arange(-0.90, 0.90, 0.35).reshape(1, 3, 2).astype(
@@ -300,10 +313,9 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sinh, math_ops.sinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
-    # b/63457572: failing under CUDA.
-    # self._compareBoth(x, np.arcsinh, math_ops.asinh)
-    # self._compareBoth(w, np.arccosh, math_ops.acosh)
-    # self._compareBoth(k, np.arctanh, math_ops.atanh)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
+    self._compareBoth(w, np.arccosh, math_ops.acosh)
+    self._compareBoth(k, np.arctanh, math_ops.atanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
@@ -394,7 +406,7 @@ class UnaryOpTest(test.TestCase):
   def testComplex64Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
                                                     2).astype(np.complex64)
-    y = x + 0.5  # no zeros
+    y = x + np.complex(0.5, 0.5)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -410,10 +422,14 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
-    # b/63457572: failing under CUDA.
-    # self._compareCpu(x, np.arcsinh, math_ops.asinh)
-    # self._compareCpu(x, np.arccosh, math_ops.acosh)
-    # self._compareCpu(x, np.arctanh, math_ops.atanh)
+
+    # Complex64 versions of asinh() and acosh() in libstdc++ only have 6 digits
+    # of precision.
+    # Small gradient values + low precision --> High relative error
+    self._compareCpu(y, np.arcsinh, math_ops.asinh, grad_rtol=1e-2)
+    self._compareCpu(y, np.arccosh, math_ops.acosh, grad_rtol=1e-2)
+
+    self._compareCpu(y, np.arctanh, math_ops.atanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)
@@ -434,7 +450,7 @@ class UnaryOpTest(test.TestCase):
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
                                                     2).astype(np.complex128)
-    y = x + 0.5  # no zeros
+    y = x + np.complex(0.5, 0.5)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -450,10 +466,9 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
-    # b/63457572, failing under CUDA.
-    # self._compareCpu(x, np.arcsinh, math_ops.asinh)
-    # self._compareCpu(x, np.arccosh, math_ops.acosh)
-    # self._compareCpu(x, np.arctanh, math_ops.atanh)
+    self._compareCpu(y, np.arcsinh, math_ops.asinh)
+    self._compareCpu(y, np.arccosh, math_ops.acosh)
+    self._compareCpu(y, np.arctanh, math_ops.atanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)
@@ -1935,6 +1950,33 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareRealImag(cplx, use_gpu=False)
     self._compareRealImag(cplx, use_gpu=True)
 
+  def _compareAngle(self, cplx, use_gpu):
+    np_angle = np.angle(cplx)
+    with self.test_session(use_gpu=use_gpu) as sess:
+      inx = ops.convert_to_tensor(cplx)
+      tf_angle = math_ops.angle(inx)
+      tf_angle_val = sess.run([tf_angle])
+    self.assertAllEqual(np_angle, tf_angle_val)
+    self.assertShapeEqual(np_angle, tf_angle)
+
+  def testAngle64(self):
+    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
+    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
+    cplx = real + 1j * imag
+    self._compareAngle(cplx, use_gpu=False)
+    # TODO: Enable GPU tests for angle op after resolving
+    # build failures on GPU (See #10643 for context).
+    # self._compareAngle(cplx, use_gpu=True)
+
+  def testAngle(self):
+    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
+    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
+    cplx = real + 1j * imag
+    self._compareAngle(cplx, use_gpu=False)
+    # TODO: Enable GPU tests for angle op after resolving
+    # build failures on GPU (See #10643 for context).
+    # self._compareAngle(cplx, use_gpu=True)
+
   def testRealReal(self):
     for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32, dtypes_lib.float64:
       x = array_ops.placeholder(dtype)
@@ -2066,6 +2108,28 @@ class AccumulateTest(test.TestCase):
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
         tf_val.eval()
+
+  def testWrongShape(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        a = variables.Variable(0.2)
+        b = variables.Variable(0.1)
+        tf_val = math_ops.accumulate_n([a,b], shape=[2,2]) # Should be shape=[]
+
+  def testWrongType(self):
+    with self.test_session():
+      with self.assertRaises(TypeError):
+        a = variables.Variable(0.2, dtype=np.float32)
+        b = variables.Variable(0.1, dtype=np.float32)
+        tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
+
+
+  def testWrongTypeOneInput(self):
+    # Scenario that used to trigger a bug, even when testWrongType() worked
+    with self.test_session():
+      with self.assertRaises(TypeError):
+        a = variables.Variable(0.2, dtype=np.float32)
+        tf_val = math_ops.accumulate_n([a], tensor_dtype=np.int32) 
 
 
 if __name__ == "__main__":

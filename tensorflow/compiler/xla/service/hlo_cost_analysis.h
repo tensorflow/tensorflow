@@ -89,6 +89,7 @@ class HloCostAnalysis : public DfsHloVisitor {
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function_handle) override;
   Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
+  Status HandleBatchNormInference(HloInstruction* batchNormInference) override;
   Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
@@ -175,9 +176,11 @@ class HloCostAnalysis : public DfsHloVisitor {
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(HloInstruction* hlo_instruction);
 
-  // Returns 0.0f if the key is not present in the properties. Otherwise,
-  // returns the value that the key maps to from the properties parameter.
-  static float GetProperty(const string& key, const Properties& properties);
+  // Returns the default value if the key is not present in the
+  // properties. Otherwise, returns the value that the key maps to from the
+  // properties parameter.
+  static float GetProperty(const string& key, const Properties& properties,
+                           float default_value = 0.0f);
 
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that

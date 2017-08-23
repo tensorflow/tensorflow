@@ -31,6 +31,7 @@ constexpr char kConv2dBackPropInput[] = "Conv2DBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kIdentity[] = "Identity";
+constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
@@ -40,6 +41,8 @@ constexpr char kVariableV2[] = "VariableV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kSize[] = "Size";
+constexpr char kStopGradient[] = "StopGradient";
+constexpr char kPreventGradient[] = "PreventGradient";
 
 namespace {
 
@@ -86,7 +89,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
   if (shape.unknown_rank() || shape.dim_size() < rank) {
     *found_unknown_shapes = true;
     TensorShapeProto::Dim dim;
-    VLOG(1) << "WARNING: Use minimum shape because the rank is unknown.";
+    VLOG(2) << "Use minimum shape because the rank is unknown.";
     // The size of each dimension is at least 1, if unknown.
     dim.set_size(1);
     for (int i = 0; i < rank; i++) {
@@ -96,8 +99,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
     for (int i = 0; i < shape.dim_size(); i++) {
       if (shape.dim(i).size() == -1) {
         *found_unknown_shapes = true;
-        VLOG(1)
-            << "WARNING: Use minimum dim size 1 because the shape is unknown.";
+        VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
         // The size of each dimension is at least 1, if unknown.
         shape.mutable_dim(i)->set_size(1);
       }
@@ -155,6 +157,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -262,6 +267,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                           Eigen::internal::scalar_quotient_op<float>>::Cost},
       {"TruncateMod", Eigen::internal::functor_traits<
                           Eigen::internal::scalar_mod_op<float>>::Cost}};
+
+  // By default, use sum of memory_time and compute_time for execution_time.
+  compute_memory_overlap_ = false;
 }
 
 Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
@@ -389,7 +397,11 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
-  costs.execution_time = compute_cost + memory_cost;
+  if (compute_memory_overlap_) {
+    costs.execution_time = std::max(compute_cost, memory_cost);
+  } else {
+    costs.execution_time = compute_cost + memory_cost;
+  }
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
@@ -484,16 +496,11 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   return CountMatMulOperations(op_features, nullptr, found_unknown_shapes);
 }
 
+// TODO(nishantpatil): Create separate estimator for Sparse Matmul
 int64 OpLevelCostEstimator::CountMatMulOperations(
     const OpInfo& op_features, MatMulDimensions* mat_mul,
     bool* found_unknown_shapes) const {
   double ops = 0;
-
-  // TODO(nishantpatil): Create separate estimator for Sparse Matmul
-  if ((op_features.op() != kMatMul) && (op_features.op() != kSparseMatMul)) {
-    LOG(ERROR) << "Invalid Operation";
-    return ops;
-  }
 
   // first matrix
   auto& a_matrix = op_features.inputs(0);
@@ -733,7 +740,7 @@ int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
 
 int64 OpLevelCostEstimator::CalculateTensorElementCount(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  VLOG(1) << "   with " << tensor.dtype() << " tensor of shape "
+  VLOG(2) << "   with " << tensor.dtype() << " tensor of shape "
           << tensor.shape().DebugString();
   int64 tensor_size = 1;
   int num_dims = std::max(1, tensor.shape().dim_size());

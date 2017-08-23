@@ -25,7 +25,9 @@ import six
 from tensorflow.core.protobuf import config_pb2
 
 
-# A list of the property names in RunConfig user allows to change.
+_USE_DEFAULT = object()
+
+# A list of the property names in RunConfig that the user is allowed to change.
 _DEFAULT_REPLACEABLE_LIST = [
     'model_dir',
     'tf_random_seed',
@@ -106,17 +108,70 @@ class TaskType(object):
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 
-  def __init__(self):
-    self._model_dir = None
-    self._tf_random_seed = 1
-    self._save_summary_steps = 100
-    self._save_checkpoints_secs = 600
-    self._save_checkpoints_steps = None
-    self._session_config = None
-    self._keep_checkpoint_max = 5
-    self._keep_checkpoint_every_n_hours = 10000
-    self._log_step_count_steps = 100
-    _validate_properties(self)
+  def __init__(self,
+               model_dir=None,
+               tf_random_seed=1,
+               save_summary_steps=100,
+               save_checkpoints_steps=_USE_DEFAULT,
+               save_checkpoints_secs=_USE_DEFAULT,
+               session_config=None,
+               keep_checkpoint_max=5,
+               keep_checkpoint_every_n_hours=10000,
+               log_step_count_steps=100):
+    """Constructs a RunConfig.
+
+    Args:
+      model_dir: directory where model parameters, graph, etc are saved. If
+        `None`, will use a default value set by the Estimator.
+      tf_random_seed: Random seed for TensorFlow initializers.
+        Setting this value allows consistency between reruns.
+      save_summary_steps: Save summaries every this many steps.
+      save_checkpoints_steps: Save checkpoints every this many steps. Can not be
+          specified with `save_checkpoints_secs`.
+      save_checkpoints_secs: Save checkpoints every this many seconds. Can not
+          be specified with `save_checkpoints_steps`. Defaults to 600 seconds.
+          If both `save_checkpoints_steps` and `save_checkpoints_secs` are None,
+          then checkpoints are disabled.
+      session_config: a ConfigProto used to set session parameters, or None.
+      keep_checkpoint_max: The maximum number of recent checkpoint files to
+        keep. As new files are created, older files are deleted. If None or 0,
+        all checkpoint files are kept. Defaults to 5 (that is, the 5 most recent
+        checkpoint files are kept.)
+      keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+        to be saved. The default value of 10,000 hours effectively disables
+        the feature.
+      log_step_count_steps: The frequency, in number of global steps, that the
+        global step/sec will be logged during training.
+
+
+    Raises:
+      ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
+      are set.
+    """
+    if (save_checkpoints_steps == _USE_DEFAULT and
+        save_checkpoints_secs == _USE_DEFAULT):
+      save_checkpoints_steps = None
+      save_checkpoints_secs = 600
+    elif save_checkpoints_secs == _USE_DEFAULT:
+      save_checkpoints_secs = None
+    elif save_checkpoints_steps == _USE_DEFAULT:
+      save_checkpoints_steps = None
+    elif (save_checkpoints_steps is not None and
+          save_checkpoints_secs is not None):
+      raise ValueError(_SAVE_CKPT_ERR)
+
+    RunConfig._replace(
+        self,
+        allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
+        model_dir=model_dir,
+        tf_random_seed=tf_random_seed,
+        save_summary_steps=save_summary_steps,
+        save_checkpoints_steps=save_checkpoints_steps,
+        save_checkpoints_secs=save_checkpoints_secs,
+        session_config=session_config,
+        keep_checkpoint_max=keep_checkpoint_max,
+        keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
+        log_step_count_steps=log_step_count_steps)
 
   @property
   def cluster_spec(self):
@@ -214,16 +269,20 @@ class RunConfig(object):
     Returns:
       a new instance of `RunConfig`.
     """
-    return self._replace(
-        allowed_properties_list=_DEFAULT_REPLACEABLE_LIST, **kwargs)
+    return RunConfig._replace(
+        copy.deepcopy(self),
+        allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
+        **kwargs)
 
-  def _replace(self, allowed_properties_list=None, **kwargs):
+  @staticmethod
+  def _replace(config, allowed_properties_list=None, **kwargs):
     """See `replace`.
 
     N.B.: This implementation assumes that for key named "foo", the underlying
     property the RunConfig holds is "_foo" (with one leading underscore).
 
     Args:
+      config: The RunConfig to replace the values of.
       allowed_properties_list: The property name list allowed to be replaced.
       **kwargs: keyword named properties with new values.
 
@@ -236,19 +295,17 @@ class RunConfig(object):
       a new instance of `RunConfig`.
     """
 
-    new_copy = copy.deepcopy(self)
-
     allowed_properties_list = allowed_properties_list or []
 
     for key, new_value in six.iteritems(kwargs):
       if key in allowed_properties_list:
-        setattr(new_copy, '_' + key, new_value)
+        setattr(config, '_' + key, new_value)
         continue
 
       raise ValueError(
           'Replacing {} is not supported. Allowed properties are {}.'.format(
               key, allowed_properties_list))
 
-    _validate_save_ckpt_with_replaced_keys(new_copy, kwargs.keys())
-    _validate_properties(new_copy)
-    return new_copy
+    _validate_save_ckpt_with_replaced_keys(config, kwargs.keys())
+    _validate_properties(config)
+    return config

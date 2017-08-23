@@ -27,33 +27,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
-#include "external/llvm/include/llvm/ADT/STLExtras.h"
-#include "external/llvm/include/llvm/ADT/StringMap.h"
-#include "external/llvm/include/llvm/ADT/StringSet.h"
-#include "external/llvm/include/llvm/Analysis/TargetLibraryInfo.h"
-#include "external/llvm/include/llvm/Analysis/TargetTransformInfo.h"
-#include "external/llvm/include/llvm/Bitcode/BitcodeReader.h"
-#include "external/llvm/include/llvm/Bitcode/BitcodeWriter.h"
-#include "external/llvm/include/llvm/CodeGen/CommandFlags.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/LinkAllIR.h"
-#include "external/llvm/include/llvm/LinkAllPasses.h"
-#include "external/llvm/include/llvm/Linker/Linker.h"
-#include "external/llvm/include/llvm/PassRegistry.h"
-#include "external/llvm/include/llvm/Support/CommandLine.h"
-#include "external/llvm/include/llvm/Support/FileSystem.h"
-#include "external/llvm/include/llvm/Support/FormattedStream.h"
-#include "external/llvm/include/llvm/Support/TargetRegistry.h"
-#include "external/llvm/include/llvm/Support/TargetSelect.h"
-#include "external/llvm/include/llvm/Support/ToolOutputFile.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
-#include "external/llvm/include/llvm/Transforms/IPO.h"
-#include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
-#include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
-
-#include "external/llvm/include/llvm/Transforms/IPO/Internalize.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Linker/Linker.h"
+#include "llvm/PassRegistry.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/Internalize.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -178,7 +177,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   target_options.MCOptions.AsmVerbose = false;
 
   // The selection of codegen optimization level is copied from function
-  // GetCodeGenOptLevel in //external/llvm/tools/opt/opt.cpp.
+  // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
   CodeGenOpt::Level codegen_opt_level;
   switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
@@ -195,7 +194,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
   return WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx42", target_options,
-      Optional<Reloc::Model>(RelocModel), CMModel, codegen_opt_level));
+      Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
+      codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization

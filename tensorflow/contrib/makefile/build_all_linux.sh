@@ -32,6 +32,12 @@ rm -rf tensorflow/contrib/makefile/downloads
 # Pull down the required versions of the frameworks we need.
 tensorflow/contrib/makefile/download_dependencies.sh
 
+# Compile nsync.
+# Don't use  export var=`something` syntax; it swallows the exit status.
+HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+TARGET_NSYNC_LIB="$HOST_NSYNC_LIB"
+export HOST_NSYNC_LIB TARGET_NSYNC_LIB
+
 # Compile protobuf.
 tensorflow/contrib/makefile/compile_linux_protobuf.sh
 

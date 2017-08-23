@@ -78,8 +78,13 @@ void TFScope::Build() {
 }
 
 const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
-  std::vector<ScopeNode*> roots = Account(root_->children, opts);
   root_->ResetTotalStats();
+  if (opts.output_type == kOutput[3]) {
+    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    return root_;
+  }
+
+  std::vector<ScopeNode*> roots = Account(root_->children, opts);
   root_->show_children.clear();
   for (ScopeNode* n : roots) {
     root_->AggregateTotalStats(n);

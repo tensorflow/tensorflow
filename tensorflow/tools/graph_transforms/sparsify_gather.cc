@@ -263,20 +263,26 @@ Status SparsifyGatherInternal(const GraphDef& input_graph_def,
           return Status::OK();
         },
         {true}, &replaced_graph_def));
+
+    // Revisit this because it is not necessarily true that the init node will
+    // be named "group_deps".
     NodeDef* init_op = nullptr;
     for (int i = 0; i < replaced_graph_def.node_size(); i++) {
       if (replaced_graph_def.node(i).name() == "group_deps" &&
           replaced_graph_def.node(i).op() == "NoOp") {
-        if (init_op != nullptr) {
-          return tensorflow::errors::FailedPrecondition(
-              "Multiple nodes with name: 'group_deps' and type: 'NoOp'.");
-        }
         init_op = replaced_graph_def.mutable_node(i);
+        break;
       }
     }
     if (!init_op) {
-      return tensorflow::errors::FailedPrecondition(
-          "No node found with name: 'group_deps' and type: 'NoOp'");
+      // Since the input is a frozen graph, it is normal for the init node
+      // to be missing.
+      LOG(WARNING) << "No node found with name: 'group_deps' and type: 'NoOp'"
+                   << ", adding one in.";
+      // Init node
+      init_op = replaced_graph_def.mutable_node()->Add();
+      init_op->set_op("NoOp");
+      init_op->set_name("group_deps");
     }
     for (const string& name : init_table_node_names) {
       // Add control dependence from init_table_node to group_deps_node

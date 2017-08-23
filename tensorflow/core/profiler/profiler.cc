@@ -72,7 +72,12 @@ int Run(int argc, char** argv) {
   string FLAGS_checkpoint_path = "";
   int32 FLAGS_max_depth = 10;
   int64 FLAGS_min_bytes = 0;
+  int64 FLAGS_min_peak_bytes = 0;
+  int64 FLAGS_min_residual_bytes = 0;
+  int64 FLAGS_min_output_bytes = 0;
   int64 FLAGS_min_micros = 0;
+  int64 FLAGS_min_accelerator_micros = 0;
+  int64 FLAGS_min_cpu_micros = 0;
   int64 FLAGS_min_params = 0;
   int64 FLAGS_min_float_ops = 0;
   int64 FLAGS_min_occurrence = 0;
@@ -101,7 +106,14 @@ int Run(int argc, char** argv) {
            "TensorFlow Checkpoint file name"),
       Flag("max_depth", &FLAGS_max_depth, "max depth"),
       Flag("min_bytes", &FLAGS_min_bytes, "min_bytes"),
+      Flag("min_peak_bytes", &FLAGS_min_peak_bytes, "min_peak_bytes"),
+      Flag("min_residual_bytes", &FLAGS_min_residual_bytes,
+           "min_residual_bytes"),
+      Flag("min_output_bytes", &FLAGS_min_output_bytes, "min_output_bytes"),
       Flag("min_micros", &FLAGS_min_micros, "min micros"),
+      Flag("min_accelerator_micros", &FLAGS_min_accelerator_micros,
+           "min acclerator_micros"),
+      Flag("min_cpu_micros", &FLAGS_min_cpu_micros, "min_cpu_micros"),
       Flag("min_params", &FLAGS_min_params, "min params"),
       Flag("min_float_ops", &FLAGS_min_float_ops, "min float ops"),
       Flag("min_occurrence", &FLAGS_min_occurrence, "min occurrence"),
@@ -214,12 +226,14 @@ int Run(int argc, char** argv) {
     return 0;
   }
 
-  Options opts(FLAGS_max_depth, FLAGS_min_bytes, FLAGS_min_micros,
-               FLAGS_min_params, FLAGS_min_float_ops, FLAGS_min_occurrence,
-               FLAGS_step, FLAGS_order_by, account_type_regexes,
-               start_name_regexes, trim_name_regexes, show_name_regexes,
-               hide_name_regexes, FLAGS_account_displayed_op_only, select,
-               output_type, output_options);
+  Options opts(
+      FLAGS_max_depth, FLAGS_min_bytes, FLAGS_min_peak_bytes,
+      FLAGS_min_residual_bytes, FLAGS_min_output_bytes, FLAGS_min_micros,
+      FLAGS_min_accelerator_micros, FLAGS_min_cpu_micros, FLAGS_min_params,
+      FLAGS_min_float_ops, FLAGS_min_occurrence, FLAGS_step, FLAGS_order_by,
+      account_type_regexes, start_name_regexes, trim_name_regexes,
+      show_name_regexes, hide_name_regexes, FLAGS_account_displayed_op_only,
+      select, output_type, output_options);
 
   if (cmd == kCmds[2] || cmd == kCmds[3]) {
     tf_stat.BuildView(cmd);

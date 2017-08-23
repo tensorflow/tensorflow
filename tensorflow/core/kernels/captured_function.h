@@ -60,22 +60,26 @@ class CapturedFunction {
                        std::unique_ptr<CapturedFunction>* out_function);
 
   Status Run(FunctionLibraryRuntime::Options f_opts,
-             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets);
+             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+             const string& prefix);
 
-  Device* device() const { return device_.get(); }
+  const Device* device() const { return device_; }
 
   ResourceMgr* resource_manager() const { return device_->resource_manager(); }
 
  private:
-  CapturedFunction(std::unique_ptr<Device> device,
+  CapturedFunction(Device* device, std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
-                   std::unique_ptr<FunctionLibraryRuntime> lib,
+                   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                   FunctionLibraryRuntime* lib,
                    FunctionLibraryRuntime::Handle f_handle,
                    std::vector<Tensor> captured_inputs);
 
-  const std::unique_ptr<Device> device_;
+  Device* const device_;  // owned by device_mgr_.
+  const std::unique_ptr<DeviceMgr> device_mgr_;
   const std::unique_ptr<FunctionLibraryDefinition> flib_def_;
-  const std::unique_ptr<FunctionLibraryRuntime> lib_;
+  const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  FunctionLibraryRuntime* const lib_;  // owned by pflr_.
   const FunctionLibraryRuntime::Handle f_handle_;
   const std::vector<Tensor> captured_inputs_;
 

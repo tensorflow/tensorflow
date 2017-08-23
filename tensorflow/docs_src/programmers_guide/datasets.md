@@ -120,9 +120,9 @@ dataset3 = dataset3.filter(lambda x, (y, z): ...)
 
 ### Creating an iterator
 
-One you have built a `Dataset` to represent your input data, the next step is to
+Once you have built a `Dataset` to represent your input data, the next step is to
 create an `Iterator` to access elements from that dataset.  The `Dataset` API
-currently supports three kinds of iterator, in increasing level of
+currently supports the following iterators, in increasing level of
 sophistication:
 
 * **one-shot**,
@@ -548,8 +548,8 @@ labels = [0, 37, 29, 1, ...]
 
 dataset = tf.contrib.data.Dataset.from_tensor_slices((filenames, labels))
 dataset = dataset.map(
-    lambda filename, label: tf.py_func(
-        _read_py_function, [filename, label], [tf.uint8, label.dtype]))
+    lambda filename, label: tuple(tf.py_func(
+        _read_py_function, [filename, label], [tf.uint8, label.dtype])))
 dataset = dataset.map(_resize_function)
 ```
 

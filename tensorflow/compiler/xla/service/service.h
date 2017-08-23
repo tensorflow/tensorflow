@@ -71,9 +71,9 @@ class ServiceOptions {
   int intra_op_parallelism_threads_ = -1;
 };
 
-// The XLA service object, which is the same across all
-// platforms. It maintains the service state of computations and allocations,
-// and delegates target-specific requests to the target-specific infrastructure
+// The XLA service object, which is the same across all platforms. It maintains
+// the service state of computations and allocations, and delegates
+// target-specific requests to the target-specific infrastructure
 // (target-specific compiler, StreamExecutor).
 class Service : public ServiceInterface {
  public:
@@ -133,6 +133,10 @@ class Service : public ServiceInterface {
   // Asynchronously executes a computation with provided arguments. Invokes
   // the provided computation with the provided global data passed as
   // immutable arguments. Returns a handle to the execution.
+  //
+  // (Note: The corresponding function in xla::Client was removed as part of
+  // b/64116060, in an attempt to simplify our API.  We're keeping this around
+  // for now in case we want to expose this to clients in a different way.)
   tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
                                   ExecuteAsyncResponse* result) override;
 
@@ -241,13 +245,21 @@ class Service : public ServiceInterface {
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
 
+ private:
+  // A private overload for Service itself, used by other methods within this
+  // class.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      tensorflow::gtl::ArraySlice<const Allocation*> arguments,
+      const ExecutionOptions& execution_options);
+
  protected:
   friend class LocalExecutable;
 
   // The constructor is private. Use the NewService factory to create new
   // service objects.
-  Service(const ServiceOptions& options, std::unique_ptr<Backend> backend,
-          std::unique_ptr<Backend> compute_constant_backend);
+  Service(const ServiceOptions& options,
+          std::unique_ptr<Backend> execute_backend);
 
   static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
 
@@ -259,21 +271,19 @@ class Service : public ServiceInterface {
       const Backend* backend, int device_ordinal);
 
   // Create a Hlo module config for the given program shape and arguments.
+  // execution_options is optional; if not given a default is used.
+  // has_hybrid_result is used to initialize the same-named field in
+  // HloModuleConfig -- see that class for documentation.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const ExecutionOptions& execution_options);
+      tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+      const ExecutionOptions* execution_options,
+      bool has_hybrid_result = false);
 
-  // Builds an Executable for the given parameters. If
-  // executable_for_compute_constant is true, then the executable is intended to
-  // be used for ComputeConstant which means dead parameter instructions are not
-  // included in the executable.The parameter "profile" can optionally point to
-  // an ExecutionProfile object which will be filled in with profile data
-  // relevant to compilation.
+  // Builds an Executable for the given parameters.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
       std::unique_ptr<HloModuleConfig> module_config,
-      bool executable_for_compute_constant,
       const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       Backend* backend, perftools::gputools::StreamExecutor* executor);
@@ -364,9 +374,6 @@ class Service : public ServiceInterface {
   //
   // TODO(b/28616830): Support multiple backends for execution.
   std::unique_ptr<Backend> execute_backend_;
-
-  // Backend to use when executing ComputeConstant.
-  std::unique_ptr<Backend> compute_constant_backend_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);
 };

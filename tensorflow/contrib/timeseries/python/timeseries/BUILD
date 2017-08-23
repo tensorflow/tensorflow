@@ -103,6 +103,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip_gpu",  # b/63391119
+        "nomsan",  # Takes too long to run.
     ],
     deps = [
         ":ar_model",
@@ -199,6 +200,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     tags = [
+        "no_pip",  # b/64527635
         "no_pip_gpu",  # b/63391119
     ],
     deps = [
