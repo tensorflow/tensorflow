@@ -15278,7 +15278,7 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset uses\nup to `num_threads` threads to process elements from `input_dataset`\nin parallel."
+  description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `num_parallel_calls` copies of `f` in parallel."
   is_stateful: true
 }
 op {
