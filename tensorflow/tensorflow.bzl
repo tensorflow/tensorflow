@@ -770,13 +770,13 @@ def _py_wrap_cc_impl(ctx):
     fail("Exactly one SWIG source file label must be specified.", "srcs")
   module_name = ctx.attr.module_name
   src = ctx.files.srcs[0]
-  inputs = set([src])
+  inputs = depset([src])
   inputs += ctx.files.swig_includes
   for dep in ctx.attr.deps:
     inputs += dep.cc.transitive_headers
   inputs += ctx.files._swiglib
   inputs += ctx.files.toolchain_deps
-  swig_include_dirs = set(_get_repository_roots(ctx, inputs))
+  swig_include_dirs = depset(_get_repository_roots(ctx, inputs))
   swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
   args = [
       "-c++", "-python", "-module", module_name, "-o", ctx.outputs.cc_out.path,
@@ -793,7 +793,7 @@ def _py_wrap_cc_impl(ctx):
       outputs=outputs,
       mnemonic="PythonSwig",
       progress_message="SWIGing " + src.path)
-  return struct(files=set(outputs))
+  return struct(files=depset(outputs))
 
 
 _py_wrap_cc = rule(
@@ -866,7 +866,7 @@ def _get_repository_roots(ctx, files):
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
-  outputs = set()
+  outputs = depset()
   for dep in ctx.attr.deps:
     outputs += dep.cc.transitive_headers
   return struct(files=outputs)
@@ -926,10 +926,10 @@ def tf_custom_op_library_additional_deps():
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
-  alldeps = set()
+  alldeps = depset()
   if hasattr(ctx.rule.attr, "deps"):
     for dep in ctx.rule.attr.deps:
-      alldeps = alldeps | set([dep.label])
+      alldeps = alldeps | depset([dep.label])
       if hasattr(dep, "tf_collected_deps"):
         alldeps = alldeps | dep.tf_collected_deps
   return struct(tf_collected_deps=alldeps)
