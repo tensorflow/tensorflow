@@ -8324,6 +8324,11 @@ op {
     description: "A scalar representing the number of bytes to skip at the end\nof a file."
     type: DT_INT64
   }
+  input_arg {
+    name: "buffer_size"
+    description: "A scalar representing the number of bytes to buffer. Must be > 0."
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_RESOURCE
@@ -29012,6 +29017,11 @@ op {
     description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
     type: DT_STRING
   }
+  input_arg {
+    name: "buffer_size"
+    description: "A scalar representing the number of bytes to buffer. A value of\n0 means no buffering will be performed."
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_RESOURCE
@@ -30374,6 +30384,11 @@ op {
     name: "compression_type"
     description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
     type: DT_STRING
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "A scalar containing the number of bytes to buffer."
+    type: DT_INT64
   }
   output_arg {
     name: "handle"
