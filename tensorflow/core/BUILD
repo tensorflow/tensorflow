@@ -1630,7 +1630,6 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
-    includes = ["../../external/nsync/public"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
