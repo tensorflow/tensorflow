@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -51,10 +52,22 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
   template<class Scalar>
-  __global__ void FillWithOnesKernel(CudaLaunchConfig config, Scalar* mem)
+  __global__ void ComputeV1Kernel(CudaLaunchConfig config,
+      int64 m, const Scalar* M, const Scalar* U, const Scalar* S, Scalar* V)
   {
     CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-      mem[i] = (Scalar) 1.0;
+      Scalar v = M[i] * U[m*i] * S[0];
+      //printf("i=%d, v=%f\n", (int) i, (float) v);
+      CudaAtomicAdd(V, v);
+    }
+  }
+
+  template<class Scalar>
+  __global__ void ComputeV2Kernel(CudaLaunchConfig config, Scalar* V)
+  {
+    CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
+      //printf("V'[%d] = %f\n", (int)i, (float)V[i]);
+      V[i] = (Scalar) copysign(1.0, V[i]);
     }
   }
 }
@@ -74,6 +87,16 @@ class SvdOpGpu : public AsyncOpKernel {
               int64 p, int64 batch_size, Scalar* input_ptr,
               SScalar* outputS_ptr, Scalar* outputU_ptr, Scalar* outputVT_ptr,
               int* dev_info_ptr, CudaSolver& solver) {
+
+    // Needed for the n=1 fix, see below, since SVD destroys the input
+    Tensor input_copy;
+    if (compute_uv_ && n==1) {
+      OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DataTypeToEnum<Scalar>::v(), TensorShape({m}), &input_copy),
+        done);
+    }
+
     for (int64 i = 0; i < batch_size; ++i) {
       int lda = m;
       int ldu = m;
@@ -84,6 +107,13 @@ class SvdOpGpu : public AsyncOpKernel {
       Scalar* outputVT = NULL;
       signed char jobu = 'N';
       signed char jobvt = 'N';
+
+      // Save input matrix for n=1 fix
+      if (compute_uv_ && n==1) {
+        const GPUDevice& d = context->eigen_device<GPUDevice>();
+        d.memcpy(input_copy.flat<Scalar>().data(), input,
+               m * sizeof(Scalar));
+      }
 
       if (compute_uv_) {
         if (full_matrices_) {
@@ -107,14 +137,24 @@ class SvdOpGpu : public AsyncOpKernel {
       // This is a bug in cuSolver:
       // If n is one, then outputVT only contains zeros instead of ones.
       // Hence, I need to fill outputVT manually
+      // The question is: +1 or -1?
+      // -> Compute U*S and compare sign against M
+      // But because S is zero except for the first entry, the multiplication simplifies a lot
+      // However, what happens if M contains zeros? At these indices, it is impossible
+      // to determine the value of V
+      // -> Compute V for all rows in M to cope for zeros.
+      // 1. V' = sum_i (M_i * U_i,1 * S_i)
+      // 2. V = {1, V'>=0, -1, V'<0}
+      // TODO: what is with complex values?
       if (compute_uv_ && n==1) {
-        int64 count =  n * (full_matrices_ ? n : p);
         const GPUDevice& d = context->eigen_device<GPUDevice>();
-        CudaLaunchConfig cfg = GetCudaLaunchConfig(count, d);
-        FillWithOnesKernel <<<cfg.block_count, 
+        d.memset(outputVT, 0, sizeof(Scalar));
+        CudaLaunchConfig cfg = GetCudaLaunchConfig(m, d);
+        ComputeV1Kernel <<<cfg.block_count, 
                               cfg.thread_per_block, 0, d.stream()>>>
-            (cfg, outputVT);
+            (cfg, m, input_copy.flat<Scalar>().data(), outputU, outputS, outputVT);
       }
+      // For the second part, see below
 
 #if 0
       // debug
@@ -147,6 +187,15 @@ class SvdOpGpu : public AsyncOpKernel {
       }
 #endif
 
+    }
+
+    // Second part of the n=1 fix: clamp V to -1 or +1
+    if (compute_uv_ && n==1) {
+      const GPUDevice& d = context->eigen_device<GPUDevice>();
+      CudaLaunchConfig cfg = GetCudaLaunchConfig(batch_size, d);
+      ComputeV2Kernel <<<cfg.block_count, 
+                         cfg.thread_per_block, 0, d.stream()>>>
+          (cfg, outputVT_ptr);
     }
   }
 
