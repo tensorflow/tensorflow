@@ -64,6 +64,8 @@ REGISTER_LINALG_OP("Lu", (LuOp<float>), float);
 REGISTER_LINALG_OP("Lu", (LuOp<double>), double);
 REGISTER_LINALG_OP("Lu", (LuOp<complex64>), complex64);
 REGISTER_LINALG_OP("Lu", (LuOp<complex128>), complex128);
+
+
 //REGISTER_LINALG_OP("BatchLu", (LuOp<float>), float);
 //REGISTER_LINALG_OP("BatchLu", (LuOp<double>), double);
 

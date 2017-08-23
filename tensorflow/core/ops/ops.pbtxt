@@ -11612,6 +11612,39 @@ op {
   summary: "Forwards the input to the output."
   description: "This operator represents the loop termination condition used by the\n\"pivot\" switches of a loop."
 }
+
+op {
+  name: "Lu"
+  input_arg {
+    name: "input"
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "l"
+    description: "The lower triangular matrix."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "u"
+    description: "The upper triangular matrix."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the LU decompositions of one or more matrices."
+  description: "Computes the LU decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = l[..., :, :] * u[..., :,:])`\n\n```python\n# a is a tensor.\n# l is a tensor of orthonormal matrices.\n# u is a tensor of upper triangular matrices.\nl, u = qr(a)\n```"
+}
 op {
   name: "MakeIterator"
   input_arg {

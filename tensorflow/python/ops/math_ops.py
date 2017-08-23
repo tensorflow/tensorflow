@@ -87,6 +87,7 @@ See the @{$python/math_ops} guide.
 @@norm
 @@matrix_determinant
 @@matrix_inverse
+@@lu
 @@cholesky
 @@cholesky_solve
 @@matrix_solve

@@ -244,39 +244,6 @@ Equivalent to np.linalg.inv
 
 
 
-REGISTER_OP("Lu")
-    .Input("input: T")
-    .Output("l: T")
-    .Output("u: T")
-    .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(BatchUnchangedSquareShapeFn)
-    .Doc(R"doc(
-Computes the LU decomposition of one or more square matrices.
-
-The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices.
-
-The input has to be square matrix. 
-
-The output is a tensor of the same shape as the input
-containing the LU decompositions for all input submatrices `[..., :, :]`.
-
-```python
-# a is a tensor containing a batch of matrices.
-# l is a tensor of singular values for each matrix.
-# u is the tensor containing of left singular vectors for each matrix.
-l, u = lu(a)
-```
-
-input: A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
-  form matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`.
-l: Lower matrix. 
-u: Upper matrix.
-
-input: Shape is `[..., M, M]`.
-l: Shape is `[..., M, M]`.
-u: Shape is `[..., M, M]`.
-)doc");
 
 REGISTER_OP("Cholesky")
     .Input("input: T")
@@ -540,6 +507,40 @@ r: Triangular factor. If `full_matrices` is `False` then shape is
   `[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`.
 full_matrices: If true, compute full-sized `q` and `r`. If false
   (the default), compute only the leading `P` columns of `q`.
+)doc");
+
+REGISTER_OP("Lu")
+    .Input("input: T")
+    .Output("l: T")
+    .Output("u: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
+    .Doc(R"doc(
+Computes the LU decomposition of one or more square matrices.
+
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices.
+
+The input has to be square matrix. 
+
+The output is a tensor of the same shape as the input
+containing the LU decompositions for all input submatrices `[..., :, :]`.
+
+```python
+# a is a tensor containing a batch of matrices.
+# l is a tensor of singular values for each matrix.
+# u is the tensor containing of left singular vectors for each matrix.
+l, u = lu(a)
+```
+
+input: A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+  form matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`.
+l: Lower matrix. 
+u: Upper matrix.
+
+input: Shape is `[..., M, M]`.
+l: Shape is `[..., M, M]`.
+u: Shape is `[..., M, M]`.
 )doc");
 
 REGISTER_OP("Svd")
