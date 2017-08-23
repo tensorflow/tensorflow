@@ -220,7 +220,7 @@ def LogisticClassifier(inputs):
 
 
 def BatchNormClassifier(inputs):
-  inputs = layers.batch_norm(inputs, decay=0.1, fused=None)
+  inputs = layers.batch_norm(inputs, decay=0.1, fused=True)
   return layers.fully_connected(inputs, 1, activation_fn=math_ops.sigmoid)
 
 

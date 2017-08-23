@@ -38,6 +38,10 @@ LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
 
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
+
 # control_flow_ops
 Switch
 Merge

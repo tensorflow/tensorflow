@@ -106,8 +106,8 @@ LayoutConstraints::LayoutConstraints(
     auto& buffer = points_to_analysis_.logical_buffer(id);
     // The points to analysis is computed per module, restrict constraints to
     // array buffers in this computation.
-    if (buffer->IsArray() && buffer->instruction()->parent() == computation) {
-      unconstrained_buffer_ids_.insert(buffer->id());
+    if (buffer.IsArray() && buffer.instruction()->parent() == computation) {
+      unconstrained_buffer_ids_.insert(buffer.id());
     }
   }
 }

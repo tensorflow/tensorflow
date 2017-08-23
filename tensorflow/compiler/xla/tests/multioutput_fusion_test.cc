@@ -42,17 +42,15 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::gtl::ArraySlice;
-
 namespace xla {
 namespace {
 
-class MultiOutputFusionTest : public HloTestBase {
- public:
-  ErrorSpec error_spec_{0.0001, 1e-2};
+using ::tensorflow::gtl::ArraySlice;
 
+class MultiOutputFusionTest : public HloTestBase {
  protected:
-  MultiOutputFusionTest() {}
+  MultiOutputFusionTest() { error_spec_ = ErrorSpec{0.0001, 1e-2}; }
+
   void RunTest2D(bool manual_fusion, int64 size) {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewModule();
