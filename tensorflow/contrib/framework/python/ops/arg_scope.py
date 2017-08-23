@@ -181,7 +181,7 @@ def add_arg_scope(func):
     return func(*args, **current_args)
   _add_op(func)
   setattr(func_with_args, '_key_op', _key_op(func))
-  return tf_decorator.make_decorator(func, func_with_args)
+  return tf_decorator.make_decorator(func, func_with_args, decorator_name='add_arg_scope')
 
 
 def has_arg_scope(func):
