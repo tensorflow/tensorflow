@@ -1046,9 +1046,7 @@ struct MasterSession::Worker {
   Worker(MasterSession* sess, const string& name,
          const DeviceNameUtils::ParsedName& parsed_name,
          const WorkerCacheFactoryOptions& opts)
-      : sess(sess),
-        name(&name),
-        worker(GetOrCreateWorker()) {
+      : sess(sess), name(&name), worker(GetOrCreateWorker()) {
     BuildRequest(parsed_name, opts);
   }
 
@@ -1101,9 +1099,7 @@ struct MasterSession::Worker {
 };
 
 struct MasterSession::WorkerGroup {
-  WorkerGroup(MasterSession* sess)
-      : sess(sess) {
-  }
+  WorkerGroup(MasterSession* sess) : sess(sess) {}
 
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& opts) {
     TF_RETURN_IF_ERROR(CreateWorkers(opts));
