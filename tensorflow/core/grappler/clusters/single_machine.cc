@@ -287,8 +287,9 @@ Status SingleMachine::ResetSession() {
       Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
 
   session_.reset(NewSession(options_));
-  CHECK(session_ != nullptr);
-
+  if (!session_) {
+    return errors::Unknown("Failed to create session");
+  }
   coordinator_.reset(new Coordinator());
 
   return Status::OK();
