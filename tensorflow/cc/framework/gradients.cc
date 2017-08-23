@@ -209,8 +209,7 @@ Status SymbolicGradientBuilder::Initialize() {
       if (output_nodes_.find(n->id()) == output_nodes_.end()) {
         // Internal node: continue BFS along connected outputs.
         for (const Edge* e : n->out_edges()) {
-          if (e->IsControlEdge() 
-              || !reachable_nodes[e->dst()->id()]) continue;
+          if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
           if (visited.find(e->dst()) == visited.end()) {
             queue.push_back(e->dst());
             visited.insert(e->dst());
