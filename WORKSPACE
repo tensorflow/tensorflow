@@ -37,7 +37,7 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #    # API level that it supports without notice.
 #    # Note that the NDK version is not the API level.
 #    api_level=14)
-
+#)
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
 
