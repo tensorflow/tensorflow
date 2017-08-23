@@ -1947,6 +1947,47 @@ func DequantizeMode(value string) DequantizeAttr {
 // result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 // ```
 //
+// *SCALED mode Example*
+//
+// `SCALED` mode matches the quantization approach used in
+// `QuantizeAndDequantize{V2|V3}`.
+//
+// If the mode is `SCALED`, we do not use the full range of the output type,
+// choosing to elide the lowest possible value for symmetry (e.g., output range is
+// -127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+// 0.
+//
+// We first find the range of values in our tensor. The
+// range we use is always centered on 0, so we find m such that
+// ```c++
+//   m = max(abs(input_min), abs(input_max))
+// ```
+//
+// Our input tensor range is then `[-m, m]`.
+//
+// Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+// If T is signed, this is
+// ```
+//   num_bits = sizeof(T) * 8
+//   [min_fixed, max_fixed] =
+//       [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+// ```
+//
+// Otherwise, if T is unsigned, the fixed-point range is
+// ```
+//   [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+// ```
+//
+// From this we compute our scaling factor, s:
+// ```c++
+//   s = (2 * m) / (max_fixed - min_fixed)
+// ```
+//
+// Now we can dequantize the elements of our tensor:
+// ```c++
+// result = input * s
+// ```
+//
 // Arguments:
 //
 //	min_range: The minimum scalar value possibly produced for the input.
@@ -12484,6 +12525,47 @@ func QuantizeV2Mode(value string) QuantizeV2Attr {
 // is rounded first, before it's subtracted from the rounded value. With
 // MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
 // and dequantizing will introduce a larger and larger error.
+//
+// *SCALED mode Example*
+//
+// `SCALED` mode matches the quantization approach used in
+// `QuantizeAndDequantize{V2|V3}`.
+//
+// If the mode is `SCALED`, we do not use the full range of the output type,
+// choosing to elide the lowest possible value for symmetry (e.g., output range is
+// -127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+// 0.
+//
+// We first find the range of values in our tensor. The
+// range we use is always centered on 0, so we find m such that
+// ```c++
+//   m = max(abs(input_min), abs(input_max))
+// ```
+//
+// Our input tensor range is then `[-m, m]`.
+//
+// Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+// If T is signed, this is
+// ```
+//   num_bits = sizeof(T) * 8
+//   [min_fixed, max_fixed] =
+//       [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+// ```
+//
+// Otherwise, if T is unsigned, the fixed-point range is
+// ```
+//   [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+// ```
+//
+// From this we compute our scaling factor, s:
+// ```c++
+//   s = (max_fixed - min_fixed) / (2 * m)
+// ```
+//
+// Now we can quantize the elements of our tensor:
+// ```c++
+// result = (input * s).round_to_nearest()
+// ```
 //
 // One thing to watch out for is that the operator may choose to adjust the
 // requested minimum and maximum values slightly during the quantization process,
