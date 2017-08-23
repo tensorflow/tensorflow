@@ -326,6 +326,54 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
   return decorator
 
 
+def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
+  """Returns whether TensorFlow can access a GPU.
+
+  Args:
+    cuda_only: limit the search to CUDA gpus.
+    min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
+      CUDA compute capability required, or None if no requirement.
+
+  Returns:
+    True iff a gpu device of the requested kind is available.
+  """
+
+  def compute_capability_from_device_desc(device_desc):
+    # TODO(jingyue): The device description generator has to be in sync with
+    # this file. Another option is to put compute capability in
+    # DeviceAttributes, but I avoided that to keep DeviceAttributes
+    # target-independent. Reconsider this option when we have more things like
+    # this to keep in sync.
+    # LINT.IfChange
+    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
+    # LINT.ThenChange(//tensorflow/core/\
+    #                 common_runtime/gpu/gpu_device.cc)
+    if not match:
+      return 0, 0
+    return int(match.group(1)), int(match.group(2))
+
+  for local_device in device_lib.list_local_devices():
+    if local_device.device_type == "GPU":
+      if (min_cuda_compute_capability is None or
+          compute_capability_from_device_desc(local_device.physical_device_desc)
+          >= min_cuda_compute_capability):
+        return True
+    if local_device.device_type == "SYCL" and not cuda_only:
+      return True
+  return False
+
+
+@contextlib.contextmanager
+def device(use_gpu):
+  """Uses gpu when requested and available."""
+  if use_gpu and is_gpu_available():
+    dev = "/device:GPU:0"
+  else:
+    dev = "/device:CPU:0"
+  with ops.device(dev):
+    yield
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
