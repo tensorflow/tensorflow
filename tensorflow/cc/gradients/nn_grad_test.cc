@@ -53,7 +53,7 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK(
         ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
-    EXPECT_LT(max_error, 1e-3);
+    EXPECT_LT(max_error, 1e-4);
   }
 
   Scope scope_;
