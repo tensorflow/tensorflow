@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -33,16 +34,18 @@ typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
 // Create a tensor with values of type TF_INT8 provided by `values`.
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values);
 
-TF_Tensor* Int32Tensor(int32_t v);
+TF_Tensor* Int32Tensor(int32_t v, const tensorflow::TensorShape shape = {});
 
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
-                          const char* name = "feed");
+                          const char* name = "feed",
+                          const tensorflow::TensorShape shape = {});
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");
 
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
-                          const char* name = "scalar");
+                          const char* name = "scalar",
+                          const tensorflow::TensorShape shape = {});
 
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "add");

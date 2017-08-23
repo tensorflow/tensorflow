@@ -33,13 +33,13 @@ class CApiWhileLoopTest : public ::testing::Test {
     TF_DeleteStatus(s_);
   }
 
-  void Init(int ninputs) {
+  void Init(int ninputs, const tensorflow::TensorShape shape = {}) {
     DCHECK(inputs_.empty());
     DCHECK_GT(ninputs, 0);
 
     for (int i = 0; i < ninputs; ++i) {
       TF_Operation* placeholder = Placeholder(
-          graph_, s_, ::tensorflow::strings::StrCat("p", i).c_str());
+          graph_, s_, ::tensorflow::strings::StrCat("p", i).c_str(), shape);
       DCHECK_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
       inputs_.push_back({placeholder, 0});
     }
@@ -324,6 +324,15 @@ TEST_F(CApiWhileLoopTest, BadTypes) {
                      "building NodeDef 'float_op'"),
             msg.npos);
   TF_AbortWhile(params_.get());
+}
+
+TEST_F(CApiWhileLoopTest, BadShapes) {
+  Init(1, {2, 2});
+  CreateCondGraph();
+  TF_Operation* one = ScalarConst(1, params_->body_graph, s_, "one", {2, 3});
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* add = Add(params_->body_inputs[0].oper, one, params_->body_graph, s_, "add");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
 }
 
 }  // namespace

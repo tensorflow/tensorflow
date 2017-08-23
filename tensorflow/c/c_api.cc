@@ -1812,11 +1812,19 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
 // While loop functions -------------------------------------------------------
 
 namespace {
-bool CreateInput(const TF_Output& parent_input, TF_Graph* g, const char* name,
-                 TF_Output* input, TF_Status* status) {
+bool CreateInput(TF_Graph* parent_graph, const TF_Output& parent_input, TF_Graph* g,
+                 const char* name, TF_Output* input, TF_Status* status) {
   TF_OperationDescription* desc = TF_NewOperation(g, "Placeholder", name);
   TF_SetAttrType(desc, "dtype", TF_OperationOutputType(parent_input));
-  // TODO(skyewm): set placeholder shape
+  // Set placeholder shape.
+  int num_dims = TF_GraphGetTensorNumDims(parent_graph, parent_input, status);
+  if (status->status.ok() && num_dims >= 0) {
+    int64_t* dims = new int64_t[num_dims];
+    TF_GraphGetTensorShape(parent_graph, parent_input, dims, num_dims, status);
+    if (status->status.ok()) {
+      TF_SetAttrShape(desc, "shape", const_cast<const int64_t*>(dims), num_dims);
+    }
+  }
   TF_Operation* oper = TF_FinishOperation(desc, status);
   if (!status->status.ok()) return false;
   *input = {oper, 0};
@@ -2019,11 +2027,11 @@ TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
 
   for (int i = 0; i < ninputs; ++i) {
     // TODO(skyewm): prefix names with underscore (requires some plumbing)
-    if (!CreateInput(inputs[i], cond_graph, StrCat("cond_input", i).c_str(),
+    if (!CreateInput(g, inputs[i], cond_graph, StrCat("cond_input", i).c_str(),
                      &cond_inputs[i], status)) {
       break;
     }
-    if (!CreateInput(inputs[i], body_graph, StrCat("body_input", i).c_str(),
+    if (!CreateInput(g, inputs[i], body_graph, StrCat("body_input", i).c_str(),
                      &body_inputs[i], status)) {
       break;
     }

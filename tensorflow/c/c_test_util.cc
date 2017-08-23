@@ -36,17 +36,29 @@ TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
   return t;
 }
 
-TF_Tensor* Int32Tensor(int32_t v) {
-  const int num_bytes = sizeof(int32_t);
-  int32_t* values = new int32_t[1];
-  values[0] = v;
-  return TF_NewTensor(TF_INT32, nullptr, 0, values, num_bytes,
-                      &Int32Deallocator, nullptr);
+TF_Tensor* Int32Tensor(int32_t v, const tensorflow::TensorShape shape) {
+  int num_dims = shape.dims();
+  int64_t* dims = new int64_t[num_dims];
+  for (int i = 0; i < num_dims; ++i)
+    dims[i] = reinterpret_cast<int64_t>(shape.dim_size(i));
+  int64_t num_values = 1;
+  for (int i = 0; i < num_dims; ++i)
+    num_values *= dims[i];
+  int32_t* values = new int32_t[num_values] {v};
+  return TF_NewTensor(
+      TF_INT32, dims, num_dims, values, sizeof(int32_t) * num_values,
+      &Int32Deallocator, nullptr);
 }
 
-TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name) {
+TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name,
+                          const tensorflow::TensorShape shape) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", name);
   TF_SetAttrType(desc, "dtype", TF_INT32);
+  int num_dims = shape.dims();
+  int64_t* dims = new int64_t[num_dims];
+  for (int i = 0; i < num_dims; ++i)
+    dims[i] = reinterpret_cast<int64_t>(shape.dim_size(i));
+  TF_SetAttrShape(desc, "shape", const_cast<const int64_t*>(dims), num_dims);
   return TF_FinishOperation(desc, s);
 }
 
@@ -60,8 +72,8 @@ TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
 }
 
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
-                          const char* name) {
-  unique_tensor_ptr tensor(Int32Tensor(v), TF_DeleteTensor);
+                          const char* name, const tensorflow::TensorShape shape) {
+  unique_tensor_ptr tensor(Int32Tensor(v, shape), TF_DeleteTensor);
   return Const(tensor.get(), graph, s, name);
 }
 
