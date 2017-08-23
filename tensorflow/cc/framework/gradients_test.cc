@@ -403,6 +403,60 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
       test::AsTensor<int>({60, 61, 62, 63, 66, 66, 66, 67}, {4, 2}));
 }
 
+TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
+  // save the assign node to init the graph before the run
+  std::vector<Output> assign_vars;
+
+  auto x = ThreeNodeVariable(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}},
+                             &assign_vars);
+  auto y = ThreeNodeVariable(scope_test_, {{1.0}, {2.0}, {3.0}}, &assign_vars);
+  auto m1 = MatMul(scope_test_, x, y);
+
+  auto z = ThreeNodeVariable(scope_test_, {{9.0, 10.0, 11.0}}, &assign_vars);
+  auto m2 = MatMul(scope_test_, y, z);
+
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(
+      AddSymbolicGradients(scope_test_, {m1}, {y}, {dm1}, &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, assign_vars, {grad_outputs[0]}, &outputs);
+
+  test::ExpectTensorNear<double>(
+      outputs[0], test::AsTensor<double>({2.5, 3.5, 4.5}, {3, 1}), 1e-5);
+}
+
+TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
+  // save the assign node to init the graph before the run
+  std::vector<Output> assign_vars;
+  
+  auto x = ThreeNodeVariable(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}},
+                             &assign_vars);
+  auto y = ThreeNodeVariable(scope_test_, {{1.0}, {2.0}, {3.0}}, &assign_vars);
+  auto m1 = MatMul(scope_test_, x, y);
+
+  auto z = ThreeNodeVariable(scope_test_, {{9.0, 10.0, 11.0}}, &assign_vars);
+  auto m2 = MatMul(scope_test_, y, z);
+
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+  auto dm2 =
+      Const(scope_test_, {{0.5, 0.5, 0.5}, {0.6, 0.7, 0.8}, {0.6, 0.7, 0.9}});
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(AddSymbolicGradients(scope_test_, {m1, m2}, {y}, {dm1, dm2},
+                                    &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, assign_vars, {grad_outputs[0]}, &outputs);
+
+  // the gradients from m1 and m2 will be summed to compute the gradient
+  // w.r.t y
+  test::ExpectTensorNear<double>(
+      outputs[0], test::AsTensor<double>({17.5, 24.7, 26.8}, {3, 1}), 1e-5);
+}
+
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
 // 'NoGradient' (induced by StopGradient op) returned along multiple edges from
 // a single nodes output.
