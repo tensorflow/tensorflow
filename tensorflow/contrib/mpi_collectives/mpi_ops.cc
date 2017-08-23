@@ -742,6 +742,7 @@ void BackgroundThreadLoop() {
             // Notify all nodes that we are done with the reductions for this
             // tick.
             MPIResponse done_response;
+            should_shut_down = mpi_global.shut_down;
             done_response.set_response_type(mpi_global.shut_down ?
                               MPIResponse::SHUTDOWN : MPIResponse::DONE);
             std::string encoded_response;
