@@ -990,7 +990,7 @@ class TPUEstimator(estimator_lib.Estimator):
                use_tpu=True,
                train_batch_size=None,
                eval_batch_size=None,
-               shard_dimensions=None):
+               batch_axis=None):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -1016,7 +1016,7 @@ class TPUEstimator(estimator_lib.Estimator):
         `config.tpu_config.num_shards`.
       eval_batch_size: An int representing the global training batch size.
         If `None`, evaluation is executed on CPU.
-      shard_dimensions: A python tuple of int values describing how each tensor
+      batch_axis: A python tuple of int values describing how each tensor
         produced by the Estimator `input_fn` should be split across the TPU
         compute shards. For example, if your input_fn produced (images, labels)
         where the images tensor is in `HWCN` format, your shard dimensions would
@@ -1025,7 +1025,7 @@ class TPUEstimator(estimator_lib.Estimator):
         labels to match up with the corresponding images. If None is supplied,
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
-        False, shard_dimensions is ignored.
+        False, batch_axis is ignored.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -1072,7 +1072,7 @@ class TPUEstimator(estimator_lib.Estimator):
     # config.model_dir.
     model_function = _augment_model_fn(model_fn, train_batch_size,
                                        eval_batch_size, use_tpu,
-                                       shard_dimensions)
+                                       batch_axis)
 
     super(TPUEstimator, self).__init__(
         model_fn=model_function,
@@ -1166,15 +1166,15 @@ class TPUEstimator(estimator_lib.Estimator):
       return input_fn(**kwargs)
 
 
-# TODO(b/64607814): Ensure shard_dimensions works with nested structures.
+# TODO(b/64607814): Ensure batch_axis works with nested structures.
 def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
-                                              shard_dimensions):
+                                              batch_axis):
   """Utility to convert input_fn to enqueue and dequeue fns for TPU.
 
   Args:
     inputs_holder: An `_InputsHolder` holding features and labels.
     run_config: A `RunConfig` instance.
-    shard_dimensions: A python list of shard dimensions.
+    batch_axis: A python list of batch dimensions.
 
   Returns:
     A tuple of (dequeue_fn, enqueue_fn)
@@ -1190,7 +1190,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
     infeed_queue = tpu_feed.InfeedQueue(
         tuple_types=[t.dtype for t in unsharded_inputs],
         tuple_shapes=[t.shape for t in unsharded_inputs],
-        shard_dimensions=shard_dimensions)
+        shard_dimensions=batch_axis)
     infeed_queue.set_number_of_shards(inputs_holder.num_shards)
 
   def dequeue_fn():
@@ -1232,7 +1232,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
 
 
 def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
-                      shard_dimensions):
+                      batch_axis):
   """Returns a new model_fn, which wraps the TPU support."""
 
   def _model_fn(features, labels, mode, config, params):
@@ -1249,7 +1249,7 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
                            num_shards=config.tpu_config.num_shards)
 
     dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(
-        inputs, config, shard_dimensions)
+        inputs, config, batch_axis)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       loss = _train_on_tpu_system(model_fn_wrapper, dequeue_fn)
