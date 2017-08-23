@@ -100,9 +100,6 @@ class TensorNode(ag_core.Node):
   def _copy(self, ctx=None, device_name=None):
     return _tensor_copy(self, ctx, device_name)
 
-  def __len__(self):
-    return len(self.value)
-
   def __neg__(self):
     return math_ops.negative(self)
 
@@ -182,14 +179,6 @@ class TensorNode(ag_core.Node):
         self.shape, ops.convert_to_tensor(other).shape):
       return math_ops.equal(self, other)
     return False
-
-  def __ne__(self, other):
-    # math_ops.not_equal raises an error if shapes are not compatible, so check
-    # explicitly first.
-    if common_shapes.is_broadcast_compatible(
-        self.shape, ops.convert_to_tensor(other).shape):
-      return math_ops.not_equal(self, other)
-    return True
 
   def __gt__(self, other):
     return math_ops.greater(self, other)

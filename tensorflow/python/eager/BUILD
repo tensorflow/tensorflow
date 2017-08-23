@@ -382,6 +382,18 @@ py_test(
 )
 
 py_test(
+    name = "tensor_node_test",
+    srcs = ["tensor_node_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor",
+        ":tensor_node",
+        ":test",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
     srcs_version = "PY2AND3",
