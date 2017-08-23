@@ -1006,7 +1006,8 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr(
-        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
+        "double, complex64, "
         "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -1083,7 +1084,8 @@ REGISTER_OP("ReverseV2")
     .Output("output: T")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
-        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
+        "double, complex64, "
         "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -1518,8 +1520,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices),
-            " and params shape: ", c->DebugString(params));
+            c->DebugString(indices), " and params shape: ",
+            c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -2146,12 +2148,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -5012,9 +5014,8 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", outer_dims,
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }
