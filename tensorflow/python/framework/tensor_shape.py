@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.python.util import compat
 
 
 class Dimension(object):
@@ -26,6 +25,8 @@ class Dimension(object):
 
   def __init__(self, value):
     """Creates a new Dimension with the given value."""
+    from tensorflow.python.util import compat
+
     if value is None:
       self._value = None
     else:
@@ -428,6 +429,8 @@ class TensorShape(object):
       TypeError: If dims cannot be converted to a list of dimensions.
     """
     # TODO(irving): Eliminate the single integer special case.
+    from tensorflow.python.util import compat
+
     if dims is None:
       self._dims = None
     elif isinstance(dims, compat.bytes_or_text_types):
