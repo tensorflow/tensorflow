@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
+from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
+# pylint: enable=unused-import
 from tensorflow.contrib.boosted_trees.python.ops import gen_model_ops
 from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensemble_deserialize
 from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensemble_serialize
@@ -24,11 +27,8 @@ from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensem
 from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensemble_stamp_token
 # pylint: enable=unused-import
 
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resources
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
 
 ops.NotDifferentiable("TreeEnsembleVariable")
@@ -110,10 +110,3 @@ def tree_ensemble_variable(stamp_token,
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     resources.register_resource(resource_handle, create_op, is_initialized_op)
     return resource_handle
-
-# Conditionally load ops, they might already be statically linked in.
-try:
-  _model_ops = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_model_ops.so"))
-except (errors.NotFoundError, IOError):
-  print("Error loading _model_ops.so")
