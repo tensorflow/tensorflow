@@ -42,7 +42,7 @@ Tensor* VariantTensorData::add_tensors() {
 
 void VariantTensorData::ToProto(VariantTensorDataProto* proto) const {
   proto->set_type_name(type_name());
-  proto->set_metadata(metadata());
+  proto->set_metadata(metadata_);
   proto->clear_tensors();
   for (const auto& tensor : tensors_) {
     tensor.AsProtoField(proto->mutable_tensors()->Add());
@@ -85,7 +85,7 @@ string VariantTensorData::DebugString() const {
     repeated_field =
         strings::StrCat(repeated_field, " tensors: ", t.DebugString());
   }
-  return strings::StrCat("type_name: ", type_name(), " metadata: ", metadata(),
+  return strings::StrCat("type_name: ", type_name(), " metadata: ", metadata_,
                          repeated_field);
 }
 

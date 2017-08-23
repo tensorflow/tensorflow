@@ -32,17 +32,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn as rnn_lib
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.ops.rnn import static_bidirectional_rnn
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -159,24 +156,18 @@ def _MinLSTMParamSize(num_layers,
 
 def _CreateCudnnCompatibleCanonicalRNN(cudnn_model,
                                        inputs,
-                                       use_block_cell,
                                        scope="rnn"):
   model = cudnn_model.rnn_mode
   if model not in (cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU):
     raise ValueError("%s is not supported!" % model)
-  if model == cudnn_rnn_ops.CUDNN_GRU and use_block_cell:
-    raise ValueError("gru is not supported when using block cell!")
 
   num_units = cudnn_model.num_units
   num_layers = cudnn_model.num_layers
   # To reuse cuDNN-trained models, must use cudnn compatible rnn cells.
-  if use_block_cell:
-    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMBlockCell(num_units)
+  if model == cudnn_rnn_ops.CUDNN_LSTM:
+    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
   else:
-    if model == cudnn_rnn_ops.CUDNN_LSTM:
-      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
-    else:
-      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units)
+    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units)
   cell = rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(num_layers)])
   return rnn_lib.dynamic_rnn(
       cell, inputs, dtype=dtypes.float32, time_major=True, scope=scope)
@@ -472,21 +463,18 @@ class CudnnRNNTestCompatibleRnnCells(TensorFlowTestCase):
             "batch_size": 1,
         },
     ]
-    for rnn, cfg, use_block_cell in itertools.product(
-        (cudnn_rnn_ops.CUDNN_LSTM,), configs, (True, False,)):
+    for rnn, cfg in itertools.product((cudnn_rnn_ops.CUDNN_LSTM,), configs):
       self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
                                         cfg["num_units"], cfg["input_size"],
-                                        cfg["batch_size"], rnn, use_block_cell)
+                                        cfg["batch_size"], rnn)
     # TODO(jamesqin): Add CudnnCompatibleGRUBlockCell.
-    for rnn, cfg, use_block_cell in itertools.product(
-        (cudnn_rnn_ops.CUDNN_GRU,), configs, (False,)):
+    for rnn, cfg in itertools.product((cudnn_rnn_ops.CUDNN_GRU,), configs):
       self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
                                         cfg["num_units"], cfg["input_size"],
-                                        cfg["batch_size"], rnn, use_block_cell)
+                                        cfg["batch_size"], rnn)
 
   def _testCudnnCompatibleRnnCells(self, num_layers, seq_length, num_units,
-                                   input_size, batch_size, rnn_mode,
-                                   use_block_cell):
+                                   input_size, batch_size, rnn_mode):
     has_state_c = rnn_mode == cudnn_rnn_ops.CUDNN_LSTM
     np.random.seed(0)
     # Train graph
@@ -553,7 +541,7 @@ class CudnnRNNTestCompatibleRnnCells(TensorFlowTestCase):
       cell_inputs = array_ops.placeholder(
           dtypes.float32, shape=[seq_length, batch_size, input_size])
       (output, states) = _CreateCudnnCompatibleCanonicalRNN(
-          cudnn_model, cell_inputs, use_block_cell)
+          cudnn_model, cell_inputs)
       saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
 
       with self.test_session(
@@ -942,204 +930,6 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
                                     shape["batch_size"], shape["seq_length"],
                                     dir_count, dropout, dtype, delta, tolerance)
 
-
-class CudnnRNNTestParamsToCanonical(TensorFlowTestCase):
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testLSTMParamsToCanonical(self):
-    """Test ParamsToCanonical kernel returns valid canonical weights."""
-    num_layers = 1
-    dir_count = 1
-
-    num_units = 2
-    input_size = 4
-    batch_size = 3
-
-    lstm = _CreateModel(
-        rnn_mode="lstm",
-        num_layers=num_layers,
-        num_units=num_units,
-        input_size=input_size,
-        input_mode="linear_input",
-        direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-    params_size_t = lstm.params_size()
-    input_data = random_ops.random_uniform([1, batch_size, input_size])
-    input_h = random_ops.random_uniform([num_layers * dir_count, batch_size,
-                                         num_units])
-    input_c = random_ops.random_uniform([num_layers * dir_count, batch_size,
-                                         num_units])
-    cu_params = vs.get_variable(
-        "cu_params", initializer=random_ops.random_uniform([params_size_t]),
-        validate_shape=False)
-    output, _, output_c = lstm(
-        input_data=input_data,
-        input_h=input_h,
-        input_c=input_c,
-        params=cu_params,
-        is_training=False)
-    total_sum = math_ops.reduce_sum(output) + math_ops.reduce_sum(output_c)
-
-    # Subgraph manually computing the LSTM
-    # i_t = σ(w_i * x_t + r_i * h_(t-1) + b_wi + b_ri)
-    # f_t = σ(w_f * x_t + r_f * h_(t-1) + b_wf + b_rf)
-    # o_t = σ(w_o * x_t + r_o h_(t-1) + b_wo + b_ro)
-    # c'_t = tanh(w_c * x_t + r_c * h_(t-1) + b_wc + b_rc)
-    # c_t = f_t ◦ c_(t-1) + i_t ◦ c'_t
-    # h_t = o_t ◦ tanh(c_t)
-    wt, bs = lstm.params_to_canonical(cu_params)
-    # Kernel returned transposed weights.
-    wt = [array_ops.transpose(w) for w in wt]
-
-    wi, wf, wc, wo, ri, rf, rc, ro = wt
-    b_wi, b_wf, b_wc, b_wo, b_ri, b_rf, b_rc, b_ro = bs
-    x = array_ops.squeeze(input_data, 0)
-    h = array_ops.squeeze(input_h, 0)
-    c = array_ops.squeeze(input_c, 0)
-
-    i_g = math_ops.sigmoid(
-        math_ops.matmul(x, wi) + math_ops.matmul(h, ri) + b_wi + b_ri)
-    f_g = math_ops.sigmoid(
-        math_ops.matmul(x, wf) + math_ops.matmul(h, rf) + b_wf + b_rf)
-    c_g = math_ops.tanh(
-        math_ops.matmul(x, wc) + math_ops.matmul(h, rc) + b_wc + b_rc)
-    o_g = math_ops.sigmoid(
-        math_ops.matmul(x, wo) + math_ops.matmul(h, ro) + b_wo + b_ro)
-    c = f_g * c + i_g * c_g
-    h = o_g * math_ops.tanh(c)
-    actual_total_sum = math_ops.reduce_sum(h) + math_ops.reduce_sum(c)
-
-    with self.test_session(use_gpu=True) as sess:
-      variables.global_variables_initializer().run()
-      total_sum_v, actual_total_sum_v = sess.run([total_sum, actual_total_sum])
-      self.assertAllClose(total_sum_v, actual_total_sum_v)
-
-
-class CudnnRNNTestBidirectional(TensorFlowTestCase):
-
-  # TODO(jamesqin): Test multi-layer bi-Cudnn.
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testSingleLayerBidirectionalLSTM(self):
-    # start with 1 layer.
-    test_configs = [{
-        "input_size": 1,
-        "num_units": 1,
-        "seq_length": 1,
-        "batch_size": 1
-    }, {
-        "input_size": 2,
-        "num_units": 2,
-        "seq_length": 2,
-        "batch_size": 2
-    }, {
-        "input_size": 8,
-        "num_units": 4,
-        "seq_length": 4,
-        "batch_size": 4
-    }, {
-        "input_size": 32,
-        "num_units": 16,
-        "seq_length": 16,
-        "batch_size": 32
-    }]
-    for config in test_configs:
-      self._testSingleLayerBidirectionalLSTMHelper(
-          config["input_size"], config["num_units"], config["seq_length"],
-          config["batch_size"])
-
-  def _testSingleLayerBidirectionalLSTMHelper(self, input_size, num_units,
-                                              seq_length, batch_size):
-    # Only tests single layer bi-Cudnn LSTM.
-    num_layers = 1
-    np.random.seed(1234)
-
-    # canonical bidirectional lstm
-    param_size = _MinLSTMParamSize(
-        num_layers,
-        num_units,
-        input_size,
-        direction=cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
-    # np data
-    input_data = np.random.randn(seq_length, batch_size,
-                                 input_size).astype(np.float32)
-    input_h = np.zeros((num_layers * 2, batch_size,
-                        num_units)).astype(np.float32)
-    input_c = np.zeros((num_layers * 2, batch_size,
-                        num_units)).astype(np.float32)
-    cudnn_params = np.random.randn(param_size).astype(np.float32)
-
-    with ops.Graph().as_default():
-      # cudnn bidirectional lstm graph
-      cudnn_params_t = variables.Variable(cudnn_params)
-      input_data_t = constant_op.constant(input_data, dtype=dtypes.float32)
-      input_h_t = constant_op.constant(input_h, dtype=dtypes.float32)
-      input_c_t = constant_op.constant(input_c, dtype=dtypes.float32)
-
-      cudnn_lstm = _CreateModel(
-          "lstm",
-          num_layers,
-          num_units,
-          input_size,
-          direction=cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
-      cudnn_output, cudnn_output_h, cudnn_output_c = cudnn_lstm(
-          input_data=input_data_t,
-          input_h=input_h_t,
-          input_c=input_c_t,
-          params=cudnn_params_t)
-
-      # canonical bidirectional lstm
-      cell_fw = rnn_cell_impl.LSTMCell(num_units, forget_bias=0.)
-      cell_bw = rnn_cell_impl.LSTMCell(num_units, forget_bias=0.)
-      outputs, output_state_fw, output_state_bw = static_bidirectional_rnn(
-          cell_fw, cell_bw, array_ops.unstack(input_data), dtype=dtypes.float32)
-
-      weights_list, biases_list = _TransformBidirectionalCudnnLSTMParams(
-          cudnn_lstm, cudnn_params_t)
-      assert len(weights_list) == 2
-      assert len(biases_list) == 2
-
-      with vs.variable_scope("", reuse=True):
-        cell_fw_kernel = vs.get_variable(
-            "bidirectional_rnn/fw/lstm_cell/kernel")
-        cell_fw_bias = vs.get_variable("bidirectional_rnn/fw/lstm_cell/bias")
-        cell_bw_kernel = vs.get_variable(
-            "bidirectional_rnn/bw/lstm_cell/kernel")
-        cell_bw_bias = vs.get_variable("bidirectional_rnn/bw/lstm_cell/bias")
-
-      assign_fw_kernel = state_ops.assign(cell_fw_kernel, weights_list[0])
-      assign_fw_bias = state_ops.assign(cell_fw_bias, biases_list[0])
-
-      assign_bw_kernel = state_ops.assign(cell_bw_kernel, weights_list[1])
-      assign_bw_bias = state_ops.assign(cell_bw_bias, biases_list[1])
-      assign_ops = control_flow_ops.group(assign_fw_kernel, assign_fw_bias,
-                                          assign_bw_kernel, assign_bw_bias)
-
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        sess.run(variables.global_variables_initializer())
-        cu_out, cu_h, cu_c = sess.run(
-            [cudnn_output, cudnn_output_h, cudnn_output_c])
-
-        sess.run(assign_ops)
-        out, fwd_s, bak_s = sess.run(
-            [outputs, output_state_fw, output_state_bw])
-
-        out = np.stack(out)
-        fwd_h, fwd_c = fwd_s.h, fwd_s.c
-        bak_h, bak_c = bak_s.h, bak_s.c
-        h = np.concatenate((fwd_h, bak_h), axis=1)
-        c = np.concatenate((fwd_c, bak_c), axis=1)
-
-        cu_h = [np.array(x) for x in cu_h]
-        cu_c = [np.array(x) for x in cu_c]
-
-        cu_h = np.concatenate(cu_h, axis=1)
-        cu_c = np.concatenate(cu_c, axis=1)
-
-        self.assertAllClose(out, cu_out)
-        self.assertAllClose(h, cu_h)
-        self.assertAllClose(c, cu_c)
 
 if __name__ == "__main__":
   googletest.main()

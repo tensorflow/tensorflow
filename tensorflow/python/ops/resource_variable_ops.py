@@ -249,6 +249,10 @@ class ResourceVariable(variables.Variable):
                   dtype=initial_value.dtype.base_dtype,
                   shared_name=handle_name,
                   name=name)
+              # TODO(apassos): there should be a better way to get the shape
+              # from the handle in eager mode
+              self._handle._variable_shape = initial_value.get_shape()  # pylint: disable=protected-access
+
           else:
             initial_value = initial_value()
             self._handle = gen_resource_variable_ops.var_handle_op(
@@ -257,6 +261,9 @@ class ResourceVariable(variables.Variable):
                 shared_name=handle_name,
                 name=name,
                 container="")
+            # TODO(apassos): there should be a better way to get the shape
+            # from the handle in eager mode
+            self._handle._variable_shape = initial_value.get_shape()  # pylint: disable=protected-access
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
@@ -280,6 +287,9 @@ class ResourceVariable(variables.Variable):
               shared_name=handle_name,
               name=name,
               container="")
+          # TODO(apassos): there should be a better way to get the shape
+          # from the handle in eager mode
+          self._handle._variable_shape = initial_value.get_shape()  # pylint: disable=protected-access
 
         self._initial_value = initial_value if in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -487,7 +497,7 @@ class ResourceVariable(variables.Variable):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
-      value = gen_resource_variable_ops.resource_gather(
+      value = resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
 
@@ -679,6 +689,50 @@ ops.register_dense_tensor_like_type(ResourceVariable)
 def _ReadGrad(_, grad):
   """Gradient for read op."""
   return grad
+
+
+# TODO(apassos) do not use custom_gradient here by making other entry points
+# than custom_gradient also aware of how to deal with variables implicitly
+# watched in the tape (i.e. the call to _watch_value in custom_gradient)
+@custom_gradient.custom_gradient
+def resource_gather(resource, indices, dtype, validate_indices=True, name=None):
+  """Gather slices from the variable pointed to by `resource`.
+
+  `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+  Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+  ```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+  ```
+
+  Args:
+    resource: A `Tensor` of type `resource`.
+      handle to the resource in which to store the variable.
+    indices: a integer `Tensor` containing the indices to be gathered.
+    dtype: A `tf.DType`. the dtype of the value.
+    validate_indices: optional `bool`. If false will not validate that the
+      indices fit in the variable.
+    name: The optional name for the operation to be added.
+
+  Returns:
+    A `Tensor` of type `dtype`.
+  """
+  result = gen_resource_variable_ops.resource_gather(
+      resource, indices, dtype, validate_indices=validate_indices, name=name)
+
+  def grad(dresult):
+    return ops.IndexedSlices(
+        dresult, indices,
+        dense_shape=ops.convert_to_tensor(resource._variable_shape))  # pylint: disable=protected-access
+
+  return result, grad
 
 
 @ops.RegisterGradient("ResourceGather")

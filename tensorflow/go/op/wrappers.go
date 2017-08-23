@@ -15781,6 +15781,96 @@ func Print(scope *Scope, input tf.Output, data []tf.Output, optional ...PrintAtt
 	return op.Output(0)
 }
 
+// LoadAndRemapMatrixAttr is an optional argument to LoadAndRemapMatrix.
+type LoadAndRemapMatrixAttr func(optionalAttr)
+
+// LoadAndRemapMatrixMaxRowsInMemory sets the optional max_rows_in_memory attribute to value.
+//
+// value: The maximum number of rows to load from the checkpoint at
+// once. If less than or equal to 0, the entire matrix will be loaded into
+// memory. Setting this arg trades increased disk reads for lower memory usage.
+// If not specified, defaults to -1
+func LoadAndRemapMatrixMaxRowsInMemory(value int64) LoadAndRemapMatrixAttr {
+	return func(m optionalAttr) {
+		m["max_rows_in_memory"] = value
+	}
+}
+
+// Loads a 2-D (matrix) `Tensor` with name `old_tensor_name` from the checkpoint
+//
+// at `ckpt_path` and potentially reorders its rows and columns using the
+// specified remappings.
+//
+// Most users should use one of the wrapper initializers (such as
+// `tf.contrib.framework.load_and_remap_matrix_initializer`) instead of this
+// function directly.
+//
+// The remappings are 1-D tensors with the following properties:
+//
+// * `row_remapping` must have exactly `num_rows` entries. Row `i` of the output
+//   matrix will be initialized from the row corresponding to index
+//   `row_remapping[i]` in the old `Tensor` from the checkpoint.
+// * `col_remapping` must have either 0 entries (indicating that no column
+//   reordering is needed) or `num_cols` entries. If specified, column `j` of the
+//   output matrix will be initialized from the column corresponding to index
+//   `col_remapping[j]` in the old `Tensor` from the checkpoint.
+// * A value of -1 in either of the remappings signifies a "missing" entry. In that
+//   case, values from the `initializing_values` tensor will be used to fill that
+//   missing row or column. If `row_remapping` has `r` missing entries and
+//   `col_remapping` has `c` missing entries, then the following condition must be
+//   true:
+//
+// `(r * num_cols) + (c * num_rows) - (r * c) == len(initializing_values)`
+//
+// The remapping tensors can be generated using the GenerateVocabRemapping op.
+//
+// As an example, with row_remapping = [1, 0, -1], col_remapping = [0, 2, -1],
+// initializing_values = [0.5, -0.5, 0.25, -0.25, 42], and w(i, j) representing
+// the value from row i, column j of the old tensor in the checkpoint, the output
+// matrix will look like the following:
+//
+// [[w(1, 0),  w(1, 2),  0.5],
+//  [w(0, 0),  w(0, 2), -0.5],
+//  [0.25,    -0.25,      42]]
+//
+// Arguments:
+//	ckpt_path: Path to the TensorFlow checkpoint (version 2, `TensorBundle`) from
+// which the old matrix `Tensor` will be loaded.
+//	old_tensor_name: Name of the 2-D `Tensor` to load from checkpoint.
+//	row_remapping: An int `Tensor` of row remappings (generally created by
+// `generate_vocab_remapping`).  Even if no row remapping is needed, this must
+// still be an index-valued Tensor (e.g. [0, 1, 2, ...]), or a shifted
+// index-valued `Tensor` (e.g. [8, 9, 10, ...], for partitioned `Variables`).
+//	col_remapping: An int `Tensor` of column remappings (generally created by
+// `generate_vocab_remapping`).  May be a size-0 `Tensor` if only row remapping
+// is to be done (e.g. column ordering is the same).
+//	initializing_values: A float `Tensor` containing  values to fill in for cells
+// in the output matrix that are not loaded from the checkpoint. Length must be
+// exactly the same as the number of missing / new cells.
+//	num_rows: Number of rows (length of the 1st dimension) in the output matrix.
+//	num_cols: Number of columns (length of the 2nd dimension) in the output matrix.
+//
+// Returns Output matrix containing existing values loaded from the
+// checkpoint, and with any missing values filled in from initializing_values.
+func LoadAndRemapMatrix(scope *Scope, ckpt_path tf.Output, old_tensor_name tf.Output, row_remapping tf.Output, col_remapping tf.Output, initializing_values tf.Output, num_rows int64, num_cols int64, optional ...LoadAndRemapMatrixAttr) (output_matrix tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_rows": num_rows, "num_cols": num_cols}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadAndRemapMatrix",
+		Input: []tf.Input{
+			ckpt_path, old_tensor_name, row_remapping, col_remapping, initializing_values,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ResizeAreaAttr is an optional argument to ResizeArea.
 type ResizeAreaAttr func(optionalAttr)
 
@@ -17069,6 +17159,19 @@ func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output t
 	return op.Output(0)
 }
 
+// StringSplitAttr is an optional argument to StringSplit.
+type StringSplitAttr func(optionalAttr)
+
+// StringSplitSkipEmpty sets the optional skip_empty attribute to value.
+//
+// value: A `bool`. If `True`, skip the empty strings from the result.
+// If not specified, defaults to true
+func StringSplitSkipEmpty(value bool) StringSplitAttr {
+	return func(m optionalAttr) {
+		m["skip_empty"] = value
+	}
+}
+
 // Split elements of `input` based on `delimiter` into a `SparseTensor`.
 //
 // Let N be the size of source (typically N will be the batch size). Split each
@@ -17099,15 +17202,20 @@ func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output t
 // Returns A dense matrix of int64 representing the indices of the sparse tensor.A vector of strings corresponding to the splited values.a length-2 vector of int64 representing the shape of the sparse
 // tensor, where the first value is N and the second value is the maximum number
 // of tokens in a single input entry.
-func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output) (indices tf.Output, values tf.Output, shape tf.Output) {
+func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output, optional ...StringSplitAttr) (indices tf.Output, values tf.Output, shape tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "StringSplit",
 		Input: []tf.Input{
 			input, delimiter,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
@@ -19094,6 +19202,103 @@ func RFFT3D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Outp
 	return op.Output(0)
 }
 
+// RestoreSliceAttr is an optional argument to RestoreSlice.
+type RestoreSliceAttr func(optionalAttr)
+
+// RestoreSlicePreferredShard sets the optional preferred_shard attribute to value.
+//
+// value: Index of file to open first if multiple files match
+// `file_pattern`. See the documentation for `Restore`.
+// If not specified, defaults to -1
+func RestoreSlicePreferredShard(value int64) RestoreSliceAttr {
+	return func(m optionalAttr) {
+		m["preferred_shard"] = value
+	}
+}
+
+// Restores a tensor from checkpoint files.
+//
+// This is like `Restore` except that restored tensor can be listed as filling
+// only a slice of a larger tensor.  `shape_and_slice` specifies the shape of the
+// larger tensor and the slice that the restored tensor covers.
+//
+// The `shape_and_slice` input has the same format as the
+// elements of the `shapes_and_slices` input of the `SaveSlices` op.
+//
+// Arguments:
+//	file_pattern: Must have a single element. The pattern of the files from
+// which we read the tensor.
+//	tensor_name: Must have a single element. The name of the tensor to be
+// restored.
+//	shape_and_slice: Scalar. The shapes and slice specifications to use when
+// restoring a tensors.
+//	dt: The type of the tensor to be restored.
+//
+// Returns The restored tensor.
+func RestoreSlice(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, shape_and_slice tf.Output, dt tf.DataType, optional ...RestoreSliceAttr) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dt": dt}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RestoreSlice",
+		Input: []tf.Input{
+			file_pattern, tensor_name, shape_and_slice,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
+type StatelessTruncatedNormalAttr func(optionalAttr)
+
+// StatelessTruncatedNormalDtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_FLOAT
+func StatelessTruncatedNormalDtype(value tf.DataType) StatelessTruncatedNormalAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Outputs deterministic pseudorandom values from a truncated normal distribution.
+//
+// The generated values follow a normal distribution with mean 0 and standard
+// deviation 1, except that values whose magnitude is more than 2 standard
+// deviations from the mean are dropped and re-picked.
+//
+// The outputs are a deterministic function of `shape` and `seed`.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//	seed: 2 seeds (shape [2]).
+//
+// Returns Random values with specified shape.
+func StatelessTruncatedNormal(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessTruncatedNormalAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessTruncatedNormal",
+		Input: []tf.Input{
+			shape, seed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // UniqueWithCountsAttr is an optional argument to UniqueWithCounts.
 type UniqueWithCountsAttr func(optionalAttr)
 
@@ -19757,6 +19962,58 @@ func SoftplusGrad(scope *Scope, gradients tf.Output, features tf.Output) (backpr
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Given a path to new and old vocabulary files, returns a remapping Tensor of
+//
+// length `num_new_vocab`, where `remapping[i]` contains the row number in the old
+// vocabulary that corresponds to row `i` in the new vocabulary (starting at line
+// `new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`
+// in the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables
+// use in the partitioned variable case, and should generally be set through
+// examining partitioning info.  The format of the files should be a text file,
+// with each line containing a single entity within the vocabulary.
+//
+// For example, with `new_vocab_file` a text file containing each of the following
+// elements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],
+// `num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be
+// `[0, -1, 2]`.
+//
+// The op also returns a count of how many entries in the new vocabulary
+// were present in the old vocabulary, which is used to calculate the number of
+// values to initialize in a weight matrix remapping
+//
+// This functionality can be used to remap both row vocabularies (typically,
+// features) and column vocabularies (typically, classes) from TensorFlow
+// checkpoints.  Note that the partitioning logic relies on contiguous vocabularies
+// corresponding to div-partitioned variables.  Moreover, the underlying remapping
+// uses an IndexTable (as opposed to an inexact CuckooTable), so client code should
+// use the corresponding index_table_from_file() as the FeatureColumn framework
+// does (as opposed to tf.feature_to_id(), which uses a CuckooTable).
+//
+// Arguments:
+//	new_vocab_file: Path to the new vocab file.
+//	old_vocab_file: Path to the old vocab file.
+//	new_vocab_offset: How many entries into the new vocab file to start reading.
+//	num_new_vocab: Number of entries in the new vocab file to remap.
+//
+// Returns A Tensor of length num_new_vocab where the element at index i
+// is equal to the old ID that maps to the new ID i.  This element is -1 for any
+// new ID that is not found in the old vocabulary.Number of new vocab entries found in old vocab.
+func GenerateVocabRemapping(scope *Scope, new_vocab_file tf.Output, old_vocab_file tf.Output, new_vocab_offset int64, num_new_vocab int64) (remapping tf.Output, num_present tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"new_vocab_offset": new_vocab_offset, "num_new_vocab": num_new_vocab}
+	opspec := tf.OpSpec{
+		Type: "GenerateVocabRemapping",
+		Input: []tf.Input{
+			new_vocab_file, old_vocab_file,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Computes softsign: `features / (abs(features) + 1)`.
@@ -23977,6 +24234,55 @@ func Range(scope *Scope, start tf.Output, limit tf.Output, delta tf.Output) (out
 	return op.Output(0)
 }
 
+// AngleAttr is an optional argument to Angle.
+type AngleAttr func(optionalAttr)
+
+// AngleTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_FLOAT
+func AngleTout(value tf.DataType) AngleAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Returns the argument of a complex number.
+//
+// Given a tensor `input` of complex numbers, this operation returns a tensor of
+// type `float` that is the argument of each element in `input`. All elements in
+// `input` must be complex numbers of the form \\(a + bj\\), where *a*
+// is the real part and *b* is the imaginary part.
+//
+// The argument returned by this operation is of the form \\(atan2(b, a)\\).
+//
+// For example:
+//
+// ```
+// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+// tf.angle(input) ==> [2.0132, 1.056]
+// ```
+//
+// @compatibility(numpy)
+// Equivalent to np.angle.
+// @end_compatibility
+func Angle(scope *Scope, input tf.Output, optional ...AngleAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Angle",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ResourceSparseApplyMomentumAttr is an optional argument to ResourceSparseApplyMomentum.
 type ResourceSparseApplyMomentumAttr func(optionalAttr)
 
@@ -24064,103 +24370,6 @@ func Conj(scope *Scope, input tf.Output) (output tf.Output) {
 		Input: []tf.Input{
 			input,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
-type StatelessTruncatedNormalAttr func(optionalAttr)
-
-// StatelessTruncatedNormalDtype sets the optional dtype attribute to value.
-//
-// value: The type of the output.
-// If not specified, defaults to DT_FLOAT
-func StatelessTruncatedNormalDtype(value tf.DataType) StatelessTruncatedNormalAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Outputs deterministic pseudorandom values from a truncated normal distribution.
-//
-// The generated values follow a normal distribution with mean 0 and standard
-// deviation 1, except that values whose magnitude is more than 2 standard
-// deviations from the mean are dropped and re-picked.
-//
-// The outputs are a deterministic function of `shape` and `seed`.
-//
-// Arguments:
-//	shape: The shape of the output tensor.
-//	seed: 2 seeds (shape [2]).
-//
-// Returns Random values with specified shape.
-func StatelessTruncatedNormal(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessTruncatedNormalAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StatelessTruncatedNormal",
-		Input: []tf.Input{
-			shape, seed,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RestoreSliceAttr is an optional argument to RestoreSlice.
-type RestoreSliceAttr func(optionalAttr)
-
-// RestoreSlicePreferredShard sets the optional preferred_shard attribute to value.
-//
-// value: Index of file to open first if multiple files match
-// `file_pattern`. See the documentation for `Restore`.
-// If not specified, defaults to -1
-func RestoreSlicePreferredShard(value int64) RestoreSliceAttr {
-	return func(m optionalAttr) {
-		m["preferred_shard"] = value
-	}
-}
-
-// Restores a tensor from checkpoint files.
-//
-// This is like `Restore` except that restored tensor can be listed as filling
-// only a slice of a larger tensor.  `shape_and_slice` specifies the shape of the
-// larger tensor and the slice that the restored tensor covers.
-//
-// The `shape_and_slice` input has the same format as the
-// elements of the `shapes_and_slices` input of the `SaveSlices` op.
-//
-// Arguments:
-//	file_pattern: Must have a single element. The pattern of the files from
-// which we read the tensor.
-//	tensor_name: Must have a single element. The name of the tensor to be
-// restored.
-//	shape_and_slice: Scalar. The shapes and slice specifications to use when
-// restoring a tensors.
-//	dt: The type of the tensor to be restored.
-//
-// Returns The restored tensor.
-func RestoreSlice(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, shape_and_slice tf.Output, dt tf.DataType, optional ...RestoreSliceAttr) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dt": dt}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RestoreSlice",
-		Input: []tf.Input{
-			file_pattern, tensor_name, shape_and_slice,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

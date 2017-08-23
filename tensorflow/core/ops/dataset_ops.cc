@@ -156,8 +156,7 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
 REGISTER_OP("ParallelMapDataset")
     .Input("input_dataset: resource")
     .Input("other_arguments: Targuments")
-    .Input("num_threads: int32")
-    .Input("output_buffer_size: int64")
+    .Input("num_parallel_calls: int32")
     .Output("handle: resource")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
@@ -167,14 +166,11 @@ REGISTER_OP("ParallelMapDataset")
     .Doc(R"doc(
 Creates a dataset that applies `f` to the outputs of `input_dataset`.
 
-Unlike a "MapDataset", which applies `f` sequentially, this dataset uses
-up to `num_threads` threads to process elements from `input_dataset`
-in parallel.
+Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
+to `num_parallel_calls` copies of `f` in parallel.
 
-num_threads: The number of threads to use to process elements from
-  `input_dataset`.
-output_buffer_size: The maximum number of output elements to buffer in an
-  iterator over this dataset.
+num_parallel_calls: The number of concurrent invocations of `f` that process
+  elements from `input_dataset` in parallel.
 )doc");
 
 REGISTER_OP("PrefetchDataset")
