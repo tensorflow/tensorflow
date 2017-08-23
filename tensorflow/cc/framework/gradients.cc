@@ -165,6 +165,27 @@ Status SymbolicGradientBuilder::Initialize() {
   // handle computing gradients over small subgraphs from a very large graph.
   pending_.resize(scope_.graph()->num_node_ids(), 0);
   {
+    // If a node is not reachable when doing a BFS from the outputs
+    // we don't expect it to receive a backpropagated gradient.
+    // It will not be counted in num_expected_backprops.
+    std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
+    std::deque<Node*> queue_reachable;
+    for (const Output& out : outputs_) {
+      if (!reachable_nodes[out.node()->id()]) {
+        queue_reachable.push_back(out.node());
+        reachable_nodes[out.node()->id()] = true;
+      }
+    }
+    while (!queue_reachable.empty()) {
+      Node* n = queue_reachable.front();
+      queue_reachable.pop_front();
+      for (const Edge* e : n->in_edges()) {
+        if (e->IsControlEdge()) continue;
+        queue_reachable.push_back(e->src());
+        reachable_nodes[e->src()->id()] = true;
+      }
+    }
+
     backprops_.clear();
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
@@ -188,17 +209,11 @@ Status SymbolicGradientBuilder::Initialize() {
       if (output_nodes_.find(n->id()) == output_nodes_.end()) {
         // Internal node: continue BFS along connected outputs.
         for (const Edge* e : n->out_edges()) {
-          if (e->IsControlEdge()) continue;
+          if (e->IsControlEdge() 
+              || !reachable_nodes[e->dst()->id()]) continue;
           if (visited.find(e->dst()) == visited.end()) {
             queue.push_back(e->dst());
             visited.insert(e->dst());
-          }
-          // if the node hasn't at least one out edge we don't
-          // count it as expected to be backpropagated because we
-          // will not be able to reach it when doing BFS on ready_
-          if (e->dst()->out_edges().size() == 0 &&
-              output_nodes_.find(e->dst()->id()) == output_nodes_.end()) {
-            continue;
           }
           ++num_expected_backprops;
         }
