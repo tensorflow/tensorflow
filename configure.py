@@ -452,7 +452,7 @@ def check_bazel_version(min_version):
     print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
 
-  print("You have bazel %s installed." % curr_version)
+  print('You have bazel %s installed.' % curr_version)
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
@@ -521,6 +521,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
   var = environ_cp.get(var_name)
   if not var:
     var = get_input(ask_for_var)
+    print('\n')
   if not var:
     var = var_default
   return var
@@ -928,7 +929,6 @@ def set_other_mpi_vars(environ_cp):
 
 
 def set_mkl():
-  write_to_bazelrc('build:mkl --define with_mkl_support=true')
   write_to_bazelrc('build:mkl --define using_mkl=true')
   write_to_bazelrc('build:mkl -c opt')
   write_to_bazelrc('build:mkl --copt="-DEIGEN_USE_VML"')
