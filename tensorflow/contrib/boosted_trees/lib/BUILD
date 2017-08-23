@@ -388,6 +388,7 @@ cc_library(
         ":feature-stats-accumulator",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
