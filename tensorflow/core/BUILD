@@ -528,6 +528,7 @@ tf_gen_op_libs(
     op_lib_names = [
         "bitwise_ops",
         "candidate_sampling_ops",
+        "checkpoint_ops",
         "control_flow_ops",
         "ctc_ops",
         "data_flow_ops",
@@ -606,6 +607,7 @@ cc_library(
         ":audio_ops_op_lib",
         ":bitwise_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
+        ":checkpoint_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
         ":data_flow_ops_op_lib",
@@ -736,6 +738,7 @@ cc_library(
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
+        "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",

@@ -1153,6 +1153,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "checkpoint_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/framework:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
     deps = [

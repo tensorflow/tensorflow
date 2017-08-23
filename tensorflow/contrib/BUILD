@@ -92,8 +92,6 @@ cc_library(
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
-        "//tensorflow/contrib/framework:generate_vocab_remapping_kernel",
-        "//tensorflow/contrib/framework:load_and_remap_matrix_kernel",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/nccl:nccl_kernels",
