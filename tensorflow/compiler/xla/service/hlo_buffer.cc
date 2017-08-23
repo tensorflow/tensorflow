@@ -34,7 +34,6 @@ limitations under the License.
 namespace xla {
 
 using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
 void HloBuffer::AddValue(const HloValue& value) {

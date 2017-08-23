@@ -79,7 +79,7 @@ android {
 
     if (nativeBuildSystem == 'cmake') {
         defaultConfig {
-            applicationId = 'com.tensorflow.demo'
+            applicationId = 'org.tensorflow.demo'
             minSdkVersion 21
             targetSdkVersion 23
             ndk {

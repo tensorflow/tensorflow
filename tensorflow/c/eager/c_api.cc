@@ -64,19 +64,14 @@ struct TFE_Context {
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
-  std::vector<std::unique_ptr<tensorflow::FunctionLibraryRuntime> > func_libs;
+  std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
 
   std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
                      tensorflow::Fprint128Hasher>
       kernel_cache;
 
   tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
-    for (int i = 0; i < session->devices.size(); ++i) {
-      if (session->devices[i] == d) {
-        return func_libs[i].get();
-      }
-    }
-    return nullptr;
+    return pflr->GetFLR(d->name());
   }
 
   const std::vector<tensorflow::Device*>& devices() { return session->devices; }
@@ -132,12 +127,9 @@ TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
   }
 
   TFE_Context* ret = new TFE_Context(session);
-  ret->func_libs.resize(ret->devices().size());
-  for (int i = 0; i < ret->devices().size(); ++i) {
-    ret->func_libs[i] = tensorflow::NewFunctionLibraryRuntime(
-        ret->session->device_mgr, opts->options.env, ret->devices()[i],
-        TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {});
-  }
+  ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
+      ret->session->device_mgr, opts->options.env, TF_GRAPH_DEF_VERSION,
+      &ret->func_lib_def, {}));
   ret->rendezvous =
       new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
 
@@ -202,9 +194,11 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::Device* dstd = nullptr;
-  status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
-  if (!status->status.ok()) return nullptr;
+  tensorflow::Device* dstd = ctx->devices()[0];
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
+    if (!status->status.ok()) return nullptr;
+  }
 
   tensorflow::Device* srcd = h->d == nullptr ? ctx->devices()[0] : h->d;
   bool is_same_device =
@@ -293,8 +287,10 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
 void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
                      TF_Status* status) {
   tensorflow::Device* d = nullptr;
-  status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
-  if (!status->status.ok()) return;
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    if (!status->status.ok()) return;
+  }
   TFE_OpSetDeviceHelper(op, d, status);
 }
 

@@ -948,6 +948,10 @@ string Tensor::SummarizeValue(int64 max_entries) const {
           case DT_STRING:
             strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
             break;
+          case DT_VARIANT: {
+            const Variant& v = flat<Variant>()(i);
+            strings::StrAppend(&ret, v.DebugString());
+          } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
             // complex64, quantized).

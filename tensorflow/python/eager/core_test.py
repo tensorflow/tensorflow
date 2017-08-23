@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
-
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -46,45 +46,73 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx = context.Context()
     self.assertFalse(ctx.in_graph_mode())
     self.assertTrue(ctx.in_eager_mode())
+
     self.assertEqual('', ctx.scope_name)
-    self.assertEqual(-1, ctx._device_index)  # pylint: disable=protected-access
-    self.assertFalse(ctx.recording_summaries)
+    ctx.scope_name = 'foo'
+    self.assertEqual('foo', ctx.scope_name)
+
     self.assertIsNone(ctx.summary_writer_resource)
+    ctx.summary_writer_resource = 'mock'
+    self.assertEqual('mock', ctx.summary_writer_resource)
+
+    self.assertFalse(ctx.recording_summaries)
+    ctx.recording_summaries = True
+    self.assertTrue(ctx.recording_summaries)
+
+    self.assertEqual('', ctx.device_name)
+    self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+    with ctx.device('GPU:0'):
+      self.assertEqual('/job:localhost/replica:0/task:0/device:GPU:0',
+                       ctx.device_name)
+      self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+      with ctx.device(None):
+        self.assertEqual('', ctx.device_name)
+        self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+        with ctx.device('CPU:0'):
+          self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                           ctx.device_name)
+          self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+
+    has_cpu_device = False
+    for x in ctx.devices():
+      has_cpu_device = has_cpu_device or 'CPU' in x
+    self.assertTrue(has_cpu_device)
     del ctx
 
-  def testDefaultContext(self):
-    orig = context.get_default_context()
-    self.assertIs(context.get_default_context(), orig)
-    c0 = context.Context()
-    self.assertIs(context.get_default_context(), orig)
-    context_manager_0 = c0.as_default()
-    self.assertIs(context.get_default_context(), orig)
-    with context_manager_0 as c0:
-      self.assertIs(context.get_default_context(), c0)
-      with context.Context().as_default() as c1:
-        self.assertIs(context.get_default_context(), c1)
-      self.assertIs(context.get_default_context(), c0)
-    self.assertIs(context.get_default_context(), orig)
+  def _runInThread(self, target, args):
+    t = threading.Thread(target=target, args=args)
+    try:
+      t.start()
+      t.join()
+    except Exception as e:
+      raise e
 
-  def testContextWithThreads(self):
+  # Test that different thread local values are initialized to the same values
+  # in different threads.
+  def testContextThreadLocalMembers(self):
 
-    def run_fn(ctx1):
-      ctx2 = context.get_default_context()
-      # Default context created in different threads are different.
-      self.assertIsNot(ctx1, ctx2)
-      # Check that default values of the context created in a different thread
-      # are set correctly.
-      self.assertFalse(ctx2.in_graph_mode())
-      self.assertTrue(ctx2.in_eager_mode())
-      self.assertEqual('', ctx2.scope_name)
-      self.assertEqual(-1, ctx2._device_index)  # pylint: disable=protected-access
-      self.assertFalse(ctx2.recording_summaries)
-      self.assertIsNone(ctx2.summary_writer_resource)
+    def get_context_values(ctx):
+      return [
+          ctx.in_graph_mode(),
+          ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
+          ctx.recording_summaries, ctx.device_name,
+          ctx.num_gpus()
+      ]
 
-    ctx1 = context.get_default_context()
-    t = threading.Thread(target=run_fn, args=(ctx1,))
-    t.start()
-    t.join()
+    def get_values(ctx, values):
+      values.extend(get_context_values(ctx))
+
+    context_values = []
+    ctx = context.Context()
+    self._runInThread(get_values, (ctx, context_values))
+    self.assertAllEqual(context_values, get_context_values(ctx))
+
+  def testContextConfig(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    ctx = context.Context(config=config_pb2.ConfigProto(
+        device_count={'GPU': 0}))
+    self.assertEquals(0, ctx.num_gpus())
 
   def testTensorPlacement(self):
     if not context.context().num_gpus():

@@ -35,6 +35,7 @@ class CompilerFunctor {
   struct VectorIntrinsics {
     bool sse_intrinsics;
     bool avx_intrinsics;
+    bool neon_intrinsics;
   };
 
   // Returns a VectorIntrinsics where all intrinsics are available.

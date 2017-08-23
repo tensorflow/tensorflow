@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -74,6 +76,7 @@ void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     false /* protobuf */>,
                        VariantTensorData* data) {
+  data->set_type_name(TypeNameVariant(value));
   value.Encode(data);
 }
 
@@ -154,12 +157,62 @@ string TypeNameVariantImpl(
     const T& value,
     TypeNameResolver<T, false /* has_type_name */, false /* Tensor */,
                      false /* protobuf */>) {
-  return value.TypeName();
+  return port::MaybeAbiDemangle(MakeTypeIndex<T>().name());
 }
 
 template <typename T>
 string TypeNameVariant(const T& value) {
   return TypeNameVariantImpl(value, TypeNameResolver<T>());
+}
+
+template <typename C, typename = void>
+struct has_debug_string : std::false_type {};
+
+template <typename C>
+struct has_debug_string<
+    C, typename std::enable_if<std::is_same<
+           decltype(std::declval<C>().DebugString()), string>::value>::type>
+    : std::true_type {};
+
+template <typename C, typename = void>
+struct can_strcat : std::false_type {};
+
+template <typename C>
+struct can_strcat<
+    C, typename std::enable_if<std::is_same<
+           decltype(strings::StrCat(std::declval<C>())), string>::value>::type>
+    : std::true_type {};
+
+template <typename T,
+          bool = has_debug_string<typename std::decay<T>::type>::value,
+          bool = can_strcat<typename std::decay<T>::type>::value>
+struct DebugStringResolver {};
+
+// TODO(ebrevdo): Expand DebugStringResolver to return TypeString if
+// there is no StrCat<T>() constructor.
+template <typename T>
+string DebugStringVariantImpl(
+    const T& value, DebugStringResolver<T, true /* has_debug_string */>) {
+  return value.DebugString();
+}
+
+template <typename T>
+string DebugStringVariantImpl(
+    const T& value, DebugStringResolver<T, false /* has_debug_string */,
+                                        true /* can_strcat */>) {
+  return strings::StrCat(value);
+}
+
+template <typename T>
+string DebugStringVariantImpl(
+    const T& value, DebugStringResolver<T, false /* has_debug_string */,
+                                        false /* can_strcat */>) {
+  return "?";
+}
+
+template <typename T>
+string DebugStringVariant(const T& value) {
+  return DebugStringVariantImpl(value, DebugStringResolver<T>());
 }
 
 template <typename T>
