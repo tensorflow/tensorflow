@@ -9401,6 +9401,43 @@ op {
   description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `params.shape[:axis] + indices.shape +\nparams.shape[axis + 1:]` where:\n\n```python\n    # Scalar indices (output is rank(params) - 1).\n    output[a_0, ..., a_n, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices, b_0, ..., b_n]\n\n    # Vector indices (output is rank(params)).\n    output[a_0, ..., a_n, i, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]\n\n    # Higher rank indices (output is rank(params) + rank(indices) - 1).\n    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =\n      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/Gather.png\" alt>\n</div>"
 }
 op {
+  name: "GenerateVocabRemapping"
+  input_arg {
+    name: "new_vocab_file"
+    description: "Path to the new vocab file."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "old_vocab_file"
+    description: "Path to the old vocab file."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "remapping"
+    description: "A Tensor of length num_new_vocab where the element at index i\nis equal to the old ID that maps to the new ID i.  This element is -1 for any\nnew ID that is not found in the old vocabulary."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "num_present"
+    description: "Number of new vocab entries found in old vocab."
+    type: DT_INT32
+  }
+  attr {
+    name: "new_vocab_offset"
+    type: "int"
+    description: "How many entries into the new vocab file to start reading."
+    has_minimum: true
+  }
+  attr {
+    name: "num_new_vocab"
+    type: "int"
+    description: "Number of entries in the new vocab file to remap."
+    has_minimum: true
+  }
+  summary: "Given a path to new and old vocabulary files, returns a remapping Tensor of"
+  description: "length `num_new_vocab`, where `remapping[i]` contains the row number in the old\nvocabulary that corresponds to row `i` in the new vocabulary (starting at line\n`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`\nin the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables\nuse in the partitioned variable case, and should generally be set through\nexamining partitioning info.  The format of the files should be a text file,\nwith each line containing a single entity within the vocabulary.\n\nFor example, with `new_vocab_file` a text file containing each of the following\nelements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],\n`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be\n`[0, -1, 2]`.\n\nThe op also returns a count of how many entries in the new vocabulary\nwere present in the old vocabulary, which is used to calculate the number of\nvalues to initialize in a weight matrix remapping\n\nThis functionality can be used to remap both row vocabularies (typically,\nfeatures) and column vocabularies (typically, classes) from TensorFlow\ncheckpoints.  Note that the partitioning logic relies on contiguous vocabularies\ncorresponding to div-partitioned variables.  Moreover, the underlying remapping\nuses an IndexTable (as opposed to an inexact CuckooTable), so client code should\nuse the corresponding index_table_from_file() as the FeatureColumn framework\ndoes (as opposed to tf.feature_to_id(), which uses a CuckooTable)."
+}
+op {
   name: "GetSessionHandle"
   input_arg {
     name: "value"
@@ -11173,6 +11210,63 @@ op {
   }
   summary: "Computes the difference between two lists of numbers or strings."
   description: "Given a list `x` and a list `y`, this operation returns a list `out` that\nrepresents all values that are in `x` but not in `y`. The returned list `out`\nis sorted in the same order that the numbers appear in `x` (duplicates are\npreserved). This operation also returns a list `idx` that represents the\nposition of each `out` element in `x`. In other words:\n\n`out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`\n\nFor example, given this input:\n\n```\nx = [1, 2, 3, 4, 5, 6]\ny = [1, 3, 5]\n```\n\nThis operation would return:\n\n```\nout ==> [2, 4, 6]\nidx ==> [1, 3, 5]\n```"
+}
+op {
+  name: "LoadAndRemapMatrix"
+  input_arg {
+    name: "ckpt_path"
+    description: "Path to the TensorFlow checkpoint (version 2, `TensorBundle`) from\nwhich the old matrix `Tensor` will be loaded."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "old_tensor_name"
+    description: "Name of the 2-D `Tensor` to load from checkpoint."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "row_remapping"
+    description: "An int `Tensor` of row remappings (generally created by\n`generate_vocab_remapping`).  Even if no row remapping is needed, this must\nstill be an index-valued Tensor (e.g. [0, 1, 2, ...]), or a shifted\nindex-valued `Tensor` (e.g. [8, 9, 10, ...], for partitioned `Variables`)."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_remapping"
+    description: "An int `Tensor` of column remappings (generally created by\n`generate_vocab_remapping`).  May be a size-0 `Tensor` if only row remapping\nis to be done (e.g. column ordering is the same)."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "initializing_values"
+    description: "A float `Tensor` containing  values to fill in for cells\nin the output matrix that are not loaded from the checkpoint. Length must be\nexactly the same as the number of missing / new cells."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_matrix"
+    description: "Output matrix containing existing values loaded from the\ncheckpoint, and with any missing values filled in from initializing_values."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_rows"
+    type: "int"
+    description: "Number of rows (length of the 1st dimension) in the output matrix."
+    has_minimum: true
+  }
+  attr {
+    name: "num_cols"
+    type: "int"
+    description: "Number of columns (length of the 2nd dimension) in the output matrix."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_rows_in_memory"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The maximum number of rows to load from the checkpoint at\nonce. If less than or equal to 0, the entire matrix will be loaded into\nmemory. Setting this arg trades increased disk reads for lower memory usage."
+  }
+  summary: "Loads a 2-D (matrix) `Tensor` with name `old_tensor_name` from the checkpoint"
+  description: "at `ckpt_path` and potentially reorders its rows and columns using the\nspecified remappings.\n\nMost users should use one of the wrapper initializers (such as\n`tf.contrib.framework.load_and_remap_matrix_initializer`) instead of this\nfunction directly.\n\nThe remappings are 1-D tensors with the following properties:\n\n* `row_remapping` must have exactly `num_rows` entries. Row `i` of the output\n  matrix will be initialized from the row corresponding to index\n  `row_remapping[i]` in the old `Tensor` from the checkpoint.\n* `col_remapping` must have either 0 entries (indicating that no column\n  reordering is needed) or `num_cols` entries. If specified, column `j` of the\n  output matrix will be initialized from the column corresponding to index\n  `col_remapping[j]` in the old `Tensor` from the checkpoint.\n* A value of -1 in either of the remappings signifies a \"missing\" entry. In that\n  case, values from the `initializing_values` tensor will be used to fill that\n  missing row or column. If `row_remapping` has `r` missing entries and\n  `col_remapping` has `c` missing entries, then the following condition must be\n  true:\n\n`(r * num_cols) + (c * num_rows) - (r * c) == len(initializing_values)`\n\nThe remapping tensors can be generated using the GenerateVocabRemapping op.\n\nAs an example, with row_remapping = [1, 0, -1], col_remapping = [0, 2, -1],\ninitializing_values = [0.5, -0.5, 0.25, -0.25, 42], and w(i, j) representing\nthe value from row i, column j of the old tensor in the checkpoint, the output\nmatrix will look like the following:\n\n[[w(1, 0),  w(1, 2),  0.5],\n [w(0, 0),  w(0, 2), -0.5],\n [0.25,    -0.25,      42]]"
+  is_stateful: true
 }
 op {
   name: "Log"
