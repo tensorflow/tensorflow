@@ -338,11 +338,29 @@ TEST_F(CApiWhileLoopTest, BadTypes) {
 
 TEST_F(CApiWhileLoopTest, BadShapes) {
   Init(1, {2, 2});
-  CreateCondGraph();
-  TF_Operation* one = ScalarConst(1, params_->body_graph, s_, "one", {2, 3});
+
+  // Create cond graph.
+  TF_Operation* one_cond = ScalarConst(1, params_->cond_graph, s_, "one_cond", {4, 1});
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  TF_Operation* add = Add(params_->body_inputs[0].oper, one, params_->body_graph, s_, "add");
+  TF_Operation* less_than = LessThan(
+      params_->cond_inputs[0], {one_cond, 0}, params_->cond_graph, s_);
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+  string msg_cond(TF_Message(s_));
+  EXPECT_NE(msg_cond.find("Dimensions must be equal, but are 2 and 4 for 'less_than' "
+                          "(op: 'Less') with input shapes: [2,2], [4,1]."),
+            msg_cond.npos);
+
+  // Create body graph.
+  TF_Operation* one_body = ScalarConst(1, params_->body_graph, s_, "one_body", {2, 3});
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* add = Add(
+      params_->body_inputs[0].oper, one_body, params_->body_graph, s_, "add");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+  string msg_body(TF_Message(s_));
+  EXPECT_NE(msg_body.find("Dimension 1 in both shapes must be equal, but are 2 and 3\n"
+                          "\tFrom merging shape 0 with other shapes. for 'add' "
+                          "(op: 'AddN') with input shapes: [2,2], [2,3]."),
+            msg_body.npos);
 }
 
 }  // namespace

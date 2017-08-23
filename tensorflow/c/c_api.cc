@@ -1818,12 +1818,12 @@ bool CreateInput(TF_Graph* parent_graph, const TF_Output& parent_input, TF_Graph
   TF_SetAttrType(desc, "dtype", TF_OperationOutputType(parent_input));
   // Set placeholder shape.
   int num_dims = TF_GraphGetTensorNumDims(parent_graph, parent_input, status);
-  if (status->status.ok() && num_dims >= 0) {
-    int64_t* dims = new int64_t[num_dims];
-    TF_GraphGetTensorShape(parent_graph, parent_input, dims, num_dims, status);
-    if (status->status.ok()) {
-      TF_SetAttrShape(desc, "shape", const_cast<const int64_t*>(dims), num_dims);
-    }
+  if (!status->status.ok()) return false;
+  if (num_dims >= 0) {
+    std::vector<int64_t> dims(num_dims);
+    TF_GraphGetTensorShape(parent_graph, parent_input, dims.data(), dims.size(), status);
+    if (!status->status.ok()) return false;
+    TF_SetAttrShape(desc, "shape", dims.data(), dims.size());
   }
   TF_Operation* oper = TF_FinishOperation(desc, status);
   if (!status->status.ok()) return false;
