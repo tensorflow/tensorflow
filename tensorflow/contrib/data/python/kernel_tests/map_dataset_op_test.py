@@ -549,6 +549,41 @@ class MapDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
+  def testReturnList(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: [x, constant_op.constant(37.0)])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testMultiOutputPyFunc(self):
+    # The `tf.py_func()` op returns a list of tensors for its outputs.
+    def _map_fn(x_tensor):
+      def _map_py_func(x):
+        return x, np.array(37.0, dtype=np.float64)
+      return script_ops.py_func(
+          _map_py_func, [x_tensor], [dtypes.int64, dtypes.float64])
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_map_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

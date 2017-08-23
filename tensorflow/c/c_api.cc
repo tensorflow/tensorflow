@@ -1939,6 +1939,8 @@ bool CopyGraph(TF_Graph* src_graph, TF_Graph* dst_graph,
     TF_ImportGraphDefOptionsAddInputMapping(opts.get(), src.first.data(),
                                             src.second, dst_inputs[i]);
   }
+  opts.get()->opts.skip_mapped_nodes = true;
+
   // We use the pivot node to control constants in `src_graph`
   TF_Operation* pivot = dst_inputs[0].oper;
   TF_ImportGraphDefOptionsAddControlDependency(opts.get(), pivot);

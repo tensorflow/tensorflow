@@ -65,9 +65,12 @@ def BatchRegularizedLeastSquares(matrices, rhss, l2_regularization=0.0):
 class MatrixSolveLsOpTest(test.TestCase):
 
   def _verifySolve(self, x, y):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [np.float32, np.float64, np.complex64, np.complex128]:
       a = x.astype(np_type)
       b = y.astype(np_type)
+      if np_type in [np.complex64, np.complex128]:
+        a.imag = a.real
+        b.imag = b.real
       np_ans, _, _, _ = np.linalg.lstsq(a, b)
       for fast in [True, False]:
         with self.test_session():
@@ -84,7 +87,11 @@ class MatrixSolveLsOpTest(test.TestCase):
         self.assertAllClose(np_r_norm, tf_r_norm)
 
         # Check solution.
-        self.assertAllClose(np_ans, ans, atol=1e-5, rtol=1e-5)
+        if np_type == np.float32 or np_type == np.complex64:
+          tol = 5e-5
+        else:
+          tol = 1e-12
+        self.assertAllClose(np_ans, ans, atol=tol, rtol=tol)
 
   def _verifySolveBatch(self, x, y):
     # Since numpy.linalg.lsqr does not support batch solves, as opposed

@@ -121,6 +121,18 @@ py_test(
 )
 
 py_test(
+    name = "feeding_queue_runner_test",
+    size = "medium",
+    srcs = ["python/training/feeding_queue_runner_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "hparam_test",
     size = "small",
     srcs = ["python/training/hparam_test.py"],

@@ -15,6 +15,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/kernels/dataset.h"
+
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -129,13 +130,16 @@ class ParallelMapDatasetOp : public OpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::ParallelMap")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
       return output_types_;
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return output_shapes_;
     }
@@ -145,10 +149,9 @@ class ParallelMapDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            iter_ctx_(dataset->ctx_params_),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
       ~Iterator() override {
         // Signal the mapper threads, if any, so that they terminate.
@@ -167,8 +170,9 @@ class ParallelMapDatasetOp : public OpKernel {
         }
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(output_mu_);
         TF_RETURN_IF_ERROR(EnsureMapperThreadsStarted(ctx));
 
@@ -227,25 +231,23 @@ class ParallelMapDatasetOp : public OpKernel {
       Status EnsureMapperThreadsStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(output_mu_) {
         if (mapper_threads_.empty()) {
-          // Choose a step ID that is guaranteed not to clash with any
-          // Session-generated step ID. DirectSession only generates
-          // non-negative step IDs (contiguous, starting from 0), and
-          // MasterSession generates 56-bit random step IDs whose MSB
-          // is always 0, so a negative random step ID should suffice.
-          f_opts_.step_id = -std::abs(static_cast<int64>(random::New64()));
-          f_opts_.runner = iter_ctx_.runner();
-
           active_threads_ = dataset()->num_threads_;
           for (int i = 0; i < dataset()->num_threads_; ++i) {
-            mapper_threads_.emplace_back(
-                std::unique_ptr<Thread>(ctx->env()->StartThread(
-                    {}, "mapper_thread", [this]() { MapperThread(); })));
+            mapper_threads_.emplace_back(std::unique_ptr<Thread>(
+                ctx->env()->StartThread({}, "mapper_thread",
+                                        std::bind(&Iterator::MapperThread, this,
+                                                  new IteratorContext(*ctx)))));
           }
         }
         return Status::OK();
       }
 
-      void MapperThread() {
+      // Applies the given function over elements of the input, storing results
+      // in an internal buffer.
+      //
+      // It owns the iterator context passed to it.
+      void MapperThread(IteratorContext* ctx) {
+        std::unique_ptr<IteratorContext> cleanup(ctx);
         while (true) {
           OutputQueueElement* output_queue_element_;
 
@@ -283,7 +285,7 @@ class ParallelMapDatasetOp : public OpKernel {
             }
 
             bool end_of_sequence;
-            s = input_impl_->GetNext(&iter_ctx_, &input_args, &end_of_sequence);
+            s = input_impl_->GetNext(ctx, &input_args, &end_of_sequence);
             if (s.ok() && end_of_sequence) {
               mutex_lock output_lock(output_mu_);
               --active_threads_;
@@ -295,8 +297,16 @@ class ParallelMapDatasetOp : public OpKernel {
           }
 
           if (s.ok()) {
-            s = dataset()->captured_func_->Run(f_opts_, input_args,
-                                               &output_value);
+            FunctionLibraryRuntime::Options opts;
+            // Choose a step ID that is guaranteed not to clash with any
+            // Session-generated step ID. DirectSession only generates
+            // non-negative step IDs (contiguous, starting from 0), and
+            // MasterSession generates 56-bit random step IDs whose MSB
+            // is always 0, so a negative random step ID should suffice.
+            opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+            opts.runner = ctx->runner();
+            s = dataset()->captured_func_->Run(opts, input_args, &output_value,
+                                               prefix());
           }
 
           // 3. Signal that the element has been produced.
@@ -310,10 +320,8 @@ class ParallelMapDatasetOp : public OpKernel {
         }
       }
 
-      IteratorContext iter_ctx_;
       mutex input_mu_;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(input_mu_);
-      FunctionLibraryRuntime::Options f_opts_;
       mutex output_mu_;
       condition_variable cond_var_;
       std::deque<OutputQueueElement> output_buffer_ GUARDED_BY(output_mu_);

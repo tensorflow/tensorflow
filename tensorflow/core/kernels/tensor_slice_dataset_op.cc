@@ -70,8 +70,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TensorSlice")}));
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -119,13 +121,14 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
 
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
             i_(0),
-            n_(dataset->tensors_[0].dim_size(0)) {}
+            n_(params.dataset->tensors_[0].dim_size(0)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (i_ < n_) {
           out_tensors->clear();

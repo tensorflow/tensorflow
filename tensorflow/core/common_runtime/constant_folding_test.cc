@@ -282,6 +282,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
     Status status;
     Node* times_two = s.graph()->AddNode(def, &status);
     TF_ASSERT_OK(status);
+    TF_ASSERT_OK(s.DoShapeInference(times_two));
     s.graph()->AddEdge(c.node(), 0, times_two, 0);
 
     auto times_two_send =
@@ -297,7 +298,10 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
   EXPECT_FALSE(was_mutated);
 }
 
-REGISTER_OP("ConstantFoldingTestOp").Input("a: int64").Output("b: int64");
+REGISTER_OP("ConstantFoldingTestOp")
+    .Input("a: int64")
+    .Output("b: int64")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
   Graph g(OpRegistry::Global());
@@ -312,6 +316,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
     Status status;
     Node* non_cpu = s.graph()->AddNode(def, &status);
     TF_ASSERT_OK(status);
+    TF_ASSERT_OK(s.DoShapeInference(non_cpu));
 
     auto non_cpu_send =
         ops::_Send(s.WithOpName("non_cpu_send"), Output(non_cpu),
