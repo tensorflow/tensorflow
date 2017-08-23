@@ -79,6 +79,9 @@ py_test(
     size = "small",
     srcs = ["python/utils/losses_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":losses",
         "//tensorflow/python:framework_test_lib",
@@ -108,6 +111,9 @@ py_test(
     size = "small",
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":gbdt_batch",
         ":losses",
@@ -125,6 +131,9 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/ensemble_optimizer_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":ensemble_optimizer_ops_py",
         ":model_ops_py",
@@ -145,6 +154,9 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/model_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":ensemble_optimizer_ops_py",
         ":model_ops_py",
@@ -168,6 +180,9 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/prediction_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":model_ops_py",
         ":prediction_ops_py",
@@ -185,6 +200,9 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/quantile_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":quantile_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
@@ -219,6 +237,9 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/stats_accumulator_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":stats_accumulator_ops_py",
         "//tensorflow/python:framework_ops",
@@ -233,6 +254,9 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/training_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":boosted_trees_ops_loader",
         ":model_ops_py",
