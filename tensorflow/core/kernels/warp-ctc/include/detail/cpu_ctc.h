@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <numeric>
 
-#if !defined(CTC_DISABLE_OMP) && !defined(APPLE)
+#if !defined(CTC_DISABLE_OMP) && !defined(__APPLE__)
 #include <omp.h>
 #endif
 
@@ -20,7 +20,7 @@ public:
     CpuCTC(int alphabet_size, int minibatch, void* workspace, int num_threads) :
             alphabet_size_(alphabet_size), minibatch_(minibatch),
             num_threads_(num_threads), workspace_(workspace) {
-#if defined(CTC_DISABLE_OMP) || defined(APPLE)
+#if defined(CTC_DISABLE_OMP) || defined(__APPLE__)
 #else
         if (num_threads > 0) {
             omp_set_num_threads(num_threads);

@@ -85,10 +85,6 @@ do
     BAZEL_OPT_FLAGS="${BAZEL_OPT_FLAGS} --copt=${flag}"
 done;
 
-# No support for OMP on OSX
-if [ "${OS}" = "Darwin" ]; then
-    BAZEL_OPT_FLAGS="--copt=-DCTC_DISABLE_OMP ${BAZEL_OPT_FLAGS}"
-fi;
 export CC_OPT_FLAGS
 
 if [ "${OS}" = "Darwin" ]; then
