@@ -113,7 +113,13 @@ cuda_py_test(
         ":tensor",
         ":test",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
     ],
 )
 

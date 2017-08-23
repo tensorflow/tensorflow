@@ -245,6 +245,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
 )
@@ -1332,6 +1333,7 @@ tf_kernel_library(
     deps = [
         ":ops_util",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
     ],

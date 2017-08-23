@@ -404,6 +404,7 @@ filename: A path on the filesystem where we should cache the dataset. Note: this
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
+    .Input("buffer_size: int64")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): validate
                                                // that `filenames` is
@@ -416,6 +417,7 @@ filenames: A scalar or a vector containing the name(s) of the file(s) to be
   read.
 compression_type: A scalar containing either (i) the empty string (no
   compression), (ii) "ZLIB", or (iii) "GZIP".
+buffer_size: A scalar containing the number of bytes to buffer.
 )doc");
 
 REGISTER_OP("FixedLengthRecordDataset")
@@ -423,6 +425,7 @@ REGISTER_OP("FixedLengthRecordDataset")
     .Input("header_bytes: int64")
     .Input("record_bytes: int64")
     .Input("footer_bytes: int64")
+    .Input("buffer_size: int64")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -435,11 +438,13 @@ header_bytes: A scalar representing the number of bytes to skip at the
 record_bytes: A scalar representing the number of bytes in each record.
 footer_bytes: A scalar representing the number of bytes to skip at the end
   of a file.
+buffer_size: A scalar representing the number of bytes to buffer. Must be > 0.
 )doc");
 
 REGISTER_OP("TFRecordDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
+    .Input("buffer_size: int64")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -449,6 +454,8 @@ filenames: A scalar or vector containing the name(s) of the file(s) to be
   read.
 compression_type: A scalar containing either (i) the empty string (no
   compression), (ii) "ZLIB", or (iii) "GZIP".
+buffer_size: A scalar representing the number of bytes to buffer. A value of
+  0 means no buffering will be performed.
 )doc");
 
 REGISTER_OP("Iterator")

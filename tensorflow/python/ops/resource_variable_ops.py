@@ -249,10 +249,6 @@ class ResourceVariable(variables.Variable):
                   dtype=initial_value.dtype.base_dtype,
                   shared_name=handle_name,
                   name=name)
-              # TODO(apassos): there should be a better way to get the shape
-              # from the handle in eager mode
-              self._handle._variable_shape = initial_value.get_shape()  # pylint: disable=protected-access
-
           else:
             initial_value = initial_value()
             self._handle = gen_resource_variable_ops.var_handle_op(
@@ -261,9 +257,6 @@ class ResourceVariable(variables.Variable):
                 shared_name=handle_name,
                 name=name,
                 container="")
-            # TODO(apassos): there should be a better way to get the shape
-            # from the handle in eager mode
-            self._handle._variable_shape = initial_value.get_shape()  # pylint: disable=protected-access
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
@@ -287,9 +280,6 @@ class ResourceVariable(variables.Variable):
               shared_name=handle_name,
               name=name,
               container="")
-          # TODO(apassos): there should be a better way to get the shape
-          # from the handle in eager mode
-          self._handle._variable_shape = initial_value.get_shape()  # pylint: disable=protected-access
 
         self._initial_value = initial_value if in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -397,9 +387,8 @@ class ResourceVariable(variables.Variable):
     """The shape of this variable."""
     if context.in_graph_mode():
       return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
-    else:
-      # TODO(agarwal): avoid a call to value here.
-      return self.value().shape
+    return tensor_shape.TensorShape(
+        gen_resource_variable_ops.variable_shape(self._handle).numpy())
 
   @property
   def create(self):
@@ -730,7 +719,7 @@ def resource_gather(resource, indices, dtype, validate_indices=True, name=None):
   def grad(dresult):
     return ops.IndexedSlices(
         dresult, indices,
-        dense_shape=ops.convert_to_tensor(resource._variable_shape))  # pylint: disable=protected-access
+        dense_shape=gen_resource_variable_ops.variable_shape(resource))
 
   return result, grad
 
