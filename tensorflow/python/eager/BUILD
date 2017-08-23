@@ -309,6 +309,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":custom_gradient",
         ":tape",
         ":tensor",
         "//tensorflow/python:array_ops",
@@ -377,6 +378,18 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+    ],
+)
+
+py_test(
+    name = "tensor_node_test",
+    srcs = ["tensor_node_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor",
+        ":tensor_node",
+        ":test",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

@@ -82,6 +82,19 @@ def _default_tolerance(dtype):
   else:
     return None # Fail fast for unexpected types
 
+def _default_tolerance(dtype):
+  """Returns a sensible default tolerance for comparing results of a given
+  type"""
+  if dtype == np.float16:
+    return 5e-3
+  elif dtype in (np.float32, np.complex64):
+    return 1e-3
+  elif dtype in (np.float64, np.complex128):
+    return 1e-5
+  else:
+    return None  # Fail fast for unexpected types
+
+
 class UnaryOpTest(test.TestCase):
 
   def _compareCpu(self, x, np_func, tf_func, grad_rtol=None, grad_atol=None):
@@ -2122,7 +2135,6 @@ class AccumulateTest(test.TestCase):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
         tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
-
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked
