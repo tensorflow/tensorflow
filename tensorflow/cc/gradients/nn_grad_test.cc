@@ -47,6 +47,15 @@ class NNGradTest : public ::testing::Test {
     EXPECT_LT(max_error, 1e-4);
   }
 
+  void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
+               const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
   Scope scope_;
 };
 
@@ -116,19 +125,10 @@ TEST_F(NNGradTest, SeluGrad) {
 TEST_F(NNGradTest, BiasAddGradHelper) {
   TensorShape shape({4, 5});
   TensorShape bias_shape({5});
-  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  Tensor bias1  = test::AsTensor<float>(
-    {-0.9f, -0.5f, 0.1f, 0.3f, 0.5f},
-    {5});
-  auto y1 = BiasAdd(scope_, x1, bias1);
-  auto x2  = test::AsTensor<float>(
-    {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f,
-     -0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
-    {4, 5});
-  auto bias2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(bias_shape));
-  auto y2 = BiasAdd(scope_, x2, bias2);
-  RunTest(x1, shape, y1, shape);
-  RunTest(bias2, bias_shape, y2, shape);
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto bias = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(bias_shape));
+  auto y = BiasAdd(scope_, x, bias);
+  RunTest({x,bias}, {shape, bias_shape}, {y}, {shape});
 }
 
 }  // namespace
