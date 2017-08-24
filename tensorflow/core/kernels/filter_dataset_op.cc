@@ -105,12 +105,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           }
 
           FunctionLibraryRuntime::Options opts;
-          // Choose a step ID that is guaranteed not to clash with any
-          // Session-generated step ID. DirectSession only generates
-          // non-negative step IDs (contiguous, starting from 0), and
-          // MasterSession generates 56-bit random step IDs whose MSB
-          // is always 0, so a negative random step ID should suffice.
-          opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+          opts.step_id = CapturedFunction::generate_step_id();
           ScopedStepContainer step_container(
               opts.step_id, [this, ctx](const string& name) {
                 dataset()

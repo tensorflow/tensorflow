@@ -41,10 +41,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/versions.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"

@@ -163,7 +163,7 @@ def _evaluate_once(checkpoint_path,
   eval_step = _get_or_create_eval_step()
 
   # Prepare the run hooks.
-  hooks = hooks or []
+  hooks = list(hooks or [])
 
   if eval_ops is not None:
     update_eval_step = state_ops.assign_add(eval_step, 1, use_locking=True)

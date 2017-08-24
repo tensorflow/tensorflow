@@ -27,7 +27,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
       : wrapped_(std::move(w)) {}
 
   ~WorkerFreeListCache() final {
-    for (auto p : workers_) {
+    for (auto& p : workers_) {
       wrapped_->ReleaseWorker(p.first, p.second.worker);
     }
   }

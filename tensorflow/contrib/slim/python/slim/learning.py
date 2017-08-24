@@ -251,7 +251,6 @@ import os
 import sys
 import time
 
-from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import timeline
@@ -263,7 +262,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import optimizer as tf_optimizer
@@ -646,7 +645,7 @@ def train(train_op,
   graph = graph or ops.get_default_graph()
   with graph.as_default():
     if global_step is None:
-      global_step = variables.get_or_create_global_step()
+      global_step = training_util.get_or_create_global_step()
     saver = saver or tf_saver.Saver()
 
     if sync_optimizer is not None:
@@ -657,14 +656,14 @@ def train(train_op,
 
     with ops.name_scope('init_ops'):
       if init_op == _USE_DEFAULT:
-        init_op = tf_variables.global_variables_initializer()
+        init_op = variables.global_variables_initializer()
 
       if ready_op == _USE_DEFAULT:
-        ready_op = tf_variables.report_uninitialized_variables()
+        ready_op = variables.report_uninitialized_variables()
 
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
-            tf_variables.local_variables_initializer(),
+            variables.local_variables_initializer(),
             lookup_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(sync_optimizer, list):

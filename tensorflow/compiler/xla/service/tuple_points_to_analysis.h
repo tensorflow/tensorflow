@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/logical_buffer_analysis.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -208,7 +209,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const BufferAliasVector& GetBufferAliases(const LogicalBuffer& buffer) const;
 
   // Returns the number of logical buffers in the module
-  LogicalBuffer::Id num_logical_buffers() const { return next_buffer_id_; }
+  LogicalBuffer::Id num_logical_buffers() const {
+    return logical_buffer_analysis_->num_logical_buffers();
+  }
 
   // Return a the logical buffer with id "id" in the module. Iteration
   // over all logical buffers is usually done with something like:
@@ -217,9 +220,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   //   const auto& buffer = points_to.logical_buffer(id);
   //   ... do something with buffer ...
   // }
-  const std::unique_ptr<LogicalBuffer>& logical_buffer(
-      LogicalBuffer::Id id) const {
-    return logical_buffers_[id].logical_buffer;
+  LogicalBuffer& logical_buffer(LogicalBuffer::Id id) const {
+    return logical_buffer_analysis_->GetBuffer(id);
   }
 
   // Returns a vector of buffers that the instruction produces. Most
@@ -259,7 +261,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   string ToString() const;
 
  private:
-  explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}
+  explicit TuplePointsToAnalysis(
+      const HloModule* module,
+      std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis)
+      : module_(module),
+        logical_buffer_analysis_(std::move(logical_buffer_analysis)) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
@@ -271,12 +277,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // list of instructions.
   Status PopulateDefinedBuffersAndAliases(
       const std::list<std::unique_ptr<HloInstruction>>& instructions);
-
-  // Create a new logical buffer and return a reference to it. The newly created
-  // buffer is stored in an internal vector of LogicalBuffers and can be
-  // accessed with GetBuffer.
-  const LogicalBuffer& NewLogicalBuffer(HloInstruction* instruction,
-                                        const ShapeIndex& index);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.
@@ -303,13 +303,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     BufferDefinitionVector instruction_defined_buffers;
   };
 
-  // Information kept per logical buffer
-  struct PerLogicalBuffer {
-    std::unique_ptr<LogicalBuffer> logical_buffer;
-    // Empircally, ~85% of buffers have 1 buffer_alias
-    BufferAliasVector buffer_aliases;
-  };
-
   const PerInstruction* PerInst(const HloInstruction* inst) const {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
@@ -323,23 +316,18 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     return &per_instruction_[id];
   }
 
-  PerLogicalBuffer* PerBuffer(const LogicalBuffer::Id id) {
-    DCHECK_GE(id, 0);
-    DCHECK_LT(id, logical_buffers_.size());
-    return &logical_buffers_[id];
-  }
-
   // The module this analysis is performed on.
   const HloModule* module_;
+
+  // The logical buffers for this module.
+  const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
   // A map from instruction->unique_id() to
   std::vector<PerInstruction> per_instruction_;
 
-  // A map from LogicalBuffer->id() to information about that logical buffer
-  std::vector<PerLogicalBuffer> logical_buffers_;
-
-  // The ID of the next logical buffer created.
-  LogicalBuffer::Id next_buffer_id_ = 0;
+  // A map from LogicalBuffer->id() to alias information about that logical
+  // buffer
+  std::vector<BufferAliasVector> logical_buffer_aliases_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
 };
