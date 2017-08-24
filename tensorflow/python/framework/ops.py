@@ -4925,13 +4925,12 @@ def name_scope(name, default_name=None, values=None):
   """
   n = default_name if name is None else name
   if context.in_eager_mode():
-    if n is None:
-      raise ValueError(
-          "At least one of name (%s) and default_name (%s) should be provided" %
-          (name, default_name))
     ctx = context.context()
     old_name = ctx.scope_name
-    scope_name = "%s%s/" % (old_name, n) if old_name else "%s/" % n
+    if n is None:
+      scope_name = ""
+    else:
+      scope_name = "%s%s/" % (old_name, n) if old_name else "%s/" % n
     ctx.scope_name = scope_name
     try:
       yield scope_name
