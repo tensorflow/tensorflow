@@ -78,9 +78,9 @@ class SymbolicGradientBuilder {
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs);
   
-  // If a node is reachable when doing a BFS from outputs toward inputs
-  // its id used as index in reachable_nodes is set to true.
-  void GetReachableNodes(std::vector<bool>* reachable_nodes);
+  // Returns a list mapping whether each node in the graph is reachable
+  // from outputs_. Keyed by node id.
+  std::vector<bool> GetReachableNodes();
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -147,29 +147,26 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
   return Status::OK();
 }
 
-void SymbolicGradientBuilder::GetReachableNodes(
-    std::vector<bool>* reachable_nodes) {
-  reachable_nodes->clear();
-  reachable_nodes->resize(scope_.graph()->num_node_ids(), false);
-
-  std::deque<Node*> queue_reachable;
+std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
+  std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
+  std::deque<Node*> queue;
   for (const Output& out : outputs_) {
-    if (!reachable_nodes->at(out.node()->id())) {
-      queue_reachable.push_back(out.node());
-      reachable_nodes->at(out.node()->id()) = true;
+    if (!reachable_nodes[out.node()->id()]) {
+      queue.push_back(out.node());
+      reachable_nodes[out.node()->id()] = true;
     }
   }
   
-  while (!queue_reachable.empty()) {
-    Node* n = queue_reachable.front();
-    queue_reachable.pop_front();
+  while (!queue.empty()) {
+    Node* n = queue.front();
+    queue.pop_front();
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      LOG(INFO) << e->src()->DebugString();
-      queue_reachable.push_back(e->src());
-      reachable_nodes->at(e->src()->id()) = true;
+      queue.push_back(e->src());
+      reachable_nodes[e->src()->id()] = true;
     }
   }
+  return reachable_nodes;
 }
 
 Status SymbolicGradientBuilder::Initialize() {
@@ -177,6 +174,9 @@ Status SymbolicGradientBuilder::Initialize() {
     return errors::InvalidArgument(
         "Must specify a gradient input for each output.");
   }
+  std::vector<bool> reachable_nodes = GetReachableNodes();
+  // TODO(theflofly) Check that inputs_ are reachable from
+  // outputs_ using reachable_nodes
   grad_outputs_->clear();
   grad_outputs_->resize(inputs_.size());
   // Populate `output_nodes_` from node ids in `outputs_`.
@@ -194,9 +194,6 @@ Status SymbolicGradientBuilder::Initialize() {
   // handle computing gradients over small subgraphs from a very large graph.
   pending_.resize(scope_.graph()->num_node_ids(), 0);
   {
-    std::vector<bool> reachable_nodes;
-    GetReachableNodes(&reachable_nodes);
-    
     backprops_.clear();
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
@@ -220,7 +217,7 @@ Status SymbolicGradientBuilder::Initialize() {
       if (output_nodes_.find(n->id()) == output_nodes_.end()) {
         // Internal node: continue BFS along connected outputs.
         for (const Edge* e : n->out_edges()) {
-          // If a node is not reachable when doing a BFS from the outputs
+          // If a node is not reachable from outputs_,
           // we don't expect it to receive a backpropagated gradient.
           // It will not be counted in num_expected_backprops.
           if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;

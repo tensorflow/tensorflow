@@ -390,7 +390,7 @@ TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
   std::vector<Tensor> outputs;
   test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
                    {grad_outputs[0]}, &outputs);
-
+  // dz/dy = xT * dm1
   test::ExpectTensorNear<double>(
       outputs[0], test::AsTensor<double>({2.5, 3.5, 4.5}, {3, 1}), 1e-5);
 }
@@ -426,6 +426,7 @@ TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
 
   // the gradients from m1 and m2 will be summed to compute the gradient
   // w.r.t y
+  // dz/dy = xT * dm1 + dm2 * zT
   test::ExpectTensorNear<double>(
       outputs[0], test::AsTensor<double>({17.5, 24.7, 26.8}, {3, 1}), 1e-5);
 }
