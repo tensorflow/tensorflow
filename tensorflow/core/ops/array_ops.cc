@@ -4738,7 +4738,7 @@ REGISTER_OP("QuantizeV2")
     .Output("output_min: float")
     .Output("output_max: float")
     .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4792,6 +4792,47 @@ is rounded first, before it's subtracted from the rounded value. With
 MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
 and dequantizing will introduce a larger and larger error.
 
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (max_fixed - min_fixed) / (2 * m)
+```
+
+Now we can quantize the elements of our tensor:
+```c++
+result = (input * s).round_to_nearest()
+```
+
 One thing to watch out for is that the operator may choose to adjust the
 requested minimum and maximum values slightly during the quantization process,
 so you should always use the output ports as the range for further calculations.
@@ -4815,7 +4856,7 @@ REGISTER_OP("Dequantize")
     .Input("max_range: float")
     .Output("output: float")
     .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4857,6 +4898,47 @@ range = (range_max - range_min) * range_adjust
 range_scale = range / number_of_steps
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
+```
+
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (2 * m) / (max_fixed - min_fixed)
+```
+
+Now we can dequantize the elements of our tensor:
+```c++
+result = input * s
 ```
 
 min_range: The minimum scalar value possibly produced for the input.

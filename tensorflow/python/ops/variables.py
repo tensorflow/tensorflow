@@ -377,6 +377,14 @@ class Variable(object):
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(variable_def.initializer_name,
                                import_scope=import_scope))
+    # Tests whether initial_value_name exists first for backwards compatibility.
+    if (hasattr(variable_def, "initial_value_name") and
+        variable_def.initial_value_name):
+      self._initial_value = g.as_graph_element(
+          ops.prepend_name_scope(variable_def.initial_value_name,
+                                 import_scope=import_scope))
+    else:
+      self._initial_value = None
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -902,6 +910,10 @@ class Variable(object):
       var_def = variable_pb2.VariableDef()
       var_def.variable_name = ops.strip_name_scope(
           self._variable.name, export_scope)
+      if self._initial_value is not None:
+        # For backwards compatibility.
+        var_def.initial_value_name = ops.strip_name_scope(
+            self._initial_value.name, export_scope)
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(
