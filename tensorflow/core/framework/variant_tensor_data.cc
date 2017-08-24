@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {

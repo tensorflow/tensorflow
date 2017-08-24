@@ -126,6 +126,49 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA
 
+template <typename T>
+class VariableShapeOp : public OpKernel {
+ public:
+  explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    core::ScopedUnref s(variable);
+    TensorShape shape = variable->tensor()->shape();
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {shape.dims()}, &output));
+    for (int i = 0; i < shape.dims(); ++i) {
+      output->flat<T>()(i) = shape.dim_size(i);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
+    VariableShapeOp<int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int64>("out_type"),
+    VariableShapeOp<int64>);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(Name("VariableShape")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("out_type")
+                            .HostMemory("output")
+                            .HostMemory("input"),
+                        VariableShapeOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("VariableShape")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("out_type")
+                            .HostMemory("output")
+                            .HostMemory("input"),
+                        VariableShapeOp<int64>);
+
+#endif  // GOOGLE_CUDA
+
 class DestroyResourceOp : public OpKernel {
  public:
   explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {

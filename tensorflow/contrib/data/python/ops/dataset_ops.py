@@ -291,9 +291,8 @@ class Iterator(object):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
                           (self._output_shapes, dataset.output_shapes))
-      return gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
-                                           self._iterator_resource,
-                                           name=name)
+      return gen_dataset_ops.make_iterator(
+          dataset.make_dataset_resource(), self._iterator_resource, name=name)
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
@@ -651,6 +650,7 @@ class Dataset(object):
       Returns:
         A nested structure of tensors representing an element from the iterator.
       """
+
       def generator_py_func(iterator_id):
         """A `py_func` that will be called to invoke the iterator."""
         try:
@@ -663,8 +663,10 @@ class Dataset(object):
         # convert the returned values to arrays early, so that we can inspect
         # their values.
         # pylint: disable=protected-access
-        ret_arrays = [script_ops.FuncRegistry._convert(ret)
-                      for ret in nest.flatten_up_to(output_types, values)]
+        ret_arrays = [
+            script_ops.FuncRegistry._convert(ret)
+            for ret in nest.flatten_up_to(output_types, values)
+        ]
         # pylint: enable=protected-access
 
         # Additional type and shape checking to ensure that the components
@@ -675,8 +677,8 @@ class Dataset(object):
           if ret_array.dtype != expected_dtype.as_numpy_dtype:
             raise TypeError(
                 "`generator` yielded an element of type %s where an element "
-                "of type %s was expected."
-                % (ret_array.dtype, expected_dtype.as_numpy_dtype))
+                "of type %s was expected." % (ret_array.dtype,
+                                              expected_dtype.as_numpy_dtype))
           if not expected_shape.is_compatible_with(ret_array.shape):
             raise ValueError(
                 "`generator` yielded an element of shape %s where an element "
@@ -2236,29 +2238,50 @@ class PrefetchDataset(Dataset):
     return self._input_dataset.output_types
 
 
+# TODO(b/64974358): Increase default buffer size to 256 MB.
+_DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+
+
+def _convert_optional_param_to_tensor(argument_name,
+                                      argument_value,
+                                      argument_default=0,
+                                      argument_dtype=dtypes.int64):
+  if argument_value is not None:
+    return ops.convert_to_tensor(
+        argument_value, dtype=argument_dtype, name=argument_name)
+  else:
+    return constant_op.constant(
+        argument_default, dtype=argument_dtype, name=argument_name)
+
+
 class TextLineDataset(Dataset):
   """A `Dataset` comprising lines from one or more text files."""
 
-  def __init__(self, filenames, compression_type=None):
+  def __init__(self, filenames, compression_type=None, buffer_size=None):
     """Creates a `TextLineDataset`.
 
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: A `tf.string` scalar evaluating to one of `""` (no
-        compression), `"ZLIB"`, or `"GZIP"`.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
+      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
+        to buffer. A value of 0 results in the default buffering values chosen
+        based on the compression type.
     """
     super(TextLineDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-    if compression_type is not None:
-      self._compression_type = ops.convert_to_tensor(
-          compression_type, dtype=dtypes.string, name="compression_type")
-    else:
-      self._compression_type = constant_op.constant("", name="compression_type")
+    self._compression_type = _convert_optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
+    self._buffer_size = _convert_optional_param_to_tensor(
+        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
   def make_dataset_resource(self):
-    return gen_dataset_ops.text_line_dataset(self._filenames,
-                                             self._compression_type)
+    return gen_dataset_ops.text_line_dataset(
+        self._filenames, self._compression_type, self._buffer_size)
 
   @property
   def output_shapes(self):
@@ -2272,25 +2295,31 @@ class TextLineDataset(Dataset):
 class TFRecordDataset(Dataset):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
-  def __init__(self, filenames, compression_type=None):
+  def __init__(self, filenames, compression_type=None, buffer_size=None):
     """Creates a `TFRecordDataset`.
 
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: A `tf.string` scalar evaluating to one of `""` (no
-        compression), `"ZLIB"`, or `"GZIP"`.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
+      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
+        bytes in the read buffer. 0 means no buffering.
     """
     super(TFRecordDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(filenames, name="filenames")
-    if compression_type is not None:
-      self._compression_type = ops.convert_to_tensor(
-          compression_type, dtype=dtypes.string, name="compression_type")
-    else:
-      self._compression_type = constant_op.constant("", name="compression_type")
+    self._compression_type = _convert_optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
+    self._buffer_size = _convert_optional_param_to_tensor(
+        "buffer_size",
+        buffer_size,
+        argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
 
   def make_dataset_resource(self):
-    return gen_dataset_ops.tf_record_dataset(self._filenames,
-                                             self._compression_type)
+    return gen_dataset_ops.tf_record_dataset(
+        self._filenames, self._compression_type, self._buffer_size)
 
   @property
   def output_shapes(self):
@@ -2308,7 +2337,8 @@ class FixedLengthRecordDataset(Dataset):
                filenames,
                record_bytes,
                header_bytes=None,
-               footer_bytes=None):
+               footer_bytes=None,
+               buffer_size=None):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
@@ -2319,29 +2349,26 @@ class FixedLengthRecordDataset(Dataset):
         bytes to skip at the start of a file.
       footer_bytes: (Optional.) A `tf.int64` scalar representing the number of
         bytes to ignore at the end of a file.
+      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
+        bytes to buffer when reading.
     """
     super(FixedLengthRecordDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._record_bytes = ops.convert_to_tensor(
         record_bytes, dtype=dtypes.int64, name="record_bytes")
-    if header_bytes is not None:
-      self._header_bytes = ops.convert_to_tensor(
-          header_bytes, dtype=dtypes.int64, name="header_bytes")
-    else:
-      self._header_bytes = constant_op.constant(
-          0, dtype=dtypes.int64, name="header_bytes")
-    if footer_bytes is not None:
-      self._footer_bytes = ops.convert_to_tensor(
-          footer_bytes, dtype=dtypes.int64, name="footer_bytes")
-    else:
-      self._footer_bytes = constant_op.constant(
-          0, dtype=dtypes.int64, name="footer_bytes")
+
+    self._header_bytes = _convert_optional_param_to_tensor(
+        "header_bytes", header_bytes)
+    self._footer_bytes = _convert_optional_param_to_tensor(
+        "footer_bytes", footer_bytes)
+    self._buffer_size = _convert_optional_param_to_tensor(
+        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
   def make_dataset_resource(self):
     return gen_dataset_ops.fixed_length_record_dataset(
         self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes)
+        self._footer_bytes, self._buffer_size)
 
   @property
   def output_shapes(self):
