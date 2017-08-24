@@ -3207,9 +3207,9 @@ class IndicatorColumnTest(test.TestCase):
       self.assertAllEqual([[0, 0, 1], [1, 0, 0]], indicator_tensor.eval())
 
   def test_transform_with_weighted_column(self):
-    id = fc.categorical_column_with_vocabulary_list(
+    id_ = fc.categorical_column_with_vocabulary_list(
       key='id', vocabulary_list=('a', 'b', 'c'))
-    weight = fc.weighted_categorical_column(id, 'weight')
+    weight = fc.weighted_categorical_column(id_, 'weight')
     indicator = fc.indicator_column(weight)
     features = {
       'id': constant_op.constant(['c', 'b', 'a'], shape=(1, 3)),
