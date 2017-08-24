@@ -397,8 +397,9 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
         }
       }
       if (arg.exit == nullptr) {
-        return errors::InvalidArgument("Missing Exit successor to ",
-                                       arg.switch_node->name());
+        // FIXME: Insane workaround of https://github.com/tensorflow/tensorflow/issues/11275
+        // return errors::InvalidArgument("Missing Exit successor to ",
+        //                                arg.switch_node->name());
       }
     }
   }
@@ -468,7 +469,8 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
       graph->AddEdge(in_edge->src(), in_edge->src_output(), while_node, i);
     }
 
-    if (!arg.is_loop_invariant) {
+    // FIXME: Insane workaround of https://github.com/tensorflow/tensorflow/issues/11275
+    if (arg.exit != nullptr && !arg.is_loop_invariant) {
       std::vector<const Edge*> edges(arg.exit->out_edges().begin(),
                                      arg.exit->out_edges().end());
       for (const Edge* edge : edges) {

@@ -85,10 +85,6 @@ do
     BAZEL_OPT_FLAGS="${BAZEL_OPT_FLAGS} --copt=${flag}"
 done;
 
-# No support for OMP on OSX
-if [ "${OS}" = "Darwin" ]; then
-    BAZEL_OPT_FLAGS="--copt=-DCTC_DISABLE_OMP ${BAZEL_OPT_FLAGS}"
-fi;
 export CC_OPT_FLAGS
 
 if [ "${OS}" = "Darwin" ]; then
@@ -100,7 +96,7 @@ fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
 TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=8.0 TF_CUDNN_VERSION=5 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
-BAZEL_ARM_FLAGS="--host_crosstool_top=@bazel_tools//tools/cpp:toolchain --crosstool_top=//tools/arm_compiler:toolchain --cpu=rpi-armeabi"
+BAZEL_ARM_FLAGS="--config=rpi3"
 BAZEL_CUDA_FLAGS="--config=cuda"
 
 ### Define build targets that we will re-ues in sourcing scripts.

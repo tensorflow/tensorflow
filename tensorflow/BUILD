@@ -98,7 +98,7 @@ config_setting(
     values = {
         "host_crosstool_top": "@bazel_tools//tools/cpp:toolchain",
         "crosstool_top": "//tools/arm_compiler:toolchain",
-        "cpu": "armeabi",
+        "cpu": "rpi-armeabi",
     },
     visibility = ["//visibility:public"],
 )
