@@ -122,8 +122,9 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
 
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
-  std::unique_ptr<TuplePointsToAnalysis> analysis(
-      new TuplePointsToAnalysis(module));
+  auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
+  std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
+      module, logical_buffer_analysis.ConsumeValueOrDie()));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
@@ -132,11 +133,9 @@ Status TuplePointsToAnalysis::Analyze() {
   per_instruction_.clear();
   per_instruction_.resize(module_->NumUniqueInstructionIds());
 
-  // Empirically we usually have a few more logical buffers than instructions,
-  // so reserve 10% more than the number of instructions to avoid frequent
-  // resizes.
-  logical_buffers_.clear();
-  logical_buffers_.reserve((module_->NumUniqueInstructionIds() * 11) / 10);
+  logical_buffer_aliases_.clear();
+  logical_buffer_aliases_.resize(
+      logical_buffer_analysis_->num_logical_buffers());
 
   for (auto& computation : module_->computations()) {
     if (computation->IsFusionComputation()) {
@@ -174,23 +173,12 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
             const ShapeIndex& index,
             const PointsToSet::BufferList& pointed_to_buffers) {
           for (const LogicalBuffer* buffer : pointed_to_buffers) {
-            PerBuffer(buffer->id())
-                ->buffer_aliases.emplace_back(instruction.get(), index);
+            logical_buffer_aliases_[buffer->id()].emplace_back(
+                instruction.get(), index);
           }
         });
   }
   return Status::OK();
-}
-
-const LogicalBuffer& TuplePointsToAnalysis::NewLogicalBuffer(
-    HloInstruction* instruction, const ShapeIndex& index) {
-  CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
-  logical_buffers_.resize(next_buffer_id_ + 1);
-  PerLogicalBuffer* b = &logical_buffers_[next_buffer_id_];
-  b->logical_buffer =
-      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_);
-  ++next_buffer_id_;
-  return *b->logical_buffer;
 }
 
 Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
@@ -201,8 +189,8 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   points_to_set.ForEachMutableElement(
       [this, hlo_instruction](const ShapeIndex& index,
                               PointsToSet::BufferList* buffers) {
-        const LogicalBuffer& buffer = NewLogicalBuffer(hlo_instruction, index);
-        buffers->push_back(&buffer);
+        buffers->push_back(
+            &logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
       });
 
   if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
@@ -252,8 +240,9 @@ Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
   // tuple shape) come from the operand
   PointsToSet& points_to_set = CreateCopiedPointsToSet(copy, copy->operand(0));
   points_to_set.mutable_element(/*index=*/{})->clear();
-  points_to_set.AddPointedToBuffer(NewLogicalBuffer(copy, /*index=*/{}),
-                                   /*index=*/{});
+  points_to_set.AddPointedToBuffer(
+      logical_buffer_analysis_->GetBuffer(copy, /*index=*/{}),
+      /*index=*/{});
 
   return Status::OK();
 }
@@ -270,8 +259,9 @@ Status TuplePointsToAnalysis::HandleTuple(
     HloInstruction* tuple,
     tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   PointsToSet& points_to_set = CreateEmptyPointsToSet(tuple);
-  points_to_set.AddPointedToBuffer(NewLogicalBuffer(tuple, /*index=*/{}),
-                                   /*index=*/{});
+  points_to_set.AddPointedToBuffer(
+      logical_buffer_analysis_->GetBuffer(tuple, /*index=*/{}),
+      /*index=*/{});
 
   // A tuple contains references to all input operands and transitively any
   // references in those operands.
@@ -333,8 +323,9 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   // Select creates a new (top-level) buffer to store its result, so its
   // respective element in the points-to set should contain only itself.
   points_to_set.mutable_element({})->clear();
-  points_to_set.AddPointedToBuffer(NewLogicalBuffer(select, /*index=*/{}),
-                                   /*index=*/{});
+  points_to_set.AddPointedToBuffer(
+      logical_buffer_analysis_->GetBuffer(select, /*index=*/{}),
+      /*index=*/{});
   return Status::OK();
 }
 
@@ -368,7 +359,8 @@ Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
         buffer.ToString().c_str(), buffer.instruction()->name().c_str());
   }
 
-  if (buffer.id() < 0 || buffer.id() >= next_buffer_id_) {
+  if (buffer.id() < 0 ||
+      buffer.id() >= logical_buffer_analysis_->num_logical_buffers()) {
     return FailedPrecondition(
         "LogicalBuffer %s is ill-defined: invalid id %lld",
         buffer.ToString().c_str(), buffer.id());
@@ -386,8 +378,8 @@ Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
 const LogicalBuffer& TuplePointsToAnalysis::GetBuffer(
     LogicalBuffer::Id id) const {
   CHECK_GE(id, 0);
-  CHECK_LT(id, logical_buffers_.size());
-  return *logical_buffers_[id].logical_buffer;
+  CHECK_LT(id, logical_buffer_analysis_->num_logical_buffers());
+  return logical_buffer_analysis_->GetBuffer(id);
 }
 
 StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
@@ -404,7 +396,7 @@ StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
 
 const TuplePointsToAnalysis::BufferAliasVector&
 TuplePointsToAnalysis::GetBufferAliases(const LogicalBuffer& buffer) const {
-  return logical_buffers_.at(buffer.id()).buffer_aliases;
+  return logical_buffer_aliases_.at(buffer.id());
 }
 
 const TuplePointsToAnalysis::BufferDefinitionVector&
@@ -480,10 +472,9 @@ string TuplePointsToAnalysis::ToString() const {
   }
 
   tensorflow::strings::StrAppend(&output, "LogicalBuffers:\n");
-  for (auto& b : logical_buffers_) {
-    tensorflow::strings::StrAppend(&output, "  buffer ",
-                                   b.logical_buffer->ToString(), ":\n");
-    for (const BufferAlias& alias : b.buffer_aliases) {
+  for (const auto& b : logical_buffer_analysis_->logical_buffers()) {
+    tensorflow::strings::StrAppend(&output, "  buffer ", b->ToString(), ":\n");
+    for (const BufferAlias& alias : logical_buffer_aliases_.at(b->id())) {
       tensorflow::strings::StrAppend(&output, "    alias ", alias.ToString(),
                                      "\n");
     }

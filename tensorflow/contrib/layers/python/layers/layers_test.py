@@ -1766,13 +1766,6 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'undefined'):
         _layers.batch_norm(inputs, data_format='NCHW')
 
-  def testWeightedMomentsFused(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
-      batch_weights = array_ops.placeholder(dtype=dtypes.float32)
-      with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
-        _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
-
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():

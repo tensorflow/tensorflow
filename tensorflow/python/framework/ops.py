@@ -4931,7 +4931,7 @@ def name_scope(name, default_name=None, values=None):
           (name, default_name))
     ctx = context.context()
     old_name = ctx.scope_name
-    scope_name = "%s/%s" % (old_name, name) if old_name else name
+    scope_name = "%s%s/" % (old_name, n) if old_name else "%s/" % n
     ctx.scope_name = scope_name
     try:
       yield scope_name

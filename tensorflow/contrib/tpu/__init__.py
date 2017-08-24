@@ -36,6 +36,11 @@
 
 @@while_loop
 @@repeat
+
+@@TPUEstimator
+@@TPUEstimatorSpec
+@@RunConfig
+@@TPUConfig
 """
 
 from __future__ import absolute_import
@@ -46,6 +51,8 @@ from __future__ import print_function
 from tensorflow.contrib.tpu.python import profiler
 from tensorflow.contrib.tpu.python.ops.tpu_ops import *
 from tensorflow.contrib.tpu.python.tpu.tpu import *
+from tensorflow.contrib.tpu.python.tpu.tpu_config import *
+from tensorflow.contrib.tpu.python.tpu.tpu_estimator import *
 from tensorflow.contrib.tpu.python.tpu.tpu_feed import *
 from tensorflow.contrib.tpu.python.tpu.tpu_optimizer import *
 from tensorflow.contrib.tpu.python.tpu.training_loop import *
