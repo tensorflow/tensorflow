@@ -206,60 +206,21 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
 Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(Conv2DShape(c));
 
-  string data_format_str, filter_format_str;
-  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
-  TF_RETURN_IF_ERROR(c->GetAttr("filter_format", &filter_format_str));
-
-  TensorFormat data_format;
-  FormatFromString(data_format_str, &data_format);
-  FilterTensorFormat filter_format;
-  FilterFormatFromString(filter_format_str, &filter_format);
-
-  constexpr int num_spatial_dims = 2;
-  const int rank = GetTensorDimsFromSpatialDims(num_spatial_dims, data_format);
-  ShapeHandle filter_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &filter_shape));
-
-  DimensionHandle output_depth_dim = c->Dim(
-      filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'O'));
-  int64 output_depth_dim_val = c->Value(output_depth_dim);
-
   ShapeHandle bias_shape;
-  // Bias should be a 1-D tensor.
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &bias_shape));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &bias_shape));
   DimensionHandle bias_dim = c->Dim(bias_shape, 0);
+
+  ShapeHandle filter_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &filter_shape));
+  DimensionHandle output_depth_dim = c->Dim(filter_shape, 3);
+
+  int64 output_depth_dim_val = c->Value(output_depth_dim);
   int64 bias_dim_val = c->Value(bias_dim);
 
   if (output_depth_dim_val != bias_dim_val) {
     return errors::InvalidArgument(
         "Output depth dimension (", output_depth_dim_val,
         ") and bias dimension (", bias_dim_val, ") do not match.");
-  }
-
-  // Check side input shape matches the output shape.
-  ShapeHandle side_input_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 1, &side_input_shape));
-  if (c->Rank(side_input_shape) > 1) {
-    ShapeHandle unused;
-    TF_RETURN_IF_ERROR(c->Merge(side_input_shape, c->output(0), &unused));
-  }
-
-  return Status::OK();
-}
-
-Status CheckFormatConstraintsOnShape(const TensorFormat tensor_format,
-                                     const ShapeHandle shape_handle,
-                                     const string& tensor_name,
-                                     shape_inference::InferenceContext* c) {
-  if (tensor_format == FORMAT_NCHW_VECT_C) {
-    DimensionHandle vect_dim = c->Dim(shape_handle, 4);
-    int64 vect_dim_val = c->Value(vect_dim);
-    if (vect_dim_val != 4) {
-      return errors::InvalidArgument(
-          "For data format NCHW_VECT_C, the last dimension size must be 4, but "
-          "for ",
-          tensor_name, " it was ", vect_dim_val);
-    }
   }
 
   return Status::OK();
@@ -322,12 +283,10 @@ Status ShapeFromDimensions(DimensionHandle batch_dim,
 }
 
 Status Conv2DShape(shape_inference::InferenceContext* c) {
-  string data_format_str, filter_format_str;
-  if (!c->GetAttr("data_format", &data_format_str).ok()) {
+  string data_format_str;
+  Status s = c->GetAttr("data_format", &data_format_str);
+  if (!s.ok()) {
     data_format_str = "NHWC";
-  }
-  if (!c->GetAttr("filter_format", &filter_format_str).ok()) {
-    filter_format_str = "HWIO";
   }
 
   TensorFormat data_format;
@@ -335,25 +294,13 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
     return errors::InvalidArgument("Invalid data format string: ",
                                    data_format_str);
   }
-  FilterTensorFormat filter_format;
-  if (!FilterFormatFromString(filter_format_str, &filter_format)) {
-    return errors::InvalidArgument("Invalid filter format string: ",
-                                   filter_format_str);
-  }
 
-  constexpr int num_spatial_dims = 2;
-  const int rank = GetTensorDimsFromSpatialDims(num_spatial_dims, data_format);
-  ShapeHandle conv_input_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &conv_input_shape));
-  TF_RETURN_IF_ERROR(CheckFormatConstraintsOnShape(
-      data_format, conv_input_shape, "conv_input", c));
-
+  const int rank = GetTensorDimsFromSpatialDims(2, data_format);
+  ShapeHandle input_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input_shape));
   // The filter rank should match the input (4 for NCHW, 5 for NCHW_VECT_C).
   ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &filter_shape));
-  TF_RETURN_IF_ERROR(
-      CheckFormatConstraintsOnShape(data_format, filter_shape, "filter", c));
-
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
 
@@ -365,33 +312,38 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
                                    strides.size());
   }
 
-  const int32 stride_rows = GetTensorDim(strides, data_format, 'H');
-  const int32 stride_cols = GetTensorDim(strides, data_format, 'W');
+  int32 stride_rows, stride_cols;
+  if (data_format == FORMAT_NCHW || data_format == FORMAT_NCHW_VECT_C) {
+    stride_rows = strides[2];
+    stride_cols = strides[3];
+  } else {
+    stride_rows = strides[1];
+    stride_cols = strides[2];
+  }
 
   DimensionHandle batch_size_dim;
   DimensionHandle input_depth_dim;
   gtl::InlinedVector<DimensionHandle, 2> input_spatial_dims(2);
-  TF_RETURN_IF_ERROR(DimensionsFromShape(conv_input_shape, data_format,
+  TF_RETURN_IF_ERROR(DimensionsFromShape(input_shape, data_format,
                                          &batch_size_dim, &input_spatial_dims,
                                          &input_depth_dim, c));
 
-  DimensionHandle output_depth_dim = c->Dim(
-      filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'O'));
-  DimensionHandle filter_rows_dim = c->Dim(
-      filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'H'));
-  DimensionHandle filter_cols_dim = c->Dim(
-      filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'W'));
-  DimensionHandle filter_input_depth_dim;
-  if (filter_format == FORMAT_OIHW_VECT_I) {
-    TF_RETURN_IF_ERROR(c->Multiply(
-        c->Dim(filter_shape,
-               GetFilterDimIndex<num_spatial_dims>(filter_format, 'I')),
-        c->Dim(filter_shape,
-               GetFilterTensorInnerInputChannelsDimIndex(rank, filter_format)),
-        &filter_input_depth_dim));
+  DimensionHandle output_depth_dim, filter_rows_dim, filter_cols_dim,
+      filter_input_depth_dim;
+  // If the input format is NCHW_VECT_C, the filter format is assumed to be
+  // OIHW_VECT_I, otherwise it is assumed to be HWIO.
+  if (data_format == FORMAT_NCHW_VECT_C) {
+    output_depth_dim = c->Dim(filter_shape, 0);
+    TF_RETURN_IF_ERROR(c->Multiply(c->Dim(filter_shape, 1),
+                                   c->Dim(filter_shape, 4),
+                                   &filter_input_depth_dim));
+    filter_rows_dim = c->Dim(filter_shape, 2);
+    filter_cols_dim = c->Dim(filter_shape, 3);
   } else {
-    filter_input_depth_dim = c->Dim(
-        filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'I'));
+    filter_rows_dim = c->Dim(filter_shape, 0);
+    filter_cols_dim = c->Dim(filter_shape, 1);
+    filter_input_depth_dim = c->Dim(filter_shape, 2);
+    output_depth_dim = c->Dim(filter_shape, 3);
   }
 
   // Check that the input tensor and the filter tensor agree on the input

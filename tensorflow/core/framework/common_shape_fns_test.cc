@@ -411,35 +411,34 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
 TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   ShapeInferenceTestOp op("Conv2D");
   auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
-                      const string& data_format, const string& filter_format) {
+                      const string& data_format) {
     TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
                     .Attr("strides", strides)
                     .Attr("padding", padding)
                     .Attr("data_format", data_format)
-                    .Attr("filter_format", filter_format)
                     .Finalize(&op.node_def));
   };
 
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC");
   INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC");
   INFER_OK(op, "[1,2,2,1];[2,2,1,1]", "[d0_0,1,1,d1_3]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 2, 2, 1}}, "VALID", "NHWC", "HWIO");
+  set_op({{1, 2, 2, 1}}, "VALID", "NHWC");
   INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 2, 1, 1}}, "VALID", "NHWC", "HWIO");
+  set_op({{1, 2, 1, 1}}, "VALID", "NHWC");
   INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,3,d1_3]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NHWC", "HWIO");
+  set_op({{1, 1, 2, 1}}, "VALID", "NHWC");
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
 
   // Invalid rank for input
@@ -461,76 +460,77 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // Tests for NCHW
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW", "HWIO");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,2,2];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW", "HWIO");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,2,2];[2,2,1,1]", "[d0_0,d1_3,1,1]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 1, 2, 2}}, "VALID", "NCHW", "HWIO");
+  set_op({{1, 1, 2, 2}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NCHW", "HWIO");
+  set_op({{1, 1, 2, 1}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,3]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW", "HWIO");
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,4,4];[2,1,1,1]", "[d0_0,d1_3,3,2]");
 
   // Tests for NCHW_VECT_C
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
   INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,4]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
   INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,4]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
+  set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C");
   INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,4]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
+  set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C");
   INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,4]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C");
   INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,4]");
 
   // Some tests for "SAME" padding
 
   // 4x4 input, 1x1 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride
-  set_op({{1, 2, 2, 1}}, "SAME", "NHWC", "HWIO");
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,2,2,d1_3]");
 
   // 4x4 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // With stride 1x1 and SAME, unknown dims don't matter - filter dims except
   // for output channels are ignored for output, so all inputs are carried
   // through to output.
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
-  INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // With stride != 1, the input HW dims are divided to produce output dims.
-  set_op({{1, 2, 2, 1}}, "SAME", "NHWC", "HWIO");
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
   INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,2,2,d1_3]");
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");

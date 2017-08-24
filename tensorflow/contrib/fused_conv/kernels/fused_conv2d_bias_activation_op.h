@@ -24,7 +24,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/contrib/fused_conv/kernels/fused_conv_ops_gpu.h"
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -33,30 +33,27 @@ namespace tensorflow {
 // Forward declaration.
 class OpKernelContext;
 
-template <typename Device, typename T, typename BiasType, typename ScaleType>
+template <typename Device, typename T>
 class LaunchFusedConv2DBiasActivationOp {
  public:
   void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
-              const Tensor& conv_input, ScaleType conv_input_scale,
-              const Tensor& filter, int32 row_stride, int32 col_stride,
-              const Eigen::PaddingType& padding, const Tensor& side_input,
-              ScaleType side_input_scale, const Tensor& bias,
-              ActivationMode activation_mode, TensorFormat data_format,
-              FilterTensorFormat filter_format, Tensor* output);
+              const Tensor& input, const Tensor& filter, int row_stride,
+              int col_stride, const Tensor& bias,
+              const ActivationMode& activation_mode,
+              const Eigen::PaddingType& padding, TensorFormat data_format,
+              Tensor* output);
 };
 
 #ifdef GOOGLE_CUDA
-template <typename T, typename BiasType, typename ScaleType>
-class LaunchFusedConv2DBiasActivationOp<Eigen::GpuDevice, T, BiasType,
-                                        ScaleType> {
+template <typename T>
+class LaunchFusedConv2DBiasActivationOp<Eigen::GpuDevice, T> {
  public:
   void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
-              const Tensor& conv_input, ScaleType conv_input_scale,
-              const Tensor& filter, int32 row_stride, int32 col_stride,
-              const Eigen::PaddingType& padding, const Tensor& side_input,
-              ScaleType side_input_scale, const Tensor& bias,
-              ActivationMode activation_mode, TensorFormat data_format,
-              FilterTensorFormat filter_format, Tensor* output);
+              const Tensor& input, const Tensor& filter, int32 row_stride,
+              int32 col_stride, const Tensor& bias,
+              const ActivationMode& activation_mode,
+              const Eigen::PaddingType& padding, TensorFormat data_format,
+              Tensor* output);
 };
 #endif  // GOOGLE_CUDA
 
