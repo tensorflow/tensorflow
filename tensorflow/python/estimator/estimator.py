@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import inspect
 import os
 import tempfile
 
@@ -57,6 +58,30 @@ from tensorflow.python.util import nest
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
+
+
+def _model_fn_args(fn):
+  # The _model_fn is called with args directly so no unwrap like other places
+
+  spec_fn = getattr(inspect, 'getfullargspec', getattr(inspect, 'getargspec'))
+  # Handle callables.
+  if hasattr(fn, '__call__') and inspect.ismethod(fn.__call__):
+    return tuple(spec_fn(fn.__call__).args)
+
+  # Handle functools.partial and similar objects.
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle nested partial.
+    original_args = _model_fn_args(fn.func)
+    if not original_args:
+      return tuple()
+
+    return tuple([
+        arg for arg in original_args[len(fn.args):]
+        if arg not in set((fn.keywords or {}).keys())
+    ])
+
+  # Handle function.
+  return tuple(spec_fn(fn).args)
 
 
 class Estimator(object):
@@ -690,7 +715,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = util.fn_args(self._model_fn)
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'labels' in model_fn_args:
       kwargs['labels'] = labels
@@ -923,7 +948,7 @@ def _get_replica_device_setter(config):
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = set(util.fn_args(model_fn))
+  args = set(_model_fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if params is not None and 'params' not in args:
