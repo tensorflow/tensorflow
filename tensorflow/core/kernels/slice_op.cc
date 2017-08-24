@@ -248,7 +248,7 @@ class MklSliceOp : public OpKernel {
         }
         return;
       }
-      // special case for handling 4-D tensor slice
+      // Special case for handling 4-D tensor slice.
       if (input_dims == 4) {
         HandleCase4D(context, begin, size, result);
       } else {
