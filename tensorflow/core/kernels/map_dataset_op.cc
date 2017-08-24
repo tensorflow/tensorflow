@@ -110,12 +110,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         }
 
         FunctionLibraryRuntime::Options opts;
-        // Choose a step ID that is guaranteed not to clash with any
-        // Session-generated step ID. DirectSession only generates
-        // non-negative step IDs (contiguous, starting from 0), and
-        // MasterSession generates 56-bit random step IDs whose MSB is
-        // always 0, so a negative random step ID should suffice.
-        opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        opts.step_id = CapturedFunction::generate_step_id();
         ScopedStepContainer step_container(
             opts.step_id, [this, ctx](const string& name) {
               dataset()
@@ -127,8 +122,16 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         opts.runner = ctx->runner();
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.
-        return dataset()->captured_func_->Run(opts, args, out_tensors,
-                                              prefix());
+        Status s =
+            dataset()->captured_func_->Run(opts, args, out_tensors, prefix());
+        if (errors::IsOutOfRange(s)) {
+          // `f` may deliberately raise `errors::OutOfRange` to indicate
+          // that we should terminate the iteration early.
+          *end_of_sequence = true;
+          return Status::OK();
+        } else {
+          return s;
+        }
       }
 
      private:

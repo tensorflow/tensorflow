@@ -40,7 +40,6 @@ from __future__ import print_function
 
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python.client import device_lib as _device_lib
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
 from tensorflow.python.util.all_util import remove_undocumented
@@ -50,12 +49,12 @@ from tensorflow.python.framework.test_util import assert_equal_graph_def
 from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import gpu_device_name
+from tensorflow.python.framework.test_util import is_gpu_available
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import,g-bad-import-order
 
-import re as _re
 import sys
 if sys.version_info.major == 2:
   import mock                # pylint: disable=g-import-not-at-top,unused-import
@@ -101,43 +100,6 @@ def test_src_dir_path(relative_path):
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
-
-
-def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
-  """Returns whether TensorFlow can access a GPU.
-
-  Args:
-    cuda_only: limit the search to CUDA gpus.
-    min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
-      CUDA compute capability required, or None if no requirement.
-
-  Returns:
-    True iff a gpu device of the requested kind is available.
-  """
-
-  def compute_capability_from_device_desc(device_desc):
-    # TODO(jingyue): The device description generator has to be in sync with
-    # this file. Another option is to put compute capability in
-    # DeviceAttributes, but I avoided that to keep DeviceAttributes
-    # target-independent. Reconsider this option when we have more things like
-    # this to keep in sync.
-    # LINT.IfChange
-    match = _re.search(r'compute capability: (\d+)\.(\d+)', device_desc)
-    # LINT.ThenChange(//tensorflow/core/\
-    #                 common_runtime/gpu/gpu_device.cc)
-    if not match:
-      return 0, 0
-    return int(match.group(1)), int(match.group(2))
-
-  for local_device in _device_lib.list_local_devices():
-    if local_device.device_type == 'GPU':
-      if (min_cuda_compute_capability is None or
-          compute_capability_from_device_desc(local_device.physical_device_desc)
-          >= min_cuda_compute_capability):
-        return True
-    if local_device.device_type == 'SYCL' and not cuda_only:
-      return True
-  return False
 
 
 _allowed_symbols = [

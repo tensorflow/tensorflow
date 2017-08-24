@@ -34,6 +34,7 @@ bool IsPlaceholder(const NodeDef& node);
 bool IsRecv(const NodeDef& node);
 bool IsReduction(const NodeDef& node);
 bool IsReshape(const NodeDef& node);
+bool IsRestore(const NodeDef& node);
 bool IsSend(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);

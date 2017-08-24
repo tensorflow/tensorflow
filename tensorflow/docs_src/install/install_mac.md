@@ -1,8 +1,8 @@
-# Installing TensorFlow on Mac OS X
+# Installing TensorFlow on macOS
 
-This guide explains how to install TensorFlow on Mac OS X.
+This guide explains how to install TensorFlow on macOS.
 
-Note: As of version 1.2, TensorFlow no longer provides GPU support on Mac OS X.
+Note: As of version 1.2, TensorFlow no longer provides GPU support on macOS.
 
 ## Determine how to install TensorFlow
 
@@ -15,7 +15,7 @@ You must pick the mechanism by which you install TensorFlow. The supported choic
     [a separate guide](https://www.tensorflow.org/install/install_sources).
 
 **We recommend the virtualenv installation.**
-[Virtualenv](https://virtualenv.pypa.io/en/stable/)
+[Virtualenv](https://virtualenv.pypa.io/en/stable)
 is a virtual Python environment isolated from other Python development,
 incapable of interfering with or being affected by other Python programs
 on the same machine.  During the virtualenv installation process,
@@ -33,7 +33,7 @@ to disable System Integrity Protection (SIP) in order to install through native
 pip.  However, if you understand SIP, pip, and your Python environment, a
 native pip installation is relatively easy to perform.
 
-[Docker](http://docker.com/) completely isolates the TensorFlow installation
+[Docker](http://docker.com) completely isolates the TensorFlow installation
 from pre-existing packages on your machine. The Docker container contains
 TensorFlow and all its dependencies. Note that the Docker image can be quite
 large (hundreds of MBs). You might choose the Docker installation if you are
@@ -58,7 +58,7 @@ Take the following steps to install TensorFlow with Virtualenv:
   2. Install pip and virtualenv by issuing the following commands:
 
      <pre> $ <b>sudo easy_install pip</b>
-     $ <b>sudo pip install --upgrade virtualenv</b> </pre>
+     $ <b>pip install --upgrade virtualenv</b> </pre>
 
   3. Create a virtualenv environment by issuing a command of one
      of the following formats:
@@ -104,7 +104,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      Python version. Find the appropriate value for
      <i>tfBinaryURL</i> for your system
      [here](#the_url_of_the_tensorflow_python_package).
-     For example, if you are installing TensorFlow for Mac OS X,
+     For example, if you are installing TensorFlow for macOS,
      Python 2.7, the command to install
      TensorFlow in the active Virtualenv is as follows:
 

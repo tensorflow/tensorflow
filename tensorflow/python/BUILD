@@ -1153,6 +1153,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "checkpoint_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/framework:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
     deps = [
@@ -1726,6 +1734,7 @@ py_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tensor",
     ],
 )
@@ -3980,6 +3989,7 @@ py_library(
         "grappler/tf_optimizer.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [":pywrap_tensorflow_internal"],
 )
 

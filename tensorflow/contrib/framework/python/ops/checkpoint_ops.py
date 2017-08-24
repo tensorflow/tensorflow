@@ -19,17 +19,12 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.contrib.framework.python.ops import gen_checkpoint_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_checkpoint_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import resource_loader
-
-_checkpoint_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_checkpoint_ops.so"))
 
 ops.NotDifferentiable("GenerateVocabRemapping")
 ops.NotDifferentiable("LoadAndRemapMatrix")
@@ -147,7 +142,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_rows_present = num_rows_to_load
   if remap_rows:
     row_remapping, num_rows_present = (
-        gen_checkpoint_ops.generate_vocab_remapping(
+        gen_checkpoint_ops._generate_vocab_remapping(  # pylint: disable=protected-access
             new_vocab_file=new_row_vocab_file,
             old_vocab_file=old_row_vocab_file,
             new_vocab_offset=new_row_vocab_offset,
@@ -165,7 +160,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_cols_present = new_col_vocab_size
   if remap_cols:
     col_remapping, num_cols_present = (
-        gen_checkpoint_ops.generate_vocab_remapping(
+        gen_checkpoint_ops._generate_vocab_remapping(  # pylint: disable=protected-access
             new_vocab_file=new_col_vocab_file,
             old_vocab_file=old_col_vocab_file,
             new_vocab_offset=0,  # Offset is unused for cols (no partitioning).
@@ -175,7 +170,7 @@ def _load_and_remap_matrix(ckpt_path,
       num_rows_to_load * new_col_vocab_size -
       num_rows_present * num_cols_present, 1
   ])
-  return_tensor = gen_checkpoint_ops.load_and_remap_matrix(
+  return_tensor = gen_checkpoint_ops._load_and_remap_matrix(  # pylint: disable=protected-access
       ckpt_path=ckpt_path,
       old_tensor_name=old_tensor_name,
       row_remapping=row_remapping,

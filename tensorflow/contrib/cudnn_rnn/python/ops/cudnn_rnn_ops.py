@@ -47,6 +47,92 @@ CUDNN_RNN_RELU = "rnn_relu"
 CUDNN_RNN_TANH = "rnn_tanh"
 
 
+class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
+  """Cudnn Compatible LSTMBlockCell.
+
+  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
+  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by
+  this cell seamlessly.
+  """
+
+  def __init__(self, num_units):
+    super(CudnnCompatibleLSTMCell, self).__init__(
+        num_units, forget_bias=0, clip_cell=False, use_peephole=False)
+    self._names.update({"scope": "cudnn_compatible_lstm_cell"})
+
+
+class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
+  """Cudnn Compatible GRUCell.
+
+  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
+  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by
+  it seamlessly.
+
+  It differs from non-cudnn-compatible GRUs in how the new memory gate is
+  calculated. Nvidia picks this variant based on GRU author's[1] suggestion and
+  the fact it has no accuracy impact[2].
+  [1] https://arxiv.org/abs/1406.1078
+  [2] http://svail.github.io/diff_graphs/
+
+  cuDNN compatible GRU (from cuDNN library user guide):
+  ```python
+  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
+  i_t = sigma(x_t * W_i + h_t-1 * R_i + b_Wi + b_Ru)  # update gate
+  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
+  h_t = (1 - i_t) .* h'_t + i_t .* h_t-1
+  ```
+
+  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
+  ```python
+  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  ```
+
+  Note: in addition to the extra bias term b_Rh,
+  ```python
+  r .* (h * R) != (r .* h) * R
+  ```
+
+  TODO(jamesqin): change the impl to mirror the canonical version, since cuDNN
+  will do the same after v7.1.
+  """
+
+  def __init__(self, num_units, reuse=None, kernel_initializer=None):
+    super(CudnnCompatibleGRUCell, self).__init__(
+        num_units,
+        activation=None,
+        reuse=reuse,
+        kernel_initializer=kernel_initializer)
+
+  def call(self, inputs, state):
+    """Gated recurrent unit (GRU) with nunits cells."""
+    with vs.variable_scope("gates"):  # Reset gate and update gate.
+      # We start with bias of 1.0 to not reset and not update.
+      bias_ones = self._bias_initializer
+      if self._bias_initializer is None:
+        dtype = inputs.dtype
+        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
+      # pylint: disable=protected-access
+      value = math_ops.sigmoid(
+          rnn_cell_impl._linear([inputs, state], 2 * self._num_units, True,
+                                bias_ones, self._kernel_initializer))
+      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
+      # pylint: enable=protected-access
+    with vs.variable_scope("candidate"):
+      # pylint: disable=protected-access
+      with vs.variable_scope("input_projection"):
+        hi = rnn_cell_impl._linear(inputs, self._num_units, True,
+                                   self._bias_initializer,
+                                   self._kernel_initializer)
+      with vs.variable_scope("hidden_projection"):
+        hh = r * (rnn_cell_impl._linear(state, self._num_units, True,
+                                        self._bias_initializer,
+                                        self._kernel_initializer))
+      # pylint: enable=protected-access
+      c = self._activation(hi + hh)
+    new_h = u * state + (1 - u) * c
+    return new_h, new_h
+
+
 # TODO(yaozhang): make sure we only save the canonical version of params and
 # don't save the platform-specific version to avoid potential race
 # conditions where params is updated by both versions when being restored.
@@ -834,116 +920,6 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # 1 set of weight and bias parameters for the recurrent input, and 1 for the
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = 2
-
-
-class CudnnCompatibleLSTMBlockCell(lstm_ops.LSTMBlockCell):
-  """Cudnn Compatible LSTMBlockCell.
-
-  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by the
-  this cell seamlessly. It is the more performant than
-  @{tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell}, the same way
-  @{tf.contrib.rnn.LSTMBlockCell} can be more performant than
-  @{tf.nn.rnn_cell.LSTMCell}.
-  """
-
-  def __init__(self, num_units):
-    super(CudnnCompatibleLSTMBlockCell, self).__init__(
-        num_units, forget_bias=0, clip_cell=False, use_peephole=False)
-    self._names.update({"scope": "cudnn_compatible_lstm_cell"})
-
-
-class CudnnCompatibleLSTMCell(rnn_cell_impl.LSTMCell):
-  """Cudnn Compatible LSTMCell.
-
-  A simple wrapper around @{tf.nn.rnn_cell.LSTMCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by the
-  former seamlessly.
-  """
-
-  def __init__(self, num_units, reuse=None):
-    super(CudnnCompatibleLSTMCell, self).__init__(
-        num_units,
-        use_peepholes=False,
-        cell_clip=None,
-        num_proj=None,
-        proj_clip=None,
-        state_is_tuple=True,
-        activation=None,
-        reuse=reuse,
-        forget_bias=0)
-
-
-class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
-  """Cudnn Compatible GRUCell.
-
-  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by the
-  it seamlessly.
-
-  It differs from non-cudnn-compatible GRUs in how the new memory gate is
-  calculated. Nvidia picks this variant based on GRU author's[1] suggestion and
-  the fact it has no accuracy impact[2].
-  [1] https://arxiv.org/abs/1406.1078
-  [2] http://svail.github.io/diff_graphs/
-
-  cuDNN compatible GRU (from cuDNN library user guide):
-  ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  i_t = sigma(x_t * W_i + h_t-1 * R_i + b_Wi + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - i_t) .* h'_t + i_t .* h_t-1
-  ```
-
-  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
-  ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
-  ```
-
-  Note: in addition to the extra bias term b_Rh,
-  ```python
-  r .* (h * R) != (r .* h) * R
-  ```
-
-  TODO(jamesqin): change the impl to mirror the canonical version, since cuDNN
-  will do the same after v7.1.
-  """
-
-  def __init__(self, num_units, reuse=None, kernel_initializer=None):
-    super(CudnnCompatibleGRUCell, self).__init__(
-        num_units,
-        activation=None,
-        reuse=reuse,
-        kernel_initializer=kernel_initializer)
-
-  def call(self, inputs, state):
-    """Gated recurrent unit (GRU) with nunits cells."""
-    with vs.variable_scope("gates"):  # Reset gate and update gate.
-      # We start with bias of 1.0 to not reset and not update.
-      bias_ones = self._bias_initializer
-      if self._bias_initializer is None:
-        dtype = inputs.dtype
-        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
-      # pylint: disable=protected-access
-      value = math_ops.sigmoid(
-          rnn_cell_impl._linear([inputs, state], 2 * self._num_units, True,
-                                bias_ones, self._kernel_initializer))
-      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
-      # pylint: enable=protected-access
-    with vs.variable_scope("candidate"):
-      # pylint: disable=protected-access
-      with vs.variable_scope("input_projection"):
-        hi = rnn_cell_impl._linear(inputs, self._num_units, True,
-                                   self._bias_initializer,
-                                   self._kernel_initializer)
-      with vs.variable_scope("hidden_projection"):
-        hh = r * (rnn_cell_impl._linear(state, self._num_units, True,
-                                        self._bias_initializer,
-                                        self._kernel_initializer))
-      # pylint: enable=protected-access
-      c = self._activation(hi + hh)
-    new_h = u * state + (1 - u) * c
-    return new_h, new_h
 
 
 @ops.RegisterGradient("CudnnRNN")

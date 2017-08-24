@@ -71,8 +71,7 @@ def check_all_files():
 
 def replace_with_sed(query, filename):
   """Replace with sed when regex is required."""
-  subprocess.check_call("sed -i -r -e \"%s\" \"%s\"" % (query, filename),
-                        shell=True)
+  subprocess.check_call(['sed', '-i', '-r', '-e', query, filename])
 
 
 class Version(object):
@@ -277,9 +276,8 @@ def check_for_lingering_string(lingering_string):
   """Check for given lingering strings."""
   formatted_string = lingering_string.replace(".", r"\.")
   try:
-    linger_strs = subprocess.check_output("grep -rnoH \"%s\" \"%s\""
-                                          % (formatted_string, TF_SRC_DIR),
-                                          shell=True).split("\n")
+    linger_strs = subprocess.check_output(
+        ['grep', '-rnoH', formatted_string, TF_SRC_DIR]).split("\n")
   except subprocess.CalledProcessError:
     linger_strs = []
 

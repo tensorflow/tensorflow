@@ -25,6 +25,7 @@ from tensorflow.contrib.reduce_slice_ops.python.ops import reduce_slice_ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.platform import googletest
 
+
 class ReduceSliceTest(TensorFlowTestCase):
 
   def testReduceSliceSum1D(self):

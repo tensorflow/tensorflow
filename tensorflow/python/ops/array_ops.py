@@ -82,6 +82,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -100,7 +101,6 @@ from tensorflow.python.ops import gen_math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.util import deprecation
-from tensorflow.python.util.deprecation import deprecated
 # pylint: enable=wildcard-import
 
 # Used for slicing to specify a new 1 size dimension
@@ -124,8 +124,9 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   if context.in_graph_mode():
     return gen_array_ops.identity(input, name=name)
   else:
-    # TODO(apassos): make sure this works ok with gradients.
-    return input._copy()  # pylint: disable=protected-access
+    if context.context().device_name != input.device:
+      return input._copy()  # pylint: disable=protected-access
+    return input
 
 
 # pylint: disable=redefined-builtin,protected-access
@@ -191,8 +192,10 @@ def expand_dims(input, axis=None, name=None, dim=None):
 
 # Aliases for some automatically-generated names.
 # pylint: disable=protected-access
-@deprecated("2016-11-30", "This op will be removed after the deprecation date. "
-            "Please switch to tf.setdiff1d().")
+@deprecation.deprecated(
+    "2016-11-30",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.setdiff1d().")
 def listdiff(x, y, out_idx=None, name=None):
   return gen_array_ops._list_diff(x, y, out_idx, name)
 

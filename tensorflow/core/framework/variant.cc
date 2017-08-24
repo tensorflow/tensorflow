@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -24,7 +25,7 @@ namespace tensorflow {
 template <>
 void* Variant::MaybeDecodeAndGet() {
   mutex_lock lock(mu_);
-  if (is_empty()) {
+  if (IsEmptyLocked()) {
     return nullptr;
   }
   return value_->RawPtr();
@@ -33,7 +34,7 @@ void* Variant::MaybeDecodeAndGet() {
 template <>
 const void* Variant::MaybeDecodeAndGet() const {
   mutex_lock lock(mu_);
-  if (is_empty()) {
+  if (IsEmptyLocked()) {
     return nullptr;
   }
   return value_->RawPtr();

@@ -106,8 +106,8 @@ LayoutConstraints::LayoutConstraints(
     auto& buffer = points_to_analysis_.logical_buffer(id);
     // The points to analysis is computed per module, restrict constraints to
     // array buffers in this computation.
-    if (buffer->IsArray() && buffer->instruction()->parent() == computation) {
-      unconstrained_buffer_ids_.insert(buffer->id());
+    if (buffer.IsArray() && buffer.instruction()->parent() == computation) {
+      unconstrained_buffer_ids_.insert(buffer.id());
     }
   }
 }
@@ -628,9 +628,8 @@ Status CheckLayouts(
       const PointsToSet& points_to_set =
           points_to_analysis->GetPointsToSet(instruction.get());
       TF_RETURN_IF_ERROR(points_to_set.ForEachElementWithStatus(
-          [&instruction](
-              ShapeIndex index,
-              const std::vector<const LogicalBuffer*>& buffers) -> Status {
+          [&instruction](ShapeIndex index,
+                         const PointsToSet::BufferList& buffers) -> Status {
             if (ShapeUtil::IsLeafIndex(instruction->shape(), index)) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
@@ -934,7 +933,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   return points_to_set.ForEachElementWithStatus(
       [this, &shape_layout, constraints](
           const ShapeIndex& index,
-          const std::vector<const LogicalBuffer*>& buffers) -> Status {
+          const PointsToSet::BufferList& buffers) -> Status {
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {
           for (const LogicalBuffer* buffer : buffers) {
             if (constraints->BufferLayout(*buffer) == nullptr &&
@@ -1076,7 +1075,7 @@ StatusOr<Layout> InferArrayLayout(
   TF_RET_CHECK(
       !points_to_analysis.InstructionDefinesBufferAtIndex(instruction, index));
 
-  const std::vector<const LogicalBuffer*>& source_buffers =
+  const auto& source_buffers =
       points_to_analysis.GetPointsToSet(instruction).element(index);
   TF_RET_CHECK(!source_buffers.empty());
 

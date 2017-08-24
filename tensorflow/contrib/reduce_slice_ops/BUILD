@@ -61,6 +61,10 @@ tf_custom_op_py_library(
     dso = [
         ":python/ops/_reduce_slice_ops.so",
     ],
+    kernels = [
+        ":reduce_slice_ops_kernels",
+        ":reduce_slice_ops_op_lib",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

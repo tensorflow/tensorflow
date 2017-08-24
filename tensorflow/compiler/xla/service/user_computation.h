@@ -89,6 +89,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
       const BatchNormTrainingRequest& batch_norm_training_request);
 
+  // Enqueues a batch norm inference instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBatchNormInferenceInstruction(
+      const BatchNormInferenceRequest& batch_norm_inference_request);
+
   // Enqueues a batch norm grad instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBatchNormGradInstruction(
       const BatchNormGradRequest& batch_norm_grad_request);

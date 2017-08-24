@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -63,20 +64,41 @@ class CapturedFunction {
              gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
              const string& prefix);
 
-  Device* device() const { return device_.get(); }
+  void RunAsync(FunctionLibraryRuntime::Options f_opts,
+                gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                const string& prefix,
+                FunctionLibraryRuntime::DoneCallback done);
+
+  const Device* device() const { return device_; }
 
   ResourceMgr* resource_manager() const { return device_->resource_manager(); }
 
+  static int64 generate_step_id() {
+    // Choose a step ID that is guaranteed not to clash with any
+    // Session-generated step ID. DirectSession only generates
+    // non-negative step IDs (contiguous, starting from 0), and
+    // MasterSession generates 56-bit random step IDs whose MSB is
+    // always 0, so a negative random step ID should suffice.
+    return -std::abs(static_cast<int64>(random::New64()));
+  }
+
  private:
-  CapturedFunction(std::unique_ptr<Device> device,
+  CapturedFunction(Device* device, std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
-                   std::unique_ptr<FunctionLibraryRuntime> lib,
+                   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                   FunctionLibraryRuntime* lib,
                    FunctionLibraryRuntime::Handle f_handle,
                    std::vector<Tensor> captured_inputs);
 
-  const std::unique_ptr<Device> device_;
+  void RunHelper(FunctionLibraryRuntime::Options f_opts,
+                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                 FunctionLibraryRuntime::DoneCallback done);
+
+  Device* const device_;  // owned by device_mgr_.
+  const std::unique_ptr<DeviceMgr> device_mgr_;
   const std::unique_ptr<FunctionLibraryDefinition> flib_def_;
-  const std::unique_ptr<FunctionLibraryRuntime> lib_;
+  const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  FunctionLibraryRuntime* const lib_;  // owned by pflr_.
   const FunctionLibraryRuntime::Handle f_handle_;
   const std::vector<Tensor> captured_inputs_;
 

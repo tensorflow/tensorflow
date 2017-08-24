@@ -78,7 +78,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
     OP_REQUIRES(context, row_remapping.size() == num_rows_,
                 errors::InvalidArgument(strings::StrCat(
                     "Size of row_remapping is ", row_remapping.size(),
-                    " intead of being equal to num_rows=", num_rows_)));
+                    " instead of being equal to num_rows=", num_rows_)));
     OP_REQUIRES_OK(context, RemapVectorToMap(row_remapping, &row_id_present,
                                              &old_row_to_new_row_map));
 
