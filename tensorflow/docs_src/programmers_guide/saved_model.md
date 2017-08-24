@@ -879,9 +879,3 @@ of checkpoints and assets:
 
 Each graph is associated with a specific set of tags, which enables
 identification during a load or restore operation.
-
-
-<<<<<<< HEAD
-=======
-
->>>>>>> f9c758719... New "SavedModel: Practical Uses" and "SavedModel: Architecture" documents.
