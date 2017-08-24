@@ -1,8 +1,24 @@
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/util/work_sharder.h"
 #include "roll_op.h"
 
 using namespace tensorflow;
@@ -11,14 +27,12 @@ using namespace tensorflow;
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-// CPU specialization of actual computation.
 template <typename T>
 struct RollFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, int N, int D, int* dim_size, const T* input, T* output, \
-                  int* shifts, int* strides) {
-
-    for (int in_i = 0; in_i < N; in_i++) {
-      int out_i = in_i;
+  void operator()(const CPUDevice& d, int64 N, int D, int* dim_size, const T* input, T* output, \
+                  int* shifts, int64* strides) {
+    for (int64 in_i = 0; in_i < N; in_i++) {
+      int64 out_i = in_i;
       // loop through dimensions
       for (int d = 0; d < D; d++) {
         // find indices input/output for current dimension
@@ -60,41 +74,98 @@ class RollOp : public OpKernel {
                                         axis.shape().DebugString()));
     OP_REQUIRES(context, shift.shape() == axis.shape(),
                 errors::InvalidArgument("shift and axis must be the same size"));
-
+    const int64 N = input.NumElements();
     const int D = static_cast<int>(input.dims());
     const int M = static_cast<int>(shift_flat.size());
 
     int shifts[D];
     for (int i = 0; i < D; i++) shifts[i] = 0; // default is 0
     for (int i = 0; i < M; i++) {
-        const int j = axis_flat(i);
-        OP_REQUIRES(context, j < D,
-                    errors::InvalidArgument("axis ", j, " is out of range"));
-        shifts[j] += static_cast<int>(shift_flat(i));
+      const int j = axis_flat(i);
+      OP_REQUIRES(context, j < D,
+                  errors::InvalidArgument("axis ", j, " is out of range"));
+      shifts[j] += static_cast<int>(shift_flat(i));
     }
 
-    int strides[D];
-    int last_stride = 1;
+
     int dim_size[D];
-    for (int i = D-1; i >= 0; i--) {
-        strides[i] = last_stride;
-        dim_size[i] = static_cast<int>(input.dim_size(i));
-        last_stride *= static_cast<int>(input.dim_size(i));
+    int thresholds[D];
+    int64 strides[D];
+    int64 dim_ranges[D];
+    int64 last_stride = 1;
+    for (int d = D-1; d >= 0; d--) {
+      strides[d] = last_stride;
+      const int ds = fmax(static_cast<int>(input.dim_size(d)), 1);
+      dim_size[d] = ds;
+      thresholds[d] = ((ds - shifts[d]) % ds + ds) % ds;
+      last_stride *= static_cast<int64>(input.dim_size(d));
+      dim_ranges[d] = last_stride;
     }
 
     Tensor* output = NULL;
     OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(),
                                                      &output));
 
-    OP_REQUIRES(context, input.NumElements() <= tensorflow::kint32max,
-                errors::InvalidArgument("Too many elements in tensor"));
+
+    auto input_flat = input.flat<T>().data();
+    auto output_flat = output->flat<T>().data();
+
+    if (std::is_same<Device, CPUDevice>::value) {
+      auto work = [input_flat, output_flat, D, &dim_size, &shifts,
+                   &thresholds, &dim_ranges](int64 start, int64 end) {
+        int in_dim_i[D];//
+        int delta_i = 0;
+        // initialize indices and delta_i
+        for (int d = 0; d < D; d++) {
+          const int ds = dim_size[d];
+          // dim_stride is the number of indices over in the flattened tensor
+          // you need to skip in order to make it over to an adjacent element
+          // along the current dimension
+          const int64 dim_stride = dim_ranges[d] / ds;
+          in_dim_i[d] = (start / dim_stride) % ds;
+          // calculate dimension index after the shift
+          // modulo that works with negatives: ((x % y) + y) % y
+          const int out_dim_i = ((in_dim_i[d] + shifts[d]) % ds + ds) % ds;
+          delta_i += (out_dim_i - in_dim_i[d]) * dim_stride;
+        }
+
+        for (int64 in_i = start; in_i < end; in_i++) {
+          int out_i = in_i + delta_i;
+          output_flat[out_i] = input_flat[in_i];
+
+          // increment in_dim_i[d] and break if no carry is needed
+          // while at it adjust delta_i if needed
+          for (int d = D-1; d >= 0; d--) {
+            const int mod = (in_dim_i[d] + 1) % dim_size[d];
+            in_dim_i[d] = mod;
+            if (mod != 0) {
+              if (mod == thresholds[d]) {
+                delta_i -= dim_ranges[d];// now wraps around
+              }
+              break; // don't need to carry
+            }else{
+              delta_i += dim_ranges[d];// reverse wrap around
+            }
+          }
+        }
+      };
+      // Shard
+      auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+      const int64 S = fmin(worker_threads->num_threads, N);
+      const int64 cost_per_unit = N / fmax(S, 1);
+      Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
+            std::move(work));
+      return;
+    }
+
+
     RollFunctor<Device, T>()(
         context->eigen_device<Device>(),
-        static_cast<int>(input.NumElements()),
-        static_cast<int>(input.dims()),
+        N,
+        D,
         dim_size,
-        input.flat<T>().data(),
-        output->flat<T>().data(),
+        input_flat,
+        output_flat,
         shifts,
         strides
     );

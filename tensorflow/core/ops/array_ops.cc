@@ -2270,22 +2270,22 @@ REGISTER_OP("Roll")
     .Attr("Taxis: {int32,int64}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-Returns the rank of a tensor.
-
-This operation returns an integer representing the rank of `input`.
+Returns a tensor with the elements rolled by the offsets of `shift` along the
+dimensions of `axis`. Elements that roll passed the last position will wrap
+around to the first.
 
 For example:
 
 ```
-# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
-# shape of tensor 't' is [2, 2, 3]
-rank(t) ==> 3
+# 't' is [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+roll(t, shift=[1, -2], axis=[0, 1]) ==> [[7, 8, 9, 5, 6], [2, 3, 4, 0, 1]]
 ```
 
-**Note**: The rank of a tensor is not the same as the rank of a matrix. The rank
-of a tensor is the number of indices required to uniquely select each element
-of the tensor. Rank is also known as "order", "degree", or "ndims."
+shift: shift[i] specifies the number of places by which elements are shifted
+  along the dimension specified by axis[i].
+axis: axis[i] specifies the dimension that the shift shift[i] should occur.
 )doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Size")
     .Input("input: T")
@@ -2302,7 +2302,7 @@ This operation returns an integer representing the number of elements in
 For example:
 
 ```
-# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
 size(t) ==> 12
 ```
 

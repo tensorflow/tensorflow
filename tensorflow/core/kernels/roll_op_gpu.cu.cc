@@ -1,3 +1,18 @@
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #ifdef GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -12,10 +27,11 @@ using namespace tensorflow;
 
 // Define the CUDA kernel.
 template <typename T>
-__global__ void RollCudaKernel(int N, int D, int* dim_size, const T* input, T* output,\
-                const int* shifts, const int* strides) {
-  CUDA_1D_KERNEL_LOOP(in_i, out_size) {
-    int out_i = in_i;
+__global__ void RollCudaKernel(int64 N, int D, int* dim_size, const T* input, T* output,\
+                const int* shifts, const int64* strides) {
+  for (int64 in_i = blockIdx.x * blockDim.x + threadIdx.x; in_i < N;\
+                  i += blockDim.x * gridDim.x) {
+    int64 out_i = in_i;
     // loop through dimensions
     for (int d = 0; d < D; d++) {
       // find indices input/output for current dimension
@@ -33,9 +49,8 @@ __global__ void RollCudaKernel(int N, int D, int* dim_size, const T* input, T* o
 // Define the GPU implementation that launches the CUDA kernel.
 template <typename T>
 struct RollFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, int N, int D, int* dim_size, const T* input, T* output,\
-                  const int* shifts, const int* strides){
-    const int64 out_size = out.size();
+  void operator()(const GPUDevice& d, int64 N, int D, int* dim_size, const T* input, T* output,\
+                  const int* shifts, const int64* strides){
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
     RollCudaKernel<T>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(

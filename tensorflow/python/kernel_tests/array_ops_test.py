@@ -366,6 +366,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
 
 class RollTest(test_util.TensorFlowTestCase):
+    
     def _testRoll(self, np_input, shift, axis, use_gpu=True):
         expected_roll = np.roll(np_input, shift, axis)
         with self.test_session(use_gpu=use_gpu):

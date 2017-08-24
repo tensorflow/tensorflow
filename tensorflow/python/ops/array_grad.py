@@ -594,7 +594,6 @@ def _ReverseV2Grad(op, grad):
 
 @ops.RegisterGradient("Roll")
 def _RollGrad(op, grad):
- """Gradient for Roll."""
  # The gradient should be just the roll reversed
  shift = op.inputs[1]
  axis = op.inputs[2]
