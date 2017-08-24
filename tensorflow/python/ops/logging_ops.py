@@ -36,7 +36,7 @@ from tensorflow.python.util.deprecation import deprecated
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 def Print(input_, data, message=None, first_n=None, summarize=None,
-          name=None):
+          name=None,flag=False):
   """Prints a list of tensors.
 
   This is an identity op with the side effect of printing `data` when
@@ -51,11 +51,16 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
     summarize: Only print this many entries of each tensor. If None, then a
                maximum of 3 elements are printed per input tensor.
     name: A name for the operation (optional).
+    flag: A parameter disables the logging prefix(message).
 
   Returns:
     Same tensor as `input_`.
   """
-  return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
+  
+  if flag == True:
+      return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
+  else:
+    return gen_logging_ops._print(input_, data, None, first_n, summarize, name)
 
 
 @ops.RegisterGradient("Print")
