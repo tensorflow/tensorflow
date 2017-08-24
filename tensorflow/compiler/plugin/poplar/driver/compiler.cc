@@ -121,7 +121,8 @@ public:
                           AddTensor(*graph_, inst, shapes[i], resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
-      out = ShuffleLayout(module_shapes[i], out);
+      // Host tensor needs to be host layout
+      out = ConvertFromDeviceLayout(module_shapes[i], out);
 
       graph_->createHostWrite(
               sep::GetInputCopyHandle(inst->parameter_number(), i), out);
@@ -149,7 +150,7 @@ public:
         }
       }
 
-      poplar::Tensor out = ShuffleLayout(shapes[o], outputs[o]);
+      poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
       graph_->createHostRead(sep::GetOutputCopyHandle(o), out);
     }
 
@@ -340,7 +341,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     graph->outputComputeGraph(stream, progs);
   }
 
-  hlo_module->mutable_entry_computation_layout()->mutable_result_layout()->CopyLayoutFromShape(entry->root_instruction()->shape());
+  hlo_module->mutable_entry_computation_layout()
+            ->mutable_result_layout()
+            ->CopyLayoutFromShape(entry->root_instruction()->shape());
 
   std::unique_ptr<Executable> executable;
   executable.reset(

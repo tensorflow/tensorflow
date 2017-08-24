@@ -92,7 +92,29 @@ XlaShapeFromPoplarShape(PrimitiveType element_type,
   return shape;
 }
 
-poplar::Tensor ShuffleLayout(const Shape& shape, poplar::Tensor tensor) {
+
+poplar::Tensor
+ConvertToDeviceLayout(const Shape& shape, const poplar::Tensor& tensor) {
+  // Reshape then dimshuffle
+  poplar::Tensor out = tensor;
+  if (!LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    unsigned int rank = tensor.rank();
+    std::vector <std::size_t> dim(rank);
+    std::vector<unsigned int> shuffle(rank);
+    for (unsigned int i=0; i<rank; i++) {
+      shuffle[shape.layout().minor_to_major(i)] = rank - i - 1;
+      dim[rank - i - 1] = tensor.dim(shape.layout().minor_to_major(i));
+    }
+
+    out = out.reshape(dim);
+    out = out.dimShuffle(shuffle);
+  }
+  return out;
+}
+
+poplar::Tensor
+ConvertFromDeviceLayout(const Shape& shape, const poplar::Tensor& tensor) {
+  // Dimshuffle then reshape
   poplar::Tensor out = tensor;
   if (!LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     unsigned int rank = tensor.rank();
@@ -101,9 +123,7 @@ poplar::Tensor ShuffleLayout(const Shape& shape, poplar::Tensor tensor) {
       shuffle[rank - i - 1] = shape.layout().minor_to_major(i);
     }
     out = out.dimShuffle(shuffle);
-
-    std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
-    out = out.reshape(dim);
+    out = out.reshape(tensor.shape());
   }
   return out;
 }
@@ -218,7 +238,7 @@ AddConstantTensor(poplar::Graph& graph,
     tensor = graph.addConstantTensor(type, dim, data);
   }
 
-  tensor = ShuffleLayout(shape, tensor);
+  tensor = ConvertToDeviceLayout(shape, tensor);
 }
 
 static void
