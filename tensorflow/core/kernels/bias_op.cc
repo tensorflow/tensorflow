@@ -50,8 +50,9 @@ class BiasOp : public BinaryOp<T> {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC, errors::InvalidArgument(
-      DeviceName<Device>::value + " BiasOp only supports NHWC."));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(context->device()->name() +
+                                        " BiasOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -130,7 +131,9 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
       Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       BiasOp<SYCLDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -187,8 +190,9 @@ class BiasGradOp : public OpKernel {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC, errors::InvalidArgument(
-      DeviceName<Device>::value + " BiasGradOp only supports NHWC."));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(context->device()->name() +
+                                        " BiasGradOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -200,8 +204,9 @@ class BiasGradOp : public OpKernel {
                                         output_backprop.shape().DebugString()));
 
     OP_REQUIRES(
-        context, FastBoundsCheck(output_backprop.NumElements(),
-                                 std::numeric_limits<int32>::max()),
+        context,
+        FastBoundsCheck(output_backprop.NumElements(),
+                        std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
     int32 batch, height, width, channel;
@@ -251,7 +256,9 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
       Name("BiasAddGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       BiasGradOp<SYCLDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 

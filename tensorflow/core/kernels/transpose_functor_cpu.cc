@@ -15,8 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 
 namespace tensorflow {
 namespace internal {

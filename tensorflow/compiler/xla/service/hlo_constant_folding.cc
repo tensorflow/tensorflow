@@ -54,8 +54,10 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       // Skip Constant, Parameter, Reduce operation.
       // TODO(b/35975797): Enable Reduce operation once arbitary computation are
       // supported by the evaluator.
+      // TODO(b/64407269): Enable Tuple once the timeout issue is resolved.
       if (instruction->opcode() == HloOpcode::kParameter ||
           instruction->opcode() == HloOpcode::kConstant ||
+          instruction->opcode() == HloOpcode::kTuple ||
           instruction->opcode() == HloOpcode::kReduce) {
         continue;
       }

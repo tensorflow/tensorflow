@@ -25,11 +25,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
-# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
-
 # pylint: enable=wildcard-import
+from tensorflow.python.util import compat
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -105,8 +104,9 @@ def eye(num_rows,
       in each batch matrix.
     num_columns: Optional non-negative `int32` scalar `Tensor` giving the number
       of columns in each batch matrix.  Defaults to `num_rows`.
-    batch_shape:  `int32` `Tensor`.  If provided, returned `Tensor` will have
-      leading batch dimensions of this shape.
+    batch_shape:  A list or tuple of Python integers or a 1-D `int32` `Tensor`.
+      If provided, the returned `Tensor` will have leading batch dimensions of
+      this shape.
     dtype:  The type of an element in the resulting `Tensor`
     name:  A name for this `Op`.  Defaults to "eye".
 
@@ -115,22 +115,32 @@ def eye(num_rows,
   """
   with ops.name_scope(
       name, default_name='eye', values=[num_rows, num_columns, batch_shape]):
-
+    is_square = num_columns is None
     batch_shape = [] if batch_shape is None else batch_shape
-    batch_shape = ops.convert_to_tensor(
-        batch_shape, name='shape', dtype=dtypes.int32)
-
-    if num_columns is None:
-      diag_size = num_rows
-    else:
+    num_columns = num_rows if num_columns is None else num_columns
+    if isinstance(num_rows, ops.Tensor) or isinstance(
+        num_columns, ops.Tensor) or isinstance(batch_shape, ops.Tensor):
+      batch_shape = ops.convert_to_tensor(
+          batch_shape, name='shape', dtype=dtypes.int32)
       diag_size = math_ops.minimum(num_rows, num_columns)
-    diag_shape = array_ops.concat((batch_shape, [diag_size]), 0)
-    diag_ones = array_ops.ones(diag_shape, dtype=dtype)
+      diag_shape = array_ops.concat((batch_shape, [diag_size]), 0)
+      if not is_square:
+        shape = array_ops.concat((batch_shape, [num_rows, num_columns]), 0)
+    else:
+      if not isinstance(num_rows, compat.integral_types) or not isinstance(
+          num_columns, compat.integral_types):
+        raise TypeError(
+            'num_rows and num_columns must be positive integer values.')
+      batch_shape = [dim for dim in batch_shape]
+      is_square = num_rows == num_columns
+      diag_shape = batch_shape + [np.minimum(num_rows, num_columns)]
+      if not is_square:
+        shape = batch_shape + [num_rows, num_columns]
 
-    if num_columns is None:
+    diag_ones = array_ops.ones(diag_shape, dtype=dtype)
+    if is_square:
       return array_ops.matrix_diag(diag_ones)
     else:
-      shape = array_ops.concat((batch_shape, [num_rows, num_columns]), 0)
       zero_matrix = array_ops.zeros(shape, dtype=dtype)
       return array_ops.matrix_set_diag(zero_matrix, diag_ones)
 
@@ -140,7 +150,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
 
   `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
   form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
-  inner-most 2 dimensions form `M`-by-`K` matrices.   The computed output is a
+  inner-most 2 dimensions form `M`-by-`K` matrices.  The computed output is a
   `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
   matrices that solve the equations
   `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
@@ -215,6 +225,12 @@ def self_adjoint_eig(tensor, name=None):
 
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
+
+  Note: If your program backpropagates through this function, you should replace
+  it with a call to tf.self_adjoint_eig (possibly ignoring the second output) to
+  avoid computing the eigen decomposition twice. This is because the
+  eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
+  _SelfAdjointEigV2Grad in linalg_grad.py.
 
   Args:
     tensor: `Tensor` of shape `[..., N, N]`.
@@ -389,9 +405,9 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
         result = math_ops.reduce_max(result, max_axis, keep_dims=True)
       else:
         # General p-norms (positive p only)
-        result = math_ops.pow(math_ops.reduce_sum(
-            math_ops.pow(result, ord), axis, keep_dims=True),
-                              1.0 / ord)
+        result = math_ops.pow(
+            math_ops.reduce_sum(
+                math_ops.pow(result, ord), axis, keep_dims=True), 1.0 / ord)
     if not keep_dims:
       result = array_ops.squeeze(result, axis)
     return result

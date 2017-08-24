@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_VARIANT_CODING_H_
 
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
 
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/core/platform/google/variant_cord_coding.h"

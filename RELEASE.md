@@ -1,4 +1,18 @@
+# Release 1.4.0
+
+## Major Features And Improvements
+
+## Bug Fixes and Other Changes
+* `tf.nn.rnn_cell.DropoutWrapper` is now more careful about dropping out LSTM
+  states.  Specifically, it no longer ever drops the `c` (memory) state of an
+  `LSTMStateTuple`.  The new behavior leads to proper dropout behavior
+  for LSTMs and stacked LSTMs.  This bug fix follows recommendations from
+  published literature, but is a behavioral change.  State dropout behavior
+  may be customized via the new `dropout_state_filter_visitor` argument.
+
 # Release 1.3.0
+
+See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/tag/0.1.4) release notes.
 
 ## Major Features and Improvements
 * Added canned estimators to Tensorflow library. List of added estimators:
@@ -8,7 +22,7 @@
   * `LinearRegressor`
   * `DNNLinearCombinedClassifier`
   * `DNNLinearCombinedRegressor`.
-* All our prebuilt binaries have been built with cuDNN 6.
+* All our prebuilt binaries have been built with cuDNN 6. We anticipate releasing TensorFlow 1.4 with cuDNN 7.
 * `import tensorflow` now goes much faster.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
@@ -43,6 +57,9 @@
 * `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
 * Adds time series models to contrib. See contrib/timeseries/README.md for details.
 * Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+
+## Known Issues
+* Tensorflow_gpu compilation fails with Bazel 0.5.3.
 
 ## Bug Fixes and Other Changes
 * Fixes `strides` and `begin` dtype mismatch when slicing using int64 Tensor index in python.

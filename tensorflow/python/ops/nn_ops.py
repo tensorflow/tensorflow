@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -1378,7 +1379,8 @@ def _flatten_outer_dims(logits):
         break
       else:
         product *= d
-    if product_valid:
+    # Only need to set shape if in graph mode
+    if product_valid and context.in_graph_mode():
       output_shape = [product, shape[-1]]
       output.set_shape(output_shape)
 
@@ -1603,7 +1605,7 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
-  if shape is not None and shape.dims is not None:
+  if shape is not None and shape.dims is not None and context.in_graph_mode():
     shape = shape.as_list()
     del shape[dim]
     cost.set_shape(shape)
@@ -1877,7 +1879,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
   kept independently and each row and column will be kept or not kept together.
 
   Args:
-    x: A tensor.
+    x: A floating point tensor.
     keep_prob: A scalar `Tensor` with the same type as x. The probability
       that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
@@ -1891,10 +1893,14 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]`.
+    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+      point tensor.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if not x.dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going to"
+                       " be scaled. Got a %s tensor instead." % x.dtype)
     if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
@@ -2117,4 +2123,4 @@ def in_top_k(predictions, targets, k, name=None):
   """
   with ops.name_scope(name, 'in_top_k'):
     # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)
+    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)

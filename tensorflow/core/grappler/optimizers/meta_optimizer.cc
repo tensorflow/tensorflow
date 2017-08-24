@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
@@ -44,6 +45,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
   if (optimizer == "memory") {
     graph_optimizer.reset(new MemoryOptimizer(RewriterConfig::MANUAL));
   }
+  if (optimizer == "arithmetic") {
+    graph_optimizer.reset(new ArithmeticOptimizer());
+  }
   if (optimizer == "autoparallel") {
     graph_optimizer.reset(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
@@ -58,9 +62,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (!cfg_.disable_model_pruning()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
     }
-    if (cfg_.constant_folding() == RewriterConfig::ON) {
+    if (cfg_.constant_folding() != RewriterConfig::OFF) {
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new ConstantFolding()));
+    }
+    if (cfg_.arithmetic_optimization() == RewriterConfig::ON) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new ArithmeticOptimizer()));
     }
     if (cfg_.optimize_tensor_layout()) {
       optimizers.push_back(
@@ -83,8 +91,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           new AutoParallel(cfg_.auto_parallel().num_replicas())));
     }
   } else {
-    std::set<string> available_optimizers = {"pruning", "constfold", "layout",
-                                             "memory", "autoparallel"};
+    std::set<string> available_optimizers = {"pruning",      "constfold",
+                                             "layout",       "memory",
+                                             "autoparallel", "arithmetic"};
     for (const auto& optimizer : cfg_.optimizers()) {
       if (available_optimizers.find(optimizer) != available_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer));
@@ -128,7 +137,8 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
   return !cfg.disable_model_pruning() || cfg.optimize_tensor_layout() ||
-         cfg.constant_folding() == RewriterConfig::ON ||
+         cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.arithmetic_optimization() == RewriterConfig::ON ||
          cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
          !cfg.optimizers().empty();
 }

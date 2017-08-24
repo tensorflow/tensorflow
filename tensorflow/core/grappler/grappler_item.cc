@@ -65,6 +65,31 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
   return vars;
 }
 
+std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
+  std::unordered_set<string> result;
+  for (const string& f : fetch) {
+    result.insert(NodeName(f));
+  }
+  for (const auto& f : feed) {
+    result.insert(NodeName(f.first));
+  }
+  for (const auto& node : init_ops) {
+    result.insert(NodeName(node));
+  }
+  for (const auto& queue_runner : queue_runners) {
+    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
+      result.insert(NodeName(enqueue_op));
+    }
+    if (!queue_runner.close_op_name().empty()) {
+      result.insert(NodeName(queue_runner.close_op_name()));
+    }
+    if (!queue_runner.cancel_op_name().empty()) {
+      result.insert(NodeName(queue_runner.cancel_op_name()));
+    }
+  }
+  return result;
+}
+
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes) {
   bool ill_formed = false;

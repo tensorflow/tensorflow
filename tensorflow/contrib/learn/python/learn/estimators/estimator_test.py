@@ -63,6 +63,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import input as input_lib
@@ -505,7 +506,7 @@ class EstimatorModelFnTest(test.TestCase):
       return input_fn_utils.InputFnOps(
           features, labels, {'examples': serialized_tf_example})
 
-    est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+    est.export_savedmodel(os.path.join(est.model_dir, 'export'), serving_input_fn)
     self.assertTrue(self.mock_saver.restore.called)
 
 
@@ -851,6 +852,38 @@ class EstimatorTest(test.TestCase):
         util_test.latest_events(est.model_dir), ['OptimizeLoss/loss'])
     self.assertEqual(1, len(loss_summary))
 
+  def testSummaryWritingWithSummaryProto(self):
+
+    def _streaming_mean_squared_error_histogram(predictions,
+                                                labels,
+                                                weights=None,
+                                                metrics_collections=None,
+                                                updates_collections=None,
+                                                name=None):
+      metrics, update_ops = metric_ops.streaming_mean_squared_error(
+          predictions,
+          labels,
+          weights=weights,
+          metrics_collections=metrics_collections,
+          updates_collections=updates_collections,
+          name=name)
+      return summary.histogram('histogram', metrics), update_ops
+
+    est = estimator.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(
+        input_fn=boston_input_fn,
+        steps=200,
+        metrics={'MSE': _streaming_mean_squared_error_histogram})
+    events = util_test.latest_events(est.model_dir + '/eval')
+    output_values = {}
+    for e in events:
+      if e.HasField('summary'):
+        for v in e.summary.value:
+          output_values[v.tag] = v
+    self.assertTrue('MSE' in output_values)
+    self.assertTrue(output_values['MSE'].HasField('histo'))
+
   def testLossInGraphCollection(self):
 
     class _LossCheckerHook(session_run_hook.SessionRunHook):
@@ -955,10 +988,11 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
-        self.assertSameElements(
-            ['bogus_lookup', 'feature'],
-            graph.get_collection(
-                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS))
+        self.assertItemsEqual(
+          ['bogus_lookup', 'feature'],
+          [compat.as_str_any(x) for x in graph.get_collection(
+            constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS)])
+
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)

@@ -104,8 +104,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::GroupByWindow")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -120,12 +122,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           if (current_group_iterator_) {
@@ -153,12 +156,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
             if (!end_of_input_) {
               FunctionLibraryRuntime::Options opts;
-              // Choose a step ID that is guaranteed not to clash with any
-              // Session-generated step ID. DirectSession only generates
-              // non-negative step IDs (contiguous, starting from 0), and
-              // MasterSession generates 56-bit random step IDs whose MSB is
-              // always 0, so a negative random step ID should suffice.
-              opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+              opts.step_id = CapturedFunction::generate_step_id();
               opts.runner = ctx->runner();
               ScopedStepContainer step_container(
                   opts.step_id, [this, ctx](const string& name) {
@@ -173,7 +171,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Run(
-                  opts, next_input_element, &key_func_output));
+                  opts, next_input_element, &key_func_output, prefix()));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -212,12 +210,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         FunctionLibraryRuntime::Options opts;
-        // Choose a step ID that is guaranteed not to clash with any
-        // Session-generated step ID. DirectSession only generates
-        // non-negative step IDs (contiguous, starting from 0), and
-        // MasterSession generates 56-bit random step IDs whose MSB is
-        // always 0, so a negative random step ID should suffice.
-        opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        opts.step_id = CapturedFunction::generate_step_id();
         opts.runner = ctx->runner();
         ScopedStepContainer step_container(
             opts.step_id, [this, ctx](const string& name) {
@@ -266,8 +259,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
 
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_reduce_func_->Run(opts, args, &return_values));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
+            opts, args, &return_values, prefix()));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_RESOURCE &&
@@ -294,7 +287,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         // Create an iterator for the dataset that was returned by
         // `f`. This transfers ownership of the dataset to the
         // iterator.
-        current_group_iterator_ = returned_dataset->MakeIterator();
+        current_group_iterator_ = returned_dataset->MakeIterator(prefix());
         return Status::OK();
       }
 

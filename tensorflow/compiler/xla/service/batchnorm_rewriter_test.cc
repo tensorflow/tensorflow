@@ -64,6 +64,7 @@ TEST_F(BatchNormRewriterTest, BatchNormTraining) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormTraining);
   BatchNormRewriter rewriter(/*rewrite_training_op=*/true,
+                             /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
@@ -105,6 +106,7 @@ TEST_F(BatchNormRewriterTest, BatchNormGrad) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormGrad);
   BatchNormRewriter rewriter(/*rewrite_training_op=*/true,
+                             /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();

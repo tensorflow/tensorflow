@@ -20,8 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -123,6 +127,59 @@ class DeterminantOpTest(test.TestCase):
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))
     self._compareDeterminant(np.empty([2, 0, 0]))
+
+
+class MatrixDeterminantBenchmark(test.Benchmark):
+
+  shapes = [
+      (4, 4),
+      (10, 10),
+      (16, 16),
+      (101, 101),
+      (256, 256),
+      (1000, 1000),
+      (1024, 1024),
+      (2048, 2048),
+      (513, 4, 4),
+      (513, 16, 16),
+      (513, 256, 256),
+  ]
+
+  def _GenerateMatrix(self, shape):
+    batch_shape = shape[:-2]
+    shape = shape[-2:]
+    assert shape[0] == shape[1]
+    n = shape[0]
+    matrix = np.ones(shape).astype(np.float32) / (
+        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
+
+  def benchmarkMatrixDeterminantOp(self):
+    for shape in self.shapes:
+      with ops.Graph().as_default(), session.Session() as sess, ops.device(
+          "/cpu:0"):
+        matrix = self._GenerateMatrix(shape)
+        d = linalg_ops.matrix_determinant(matrix)
+        variables.global_variables_initializer().run()
+        self.run_op_benchmark(
+            sess,
+            control_flow_ops.group(
+                d,),
+            min_iters=25,
+            name="matrix_determinant_cpu_{shape}".format(shape=shape))
+
+      if test.is_gpu_available(True):
+        with ops.Graph().as_default(), session.Session() as sess, ops.device(
+            "/gpu:0"):
+          matrix = self._GenerateMatrix(shape)
+          d = linalg_ops.matrix_determinant(matrix)
+          variables.global_variables_initializer().run()
+          self.run_op_benchmark(
+              sess,
+              control_flow_ops.group(
+                  d,),
+              min_iters=25,
+              name="matrix_determinant_gpu_{shape}".format(shape=shape))
 
 
 if __name__ == "__main__":

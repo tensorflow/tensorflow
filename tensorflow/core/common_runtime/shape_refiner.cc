@@ -20,7 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -241,8 +243,22 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
                                                    int dst_idx, bool* evaluated,
                                                    Tensor* result) {
   *evaluated = false;
+
   const Edge* input_edge;
   TF_RETURN_IF_ERROR(node->input_edge(dst_idx, &input_edge));
+
+  // Simple case: the source node is a constant
+  const Node* src = input_edge->src();
+  if (src->IsConstant()) {
+    if (result->FromProto(src->def().attr().at("value").tensor())) {
+      *evaluated = true;
+      return Status::OK();
+    }
+  }
+
+  if (disable_constant_propagation_) {
+    return Status::OK();
+  }
 
   bool is_constant_graph = false;
   Graph subgraph(ops_registry_);

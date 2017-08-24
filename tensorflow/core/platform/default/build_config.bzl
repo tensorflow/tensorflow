@@ -72,6 +72,9 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
       testonly = testonly,
   )
 
+def tf_jspb_proto_library(**kwargs):
+  pass
+
 def tf_proto_library(name, srcs = [], has_services = None,
                      protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],
@@ -179,9 +182,6 @@ def tf_env_time_srcs():
       ], exclude = []),
   })
 
-def tf_additional_stream_executor_srcs():
-  return ["platform/default/stream_executor.h"]
-
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
@@ -229,7 +229,7 @@ def tf_additional_lib_defines():
   })
 
 def tf_additional_lib_deps():
-  return select({
+  return ["@nsync//:nsync_cpp"] + select({
       "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc"],
       "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc"],
       "//conditions:default": [],
@@ -287,6 +287,12 @@ def tf_additional_verbs_lib_defines():
 def tf_additional_mpi_lib_defines():
   return select({
       "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
+      "//conditions:default": [],
+  })
+
+def tf_additional_gdr_lib_defines():
+  return select({
+      "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
       "//conditions:default": [],
   })
 

@@ -252,7 +252,9 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
@@ -324,7 +326,9 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
     """
     if self._has_saved_variables:
       raise AssertionError("Graph state including variables and assets has "

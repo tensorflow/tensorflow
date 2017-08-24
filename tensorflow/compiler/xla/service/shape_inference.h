@@ -71,6 +71,13 @@ class ShapeInference {
                                                      const Shape& scale_shape,
                                                      int64 feature_index);
 
+  // Infers the shape produced by InferBatchNormInference with the given
+  // operands.
+  static StatusOr<Shape> InferBatchNormInferenceShape(
+      const Shape& operand_shape, const Shape& offset_shape,
+      const Shape& scale_shape, const Shape& mean_shape,
+      const Shape& variance_shape, int64 feature_index);
+
   // Infers the shape produced by InferBatchNormGrad with the given operands.
   static StatusOr<Shape> InferBatchNormGradShape(const Shape& operand_shape,
                                                  const Shape& scale_shape,

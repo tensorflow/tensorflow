@@ -38,6 +38,10 @@ LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
 
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
+
 # control_flow_ops
 Switch
 Merge
@@ -302,6 +306,7 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad

@@ -52,6 +52,16 @@ new_http_archive(
 )
 
 new_http_archive(
+    name = "mobile_ssd",
+    build_file = "models.BUILD",
+    sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",
+    urls = [
+        "http://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
+        "http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
+    ],
+)
+
+new_http_archive(
     name = "mobile_multibox",
     build_file = "models.BUILD",
     sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96",
@@ -68,5 +78,15 @@ new_http_archive(
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/stylize_v1.zip",
         "http://download.tensorflow.org/models/stylize_v1.zip",
+    ],
+)
+
+new_http_archive(
+    name = "speech_commands",
+    build_file = "models.BUILD",
+    sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
+    urls = [
+        "http://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
+        "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )

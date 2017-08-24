@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from math import ceil
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -82,12 +83,12 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     fully_known = True
     for x in inputs:
       input_shape = array_ops.shape(x)
-      if not isinstance(input_shape,
-                        ops.Tensor) or input_shape.op.type != "Const":
-        fully_known = False
-        break
-      else:
-        sizes.append(input_shape)
+      if context.in_graph_mode():
+        if not isinstance(input_shape,
+                          ops.Tensor) or input_shape.op.type != "Const":
+          fully_known = False
+          break
+      sizes.append(input_shape)
 
     if fully_known:
       return sizes
@@ -394,7 +395,11 @@ def _GatherV2Grad(op, grad):
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
-    values_shape = array_ops.concat([indices_size, params_shape[1:]], 0)
+    if context.in_eager_mode():
+      params_tail_shape = params_shape.as_cpu_tensor()[1:]
+    else:
+      params_tail_shape = params_shape[1:]
+    values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
     values = array_ops.reshape(grad, values_shape)
     indices = array_ops.reshape(indices, indices_size)
     return [ops.IndexedSlices(values, indices, params_shape), None, None]
@@ -458,6 +463,11 @@ def _IdGrad(_, grad):
 
 @ops.RegisterGradient("RefIdentity")
 def _RefIdGrad(_, grad):
+  return grad
+
+
+@ops.RegisterGradient("IdentityN")
+def _IdNGrad(_, *grad):
   return grad
 
 

@@ -18,6 +18,7 @@
 See the @{$python/control_flow_ops} guide.
 
 @@identity
+@@identity_n
 @@tuple
 @@group
 @@no_op
@@ -56,6 +57,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import control_flow_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1045,10 +1047,10 @@ class ControlFlowState(object):
     Otherwise, they will enter the backprop loop with None. As an example,
     people often write:
 
-           ```
-           v1, _ = tf.while_loop(p, b, [x1, x2])
-           result = gradients(v1, x1)
-           ```
+    ```python
+    v1, _ = tf.while_loop(p, b, [x1, x2])
+    result = gradients(v1, x1)
+    ```
 
     The exit node for x2 is not included by the betweenness analysis. But we
     need to backprop x2 if x2 is involved in computing v1.
@@ -1778,13 +1780,13 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   Example:
 
   ```python
-    x = tf.constant(2)
-    y = tf.constant(5)
-    def f1(): return tf.multiply(x, 17)
-    def f2(): return tf.add(y, 23)
-    r = tf.cond(tf.less(x, y), f1, f2)
-    # r is set to f1().
-    # Operations in f2 (e.g., tf.add) are not executed.
+  x = tf.constant(2)
+  y = tf.constant(5)
+  def f1(): return tf.multiply(x, 17)
+  def f2(): return tf.add(y, 23)
+  r = tf.cond(tf.less(x, y), f1, f2)
+  # r is set to f1().
+  # Operations in f2 (e.g., tf.add) are not executed.
   ```
 
   """
@@ -2669,8 +2671,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
   call to `while_loop`, and not at all during `Session.run()`). `while_loop`
   stitches together the graph fragments created during the `cond` and `body`
-  calls with some additional graph nodes to make something the repeats
-  `body` until `cond` returns false.
+  calls with some additional graph nodes to create the graph flow that 
+  repeats `body` until `cond` returns false.
 
   For correctness, `tf.while_loop()` strictly enforces shape invariants for
   the loop variables. A shape invariant is a (possibly partial) shape that
@@ -2706,11 +2708,11 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   memory consumption and execution order. For correct programs, `while_loop`
   should return the same result for any parallel_iterations > 0.
 
-  For training, TensorFlow remembers the tensors that are produced in the
-  forward inference but needed in back propagation. These tensors can be a
-  main source of memory consumption and often cause OOM problems when training
-  on GPUs.  When the flag swap_memory is true, we swap out these tensors from
-  GPU to CPU.  This for example allows us to train RNN models with very long
+  For training, TensorFlow stores the tensors that are produced in the
+  forward inference and are needed in back propagation. These tensors are a
+  main source of memory consumption and often cause OOM errors when training
+  on GPUs. When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU. This for example allows us to train RNN models with very long
   sequences and large batches.
 
   Args:
@@ -2780,7 +2782,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    context = WhileContext(parallel_iterations, back_prop, swap_memory)
+    context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
     result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
@@ -2891,6 +2893,8 @@ def group(*inputs, **kwargs):
   Raises:
     ValueError: If an unknown keyword argument is provided.
   """
+  if context.in_eager_mode():
+    return None
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
@@ -2982,15 +2986,32 @@ def tuple(tensors, name=None, control_inputs=None):
     return tpl
 
 
-def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
+def _assert_exclusive(preds):
+  """Returns an Assert op that checks that the predicates are exclusive."""
+  preds_c = array_ops.stack(preds, name="preds_c")
+  num_true_conditions = math_ops.reduce_sum(
+      math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
+  at_most_one_true_condition = math_ops.less(
+      num_true_conditions, constant_op.constant(2, name="two_true_conds"))
+
+  error_msg = [("More than one condition evaluated as True but "
+                "exclusive=True.  Conditions: (%s), Values:"
+                % ", ".join([p.name for p in preds])),
+               preds_c]
+  return Assert(condition=at_most_one_true_condition, data=error_msg,
+                summarize=len(preds))
+
+
+def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
+         name="case"):
   """Create a case operation.
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
   Each pair contains a boolean scalar tensor and a python callable that
   creates the tensors to be returned if the boolean evaluates to True.
   `default` is a callable generating a list of tensors. All the callables
-  in `pred_fn_pairs` as well as `default` should return the same number
-  and types of tensors.
+  in `pred_fn_pairs` as well as `default` (if provided) should return the same
+  number and types of tensors.
 
   If `exclusive==True`, all predicates are evaluated, and an exception is
   thrown if more than one of the predicates evaluates to `True`.
@@ -3052,7 +3073,7 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
   Args:
     pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
                    callable which returns a list of tensors.
-    default: A callable that returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
     exclusive: True iff at most one predicate is allowed to evaluate to `True`.
     strict: A boolean that enables/disables 'strict' mode; see above.
     name: A name for this operation (optional).
@@ -3088,11 +3109,33 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
       raise TypeError("pred must be of type bool: %s", pred.name)
     if not callable(fn):
       raise TypeError("fn for pred %s must be callable." % pred.name)
-  if not callable(default):
+
+  if default is not None and not callable(default):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
+  del pfp  # From now on, preds and fns form the source of truth.
+
   with ops.name_scope(name, "case", [preds]):
+    exclusivity_assert = _assert_exclusive(preds) if exclusive else None
+    # If no default is provided, then we remove one of the (predicate, function)
+    # pairs and define the default to be the removed function with an additional
+    # control dependency that asserts that the removed predicate holds.
+    if default is None:
+      all_preds = _basetuple(preds)  # For the error message.
+      last_pred, last_fn = preds.pop(), fns.pop()
+      def new_default():
+        preds_c = array_ops.stack(all_preds, name="preds_c")
+        error_msg = [
+            ("None of the conditions evaluated as True. Conditions: (%s), "
+             "Values:" % ", ".join([p.name for p in all_preds])),
+            preds_c]
+        assertion = Assert(condition=last_pred,
+                           data=error_msg, summarize=len(all_preds))
+        with ops.control_dependencies([assertion]):
+          return last_fn()
+      default = new_default
+
     if not preds:
       return default()
     not_preds = []
@@ -3167,21 +3210,8 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
             strict=strict, name="If_%d" % i)
       return prev_case
 
-    if exclusive:
-      preds_c = array_ops.stack(preds, name="preds_c")
-      num_true_conditions = math_ops.reduce_sum(
-          math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
-      at_most_one_true_condition = math_ops.less(
-          num_true_conditions, constant_op.constant(2, name="two_true_conds"))
-
-      error_msg = [
-          ("More than one condition evaluated as True but "
-           "exclusive=True.  Conditions: (%s), Values:"
-           % ", ".join([p.name for p in preds])),
-          preds_c]
-      with ops.control_dependencies([
-          Assert(condition=at_most_one_true_condition,
-                 data=error_msg, summarize=len(preds))]):
+    if exclusivity_assert is not None:
+      with ops.control_dependencies([exclusivity_assert]):
         case_seq = _build_case()
     else:
       case_seq = _build_case()

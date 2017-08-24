@@ -63,6 +63,9 @@ class HloModule {
   HloComputation* AddEmbeddedComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Removes an embedded computation.
+  Status RemoveEmbeddedComputation(HloComputation* to_remove);
+
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.
@@ -133,6 +136,10 @@ class HloModule {
     next_unique_id_++;
     return result;
   }
+
+  // Returns the number of unique intruction ids given out.  All ids up to
+  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
+  int NumUniqueInstructionIds() const { return next_unique_id_; }
 
  private:
   HloComputation* AddComputationInternal(

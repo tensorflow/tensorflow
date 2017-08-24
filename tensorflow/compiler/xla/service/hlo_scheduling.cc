@@ -284,8 +284,9 @@ class ListScheduler {
   std::unordered_set<const HloInstruction*> scheduled_instructions_;
 };
 
-int64 SumLogicalBufferSizes(const std::vector<const LogicalBuffer*>& buffers,
-                            const LogicalBuffer::SizeFunction& size_function) {
+int64 SumLogicalBufferSizes(
+    const TuplePointsToAnalysis::BufferDefinitionVector& buffers,
+    const LogicalBuffer::SizeFunction& size_function) {
   int64 size = 0;
   for (const LogicalBuffer* buffer : buffers) {
     size += size_function(*buffer);

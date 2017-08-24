@@ -56,33 +56,21 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     *output = nullptr;
 
-#define HANDLE_TYPE(DT)                                                      \
-  if (input->output_dtypes()[0] == DT) {                                     \
-    *output =                                                                \
-        new Dataset<EnumToDataType<DT>::Type>(batch_size, row_shape, input); \
+#define HANDLE_TYPE(T)                                      \
+  case DataTypeToEnum<T>::value: {                          \
+    *output = new Dataset<T>(batch_size, row_shape, input); \
+    break;                                                  \
   }
-    HANDLE_TYPE(DT_FLOAT);
-    HANDLE_TYPE(DT_HALF);
-    HANDLE_TYPE(DT_DOUBLE);
-    HANDLE_TYPE(DT_INT32);
-    HANDLE_TYPE(DT_UINT8);
-    HANDLE_TYPE(DT_INT16);
-    HANDLE_TYPE(DT_INT8);
-    HANDLE_TYPE(DT_STRING);
-    HANDLE_TYPE(DT_COMPLEX64);
-    HANDLE_TYPE(DT_COMPLEX128);
-    HANDLE_TYPE(DT_INT64);
-    HANDLE_TYPE(DT_BOOL);
-    HANDLE_TYPE(DT_QINT8);
-    HANDLE_TYPE(DT_QUINT8);
-    HANDLE_TYPE(DT_QINT32);
-    HANDLE_TYPE(DT_QINT16);
-    HANDLE_TYPE(DT_QUINT16);
+
+    switch (input->output_dtypes()[0]) {
+      TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
-    OP_REQUIRES(
-        ctx, *output != nullptr,
-        errors::Unimplemented("DenseToSparseBatchDataset unhandled data type: ",
-                              input->output_dtypes()[0]));
+      default:
+        OP_REQUIRES(ctx, false,
+                    errors::Unimplemented(
+                        "DenseToSparseBatchDataset unhandled data type: ",
+                        input->output_dtypes()[0]));
+    }
   }
 
  private:
@@ -104,8 +92,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(new Iterator(
+          {this, strings::StrCat(prefix, "::DenseToSparseBatch")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -126,12 +116,13 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset<T>> {
      public:
-      explicit Iterator(const Dataset<T>* dataset)
-          : DatasetIterator<Dataset<T>>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const typename Iterator::Params& params)
+          : DatasetIterator<Dataset<T>>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         // Each row of the output SparseTensor is an individual tensor
         // from the input iterator.
         std::vector<Tensor> batch_elements;

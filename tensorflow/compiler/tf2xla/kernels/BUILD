@@ -1,10 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 package(
-    default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-    ],
-    features = ["no_layering_check"],
+    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -32,7 +29,9 @@ tf_kernel_library(
         "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
+        "gather_op.cc",
         "identity_op.cc",
+        "is_finite_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
@@ -70,6 +69,8 @@ tf_kernel_library(
     ],
     hdrs = [
         "cwise_ops.h",
+        "gather_op.h",
+        "gather_op_helpers.h",
         "reduction_ops.h",
     ],
     deps = [
@@ -78,12 +79,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:sendrecv_ops",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow_opensource",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:concat_lib",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:cwise_op",
@@ -103,9 +108,11 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow_opensource",
     ],
 )
@@ -118,7 +125,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = [
-        "gather_op.cc",
         "index_ops.cc",
     ],
     deps = [
@@ -135,6 +141,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
+        "//tensorflow/core/kernels:bounds_check",
     ],
 )
 

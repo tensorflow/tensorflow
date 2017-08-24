@@ -25,7 +25,8 @@ bool CountAsAcceleratorTime(const string& device) {
 }
 
 bool CountAsCPUTime(const string& device) {
-  return RE2::FullMatch(device, ".*/(gpu|cpu|device:sycl):\\d+");
+  return RE2::FullMatch(device,
+                        ".*/(device:gpu|gpu|device:cpu|cpu|device:sycl):\\d+");
 }
 
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
@@ -143,13 +144,13 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py
-  // It can be /job:0/replica:0/xxxx/gpu:0, or simply /gpu:0.
+  // It can be /job:0/replica:0/xxxx/device:GPU:0, or simply /device:GPU:0.
   // It can has some ad-hoc suffix, such as /stream:xx or /memcpy:xx.
   if (IsCanonicalDevice(dev)) {
     if (!canonical_device_.empty()) {
       if (canonical_device_ != dev) {
-        fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
-                canonical_device_.c_str(), dev.c_str());
+        // TODO(xpan): Some RunMetadata node appears at multiple devices.
+        // Need to address it.
         return;
       }
     } else {

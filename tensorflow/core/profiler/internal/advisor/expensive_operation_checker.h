@@ -100,7 +100,6 @@ class ExpensiveOperationChecker : public Checker {
       return;
     }
     std::vector<string> outputs;
-    const GraphNodeProto* node = &root;
     for (int i = 0; i < 3 && i < root.children_size(); ++i) {
       const GraphNodeProto& node = root.children(i);
       outputs.push_back(strings::Printf(

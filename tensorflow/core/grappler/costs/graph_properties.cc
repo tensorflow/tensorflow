@@ -182,6 +182,7 @@ Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
+  shape_refiner.set_disable_constant_propagation(true);
   ImportGraphDefOptions options;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
@@ -210,11 +211,13 @@ Status GraphProperties::InferStatically() {
     }
 
     // Infer output shape for Restore op.
-    if (node->op_def().name() == "Restore") {
-      // TODO(yuefengz): deal with RestoreSlice and RestoreV2 ops.
+    if (node->op_def().name() == "Restore" ||
+        node->op_def().name() == "RestoreV2" ||
+        node->op_def().name() == "RestoreSlice") {
       auto ctx = shape_refiner.GetContext(node);
-      int output_idx = 0;
-      for (const Node* output : node->out_nodes()) {
+      for (const Edge* out_edge : node->out_edges()) {
+        const Node* output = out_edge->dst();
+        int output_idx = out_edge->src_output();
         if (!ctx->FullyDefined(ctx->output(output_idx)) &&
             output->op_def().name() == "Assign") {
           if (!output->attrs().Find("validate_shape") ||
@@ -224,6 +227,7 @@ Status GraphProperties::InferStatically() {
           auto output_ctx = shape_refiner.GetContext(output);
           if (output_ctx->FullyDefined(output_ctx->output(0))) {
             ctx->set_output(output_idx, output_ctx->output(0));
+            output_ctx->MergeInput(1, output_ctx->output(0));
           } else {
             const Node* var;
             TF_CHECK_OK(node->input_node(0, &var));
@@ -231,10 +235,10 @@ Status GraphProperties::InferStatically() {
               auto var_ctx = shape_refiner.GetContext(var);
               CHECK(var_ctx->FullyDefined(var_ctx->output(0)));
               ctx->set_output(output_idx, var_ctx->output(0));
+              output_ctx->MergeInput(1, var_ctx->output(0));
             }
           }
         }
-        ++output_idx;
       }
     }
   }

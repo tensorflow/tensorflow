@@ -426,6 +426,7 @@ cc_library(
         ":gpu_transfer_manager",
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_evaluator",
         ":hlo_execution_profile",
         ":hlo_module_config",
         ":platform_util",
@@ -434,6 +435,7 @@ cc_library(
         ":user_computation",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
@@ -588,6 +590,15 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "llvm_compiler",
+    hdrs = ["llvm_compiler.h"],
+    deps = [
+        ":compiler",
+        "@llvm//:core",
     ],
 )
 
@@ -1419,6 +1430,7 @@ cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
     deps = [
+        ":flatten_call_graph",
         ":hlo",
         ":hlo_alias_analysis",
         ":hlo_matchers",
@@ -1436,12 +1448,27 @@ cc_test(
 )
 
 cc_library(
+    name = "logical_buffer_analysis",
+    srcs = ["logical_buffer_analysis.cc"],
+    hdrs = ["logical_buffer_analysis.h"],
+    deps = [
+        ":hlo",
+        ":logical_buffer",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "tuple_points_to_analysis",
     srcs = ["tuple_points_to_analysis.cc"],
     hdrs = ["tuple_points_to_analysis.h"],
     deps = [
         ":hlo",
         ":logical_buffer",
+        ":logical_buffer_analysis",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1792,6 +1819,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/core:lib",

@@ -410,9 +410,12 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
 
   auto colorer = [](const BufferLiveness& buffer_liveness) {
     int color = 0;
-    for (auto& buffer :
-         buffer_liveness.points_to_analysis().logical_buffers()) {
-      buffer->set_color(LogicalBuffer::Color(color++));
+
+    for (LogicalBuffer::Id id = 0;
+         id < buffer_liveness.points_to_analysis().num_logical_buffers();
+         id++) {
+      auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
+      buffer.set_color(LogicalBuffer::Color(color++));
     }
     return Status::OK();
   };
@@ -465,18 +468,20 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
   module->AddEntryComputation(builder.Build());
 
   auto colorer = [](const BufferLiveness& buffer_liveness) {
-    for (auto& buffer :
-         buffer_liveness.points_to_analysis().logical_buffers()) {
+    for (LogicalBuffer::Id id = 0;
+         id < buffer_liveness.points_to_analysis().num_logical_buffers();
+         id++) {
+      auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
       const auto& aliases =
-          buffer_liveness.points_to_analysis().GetBufferAliases(*buffer);
+          buffer_liveness.points_to_analysis().GetBufferAliases(buffer);
       for (const auto& alias : aliases) {
         if (alias.instruction()->opcode() == HloOpcode::kAdd ||
             alias.instruction()->opcode() == HloOpcode::kMultiply) {
-          buffer->set_color(LogicalBuffer::Color(1));
+          buffer.set_color(LogicalBuffer::Color(1));
         }
       }
-      if (!buffer->has_color()) {
-        buffer->set_color(LogicalBuffer::Color(0));
+      if (!buffer.has_color()) {
+        buffer.set_color(LogicalBuffer::Color(0));
       }
     }
     return Status::OK();
@@ -1118,8 +1123,8 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
 // TODO(b/32248867): Enable when buffer assignment gives allocations to
 // constants.
 TEST_F(BufferAssignmentTest, DISABLED_TupleConstantAsOutput) {
-  // Test that a tuple constant which is forwarded to the computation output is
-  // properly handled.
+  // Test that a tuple constant which is forwarded to the computation output
+  // is properly handled.
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateConstant(Literal::MakeTuple(
       {Literal::CreateR0<int64>(0).get(), Literal::CreateR0<int64>(1).get()})));
@@ -1274,8 +1279,8 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
 }
 
 TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
-  // Test a computation with an output that has an ambiguous points-to set. This
-  // is constructed using a select among tuple shapes.
+  // Test a computation with an output that has an ambiguous points-to set.
+  // This is constructed using a select among tuple shapes.
   auto builder = HloComputation::Builder(TestName());
   auto tuple_shape =
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(PRED, {1, 2, 3, 4})});
@@ -1339,8 +1344,8 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
 }
 
 TEST_F(BufferAssignmentTest, OneTempAllocation) {
-  // Test a computation that requires multiple temp buffers, and ensure they are
-  // combined into a single allocation.
+  // Test a computation that requires multiple temp buffers, and ensure they
+  // are combined into a single allocation.
   auto builder = HloComputation::Builder(TestName());
   Shape shape_2x3 = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape_2x4 = ShapeUtil::MakeShape(F32, {2, 4});

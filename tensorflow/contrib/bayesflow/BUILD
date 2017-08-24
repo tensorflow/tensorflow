@@ -50,6 +50,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
     ],
+    tags = [
+        "manual",  # b/64490288
+        "notap",
+    ],
 )
 
 cuda_py_test(
