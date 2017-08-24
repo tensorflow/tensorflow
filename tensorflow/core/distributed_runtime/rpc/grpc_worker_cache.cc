@@ -43,7 +43,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
           void* tag;
           bool ok;
           while (completion_queue_.Next(&tag, &ok)) {
-            GrpcClientCQTag* callback_tag = static_cast<GrpcClientCQTag*>(tag);
+            auto callback_tag = static_cast<GrpcClientCQTag*>(tag);
             callback_tag->OnCompleted(ok);
           }
         });
@@ -67,11 +67,10 @@ class GrpcWorkerCache : public WorkerCachePartial {
     if (target == local_target_) {
       return local_worker_;
     } else {
-      SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
+      auto channel = channel_cache_->FindWorkerChannel(target);
       if (!channel) return nullptr;
-      WorkerInterface* ret = NewGrpcRemoteWorker(&live_rpc_counter_, channel,
-                                                 &completion_queue_, &logger_);
-      return ret;
+      return NewGrpcRemoteWorker(&live_rpc_counter_, channel,
+                                 &completion_queue_, &logger_);
     }
   }
 
