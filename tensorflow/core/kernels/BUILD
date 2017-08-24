@@ -2568,9 +2568,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "reduction_ops",
-    srcs = ["reduction_ops_gpu_kernels.h"],
     prefix = "reduction_ops",
-    deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = MATH_DEPS,
 )
 
 tf_kernel_library(
@@ -3052,16 +3051,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "l2loss_op",
     prefix = "l2loss_op",
-    #srcs = ["reduction_ops_gpu_kernels.h"],
     deps = [
-        ":reduction_ops",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad",
         "//tensorflow/core:nn_ops_op_lib",
-    ] + if_cuda(["@cub_archive//:cub"]),
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cuda_cc_test(
