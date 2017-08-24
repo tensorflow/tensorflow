@@ -173,6 +173,36 @@ AddConvolutionWeights(poplar::Graph& graph,
   return ShuffleConvolutionWeights(target, out);
 }
 
+static port::StatusOr<poplar::Tensor>
+AddLeftMatMul(poplar::Graph& graph,
+              const HloInstruction* inst,
+              const HloInstruction* target,
+              CompilerResources& resources) {
+  std::string type;
+  TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
+  poplin::MatMulOptions opts;
+  opts.cache = &resources.dot_cache;
+  const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
+  const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
+  return poplin::createMatMulInputLHS(graph,type,aShape,bShape, inst->name(),
+                                      opts);
+}
+
+static port::StatusOr<poplar::Tensor>
+AddRightMatMul(poplar::Graph& graph,
+              const HloInstruction* inst,
+              const HloInstruction* target,
+              CompilerResources& resources) {
+  std::string type;
+  TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
+  poplin::MatMulOptions opts;
+  opts.cache = &resources.dot_cache;
+  const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
+  const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
+  return poplin::createMatMulInputRHS(graph,type,aShape,bShape, inst->name(),
+                                      opts);
+}
+
 
 port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
@@ -199,6 +229,30 @@ AddTensor(poplar::Graph& graph,
             TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, inst,
                                                            target->second.first,
                                                            resources));
+            break;
+          }
+          default:
+            return tensorflow::errors::FailedPrecondition(
+                    port::StrCat("invalid operand for tensor allocation on ",
+                                 inst->name()));
+        }
+        break;
+      }
+      case HloOpcode::kDot:
+      {
+        switch (target->second.second) {
+          case 0:
+          {
+            TF_ASSIGN_OR_RETURN(out, AddLeftMatMul(graph, inst,
+                                                   target->second.first,
+                                                   resources));
+            break;
+          }
+          case 1:
+          {
+            TF_ASSIGN_OR_RETURN(out, AddRightMatMul(graph, inst,
+                                                    target->second.first,
+                                                    resources));
             break;
           }
           default:

@@ -43,17 +43,7 @@ public:
     return Status::OK();
   }
 
-  // TODO also find Rng in fusion instructions
-
   Status HandleParameter(HloInstruction* inst) override {
-    allocating_instructions.push_back(inst);
-    return Status::OK();
-  }
-
-  Status HandleSelect(HloInstruction* inst,
-                      HloInstruction* /*pred*/,
-                      HloInstruction* /*on_true*/,
-                      HloInstruction* /*on_false*/) override {
     allocating_instructions.push_back(inst);
     return Status::OK();
   }
@@ -92,6 +82,10 @@ AllocationFinder::FindConsumers(HloInstruction* inst) {
       {
         return std::make_pair(user, op_index);
       }
+      case HloOpcode::kDot:
+      {
+        return std::make_pair(user, op_index);
+      }
       case HloOpcode::kCall:
       {
         HloComputation* comp = user->to_apply();
@@ -112,7 +106,6 @@ AllocationFinder::FindConsumers(HloInstruction* inst) {
       case HloOpcode::kConcatenate:
       case HloOpcode::kCrossReplicaSum:
       case HloOpcode::kCustomCall:
-      case HloOpcode::kDot:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kFusion:

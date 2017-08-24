@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <popconv/Convolution.hpp>
+#include <poplin/MatMul.hpp>
 #include <poprand/RandomGen.hpp>
 
 namespace xla {
@@ -36,6 +37,8 @@ struct CompilerResources {
   TensorAllocationMap tensor_allocation_map;
 
   popconv::PlanningCache convolution_cache;
+
+  poplin::PlanningCache dot_cache;
 
   poprand::Random random;
 
