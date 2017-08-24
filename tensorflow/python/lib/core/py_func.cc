@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 
 #include "numpy/arrayobject.h"
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -26,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include <Python.h>
 
 namespace tensorflow {
@@ -71,50 +72,6 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
   }
   *tuple = Py_BuildValue("(sN)", call->token.c_str(), lst);
   CHECK(*tuple);
-  return Status::OK();
-}
-
-// Returns the corresponding tf dtype in 'tf' for numpy data type
-// 'np'.  Returns an error if the type is not supported by this
-// module.
-Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
-  switch (np) {
-    case NPY_FLOAT16:
-      *tf = DT_HALF;
-      break;
-    case NPY_FLOAT32:
-      *tf = DT_FLOAT;
-      break;
-    case NPY_FLOAT64:
-      *tf = DT_DOUBLE;
-      break;
-    case NPY_INT32:
-      *tf = DT_INT32;
-      break;
-    case NPY_UINT8:
-      *tf = DT_UINT8;
-      break;
-    case NPY_INT8:
-      *tf = DT_INT8;
-      break;
-    case NPY_INT16:
-      *tf = DT_INT16;
-      break;
-    case NPY_INT64:
-      *tf = DT_INT64;
-      break;
-    case NPY_BOOL:
-      *tf = DT_BOOL;
-      break;
-    case NPY_COMPLEX64:
-      *tf = DT_COMPLEX64;
-      break;
-    case NPY_COMPLEX128:
-      *tf = DT_COMPLEX128;
-      break;
-    default:
-      return errors::Unimplemented("Unsupported numpy type ", np);
-  }
   return Status::OK();
 }
 
@@ -244,154 +201,30 @@ Status DoCallPyFunc(PyCall* call) {
 
 }  // end namespace
 
-// Outside anonymous namespace just to make the friend declaration in
-// tensorflow::Tensor apply.
-class NumpyTensorBuffer : public TensorBuffer {
- public:
-  NumpyTensorBuffer(PyArrayObject* array, size_t len, void* data)
-      : array_(array), len_(len), data_(data) {}
-
-  ~NumpyTensorBuffer() override {
-    // Note: The session::run wrapper is responsible for freeing this while
-    // holding the GIL.
-    DelayedNumpyDecref(data_, len_, array_);
-  }
-
-  void* data() const override { return data_; }
-  size_t size() const override { return len_; }
-  TensorBuffer* root_buffer() override { return this; }
-  void FillAllocationDescription(AllocationDescription* proto) const override {
-    tensorflow::int64 rb = size();
-    proto->set_requested_bytes(rb);
-    proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
-  }
-  Tensor MakeTensor(DataType dtype, const TensorShape& shape) {
-    CHECK_EQ(len_, shape.num_elements() * DataTypeSize(dtype));
-    return Tensor(dtype, shape, this);
-  }
-
-  // Prevents input forwarding from overwriting this buffer.
-  bool OwnsMemory() const override { return false; }
-
- private:
-  PyArrayObject* array_;
-  size_t len_;
-  void* data_;
-};
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
+                               TF_Status* status);
 
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
-  PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
-  DataType dtype = DT_INVALID;
-  TensorShape shape;
-  for (int i = 0; i < PyArray_NDIM(input); ++i) {
-    shape.AddDim(PyArray_SHAPE(input)[i]);
+  Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
+  Status s = PyArrayToTF_Tensor(obj, &tf_tensor);
+  if (!s.ok()) {
+    return s;
   }
-  const int np_type = PyArray_TYPE(input);
-  switch (np_type) {
-    case NPY_OBJECT: {
-      dtype = DT_STRING;
-      Tensor t(dtype, shape);
-      auto tflat = t.flat<string>();
-      PyObject** input_data = reinterpret_cast<PyObject**>(PyArray_DATA(input));
-      for (int i = 0; i < tflat.dimension(0); ++i) {
-        char* el;
-        Py_ssize_t el_size;
-        if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
-          return errors::Unimplemented("Unsupported object type ",
-                                       input_data[i]->ob_type->tp_name);
-        }
-        tflat(i) = string(el, el_size);
-      }
-      *ret = t;
-      break;
-    }
-    case NPY_STRING: {
-      dtype = DT_STRING;
-      Tensor t(dtype, shape);
-      auto tflat = t.flat<string>();
-      char* input_data = PyArray_BYTES(input);
-      Py_ssize_t el_size = PyArray_ITEMSIZE(input);
-      for (int i = 0; i < tflat.dimension(0); ++i) {
-        tflat(i) = string(input_data + i * el_size, el_size);
-      }
-      *ret = t;
-      break;
-    }
-    default: {
-      TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
-      CHECK(DataTypeCanUseMemcpy(dtype));
-      if (reinterpret_cast<intptr_t>(PyArray_DATA(input)) %
-              EIGEN_MAX_ALIGN_BYTES !=
-          0) {
-        Tensor t(dtype, shape);
-        StringPiece p = t.tensor_data();
-        memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
-        *ret = t;
-      } else {
-        // Incref the array as the calling context will decref it when we
-        // return and we want to keep a handle to this memory.
-        Py_INCREF(input);
-        NumpyTensorBuffer* buf = new NumpyTensorBuffer(
-            input, shape.num_elements() * DataTypeSize(dtype),
-            PyArray_DATA(input));
-        *ret = buf->MakeTensor(dtype, shape);
-        buf->Unref();
-      }
-    }
-  }
-  return Status::OK();
+  return TF_TensorToTensor(tf_tensor.get(), ret);
 }
 
 // Creates a numpy array in 'ret' which either aliases the content of 't' or has
 // a copy.
 Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
-  int typenum = -1;
-  TF_RETURN_IF_ERROR(TF_DataType_to_PyArray_TYPE(
-      static_cast<TF_DataType>(t.dtype()), &typenum));
-  PyArray_Descr* descr = PyArray_DescrFromType(typenum);
-  CHECK(descr);
-  std::vector<npy_intp> dims;
-  dims.reserve(t.dims());
-  for (int i = 0; i < t.dims(); ++i) {
-    dims.push_back(t.dim_size(i));
+  TF_Status* status = TF_NewStatus();
+  Safe_TF_TensorPtr tf_tensor = make_safe(TF_TensorFromTensor(t, status));
+  Status tf_status = StatusFromTF_Status(status);
+  TF_DeleteStatus(status);
+  if (!tf_status.ok()) {
+    return tf_status;
   }
-  Tensor* copy = new Tensor(t);
-  if (ArrayFromMemory(dims.size(), dims.data(),
-                      const_cast<char*>(copy->tensor_data().data()), t.dtype(),
-                      [copy]() { delete copy; }, ret)
-          .ok()) {
-    return Status::OK();
-  }
-  delete copy;
-
-  PyObject* obj = PyArray_Empty(dims.size(), dims.data(), descr, 0);
-  if (obj == nullptr) {
-    return errors::Internal("Failed to allocate np array: ",
-                            t.shape().DebugString());
-  }
-  PyArrayObject* np_array = reinterpret_cast<PyArrayObject*>(obj);
-  if (typenum == NPY_OBJECT) {
-    CHECK_EQ(DT_STRING, t.dtype());
-    auto tflat = t.flat<string>();
-    PyObject** out = reinterpret_cast<PyObject**>(PyArray_DATA(np_array));
-    for (int i = 0; i < tflat.dimension(0); ++i) {
-      const string& el = tflat(i);
-      out[i] = PyBytes_FromStringAndSize(el.data(), el.size());
-      if (out[i] == nullptr) {
-        for (int j = 0; j < i; ++j) {
-          Py_DECREF(out[j]);
-        }
-        Py_DECREF(obj);
-        return errors::Internal("Failed to allocate a copy of string ", i);
-      }
-    }
-  } else {
-    CHECK(DataTypeCanUseMemcpy(t.dtype()));
-    StringPiece p = t.tensor_data();
-    memcpy(PyArray_DATA(np_array), p.data(), p.size());
-  }
-  *ret = PyArray_Return(np_array);
-  return Status::OK();
+  return TF_TensorToPyArray(std::move(tf_tensor), ret);
 }
 
 void InitializePyTrampoline(PyObject* trampoline) {

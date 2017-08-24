@@ -233,12 +233,29 @@ cc_library(
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
     deps = [
-        ":ndarray_tensor_bridge",
+        ":ndarray_tensor",
         ":numpy_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
+    name = "ndarray_tensor",
+    srcs = ["lib/core/ndarray_tensor.cc"],
+    hdrs = ["lib/core/ndarray_tensor.h"],
+    deps = [
+        ":ndarray_tensor_bridge",
+        ":numpy_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:lib",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
     ],
@@ -2806,6 +2823,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":test_ops_kernels",

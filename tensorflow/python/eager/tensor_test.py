@@ -130,6 +130,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("numpy=<unprintable>", str(t))
     self.assertIn("numpy=<unprintable>", repr(t))
 
+  def testStringTensor(self):
+    t_np_orig = np.array([[b"a", b"ab"], [b"abc", b"abcd"]])
+    t = tensor.Tensor(t_np_orig)
+    t_np = t.numpy()
+    self.assertTrue(np.all(t_np == t_np_orig), "%s vs %s" % (t_np, t_np_orig))
+
 
 if __name__ == "__main__":
   test.main()
