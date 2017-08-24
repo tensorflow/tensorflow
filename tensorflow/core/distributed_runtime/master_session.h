@@ -141,6 +141,9 @@ class MasterSession : public core::RefCounted {
   RCGMap run_graphs_ GUARDED_BY(mu_);
   RCGMap partial_run_graphs_ GUARDED_BY(mu_);
 
+  struct Worker;
+  struct WorkerGroup;
+
   struct PerStepState {
     bool collect_costs = false;
     bool collect_timeline = false;
