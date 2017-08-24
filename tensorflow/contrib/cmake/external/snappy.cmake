@@ -15,14 +15,14 @@
 include (ExternalProject)
 
 set(snappy_URL https://github.com/google/snappy.git)
-set(snappy_TAG "1.1.6")
+set(snappy_TAG "55924d11095df25ab25c405fadfe93d0a46f82eb")
 set(snappy_BUILD ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 set(snappy_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 
 if(WIN32)
-    set(snappy_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
+    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
 else()
-    set(snappy_LIBRARIES ${snappy_BUILD}/libsnappy.so)
+    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/libsnappy.a)
 endif()
 
 set(snappy_HEADERS
@@ -42,7 +42,8 @@ ExternalProject_Add(snappy
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-    -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+        -DSNAPPY_BUILD_TESTS:BOOL=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
 # actually enables snappy in the source code
