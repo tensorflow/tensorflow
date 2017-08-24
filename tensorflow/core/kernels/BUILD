@@ -2285,7 +2285,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS + if_cuda([":cuda_solvers", ":transpose_functor"]),
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]),
 )
 
 cc_library(
