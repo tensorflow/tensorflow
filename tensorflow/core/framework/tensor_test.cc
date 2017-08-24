@@ -258,8 +258,13 @@ TEST(Tensor_Variant, Marshal) {
   TensorProto proto;
   t.AsProtoField(&proto);
 
+  // This performs a decode operation.
   Tensor t2(t.dtype());
   EXPECT_TRUE(t2.FromProto(proto));
+
+  Tensor* out = t2.flat<Variant>()(0).get<Tensor>();
+  EXPECT_NE(out, nullptr);
+  EXPECT_FLOAT_EQ(out->scalar<float>()(), 42.0f);
 }
 
 TEST(Tensor_UInt16, Simple) {
