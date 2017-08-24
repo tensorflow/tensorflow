@@ -130,6 +130,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/contrib/rnn:gru_ops_kernels",
+        "//tensorflow/contrib/rnn:lstm_ops_kernels",
     ] + if_not_windows([
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",

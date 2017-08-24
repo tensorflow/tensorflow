@@ -328,6 +328,8 @@ tf_kernel_library(
     srcs = [
         "kernels/blas_gemm.cc",
         "kernels/blas_gemm.h",
+        "kernels/gru_ops.h",
+        "ops/gru_ops.cc",
     ],
     gpu_srcs = [
         "kernels/blas_gemm.h",
@@ -346,6 +348,8 @@ tf_kernel_library(
     srcs = [
         "kernels/blas_gemm.cc",
         "kernels/blas_gemm.h",
+        "kernels/lstm_ops.h",
+        "ops/lstm_ops.cc",
     ],
     gpu_srcs = [
         "kernels/blas_gemm.h",
