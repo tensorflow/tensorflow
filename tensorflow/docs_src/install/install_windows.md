@@ -40,7 +40,7 @@ installed on your system:
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_5.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
@@ -76,7 +76,6 @@ install it now:
 
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
 
-TensorFlow only supports version 3.5.x of Python on Windows.
 Note that Python 3.5.x comes with the pip3 package manager, which is the
 program you'll use to install TensorFlow.
 
@@ -115,12 +114,12 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      environment. To install the CPU-only version of TensorFlow, enter the
      following command:
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.3.0-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade tensorflow</b> </pre>
 
      To install the GPU version of TensorFlow, enter the following command
      (on a single line):
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.3.0-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade tensorflow-gpu</b> </pre>
 
 ## Validate your installation
 
