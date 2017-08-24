@@ -207,12 +207,9 @@ class SpatialDropout2D(Dropout):
   def _get_noise_shape(self, inputs):
     input_shape = K.shape(inputs)
     if self.data_format == 'channels_first':
-      noise_shape = (input_shape[0], input_shape[1], 1, 1)
+      return (input_shape[0], input_shape[1], 1, 1)
     elif self.data_format == 'channels_last':
-      noise_shape = (input_shape[0], 1, 1, input_shape[3])
-    else:
-      raise ValueError('Invalid data_format:', self.data_format)
-    return noise_shape
+      return (input_shape[0], 1, 1, input_shape[3])
 
 
 class SpatialDropout3D(Dropout):
@@ -262,12 +259,9 @@ class SpatialDropout3D(Dropout):
   def _get_noise_shape(self, inputs):
     input_shape = K.shape(inputs)
     if self.data_format == 'channels_first':
-      noise_shape = (input_shape[0], input_shape[1], 1, 1, 1)
+      return (input_shape[0], input_shape[1], 1, 1, 1)
     elif self.data_format == 'channels_last':
-      noise_shape = (input_shape[0], 1, 1, 1, input_shape[4])
-    else:
-      raise ValueError('Invalid data_format:', self.data_format)
-    return noise_shape
+      return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
 class Activation(Layer):

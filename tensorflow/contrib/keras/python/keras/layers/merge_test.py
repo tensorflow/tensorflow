@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -53,11 +54,19 @@ class MergeLayersTest(test.TestCase):
       mask = layer.output_mask
       self.assertListEqual(mask.get_shape().as_list(), [None, 4])
 
+      # test missing shape
+      i1 = array_ops.placeholder(shape=(4, None), dtype='float32')
+      i2 = array_ops.placeholder(shape=(4, 5), dtype='float32')
+      layer = keras.layers.Add()
+      o = layer([i1, i2])
+
   def test_merge_elementwise_errors(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 6))
     with self.assertRaises(ValueError):
       keras.layers.add([i1, i2])
+    with self.assertRaises(ValueError):
+      keras.layers.add([i1])
     with self.assertRaises(ValueError):
       keras.layers.add(i1)
     with self.assertRaises(ValueError):
@@ -121,6 +130,14 @@ class MergeLayersTest(test.TestCase):
       self.assertEqual(out.shape, (2, 8, 5))
       self.assertAllClose(out, np.concatenate([x1, x2], axis=1), atol=1e-4)
 
+      # test masking
+      m1 = keras.layers.Masking()(i1)
+      layer = keras.layers.Concatenate()
+      o = layer([m1, i2])
+      self.assertListEqual(o.get_shape().as_list(), [None, 4, 10])
+      mask = layer.output_mask
+      self.assertListEqual(mask.get_shape().as_list(), [None, 4])
+
   def test_concatenate_errors(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(3, 5))
@@ -138,6 +155,7 @@ class MergeLayersTest(test.TestCase):
       o = keras.layers.dot([i1, i2], axes=1)
       self.assertListEqual(o.get_shape().as_list(), [None, 1])
       model = keras.models.Model([i1, i2], o)
+      _ = keras.layers.Dot(axes=1).get_config()
 
       x1 = np.random.random((2, 4))
       x2 = np.random.random((2, 4))
@@ -172,6 +190,9 @@ class MergeLayersTest(test.TestCase):
       keras.layers.dot([i1], axes=-1)
     with self.assertRaises(ValueError):
       keras.layers.dot([i1, i2, i3], axes=-1)
+    with self.assertRaises(ValueError):
+      dot = keras.layers.Dot(1)
+      dot._compute_output_shape(1)
 
 
 if __name__ == '__main__':
