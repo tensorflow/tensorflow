@@ -156,12 +156,19 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         // Also clear the timeline to save memory
         init_metadata_.clear_step_stats();
       }
+      // We can have at most one hardware trace. Use it for the main graph, and
+      // downgrade tracing of the queue runners to a software trace.
+      RunOptions queue_options = run_options_;
+      if (queue_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
+        queue_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
+      }
       for (size_t i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
+
         TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
-            session_.get(), &run_options_));
+            session_.get(), queue_options));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));
         TF_RETURN_IF_ERROR(coordinator_->GetStatus());
