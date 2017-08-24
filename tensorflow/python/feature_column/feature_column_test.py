@@ -3208,16 +3208,16 @@ class IndicatorColumnTest(test.TestCase):
 
   def test_transform_with_weighted_column(self):
     id = fc.categorical_column_with_vocabulary_list(
-      key='id', vocabulary_list=('omar', 'stringer', 'marlo'))
+      key='id', vocabulary_list=('a', 'b', 'c'))
     weight = fc.weighted_categorical_column(id, 'weight')
     indicator = fc.indicator_column(weight)
     features = {
-      'id': constant_op.constant(['marlo', 'skywalker', 'omar']),
-      'weight': constant_op.constant([2., 4., 6.])
+      'id': constant_op.constant(['c', 'b', 'a'], shape=(1, 3)),
+      'weight': constant_op.constant([2., 4., 6.], shape=(1, 3))
     }
     indicator_tensor = _transform_features(features, [indicator])[indicator]
     with _initialized_session():
-      self.assertAllEqual([6., 0., 2.], indicator_tensor.eval())
+      self.assertAllEqual([[6., 4., 2.]], indicator_tensor.eval())
 
   def test_linear_model(self):
     animal = fc.indicator_column(
