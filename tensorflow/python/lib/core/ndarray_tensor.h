@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 // Safe container for an owned PyObject. On destruction, the reference count of
@@ -48,6 +49,12 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 // `out_tensor` must be non-null. Caller retains ownership of `ndarray`.
 Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor);
 
+// Creates a tensor in 'ret' from the input Ndarray.
+Status NdarrayToTensor(PyObject* obj, Tensor* ret);
+
+// Creates a numpy array in 'ret' which either aliases the content of 't' or has
+// a copy.
+Status TensorToNdarray(const Tensor& t, PyObject** ret);
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_

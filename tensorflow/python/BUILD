@@ -233,10 +233,8 @@ cc_library(
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
     deps = [
-        ":ndarray_tensor",
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -255,9 +253,8 @@ cc_library(
         ":numpy_lib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
     ],
 )
 

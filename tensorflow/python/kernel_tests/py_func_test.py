@@ -177,8 +177,8 @@ class PyOpTest(test.TestCase):
 
       y, = script_ops.py_func(bad, [], [dtypes.float32])
 
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unsupported numpy data type"):
+      with self.assertRaisesRegexp(errors.UnimplementedError,
+                                   "Unsupported numpy type"):
         y.eval()
 
   def testBadReturnType(self):
@@ -190,8 +190,8 @@ class PyOpTest(test.TestCase):
 
       z, = script_ops.py_func(bad, [], [dtypes.int64])
 
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unable to get element as bytes."):
+      with self.assertRaisesRegexp(errors.UnimplementedError,
+                                   "Unsupported object type"):
         z.eval()
 
   def testReturnInput(self):
