@@ -67,8 +67,10 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Prefetch")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -83,10 +85,9 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            iter_ctx_(dataset->ctx_params_),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
       ~Iterator() override {
         // Signal the prefetch thread to terminate it. We will then
@@ -104,8 +105,9 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
 
@@ -156,13 +158,20 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!prefetch_thread_) {
-          prefetch_thread_.reset(ctx->env()->StartThread(
-              {}, "prefetch_thread", [this]() { PrefetchThread(); }));
+          prefetch_thread_.reset(
+              ctx->env()->StartThread({}, "prefetch_thread",
+                                      std::bind(&Iterator::PrefetchThread, this,
+                                                new IteratorContext(*ctx))));
         }
         return Status::OK();
       }
 
-      void PrefetchThread() {
+      // Prefetches elements of the input, storing results in an internal
+      // buffer.
+      //
+      // It owns the iterator context passed to it.
+      void PrefetchThread(IteratorContext* ctx) {
+        std::unique_ptr<IteratorContext> cleanup(ctx);
         while (true) {
           std::vector<Tensor> value;
 
@@ -182,7 +191,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           bool end_of_sequence;
           BufferElement buffer_element;
           buffer_element.status = input_impl_->GetNext(
-              &iter_ctx_, &buffer_element.value, &end_of_sequence);
+              ctx, &buffer_element.value, &end_of_sequence);
           if (buffer_element.status.ok() && end_of_sequence) {
             mutex_lock l(mu_);
             prefetch_thread_finished_ = true;
@@ -199,7 +208,6 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
-      IteratorContext iter_ctx_;
       mutex mu_;
       const std::unique_ptr<IteratorBase> input_impl_;
       condition_variable cond_var_;

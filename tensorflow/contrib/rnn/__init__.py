@@ -16,7 +16,7 @@
 
 See @{$python/contrib.rnn} guide.
 
-# From core
+<!--From core-->
 @@RNNCell
 @@BasicRNNCell
 @@BasicLSTMCell
@@ -28,12 +28,12 @@ See @{$python/contrib.rnn} guide.
 @@DeviceWrapper
 @@ResidualWrapper
 
-# Used to be in core, but kept in contrib.
+<!--Used to be in core, but kept in contrib.-->
 @@EmbeddingWrapper
 @@InputProjectionWrapper
 @@OutputProjectionWrapper
 
-# Created in contrib, eventual plans to move to core.
+<!--Created in contrib, eventual plans to move to core.-->
 @@LayerNormBasicLSTMCell
 @@LSTMBlockWrapper
 @@LSTMBlockCell
@@ -57,11 +57,11 @@ See @{$python/contrib.rnn} guide.
 @@HighwayWrapper
 @@GLSTMCell
 
-# RNNCell wrappers
+<!--RNNCell wrappers-->
 @@AttentionCellWrapper
 @@CompiledWrapper
 
-# RNN functions
+<!--RNN functions-->
 @@static_rnn
 @@static_state_saving_rnn
 @@static_bidirectional_rnn

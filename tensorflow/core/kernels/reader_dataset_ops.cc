@@ -30,25 +30,27 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following ops.
 
-class TextLineDatasetOp : public OpKernel {
+class TextLineDatasetOp : public DatasetOpKernel {
  public:
-  using OpKernel::OpKernel;
+  using DatasetOpKernel::DatasetOpKernel;
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* filenames_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("filenames", &filenames_tensor));
     OP_REQUIRES(
         ctx, filenames_tensor->dims() <= 1,
         errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
-    const Tensor* compression_type_tensor;
-    OP_REQUIRES_OK(ctx,
-                   ctx->input("compression_type", &compression_type_tensor));
+    string compression_type;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
+                                                    &compression_type));
+
+    int64 buffer_size = -1;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(
-        ctx, compression_type_tensor->dims() == 0,
-        errors::InvalidArgument("`compression_type` must be a scalar."));
-    const string& compression_type =
-        compression_type_tensor->scalar<string>()();
+        ctx, buffer_size >= 0,
+        errors::InvalidArgument("`buffer_size` must be >= 0 (0 == default)"));
 
     io::ZlibCompressionOptions zlib_compression_options =
         io::ZlibCompressionOptions::DEFAULT();
@@ -66,33 +68,34 @@ class TextLineDatasetOp : public OpKernel {
                   errors::InvalidArgument("Unsupported compression_type."));
     }
 
+    if (buffer_size != 0) {
+      // Set the override size.
+      zlib_compression_options.input_buffer_size = buffer_size;
+    }
+
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
-    DatasetBase* dataset = new Dataset(std::move(filenames), use_compression,
-                                       zlib_compression_options);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->scalar<ResourceHandle>()() = handle;
+    *output = new Dataset(std::move(filenames), use_compression,
+                          zlib_compression_options);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    explicit Dataset(std::vector<string> filenames, bool use_compression,
-                     io::ZlibCompressionOptions options)
+    Dataset(std::vector<string> filenames, bool use_compression,
+            const io::ZlibCompressionOptions& options)
         : filenames_(std::move(filenames)),
           use_compression_(use_compression),
           options_(options) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -111,11 +114,12 @@ class TextLineDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next line.
@@ -158,23 +162,21 @@ class TextLineDatasetOp : public OpKernel {
           input_stream_.reset(
               new io::RandomAccessInputStream(file_.get(), false));
           if (dataset()->use_compression_) {
-            zlib_input_stream_.reset(
-                new io::ZlibInputStream(input_stream_.get(), kBufferSize,
-                                        kBufferSize, dataset()->options_));
+            zlib_input_stream_.reset(new io::ZlibInputStream(
+                input_stream_.get(), dataset()->options_.input_buffer_size,
+                dataset()->options_.input_buffer_size, dataset()->options_));
             buffered_input_stream_.reset(new io::BufferedInputStream(
-                zlib_input_stream_.get(), kBufferSize, false));
+                zlib_input_stream_.get(), dataset()->options_.input_buffer_size,
+                false));
           } else {
             buffered_input_stream_.reset(new io::BufferedInputStream(
-                input_stream_.get(), kBufferSize, false));
+                input_stream_.get(), dataset()->options_.input_buffer_size,
+                false));
           }
         } while (true);
       }
 
      private:
-      // TODO(mrry): Make this configurable via an attr on the dataset op?
-      // Or maybe via a data input?
-      enum { kBufferSize = 256 << 10 /* 256 kB */ };
-
       mutex mu_;
       bool processing_file_ GUARDED_BY(mu_) = false;
       std::unique_ptr<io::RandomAccessInputStream> input_stream_
@@ -188,19 +190,19 @@ class TextLineDatasetOp : public OpKernel {
     };
 
     const std::vector<string> filenames_;
-    bool use_compression_;
-    io::ZlibCompressionOptions options_;
+    const bool use_compression_;
+    const io::ZlibCompressionOptions options_;
   };
 };
 
 REGISTER_KERNEL_BUILDER(Name("TextLineDataset").Device(DEVICE_CPU),
                         TextLineDatasetOp);
 
-class FixedLengthRecordDatasetOp : public OpKernel {
+class FixedLengthRecordDatasetOp : public DatasetOpKernel {
  public:
-  using OpKernel::OpKernel;
+  using DatasetOpKernel::DatasetOpKernel;
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* filenames_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("filenames", &filenames_tensor));
     OP_REQUIRES(
@@ -213,46 +215,52 @@ class FixedLengthRecordDatasetOp : public OpKernel {
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
-    const Tensor* header_bytes_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("header_bytes", &header_bytes_tensor));
-    OP_REQUIRES(ctx, header_bytes_tensor->dims() == 0,
-                errors::InvalidArgument("`header_bytes` must be a scalar."));
-    const int64 header_bytes = header_bytes_tensor->scalar<int64>()();
+    int64 header_bytes = -1;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "header_bytes", &header_bytes));
+    OP_REQUIRES(ctx, header_bytes >= 0,
+                errors::InvalidArgument("`header_bytes` must be >= 0"));
 
-    const Tensor* record_bytes_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("record_bytes", &record_bytes_tensor));
-    OP_REQUIRES(ctx, record_bytes_tensor->dims() == 0,
-                errors::InvalidArgument("`record_bytes` must be a scalar."));
-    const int64 record_bytes = record_bytes_tensor->scalar<int64>()();
+    int64 record_bytes = -1;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "record_bytes", &record_bytes));
+    OP_REQUIRES(ctx, record_bytes > 0,
+                errors::InvalidArgument("`record_bytes` must be > 0"));
 
-    const Tensor* footer_bytes_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("footer_bytes", &footer_bytes_tensor));
-    OP_REQUIRES(ctx, footer_bytes_tensor->dims() == 0,
-                errors::InvalidArgument("`footer_bytes` must be a scalar."));
-    const int64 footer_bytes = footer_bytes_tensor->scalar<int64>()();
+    int64 footer_bytes = -1;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "footer_bytes", &footer_bytes));
+    OP_REQUIRES(ctx, footer_bytes >= 0,
+                errors::InvalidArgument("`footer_bytes` must be >= 0"));
 
-    DatasetBase* dataset = new Dataset(std::move(filenames), header_bytes,
-                                       record_bytes, footer_bytes);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->scalar<ResourceHandle>()() = handle;
+    int64 buffer_size = -1;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
+    OP_REQUIRES(ctx, buffer_size >= 0,
+                errors::InvalidArgument("`buffer_size` must be >= 0"));
+    if (buffer_size == 0) {
+      buffer_size = 256 << 10;  // 256 kB as default.
+    }
+
+    *output = new Dataset(std::move(filenames), header_bytes, record_bytes,
+                          footer_bytes, buffer_size);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     explicit Dataset(std::vector<string> filenames, int64 header_bytes,
-                     int64 record_bytes, int64 footer_bytes)
+                     int64 record_bytes, int64 footer_bytes, int64 buffer_size)
         : filenames_(std::move(filenames)),
           header_bytes_(header_bytes),
           record_bytes_(record_bytes),
-          footer_bytes_(footer_bytes) {}
+          footer_bytes_(footer_bytes),
+          buffer_size_(buffer_size) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -273,11 +281,12 @@ class FixedLengthRecordDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.
@@ -316,17 +325,14 @@ class FixedLengthRecordDatasetOp : public OpKernel {
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
+          input_buffer_.reset(
+              new io::InputBuffer(file_.get(), dataset()->buffer_size_));
           TF_RETURN_IF_ERROR(
               input_buffer_->SkipNBytes(dataset()->header_bytes_));
         } while (true);
       }
 
      private:
-      // TODO(mrry): Make this configurable via an attr on the dataset op?
-      // Or maybe via a data input?
-      enum { kBufferSize = 256 << 10 /* 256 kB */ };
-
       mutex mu_;
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
@@ -339,17 +345,18 @@ class FixedLengthRecordDatasetOp : public OpKernel {
     const int64 header_bytes_;
     const int64 record_bytes_;
     const int64 footer_bytes_;
+    const int64 buffer_size_;
   };
 };
 
 REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDataset").Device(DEVICE_CPU),
                         FixedLengthRecordDatasetOp);
 
-class TFRecordDatasetOp : public OpKernel {
+class TFRecordDatasetOp : public DatasetOpKernel {
  public:
-  using OpKernel::OpKernel;
+  using DatasetOpKernel::DatasetOpKernel;
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* filenames_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("filenames", &filenames_tensor));
     OP_REQUIRES(
@@ -362,35 +369,37 @@ class TFRecordDatasetOp : public OpKernel {
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
-    const Tensor* compression_type_tensor;
-    OP_REQUIRES_OK(ctx,
-                   ctx->input("compression_type", &compression_type_tensor));
-    OP_REQUIRES(
-        ctx, compression_type_tensor->dims() == 0,
-        errors::InvalidArgument("`compression_type` must be a scalar."));
-    const string& compression_type =
-        compression_type_tensor->scalar<string>()();
+    string compression_type;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
+                                                    &compression_type));
 
-    DatasetBase* dataset = new Dataset(std::move(filenames), compression_type);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->scalar<ResourceHandle>()() = handle;
+    int64 buffer_size = -1;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
+    OP_REQUIRES(ctx, buffer_size >= 0,
+                errors::InvalidArgument(
+                    "`buffer_size` must be >= 0 (0 == no buffering)"));
+
+    *output = new Dataset(std::move(filenames), compression_type, buffer_size);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     explicit Dataset(std::vector<string> filenames,
-                     const string& compression_type)
+                     const string& compression_type, int64 buffer_size)
         : filenames_(std::move(filenames)),
           options_(io::RecordReaderOptions::CreateRecordReaderOptions(
-              compression_type)) {}
+              compression_type)) {
+      if (buffer_size > 0) {
+        options_.buffer_size = buffer_size;
+      }
+    }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -409,18 +418,18 @@ class TFRecordDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
             Tensor result_tensor(cpu_allocator(), DT_STRING, {});
-            Status s = reader_->ReadRecord(&offset_,
-                                           &result_tensor.scalar<string>()());
+            Status s = reader_->ReadRecord(&result_tensor.scalar<string>()());
             if (s.ok()) {
               out_tensors->emplace_back(std::move(result_tensor));
               *end_of_sequence = false;
@@ -447,20 +456,19 @@ class TFRecordDatasetOp : public OpKernel {
               dataset()->filenames_[current_file_index_];
           TF_RETURN_IF_ERROR(
               ctx->env()->NewRandomAccessFile(next_filename, &file_));
-          reader_.reset(new io::RecordReader(file_.get(), dataset()->options_));
-          offset_ = 0;
+          reader_.reset(
+              new io::SequentialRecordReader(file_.get(), dataset()->options_));
         } while (true);
       }
 
      private:
       mutex mu_;
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
-      uint64 offset_ GUARDED_BY(mu_) = 0;
 
       // `reader_` will borrow the object that `file_` points to, so
       // we must destroy `reader_` before `file_`.
       std::unique_ptr<RandomAccessFile> file_ GUARDED_BY(mu_);
-      std::unique_ptr<io::RecordReader> reader_ GUARDED_BY(mu_);
+      std::unique_ptr<io::SequentialRecordReader> reader_ GUARDED_BY(mu_);
     };
 
     const std::vector<string> filenames_;

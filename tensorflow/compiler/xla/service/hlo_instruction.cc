@@ -407,6 +407,23 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBatchNormInference(
+    const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+    HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
+    float epsilon, int64 feature_index) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBatchNormInference, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(scale);
+  instruction->AppendOperand(offset);
+  instruction->AppendOperand(mean);
+  instruction->AppendOperand(variance);
+  instruction->epsilon_ = epsilon;
+  instruction->feature_index_ = feature_index;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
                                     HloInstruction* scale, HloInstruction* mean,
                                     HloInstruction* variance,
@@ -726,7 +743,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     // If this is already a multioutput fusion instruction, expand the root
     // tuple by 1.
     HloInstruction* fused_root = fused_expression_root();
-    std::vector<HloInstruction*> tuple_elements;
+    HloInstruction::InstructionVector tuple_elements;
     bool newly_created_tuple_instr = false;
     if (fused_root->opcode() == HloOpcode::kTuple) {
       tuple_elements = fused_root->operands();
@@ -735,10 +752,9 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       newly_created_tuple_instr = true;
     }
     if (clone->opcode() == HloOpcode::kTuple) {
-      const auto& tuple_elements_to_fuse = clone->operands();
-      tuple_elements.insert(tuple_elements.end(),
-                            tuple_elements_to_fuse.begin(),
-                            tuple_elements_to_fuse.end());
+      for (auto inst : clone->operands()) {
+        tuple_elements.push_back(inst);
+      }
     } else {
       tuple_elements.push_back(clone);
     }
@@ -1065,6 +1081,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
                                      new_operands[2], epsilon(),
                                      feature_index());
+
+    case HloOpcode::kBatchNormInference:
+      CHECK_EQ(new_operands.size(), 5);
+      return CreateBatchNormInference(
+          shape, new_operands[0], new_operands[1], new_operands[2],
+          new_operands[3], new_operands[4], epsilon(), feature_index());
     case HloOpcode::kInfeed:
       CHECK_EQ(new_operands.size(), 0);
       return CreateInfeed(shape, infeed_config());
@@ -1297,25 +1319,10 @@ bool HloInstruction::HasConstantOperand() const {
   return false;
 }
 
-bool HloInstruction::Identical(
+bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    std::function<bool(const HloInstruction*, const HloInstruction*)>
-        eq_operands,
     std::function<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // An instruction is always identical to itself.
-  if (this == &other) {
-    return true;
-  }
-
-  // Identical instruction must have the same opcode and identical operands.  In
-  // general, there is no need to check shape because shape is inferred from the
-  // shape of the operands.
-  if (opcode() != other.opcode() ||
-      !ContainersEqual(operands(), other.operands(), std::move(eq_operands))) {
-    return false;
-  }
-
   // Perform opcode specific checks.
   switch (opcode()) {
     // The result of these instructions only depend upon their opcode and
@@ -1370,6 +1377,7 @@ bool HloInstruction::Identical(
              ShapeUtil::Compatible(shape(), other.shape());
 
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
       return feature_index() == other.feature_index() &&
              epsilon() == other.epsilon();
@@ -1955,8 +1963,8 @@ HloInstruction::fused_instructions() const {
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
-      shape_(shape),
       opcode_(opcode),
+      shape_(shape),
       name_("%" + HloOpcodeString(opcode)) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
@@ -1967,6 +1975,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleAbs(this, operands_[0]);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
+    case HloOpcode::kBatchNormInference:
+      return visitor->HandleBatchNormInference(this);
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
     case HloOpcode::kSign:
@@ -2107,12 +2117,13 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
+using DFSStack =
+    tensorflow::gtl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.
-inline bool PushDFSChild(
-    DfsHloVisitor* visitor,
-    std::vector<std::pair<int, HloInstruction*>>* dfs_stack,
-    HloInstruction* child) {
+inline bool PushDFSChild(DfsHloVisitor* visitor, DFSStack* dfs_stack,
+                         HloInstruction* child) {
   const int id = child->unique_id();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
@@ -2135,13 +2146,15 @@ using InternalCompareFunction =
 static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
+  visitor->ReserveVisitStates(root->GetModule()->NumUniqueInstructionIds());
+
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
   // We need to keep track of both the id and the instruction because
   // instructions can get deleted while they are on the stack, so we
   // can't always use the (potentiall dead) instruction object to grab
   // its id.
-  std::vector<std::pair<int, HloInstruction*>> dfs_stack;
+  DFSStack dfs_stack;
   dfs_stack.emplace_back(root->unique_id(), root);
 
   do {
@@ -2335,6 +2348,32 @@ std::vector<int64> HloInstruction::OperandIndices(
   return result;
 }
 
+bool HloInstruction::IsElementwiseBinary() const {
+  switch (opcode_) {
+    // Binary elementwise operations. If you update this, please update
+    // IsElementwise() accordingly.
+    case HloOpcode::kAdd:
+    case HloOpcode::kDivide:
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kLogicalOr:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool HloInstruction::IsElementwise() const {
   switch (opcode_) {
     // Nullary elementwise operations.
@@ -2359,7 +2398,8 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kTanh:
       return true;
 
-    // Binary elementwise operations.
+    // Binary elementwise operations, the same as in IsElementwiseBinary().
+    // If you update this, please update IsElementwiseBinary() accordingly.
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:

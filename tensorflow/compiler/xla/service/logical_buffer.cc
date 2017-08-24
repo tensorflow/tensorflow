@@ -26,6 +26,14 @@ limitations under the License.
 
 namespace xla {
 
+LogicalBuffer::LogicalBuffer(HloInstruction* instruction,
+                             const ShapeIndex& index, Id id)
+    : instruction_(instruction), id_(id), color_(kInvalidColor), index_(index) {
+  const auto& s = shape();
+  is_array_ = ShapeUtil::IsArray(s);
+  is_tuple_ = ShapeUtil::IsTuple(s);
+}
+
 string LogicalBuffer::ToString() const {
   return tensorflow::strings::StrCat(instruction_->name(), "[",
                                      tensorflow::str_util::Join(index_, ","),

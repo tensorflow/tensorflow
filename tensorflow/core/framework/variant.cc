@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -22,47 +23,49 @@ limitations under the License.
 namespace tensorflow {
 
 template <>
-void* Variant::get() {
-  if (is_empty()) {
+void* Variant::MaybeDecodeAndGet() {
+  mutex_lock lock(mu_);
+  if (IsEmptyLocked()) {
     return nullptr;
   }
   return value_->RawPtr();
 }
 
 template <>
-const void* Variant::get() const {
-  if (is_empty()) {
+const void* Variant::MaybeDecodeAndGet() const {
+  mutex_lock lock(mu_);
+  if (IsEmptyLocked()) {
     return nullptr;
   }
   return value_->RawPtr();
 }
-
 
 template <>
 string TypeNameVariant(const VariantTensorDataProto& value) {
-    return value.GetTypeName();
+  return value.type_name();
 }
 
 template <>
-void EncodeVariant(const VariantTensorDataProto& value, VariantTensorData* data) {
-    data->FromProto(value);
+void EncodeVariant(const VariantTensorDataProto& value,
+                   VariantTensorData* data) {
+  data->FromProto(value);
 }
 
 template <>
 bool DecodeVariant(const VariantTensorData& data,
-                                      VariantTensorDataProto* value) {
-    data.ToProto(value);
-      return true;
+                   VariantTensorDataProto* value) {
+  data.ToProto(value);
+  return true;
 }
 
 template <>
 void EncodeVariant(const VariantTensorDataProto& value, string* buf) {
-    value.SerializeToString(buf);
+  value.SerializeToString(buf);
 }
 
 template <>
 bool DecodeVariant(const string& buf, VariantTensorDataProto* value) {
-    return value->ParseFromString(buf);
+  return value->ParseFromString(buf);
 }
 
 }  // end namespace tensorflow

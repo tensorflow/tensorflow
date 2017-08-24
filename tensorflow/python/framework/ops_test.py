@@ -1249,6 +1249,13 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 class OpScopeTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerDefaultScopeName(self):
+    with ops.name_scope(None, "default") as scope:
+      self.assertEqual(scope, "default/")
+      with ops.name_scope(None, "default2") as scope2:
+        self.assertEqual(scope2, "default/default2/")
+
   def testNoScopeName(self):
     g0 = ops.Graph()
     values = [

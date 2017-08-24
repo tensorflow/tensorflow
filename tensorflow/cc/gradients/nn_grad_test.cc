@@ -47,6 +47,15 @@ class NNGradTest : public ::testing::Test {
     EXPECT_LT(max_error, 1e-4);
   }
 
+  void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
+               const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    EXPECT_LT(max_error, 1e-4);
+  }
+
   Scope scope_;
 };
 
@@ -119,6 +128,15 @@ TEST_F(NNGradTest, L2LossGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = L2Loss(scope_, x);
   RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(NNGradTest, BiasAddGradHelper) {
+  TensorShape shape({4, 5});
+  TensorShape bias_shape({5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto bias = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(bias_shape));
+  auto y = BiasAdd(scope_, x, bias);
+  RunTest({x,bias}, {shape, bias_shape}, {y}, {shape});
 }
 
 }  // namespace

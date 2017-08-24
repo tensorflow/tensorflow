@@ -332,19 +332,49 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
   NodeDef node;
   node.set_name(name);
   node.set_op("Const");
-  AttrValue attr_output_shape;
-  auto output_shape = attr_output_shape.mutable_list()->add_shape();
-  TensorShapeProto shape;
-  tensor->shape().AsProto(&shape);
-  *output_shape = shape;
-  node.mutable_attr()->insert({"_output_shapes", attr_output_shape});
 
   AttrValue attr_type;
   attr_type.set_type(tensor->dtype());
   node.mutable_attr()->insert({"dtype", attr_type});
 
   AttrValue attr_tensor;
-  tensor->AsProtoTensorContent(attr_tensor.mutable_tensor());
+  TensorProto* t = attr_tensor.mutable_tensor();
+  bool optimized = false;
+  // Use the packed representation whenever possible to avoid generating large
+  // graphdefs. Moreover, avoid repeating the last values if they're equal.
+  if (tensor->NumElements() > 4) {
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)         \
+  optimized = true;                                          \
+  TYPE last = tensor->flat<TYPE>()(0);                       \
+  int last_index = 0;                                        \
+  for (int i = 0; i < tensor->NumElements(); ++i) {          \
+    TYPE cur = tensor->flat<TYPE>()(i);                      \
+    t->add_##NAME##_val(cur);                                \
+    if (cur != last) {                                       \
+      last = cur;                                            \
+      last_index = i;                                        \
+    }                                                        \
+  }                                                          \
+  /* Remove all identical trailing values to save memory. */ \
+  t->mutable_##NAME##_val()->Truncate(last_index + 1);
+
+    if (tensor->dtype() == DT_FLOAT) {
+      POPULATE_TENSOR_PROTO(tensor, t, float, float)
+    } else if (tensor->dtype() == DT_DOUBLE) {
+      POPULATE_TENSOR_PROTO(tensor, t, double, double)
+    } else if (tensor->dtype() == DT_INT64) {
+      POPULATE_TENSOR_PROTO(tensor, t, int64, int64)
+    } else if (tensor->dtype() == DT_INT32) {
+      POPULATE_TENSOR_PROTO(tensor, t, int32, int)
+    }
+  }
+  if (optimized) {
+    // Also specify type and shape.
+    t->set_dtype(tensor->dtype());
+    tensor->shape().AsProto(t->mutable_tensor_shape());
+  } else {
+    tensor->AsProtoTensorContent(t);
+  }
   node.mutable_attr()->insert({"value", attr_tensor});
   return node;
 }
@@ -403,8 +433,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
-    Tensor* value = new Tensor(input_node->attr().at("dtype").type());
-    CHECK(value->FromProto(input_node->attr().at("value").tensor()));
+    const TensorProto& raw_val = input_node->attr().at("value").tensor();
+    Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
+    CHECK(value->FromProto(raw_val));
     inputs.emplace_back(value);
   }
 

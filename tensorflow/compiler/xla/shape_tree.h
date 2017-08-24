@@ -115,25 +115,16 @@ class ShapeTree {
   ShapeTree(Shape shape, const T& init_value);
   ShapeTree(const Shape* shape, const T& init_value);
 
-  ShapeTree(const ShapeTree& other)
-      : root_(other.root_), shape_storage_(other.shape_storage_) {
-    // Fix up internal pointer if necessary.
-    if (shape_storage_) {
-      CHECK_EQ(other.shape_, &*other.shape_storage_);
-      shape_ = &*shape_storage_;
-    } else {
-      shape_ = other.shape_;
-    }
-  }
+  ShapeTree(const ShapeTree& other) { *this = other; }
 
   ShapeTree& operator=(const ShapeTree& other) {
     root_ = other.root_;
-    shape_storage_ = other.shape_storage_;
 
     // Fix up internal pointer if necessary.
-    if (shape_storage_) {
-      CHECK_EQ(other.shape_, &*other.shape_storage_);
-      shape_ = &*shape_storage_;
+    if (other.shape_storage_) {
+      CHECK_EQ(other.shape_, other.shape_storage_.get());
+      shape_storage_.reset(new Shape(*other.shape_));
+      shape_ = shape_storage_.get();
     } else {
       shape_ = other.shape_;
     }
@@ -259,11 +250,11 @@ class ShapeTree {
   Node root_;
 
   // If we own our Shape, this field contains it, and shape_ is a pointer into
-  // here.  Otherwise if we don't own our shape, this is nullopt.
-  tensorflow::gtl::optional<Shape> shape_storage_;
+  // here.  Otherwise if we don't own our shape, this is nullptr.
+  std::unique_ptr<Shape> shape_storage_;
 
-  // The XLA shape mirrored in this ShapeTree.  This is either a pointer into
-  // shape_storage_ or the Shape pointer passed to our constructor.
+  // The XLA shape mirrored in this ShapeTree.  This is either
+  // shape_storage_.get() or the Shape pointer passed to our constructor.
   const Shape* shape_;
 };
 
@@ -401,10 +392,12 @@ void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
 
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape)
-    : root_(), shape_storage_(std::move(shape)), shape_(&*shape_storage_) {
+    : root_(),
+      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(&*shape_storage_);
+  LayoutUtil::ClearLayout(shape_storage_.get());
   InitChildren(*shape_, &root_);
 }
 
@@ -416,11 +409,11 @@ ShapeTree<T>::ShapeTree(const Shape* shape) : root_(), shape_(shape) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
     : root_(init_value),
-      shape_storage_(std::move(shape)),
-      shape_(&*shape_storage_) {
+      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(&*shape_storage_);
+  LayoutUtil::ClearLayout(shape_storage_.get());
   InitChildren(*shape_, init_value, &root_);
 }
 

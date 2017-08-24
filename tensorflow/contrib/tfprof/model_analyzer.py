@@ -28,6 +28,7 @@ from tensorflow.python.profiler.model_analyzer import advise as _advise
 from tensorflow.python.profiler.model_analyzer import ALL_ADVICE
 from tensorflow.python.profiler.model_analyzer import profile as _profile
 from tensorflow.python.profiler.model_analyzer import Profiler
+from tensorflow.python.profiler.profile_context import ProfileContext
 from tensorflow.python.util.deprecation import deprecated
 
 _DEFAULT_PROFILE_OPTIONS = 0
