@@ -212,6 +212,15 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     hlo_to_profile_idx_->insert({hlo_instruction, hlo_to_profile_idx_->size()});
     return Status::OK();
   }
+
+  Status HandleCall(HloInstruction* call) override {
+    TF_RETURN_IF_ERROR(DefaultAction(call));
+    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
+    TF_RETURN_IF_ERROR(
+        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    return Status::OK();
+  }
+
   // Skip constants, there is nothing to profile.
   Status HandleConstant(HloInstruction* /*constant*/,
                         const Literal& /*literal*/) override {
