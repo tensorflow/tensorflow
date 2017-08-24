@@ -2780,7 +2780,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       raise TypeError("parallel_iterations must be a positive integer.")
 
     if shape_invariants is not None:
-      nest.assert_same_structure(loop_vars, shape_invariants)
+      nest.assert_same_structure(loop_vars, shape_invariants,
+                                 check_types=False)
 
     context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
