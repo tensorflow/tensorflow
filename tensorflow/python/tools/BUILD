@@ -34,6 +34,7 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saved_model_cli",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:client",
