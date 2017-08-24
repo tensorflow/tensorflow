@@ -293,6 +293,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       HloReducePrecisionOptions::AFTER_OP_FUSION);
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      HloReducePrecisionOptions::FUSION_BY_CONTENT);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());

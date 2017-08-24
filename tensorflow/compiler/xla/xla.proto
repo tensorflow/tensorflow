@@ -22,10 +22,17 @@ package xla;
 
 // Options for the HLO insert-reduce-precision-operations pass.
 message HloReducePrecisionOptions {
-  // When to run the pass.
+  // When and how the pass will be run.
   enum PassTiming {
+    // Pass runs before operation fusion or other optimization occurs,
+    // selecting operations to suffix according to their type.
     BEFORE_OP_FUSION = 0;
+    // Pass runs after the operation-fusion pass, selecting operations to
+    // suffix according to their type.
     AFTER_OP_FUSION = 1;
+    // Pass runs after the operation-fusion pass, and selects fusion operations
+    // to suffix according to their contents.
+    FUSION_BY_CONTENT = 2;
   }
   PassTiming pass_timing = 1;
 
@@ -33,9 +40,13 @@ message HloReducePrecisionOptions {
   uint32 exponent_bits = 2;
   uint32 mantissa_bits = 3;
 
-  // Opcodes for operations that should be suffixed with reduced-precision
+  // Operations matching these opcodes should be suffixed with reduce-precision
   // operations.
   repeated uint32 opcodes_to_suffix = 4;
+
+  // Operations with names containing these substrings should be suffixed with
+  // reduce-precision operations.
+  repeated string opname_substrings_to_suffix = 5;
 }
 
 // Debugging options for XLA. These options may change at any time - there are

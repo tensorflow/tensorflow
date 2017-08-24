@@ -35,8 +35,9 @@ using ::testing::UnorderedElementsAre;
 class ReducePrecisionInsertionTest : public HloTestBase {
  protected:
   bool InsertOps(HloModule* module,
-                 const std::function<bool(HloOpcode)>& filter) {
-    ReducePrecisionInsertion op_insertion(5, 10, filter);
+                 const HloReducePrecisionOptions::PassTiming pass_timing,
+                 const std::function<bool(const HloInstruction*)>& filter) {
+    ReducePrecisionInsertion op_insertion(5, 10, pass_timing, filter);
     StatusOr<bool> result = op_insertion.Run(module);
     EXPECT_IS_OK(result.status());
     return result.ValueOrDie();
@@ -60,7 +61,10 @@ TEST_F(ReducePrecisionInsertionTest, RootInstruction) {
   EXPECT_EQ(computation->root_instruction(), b);
 
   EXPECT_TRUE(InsertOps(module.get(),
-                        [](HloOpcode h) { return h == HloOpcode::kCos; }));
+                        HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                        [](const HloInstruction* instruction) {
+                          return instruction->opcode() == HloOpcode::kCos;
+                        }));
 
   // Confirm expected graph after adding ops.
   EXPECT_THAT(computation->root_instruction(), op::ReducePrecision());
@@ -97,7 +101,10 @@ TEST_F(ReducePrecisionInsertionTest, NonRootInstruction) {
   EXPECT_EQ(c->operand(1), b_cos);
 
   EXPECT_TRUE(InsertOps(module.get(),
-                        [](HloOpcode h) { return h == HloOpcode::kCos; }));
+                        HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                        [](const HloInstruction* instruction) {
+                          return instruction->opcode() == HloOpcode::kCos;
+                        }));
 
   // Confirm expected graph after adding ops.
   EXPECT_THAT(c->operand(0), op::ReducePrecision());
@@ -123,7 +130,9 @@ TEST_F(ReducePrecisionInsertionTest, OutputIsNotFloat) {
 
   // Since none of the instructions produce F32 data, this should not change
   // the graph.
-  EXPECT_FALSE(InsertOps(module.get(), [](HloOpcode) { return true; }));
+  EXPECT_FALSE(
+      InsertOps(module.get(), HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                [](const HloInstruction* instruction) { return true; }));
 
   // Confirm that graph has not changed.
   EXPECT_THAT(x->users(), UnorderedElementsAre(y));
@@ -147,7 +156,9 @@ TEST_F(ReducePrecisionInsertionTest, ShouldReduceOutputPrecisionIsFalse) {
 
   // Since none of the instructions match the should_reduce_output_precision
   // function, this should not change the graph.
-  EXPECT_FALSE(InsertOps(module.get(), [](HloOpcode h) { return false; }));
+  EXPECT_FALSE(
+      InsertOps(module.get(), HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                [](const HloInstruction* instruction) { return false; }));
 
   // Confirm that graph has not changed.
   EXPECT_THAT(x->users(), UnorderedElementsAre(y));
@@ -160,7 +171,7 @@ TEST_F(ReducePrecisionInsertionTest, InsertionIsNotRecursive) {
   HloInstruction* a =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
   HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateReducePrecision(shape, a, 9, 23));
+      HloInstruction::CreateReducePrecision(shape, a, 8, 23));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -170,13 +181,66 @@ TEST_F(ReducePrecisionInsertionTest, InsertionIsNotRecursive) {
 
   // This should insert a new ReducePrecision after the existing one, but
   // should not then recurse by adding another after the just-inserted one.
-  EXPECT_TRUE(InsertOps(module.get(), [](HloOpcode h) {
-    return h == HloOpcode::kReducePrecision;
-  }));
+  EXPECT_TRUE(
+      InsertOps(module.get(), HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                [](const HloInstruction* instruction) {
+                  return instruction->opcode() == HloOpcode::kReducePrecision;
+                }));
 
   // Confirm expected graph after adding ops.
   EXPECT_THAT(computation->root_instruction(), op::ReducePrecision());
   EXPECT_EQ(computation->root_instruction()->operand(0), b);
+}
+
+TEST_F(ReducePrecisionInsertionTest, MakeFilterFunctionNoSubstrings) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
+  HloInstruction* c = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, a));
+
+  auto options_proto = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::BEFORE_OP_FUSION, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kCos; });
+
+  auto filter_function =
+      ReducePrecisionInsertion::make_filter_function(options_proto);
+
+  EXPECT_TRUE(filter_function(b));
+  EXPECT_FALSE(filter_function(c));
+}
+
+TEST_F(ReducePrecisionInsertionTest, MakeFilterFunctionWithSubstrings) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
+  OpMetadata b_metadata;
+  b_metadata.set_op_name("FlowTensor/foom");
+  b->set_metadata(b_metadata);
+
+  HloInstruction* c = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
+  OpMetadata c_metadata;
+  c_metadata.set_op_name("FlowTensor/barn");
+  c->set_metadata(c_metadata);
+
+  auto options_proto = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::BEFORE_OP_FUSION, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kCos; },
+      {"foo", "baz"});
+
+  auto filter_function =
+      ReducePrecisionInsertion::make_filter_function(options_proto);
+
+  EXPECT_TRUE(filter_function(b));
+  EXPECT_FALSE(filter_function(c));
 }
 
 }  // namespace xla
