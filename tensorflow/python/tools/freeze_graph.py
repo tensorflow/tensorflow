@@ -44,6 +44,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import graph_util
@@ -65,7 +66,7 @@ def freeze_graph_with_def_protos(input_graph_def,
                                  clear_devices,
                                  initializer_nodes,
                                  variable_names_blacklist="",
-                                 input_meta_graph=False):
+                                 input_meta_graph_def=None):
   """Converts all variables in a graph and checkpoint into constants."""
   del restore_op_name, filename_tensor_name  # Unused by updated loading code.
 
@@ -81,17 +82,22 @@ def freeze_graph_with_def_protos(input_graph_def,
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:
-    for node in input_graph_def.node:
-      node.device = ""
+    if input_meta_graph_def:
+      for node in input_meta_graph_def.graph_def.node:
+        node.device = ""
+    elif input_graph_def:
+      for node in input_graph_def.node:
+        node.device = ""
 
-  _ = importer.import_graph_def(input_graph_def, name="")
+  if input_graph_def:
+    _ = importer.import_graph_def(input_graph_def, name="")
   with session.Session() as sess:
     if input_saver_def:
       saver = saver_lib.Saver(saver_def=input_saver_def)
       saver.restore(sess, input_checkpoint)
-    elif input_meta_graph:
+    elif input_meta_graph_def:
       restorer = saver_lib.import_meta_graph(
-          input_checkpoint + ".meta", clear_devices=True)
+          input_meta_graph_def, clear_devices=True)
       restorer.restore(sess, input_checkpoint)
       if initializer_nodes:
         sess.run(initializer_nodes.split(","))
@@ -114,11 +120,19 @@ def freeze_graph_with_def_protos(input_graph_def,
 
     variable_names_blacklist = (variable_names_blacklist.split(",")
                                 if variable_names_blacklist else None)
-    output_graph_def = graph_util.convert_variables_to_constants(
-        sess,
-        input_graph_def,
-        output_node_names.split(","),
-        variable_names_blacklist=variable_names_blacklist)
+
+    if input_meta_graph_def:
+      output_graph_def = graph_util.convert_variables_to_constants(
+          sess,
+          input_meta_graph_def.graph_def,
+          output_node_names.split(","),
+          variable_names_blacklist=variable_names_blacklist)
+    else:
+      output_graph_def = graph_util.convert_variables_to_constants(
+          sess,
+          input_graph_def,
+          output_node_names.split(","),
+          variable_names_blacklist=variable_names_blacklist)
 
   # Write GraphDef to file if output path has been given.
   if output_graph:
@@ -141,6 +155,22 @@ def _parse_input_graph_proto(input_graph, input_binary):
     else:
       text_format.Merge(f.read(), input_graph_def)
   return input_graph_def
+
+
+def _parse_input_meta_graph_proto(input_graph, input_binary):
+  """Parser input tensorflow graph into MetaGraphDef proto."""
+  if not gfile.Exists(input_graph):
+    print("Input meta graph file '" + input_graph + "' does not exist!")
+    return -1
+  input_meta_graph_def = MetaGraphDef()
+  mode = "rb" if input_binary else "r"
+  with gfile.FastGFile(input_graph, mode) as f:
+    if input_binary:
+      input_meta_graph_def.ParseFromString(f.read())
+    else:
+      text_format.Merge(f.read(), input_meta_graph_def)
+  print("Loaded meta graph file '" + input_graph)
+  return input_meta_graph_def
 
 
 def _parse_input_saver_proto(input_saver, input_binary):
@@ -169,16 +199,22 @@ def freeze_graph(input_graph,
                  clear_devices,
                  initializer_nodes,
                  variable_names_blacklist="",
-                 input_meta_graph=False):
+                 input_meta_graph=None):
   """Converts all variables in a graph and checkpoint into constants."""
-  input_graph_def = _parse_input_graph_proto(input_graph, input_binary)
+  input_graph_def = None
+  if input_graph:
+    input_graph_def = _parse_input_graph_proto(input_graph, input_binary)
+  input_meta_graph_def = None
+  if input_meta_graph:
+    input_meta_graph_def = _parse_input_meta_graph_proto(
+        input_meta_graph, input_binary)
   input_saver_def = None
   if input_saver:
     input_saver_def = _parse_input_saver_proto(input_saver, input_binary)
   freeze_graph_with_def_protos(
       input_graph_def, input_saver_def, input_checkpoint, output_node_names,
       restore_op_name, filename_tensor_name, output_graph, clear_devices,
-      initializer_nodes, variable_names_blacklist, input_meta_graph)
+      initializer_nodes, variable_names_blacklist, input_meta_graph_def)
 
 
 def main(unused_args):
@@ -255,10 +291,8 @@ if __name__ == "__main__":
       """)
   parser.add_argument(
       "--input_meta_graph",
-      nargs="?",
-      const=True,
-      type="bool",
-      default=False,
-      help="Whether the input files are meta_graphs.")
+      type=str,
+      default="",
+      help="TensorFlow \'MetaGraphDef\' file to load.")
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

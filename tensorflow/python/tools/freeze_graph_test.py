@@ -39,6 +39,8 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
   def _testFreezeGraph(self, saver_write_version):
 
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "saved_checkpoint")
+    checkpoint_meta_graph_file = os.path.join(self.get_temp_dir(),
+                                              "saved_checkpoint.meta")
     checkpoint_state_name = "checkpoint_state"
     input_graph_name = "input_graph.pb"
     output_graph_name = "output_graph.pb"
@@ -71,7 +73,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     filename_tensor_name = "save/Const:0"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
     clear_devices = False
-    input_meta_graph = False
+    input_meta_graph = checkpoint_meta_graph_file
 
     freeze_graph.freeze_graph(
         input_graph_path, input_saver_def_path, input_binary, checkpoint_path,
@@ -106,7 +108,6 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     tmp_dir = self.get_temp_dir()
     checkpoint_prefix = os.path.join(tmp_dir, "meta_graph_checkpoint")
     checkpoint_state_name = "checkpoint_state"
-    input_graph_filename = os.path.join(tmp_dir, "input_graph.pbtxt")
     output_graph_filename = os.path.join(tmp_dir, "output_graph.pb")
 
     with ops.Graph().as_default():
@@ -123,21 +124,19 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
           checkpoint_prefix,
           global_step=0,
           latest_filename=checkpoint_state_name)
-      graph_io.write_graph(sess.graph, tmp_dir, input_graph_filename)
 
     input_saver_def_path = ""
-    input_binary = False
+    input_binary = True
     output_node_names = "output_node"
     restore_op_name = "save/restore_all"
     filename_tensor_name = "save/Const:0"
     clear_devices = False
-    input_meta_graph = True
+    input_meta_graph = checkpoint_path + ".meta"
 
-    freeze_graph.freeze_graph(input_graph_filename, input_saver_def_path,
-                              input_binary, checkpoint_path, output_node_names,
-                              restore_op_name, filename_tensor_name,
-                              output_graph_filename, clear_devices, "", "",
-                              input_meta_graph)
+    freeze_graph.freeze_graph(
+        "", input_saver_def_path, input_binary, checkpoint_path,
+        output_node_names, restore_op_name, filename_tensor_name,
+        output_graph_filename, clear_devices, "", "", input_meta_graph)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
