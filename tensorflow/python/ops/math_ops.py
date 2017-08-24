@@ -163,6 +163,8 @@ from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops.gen_array_ops import identity
+from tensorflow.python.ops.check_ops import assert_greater_equal
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -542,6 +544,43 @@ def pow(x, y, name=None):
     A `Tensor`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
+    # First test for negative y and integer x when input as lists or constants
+    def flatten_list(lst):
+      flat = []
+      for item in lst:
+        if not isinstance(item, list):
+          flat.append(item)
+        else:
+          flat.extend(flatten_list(item))
+      return flat
+
+    # If any element of y negative, cast x and y to float
+    if isinstance(y, (float, int)):
+      if y < 0:
+        y = float(y)
+        if isinstance(x, list):
+          x = [float(i) for i in x]
+        elif isinstance(x, int):
+          x = float(x)
+        elif isinstance(x, ops.Tensor):
+          x = to_float(x)
+    elif isinstance(y, list):
+      if any(item < 0 for item in flatten_list(y)):
+        y = [float(i) for i in y]
+        if isinstance(x, list):
+          x = [float(i) for i in x]
+        elif isinstance(x, int):
+          x = float(x)
+        elif isinstance(x, ops.Tensor):
+          x = to_float(x)
+    # If x an integer tensor, only proceed if y greater than zero
+    if isinstance(x, ops.Tensor):
+      if 'int' in str(x.dtype):
+        if isinstance(y, ops.Tensor):
+          with ops.control_dependencies([assert_greater_equal(y, 0,
+              message='Cannot cast negative powered tensor to int')]):
+            x = identity(x)
+
     return gen_math_ops._pow(x, y, name=name)
 
 
