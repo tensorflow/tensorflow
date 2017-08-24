@@ -27,27 +27,6 @@ using namespace tensorflow;
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-template <typename T>
-struct RollFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, int64 N, int D, int* dim_size, const T* input, T* output, \
-                  int* shifts, int64* strides) {
-    for (int64 in_i = 0; in_i < N; in_i++) {
-      int64 out_i = in_i;
-      // loop through dimensions
-      for (int d = 0; d < D; d++) {
-        // find indices input/output for current dimension
-        const int ds = dim_size[d];
-        const int in_dim_i = (in_i / strides[d]) % ds;
-        const int out_dim_i = ((in_dim_i + shifts[d]) % ds + ds) % ds; // modulo that works with negatives
-        // convert back to flat index
-        out_i += (out_dim_i - in_dim_i) * strides[d];
-      }
-
-      output[out_i] = input[in_i];
-    }
-  }
-};
-
 template <typename Device, typename T, typename Tshift, typename Taxis>
 class RollOp : public OpKernel {
  public:
@@ -78,7 +57,7 @@ class RollOp : public OpKernel {
     const int D = static_cast<int>(input.dims());
     const int M = static_cast<int>(shift_flat.size());
 
-    int shifts[D];
+    int shifts[D]; // if any duplicate axes, will sum corresponding shifts
     for (int i = 0; i < D; i++) shifts[i] = 0; // default is 0
     for (int i = 0; i < M; i++) {
       const int j = axis_flat(i);
@@ -89,17 +68,19 @@ class RollOp : public OpKernel {
 
 
     int dim_size[D];
-    int thresholds[D];
-    int64 strides[D];
-    int64 dim_ranges[D];
-    int64 last_stride = 1;
+    int thresholds[D]; // the index that the roll starts to wrap around
+    // dim_stride is the number of indices over in the flattened tensor
+    // you need to skip in order to make it over from one side of a dimension
+    // to the other. Used to make the shifts wrap around after a threshold.
+    int64 dim_strides[D];
+    int64 prod_dim_size = 1;
     for (int d = D-1; d >= 0; d--) {
-      strides[d] = last_stride;
       const int ds = fmax(static_cast<int>(input.dim_size(d)), 1);
       dim_size[d] = ds;
+      // modulo that works with negatives: ((x % y) + y) % y
       thresholds[d] = ((ds - shifts[d]) % ds + ds) % ds;
-      last_stride *= static_cast<int64>(input.dim_size(d));
-      dim_ranges[d] = last_stride;
+      prod_dim_size *= static_cast<int64>(input.dim_size(d));
+      dim_strides[d] = prod_dim_size;
     }
 
     Tensor* output = NULL;
@@ -111,40 +92,42 @@ class RollOp : public OpKernel {
     auto output_flat = output->flat<T>().data();
 
     if (std::is_same<Device, CPUDevice>::value) {
-      auto work = [input_flat, output_flat, D, &dim_size, &shifts,
-                   &thresholds, &dim_ranges](int64 start, int64 end) {
-        int in_dim_i[D];//
-        int delta_i = 0;
-        // initialize indices and delta_i
+      auto work = [input_flat, output_flat, D, &dim_size,
+                   &thresholds, &dim_strides](int64 start, int64 end) {
+        int in_dim_i[D]; // array of indices for each dimension
+        int delta_i = 0; // the difference between out_i and in_i
+        // initialize in_dim_i and delta_i
         for (int d = 0; d < D; d++) {
           const int ds = dim_size[d];
-          // dim_stride is the number of indices over in the flattened tensor
+          // stride is the number of indices over in the flattened tensor
           // you need to skip in order to make it over to an adjacent element
-          // along the current dimension
-          const int64 dim_stride = dim_ranges[d] / ds;
-          in_dim_i[d] = (start / dim_stride) % ds;
+          // along a dimension.
+          const int64 stride = dim_strides[d] / ds;
+          // calculated this way will always be positive modulo of shift
+          const int shift = ds - thresholds[d];
+          const int indx = (start / stride) % ds;
+          in_dim_i[d] = indx;
           // calculate dimension index after the shift
-          // modulo that works with negatives: ((x % y) + y) % y
-          const int out_dim_i = ((in_dim_i[d] + shifts[d]) % ds + ds) % ds;
-          delta_i += (out_dim_i - in_dim_i[d]) * dim_stride;
+          const int out_dim_i = (indx + shift) % ds;
+          delta_i += (out_dim_i - indx) * stride;
         }
 
         for (int64 in_i = start; in_i < end; in_i++) {
-          int out_i = in_i + delta_i;
+          const int64 out_i = in_i + delta_i;
           output_flat[out_i] = input_flat[in_i];
 
-          // increment in_dim_i[d] and break if no carry is needed
+          // create next combination of in_dim_i[d]
           // while at it adjust delta_i if needed
           for (int d = D-1; d >= 0; d--) {
-            const int mod = (in_dim_i[d] + 1) % dim_size[d];
-            in_dim_i[d] = mod;
-            if (mod != 0) {
-              if (mod == thresholds[d]) {
-                delta_i -= dim_ranges[d];// now wraps around
+            const int indx = (in_dim_i[d] + 1) % dim_size[d];
+            in_dim_i[d] = indx;
+            if (indx != 0) {
+              if (indx == thresholds[d]) {
+                delta_i -= dim_strides[d]; // now wraps around
               }
-              break; // don't need to carry
+              break; // indx != 0 don't need to carry
             }else{
-              delta_i += dim_ranges[d];// reverse wrap around
+              delta_i += dim_strides[d]; // indx became 0 so reverse wrap around
             }
           }
         }
@@ -166,8 +149,8 @@ class RollOp : public OpKernel {
         dim_size,
         input_flat,
         output_flat,
-        shifts,
-        strides
+        thresholds,
+        dim_strides
     );
 
   }
