@@ -53,6 +53,7 @@ or join multiple tensors together.
 *   @{tf.reverse_sequence}
 *   @{tf.reverse}
 *   @{tf.reverse_v2}
+*   @{tf.roll}
 *   @{tf.transpose}
 *   @{tf.extract_image_patches}
 *   @{tf.space_to_batch_nd}
