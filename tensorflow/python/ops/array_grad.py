@@ -594,11 +594,11 @@ def _ReverseV2Grad(op, grad):
 
 @ops.RegisterGradient("Roll")
 def _RollGrad(op, grad):
- # The gradient should be just the roll reversed
- shift = op.inputs[1]
- axis = op.inputs[2]
- roll_grad = array_ops.roll(grad, -shift, axis)
- return roll_grad, None, None
+  # The gradient should be just the roll reversed
+  shift = op.inputs[1]
+  axis = op.inputs[2]
+  roll_grad = array_ops.roll(grad, -shift, axis)
+  return roll_grad, None, None
 
 
 @ops.RegisterGradient("SpaceToBatch")

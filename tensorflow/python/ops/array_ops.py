@@ -2517,7 +2517,7 @@ reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
 
 
 def roll(input, shift, axis):
-    return gen_array_ops.roll(input, shift, axis)
+  return gen_array_ops.roll(input, shift, axis)
 
 
 roll.__doc__ = gen_array_ops.roll.__doc__
