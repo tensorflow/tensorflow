@@ -18,7 +18,10 @@ limitations under the License.
 namespace tensorflow {
 REGISTER7(BinaryOp, CPU, "Sub", functor::sub, float, Eigen::half, double, int32,
           int64, complex64, complex128);
-#if defined(__ANDROID_TYPES_SLIM__)
+#if !defined(__ANDROID_TYPES_SLIM__)
+// Sub op for int8, uint8, int16, uint16
+REGISTER4(BinaryOp, CPU, "Sub", functor::sub, int8, uint8, int16, uint16);
+#else
 // We only register the first type when we have multi-argument calls in the
 // case where we're trying to reduce executable size, but it turns out that the
 // int32 version of this op is needed, so explicitly include it.

@@ -499,7 +499,7 @@ Returns x + y element-wise.
 )doc");
 
 REGISTER_OP("Sub")
-    .BINARY_FEWER()
+    .BINARY_MORE()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns x - y element-wise.
