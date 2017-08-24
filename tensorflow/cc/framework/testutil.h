@@ -27,8 +27,8 @@ void GetTensors(const Scope& scope, OutputList tensors,
                 std::vector<Tensor>* out);
 
 // Computes the outputs listed in 'tensors', returns the tensors in 'out'.
-// Take a vector of Output as extra parameters if some Variable should
-// be assigned before the session run call.
+// assign_vars are extra outputs that should be run
+// e.g. to assign values to variables.
 void GetTensors(const Scope& scope, const std::vector<Output>& assign_vars,
                 OutputList tensors, std::vector<Tensor>* out);
 
