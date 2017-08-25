@@ -302,7 +302,7 @@ class KernelArgIterator {
   //
   // Returns a default-constructed KernelArg if there is no next argument.
   KernelArg next() {
-    KernelArg result;
+    KernelArg result = {};
     if (!has_next()) {
       return result;
     } else if ((shmem_indices_iter_ != shmem_indices_end_) &&
