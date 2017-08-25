@@ -31,6 +31,7 @@ from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -318,6 +319,18 @@ class FeatureColumnTest(test.TestCase):
     one_hot = fc.one_hot_column(weighted_ids)
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
+
+    features = {
+        'ids': constant_op.constant(['marlo', 'skywalker', 'omar'],
+                                    shape=(1, 3)),
+        'weights': constant_op.constant([2., 4., 6.], shape=(1, 3))
+    }
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+      features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[2., 6., 0.]], one_hot_tensor.eval())
 
   def testOneHotColumnDeepCopy(self):
     a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
