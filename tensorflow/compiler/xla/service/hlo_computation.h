@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -126,8 +125,7 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
-        << "Computation " << name() << " has no parameter number " << param_no;
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
     return param_instructions_[param_no];
   }
 
@@ -201,16 +199,8 @@ class HloComputation {
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
   // a kCopy instruction. For tuple-shaped instructions, the copy is performed
-  // with a series of kGetTupleElement and kTuple instructions. If
-  // indices_to_copy is non-null then this ShapeTree indicates which elements
-  // (arrays) of the shape to copy. Non-copied elements are passed through
-  // transparently. If copies_added is non-null, then the added kCopy
-  // instructions will be inserted in the respective index in the given
-  // ShapeTree.
-  StatusOr<HloInstruction*> DeepCopyInstruction(
-      HloInstruction* instruction,
-      const ShapeTree<bool>* indices_to_copy = nullptr,
-      ShapeTree<HloInstruction*>* copies_added = nullptr);
+  // with a series of kGetTupleElement and kTuple instructions.
+  StatusOr<HloInstruction*> DeepCopyInstruction(HloInstruction* instruction);
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result without layout).
@@ -297,11 +287,9 @@ class HloComputation {
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction* fusion_instruction);
 
-  // Internal helper for recursive copying of an instruction. Creates and
-  // returns a deep copy of the given instruction.
-  StatusOr<HloInstruction*> DeepCopyHelper(
-      HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
-      ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index);
+  // Internal helper for copying a tuple value. Creates and returns a deep copy
+  // of the given instruction. The given instruction must be tuple-shaped.
+  StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
 
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
