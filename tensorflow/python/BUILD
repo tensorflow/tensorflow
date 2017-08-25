@@ -64,6 +64,7 @@ py_library(
         ":initializers_ns",
         ":io_ops",
         ":lib",
+        ":linalg_ns",
         ":math_ops",
         ":nn",
         ":platform",
@@ -1626,6 +1627,18 @@ py_library(
         ":framework_for_generated_wrappers",
         ":io_ops_gen",
         ":lib",
+    ],
+)
+
+py_library(
+    name = "linalg_ns",
+    srcs = ["ops/linalg_ns.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":linalg_ops",
+        ":math_ops",
+        ":special_math_ops",
     ],
 )
 
