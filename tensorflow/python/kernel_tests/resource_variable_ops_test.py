@@ -53,6 +53,27 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  def testReadVariableDtypeMismatch(self):
+    with context.eager_mode():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1], name="foo")
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Trying to read variable with wrong dtype. "
+                                   "Expected float got int32."):
+        _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
+
+  def testAssignVariableDtypeMismatch(self):
+    with context.eager_mode():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1], name="foo")
+      resource_variable_ops.assign_variable_op(
+          handle, constant_op.constant([1]))
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Trying to assign variable with wrong "
+                                   "dtype. Expected int32 got float."):
+        resource_variable_ops.assign_variable_op(
+            handle, constant_op.constant([1.], dtype=dtypes.float32))
+
   @test_util.run_in_graph_and_eager_modes()
   def testDtypeSurvivesIdentity(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
@@ -188,7 +209,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.test_session():
       init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
       v = resource_variable_ops.ResourceVariable(
-          constant_op.constant(init_value, dtype=dtypes.int32))
+          constant_op.constant(init_value, dtype=dtypes.int32), name="var0")
       self.evaluate(variables.global_variables_initializer())
 
       value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
@@ -294,18 +315,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testSharedNameWithNamescope(self):
     with ops.name_scope("foo"):
-      v = resource_variable_ops.ResourceVariable(300.0, name="var1")
+      v = resource_variable_ops.ResourceVariable(300.0, name="var3")
       self.evaluate(variables.global_variables_initializer())
 
     w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var1")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var3")
     w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
     self.assertEqual(300.0, self.evaluate(w_read))
 
   @test_util.run_in_graph_and_eager_modes()
   def testShape(self):
     v = resource_variable_ops.ResourceVariable(
-        name="var1", initial_value=array_ops.ones(shape=[10, 20, 35]))
+        name="var4", initial_value=array_ops.ones(shape=[10, 20, 35]))
     self.assertEqual("(10, 20, 35)", str(v.shape))
     self.assertEqual("(10, 20, 35)", str(v.get_shape()))
     self.assertEqual("(10, 20, 35)", str(v.value().shape))
@@ -343,13 +364,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       constraint = lambda x: x
       with ops.name_scope("foo"):
         v = resource_variable_ops.ResourceVariable(
-            name="var1",
+            name="var5",
             initial_value=init,
             caching_device="cpu:0",
             constraint=constraint)
       # Test properties
       self.assertEqual(dtypes.int32, v.dtype)
-      self.assertEqual("foo/var1:0", v.name)
+      self.assertEqual("foo/var5:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
       self.assertAllEqual(init.device, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
@@ -360,8 +381,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       # Callable init.
       callable_init = lambda: init * 2
       v2 = resource_variable_ops.ResourceVariable(
-          initial_value=callable_init, name="v2")
-      self.assertEqual("v2:0", v2.name)
+          initial_value=callable_init, name="var6")
+      self.assertEqual("var6:0", v2.name)
       self.assertAllEqual(2 * init.numpy(), v2.read_value().numpy())
 
       # Test assign_add.
