@@ -41,7 +41,7 @@ std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_suffix(
     case HloReducePrecisionOptions::BEFORE_OP_FUSION:
     case HloReducePrecisionOptions::AFTER_OP_FUSION:
       for (auto& instruction : computation->instructions()) {
-        VLOG(3) << "Visited instruction: " << instruction->ToString();
+        VLOG(4) << "Visited instruction: " << instruction->ToString();
 
         if (instruction->shape().element_type() == PrimitiveType::F32 &&
             !ShapeUtil::IsScalar(instruction->shape()) &&
@@ -53,7 +53,7 @@ std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_suffix(
 
     case HloReducePrecisionOptions::FUSION_BY_CONTENT:
       for (auto& instruction : computation->instructions()) {
-        VLOG(3) << "Visited instruction: " << instruction->ToString();
+        VLOG(4) << "Visited instruction: " << instruction->ToString();
 
         if (instruction->opcode() != HloOpcode::kFusion ||
             instruction->shape().element_type() != PrimitiveType::F32 ||
@@ -63,7 +63,7 @@ std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_suffix(
 
         for (auto& fused_instruction :
              instruction->fused_instructions_computation()->instructions()) {
-          VLOG(3) << "Checking sub-instruction: "
+          VLOG(4) << "Checking sub-instruction: "
                   << fused_instruction->ToString();
           if (instruction_filter_function_(fused_instruction.get())) {
             instructions_to_suffix.push_back(instruction.get());
@@ -91,6 +91,7 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
       continue;
     }
 
+    bool computation_changed = false;
     for (auto& instruction : instructions_to_suffix(computation.get())) {
       HloInstruction* reduced =
           computation->AddInstruction(HloInstruction::CreateReducePrecision(
@@ -100,9 +101,18 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
           computation->ReplaceUsesOfInstruction(instruction, reduced));
       VLOG(2) << "Inserted new op after instruction: "
               << instruction->ToString();
+      computation_changed = true;
+    }
+
+    if (computation_changed) {
       changed = true;
+      VLOG(3) << "Computation after reduce-precision insertion:";
+      XLA_VLOG_LINES(3, computation->ToString());
+    } else {
+      VLOG(3) << "Computation " << computation->name() << " unchanged";
     }
   }
+
   return changed;
 }
 
