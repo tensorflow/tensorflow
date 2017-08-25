@@ -13,25 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_RDMA_UTIL_H_
-#define TENSORFLOW_CONTRIB_RDMA_UTIL_H_
-
-#include <string>
-
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
 
-class TensorProto;
+bool CpuOpFilter(KernelDef* kdef) {
+  // TODO(b/34339814): implement inverse erf for double types and remove this
+  // workaround.
+  if (kdef->op() == "RandomStandardNormal") {
+    kdef->clear_constraint();
+    // Change the type constraint to permit only DTD_FLOAT.
+    KernelDef::AttrConstraint* attr_constraint = kdef->add_constraint();
+    attr_constraint->set_name("dtype");
+    attr_constraint->mutable_allowed_values()->mutable_list()->add_type(
+        DT_FLOAT);
+    return true;
+  }
+  return true;
+}
 
-class VerbsUtil {
- public:
-  static string AppendStepidToKey(const string& key, int64 step_id);
-  static void GetKeyAndStepId(const string& key_with_step_id, string& key,
-                              int64& step_id);
-};
+REGISTER_XLA_BACKEND(DEVICE_CPU_XLA_JIT, kCpuAllTypes, CpuOpFilter);
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_RDMA_UTIL_H_
