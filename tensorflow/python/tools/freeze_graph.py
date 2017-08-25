@@ -53,7 +53,7 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.tools import saved_model_cli as saved_model_util
+from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.training import saver as saver_lib
 
 FLAGS = None
@@ -215,7 +215,7 @@ def freeze_graph(input_graph,
   """Converts all variables in a graph and checkpoint into constants."""
   input_graph_def = None
   if input_saved_model_dir:
-    input_graph_def = saved_model_util.get_meta_graph_def(
+    input_graph_def = saved_model_utils.get_meta_graph_def(
         input_saved_model_dir, saved_model_tags).graph_def
   elif input_graph:
     input_graph_def = _parse_input_graph_proto(input_graph, input_binary)
