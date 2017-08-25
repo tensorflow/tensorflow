@@ -313,6 +313,20 @@ class FeatureColumnTest(test.TestCase):
         expected_shape = (id_tensor_shape[:output_rank - 1] + [vocab_size])
         self.assertEquals(expected_shape, list(one_hot_value.shape))
 
+  def testOneHotColumnForSparseColumnWithKeys(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    one_hot = fc.one_hot_column(ids)
+    features = {
+      'ids': constant_op.constant(['marlo', 'skywalker', 'omar'],
+                                  shape=(1, 3)),
+    }
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+      features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
+
   def testOneHotColumnForWeightedSparseColumn(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
