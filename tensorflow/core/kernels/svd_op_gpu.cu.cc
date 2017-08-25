@@ -51,33 +51,37 @@ static const char kErrMsg[] =
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
+  // This kernel computes the reduction
+  // V' = sum_i (M_i * U_i,1 * S_i).
+  // The result is stored in V[batch] and has the same sign as the
+  // real value of V (which should be computed)  
   template<class Scalar>
-  __global__ void ComputeV1Kernel(CudaLaunchConfig config,
+  __global__ void ComputeValueOfVKernel(CudaLaunchConfig config,
       int64 m, const Scalar* M, const Scalar* U, const Scalar* S, Scalar* V)
   {
     CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
       Scalar v = M[i] * U[m*i] * S[0];
-      //printf("i=%d, v=%f\n", (int) i, (float) v);
       CudaAtomicAdd(V, v);
     }
   }
 
+  // Extracts the sign of V
+  // V[i] = V[i]>=0 ? 1 : 0
   template<class Scalar>
-  __global__ void ComputeV2Kernel(CudaLaunchConfig config, Scalar* V)
+  __global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V)
   {
     CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-      //printf("V'[%d] = %f\n", (int)i, (float)V[i]);
-      V[i] = (Scalar) copysign(1.0, V[i]);
+      V[i] = V[i]>=0 ? (Scalar)1 : (Scalar)0
     }
   }
 }
 
 // Scalar: The input scalar type (can be complex)
-// SScalar: The output type for the singular value,
-//   same as Scalar if real, or the real version if Scalar is complex
-template <class Scalar, class SScalar>
+template <class Scalar>
 class SvdOpGpu : public AsyncOpKernel {
  public:
+  using SScalar = typename Eigen::NumTraits<Scalar>::Real;
+ 
   explicit SvdOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
@@ -97,12 +101,12 @@ class SvdOpGpu : public AsyncOpKernel {
         done);
     }
 
-    for (int64 i = 0; i < batch_size; ++i) {
+    for (int64 batch = 0; batch < batch_size; ++batch) {
       int lda = m;
       int ldu = m;
       int ldvt = n;
-      Scalar* input = input_ptr + i * m * n;
-      SScalar* outputS = outputS_ptr + i * p;
+      Scalar* input = input_ptr + batch * m * n;
+      SScalar* outputS = outputS_ptr + batch * p;
       Scalar* outputU = NULL;
       Scalar* outputVT = NULL;
       signed char jobu = 'N';
@@ -117,13 +121,13 @@ class SvdOpGpu : public AsyncOpKernel {
 
       if (compute_uv_) {
         if (full_matrices_) {
-          outputU = outputU_ptr + i * m * m;
-          outputVT = outputVT_ptr + i * n * n;
+          outputU = outputU_ptr + batch * m * m;
+          outputVT = outputVT_ptr + batch * n * n;
           jobu = 'A';
           jobvt = 'A';
         } else {
-          outputU = outputU_ptr + i * m * p;
-          outputVT = outputVT_ptr + i * n * p;
+          outputU = outputU_ptr + batch * m * p;
+          outputVT = outputVT_ptr + batch * n * p;
           jobu = 'S';
           jobvt = 'S';
         }
@@ -131,7 +135,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
       OP_REQUIRES_OK_ASYNC(
           context, solver.Gesvd(jobu, jobvt, m, n, input, lda, outputS, outputU,
-                                ldu, outputVT, ldvt, dev_info_ptr + i),
+                                ldu, outputVT, ldvt, dev_info_ptr + batch),
           done);
 
       // This is a bug in cuSolver:
@@ -150,50 +154,18 @@ class SvdOpGpu : public AsyncOpKernel {
         const GPUDevice& d = context->eigen_device<GPUDevice>();
         d.memset(outputVT, 0, sizeof(Scalar));
         CudaLaunchConfig cfg = GetCudaLaunchConfig(m, d);
-        ComputeV1Kernel <<<cfg.block_count, 
+        ComputeValueOfVKernel <<<cfg.block_count, 
                               cfg.thread_per_block, 0, d.stream()>>>
             (cfg, m, input_copy.flat<Scalar>().data(), outputU, outputS, outputVT);
       }
       // For the second part, see below
-
-#if 0
-      // debug
-      printf("m=%d, n=%d\n", (int)m, (int)n);
-      printf("M:\n");
-      Scalar* input_cpu = new Scalar[m*n];
-      cudaMemcpy(input_cpu, input, sizeof(Scalar)*m*n, cudaMemcpyDeviceToHost);
-      for (int64 i=0; i<m; ++i) {
-        for (int64 j=0; j<n; ++j) printf(" %5.3f", (float)input_cpu[i+j*m]);
-        printf("\n");
-      }
-      delete[] input_cpu;
-      if (compute_uv_) {
-      printf("U:\n");
-      Scalar* outputU_cpu = new Scalar[m*m];
-      cudaMemcpy(outputU_cpu, outputU, sizeof(Scalar)*m*m, cudaMemcpyDeviceToHost);
-      for (int64 i=0; i<m; ++i) {
-        for (int64 j=0; j<m; ++j) printf(" %5.3f", (float)outputU_cpu[i+j*m]);
-        printf("\n");
-      }
-      delete[] outputU_cpu;
-      printf("VT:\n");
-      Scalar* outputVT_cpu = new Scalar[n*n];
-      cudaMemcpy(outputVT_cpu, outputVT, sizeof(Scalar)*n*n, cudaMemcpyDeviceToHost);
-      for (int64 i=0; i<n; ++i) {
-        for (int64 j=0; j<n; ++j) printf(" %5.3f", (float)outputVT_cpu[i+j*n]);
-        printf("\n");
-      }
-      delete[] outputVT_cpu;
-      }
-#endif
-
     }
 
     // Second part of the n=1 fix: clamp V to -1 or +1
     if (compute_uv_ && n==1) {
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       CudaLaunchConfig cfg = GetCudaLaunchConfig(batch_size, d);
-      ComputeV2Kernel <<<cfg.block_count, 
+      ExtractSignOfVKernel <<<cfg.block_count, 
                          cfg.thread_per_block, 0, d.stream()>>>
           (cfg, outputVT_ptr);
     }
@@ -445,10 +417,10 @@ class SvdOpGpu : public AsyncOpKernel {
 };
 
 // TODO: add support for complex types
-REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<float, float>), float);
-REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<double, double>), double);
-REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<float, float>), float);
-REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<double, double>), double);
+REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<float>), float);
+REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<double>), double);
+REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<float>), float);
+REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<double>), double);
 
 #endif  // GOOGLE_CUDA
 
