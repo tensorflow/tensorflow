@@ -831,6 +831,8 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_proto",
+        ":hlo_value",
+        ":liveness_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

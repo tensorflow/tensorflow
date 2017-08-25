@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
@@ -41,10 +42,29 @@ class HloOrdering {
   // not reflexive, that is, an instruction does not execute before itself.
   bool ExecutesBefore(const HloInstruction* a, const HloInstruction* b) const;
 
+  // Returns whether the value 'a' is defined before the value 'b' under the
+  // given ordering.
+  bool IsDefinedBefore(const HloValue& a, const HloValue& b) const;
+
+  // Returns whether the given use is before the given value definition under
+  // the given ordering.
+  bool UseIsBeforeValueDefinition(const HloUse& use,
+                                  const HloValue& value) const;
+  // Returns whether the given values interfere. Two values interfere if they
+  // may both be simultaneously live.
+  bool MayInterfere(const HloValue& a, const HloValue& b) const;
+
+  // Returns true if the live range of the given value 'a' is strictly before
+  // the live range of value 'b' using the given HLO ordering.
+  bool LiveRangeStrictlyBefore(const HloValue& a, const HloValue& b) const;
+
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.
   virtual const std::vector<const HloInstruction*>* SequentialOrder(
       const HloComputation& computation) const = 0;
+
+  // Return the call graph of the module used to compute ordering.
+  const CallGraph& call_graph() const { return *call_graph_; }
 
   virtual string ToString() const = 0;
 
@@ -79,6 +99,14 @@ class PredecessorHloOrdering : public HloOrdering {
   const std::vector<const HloInstruction*>* SequentialOrder(
       const HloComputation& computation) const override {
     return nullptr;
+  }
+
+  HloReachabilityMap& reachability_map(const HloComputation* computation) {
+    return *predecessors_.at(computation);
+  }
+  const HloReachabilityMap& reachability_map(
+      const HloComputation* computation) const {
+    return *predecessors_.at(computation);
   }
 
  protected:
