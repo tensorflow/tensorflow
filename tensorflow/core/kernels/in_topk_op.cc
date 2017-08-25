@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/util/tie_strategy.h"
 
 namespace tensorflow {
 
@@ -32,6 +33,7 @@ class InTopK : public OpKernel {
     if (context->num_inputs() == 2) {
       OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
     }
+    OP_REQUIRES_OK(context, context->GetAttr("handle_ties", &strategy_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -79,6 +81,7 @@ class InTopK : public OpKernel {
       T target_prediction = predictions(b, target);
       bool cannot_say = !std::isfinite(target_prediction);
       int more_probable_classes = 0;
+      int tie_classes = 0;
       if (!cannot_say) {
         for (int i = 0; i < num_classes; ++i) {
           T pred = predictions(b, i);
@@ -87,15 +90,38 @@ class InTopK : public OpKernel {
             break;
           } else if (pred > target_prediction) {
             ++more_probable_classes;
+          } else if (pred == target_prediction) {
+            ++tie_classes;
           }
         }
       }
-      out(b) = cannot_say ? false : (more_probable_classes < k_val);
+      if (cannot_say) {
+        out(b) = false;
+        return;
+      }
+      switch(strategy_) {
+        case TieStrategy::SAMPLE: {
+          if ((tie_classes + more_probable_classes) > k_val) {
+            out(b) = ((std::rand() % tie_classes) + more_probable_classes) <= k_val;
+          } else {
+            out(b) = true;
+          }
+          break;
+        }
+        case TieStrategy::INCLUDE: {
+          out(b) = (more_probable_classes < k_val);
+          break;
+        }
+        case TieStrategy::EXCLUDE: {
+          out(b) = ((tie_classes + more_probable_classes) <= k_val);
+        }
+      }
     }
   }
 
  private:
   int k_;
+  TieStrategy strategy_;
 };
 
 REGISTER_KERNEL_BUILDER(
