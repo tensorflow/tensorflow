@@ -18,9 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
-
-#include "tensorflow/core/framework/op_kernel.h" // TODO remove it
-#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace functor {
@@ -58,11 +56,7 @@ struct FusedBatchNormFreezeGrad {
                   const Tensor& mean_input, const Tensor& variance_input,
                   T epsilon, Tensor* x_backprop_output,
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
-                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2,
-                  TensorFormat tensor_format) {
-    CHECK(tensor_format == FORMAT_NHWC)
-        << "The implementation of FusedBatchNormFreezeGrad only support "
-        << "NHWC tensor format for now.";
+                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2) {
     typename TTypes<T, 4>::ConstTensor out_backprop(y_backprop_input.tensor<T, 4>());
     typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
     typename TTypes<T>::ConstVec scale(scale_input.vec<T>());

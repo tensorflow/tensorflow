@@ -478,8 +478,7 @@ struct FusedBatchNormGrad<GPUDevice, T> {
                   const Tensor& mean_input, const Tensor& variance_input,  \
                   T epsilon, Tensor* x_backprop_output,                    \
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output, \
-                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2, \
-                  TensorFormat tensor_format \
+                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2 \
       ); \
   extern template struct FusedBatchNormFreezeGrad<GPUDevice, T>;
 DECLARE_GPU_SPEC(float);
@@ -630,20 +629,21 @@ class FusedBatchNormGradOp : public OpKernel {
           epsilon_, x_backprop, scale_backprop, offset_backprop, tensor_format_);
 
     } else {
-      int depth = scale_offset_shape.dim_size(0);
-      Tensor scratch1;
+      // Necessary layout conversion is currently done in python.
+      CHECK(tensor_format_ == FORMAT_NHWC)
+          << "The implementation of FusedBatchNormGrad with is_training=False only support "
+          << "NHWC tensor format for now.";
+      Tensor scratch1, scratch2;
       OP_REQUIRES_OK(context, context->allocate_temp(
                               DataTypeToEnum<T>::value,
-                              TensorShape({depth}), &scratch1));
-      Tensor scratch2;
+                              scale_offset_shape, &scratch1));
       OP_REQUIRES_OK(context, context->allocate_temp(
                               DataTypeToEnum<T>::value,
-                              TensorShape({depth}), &scratch2));
-      const Device& d = context->eigen_device<Device>();
+                              scale_offset_shape, &scratch2));
       functor::FusedBatchNormFreezeGrad<Device, T>()(
-          d, y_backprop, x, scale, saved_mean, saved_maybe_inv_var,
+          context->eigen_device<Device>(), y_backprop, x, scale, saved_mean, saved_maybe_inv_var,
           epsilon_, x_backprop, scale_backprop, offset_backprop,
-          scratch1.vec<T>(), scratch2.vec<T>(), tensor_format_);
+          scratch1.vec<T>(), scratch2.vec<T>());
     }
   }
 
