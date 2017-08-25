@@ -213,6 +213,8 @@ class Scope {
   static Scope DisabledShapeInferenceScope();
   // END_SKIP_DOXYGEN
 
+  string Name() const;
+
   const std::vector<Operation>& control_deps() const;
 
  private:

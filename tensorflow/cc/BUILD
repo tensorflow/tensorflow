@@ -585,3 +585,39 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+tf_cc_test(
+    name = "optimizer_test",
+    size = "small",
+    srcs = ["training/optimizer_test.cc"],
+    deps = [
+        ":grad_ops",
+        ":optimizer",
+        ":testutil",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "optimizer",
+    srcs = [
+        "training/gradient_descent_optimizer.cc",
+        "training/optimizer.cc",
+    ],
+    hdrs = [
+        "training/gradient_descent_optimizer.h",
+        "training/optimizer.h",
+    ],
+    deps = [
+        ":gradients",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
