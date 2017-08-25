@@ -33,22 +33,8 @@ static const std::string out_conn("out");
 #define POPLAR_OPCODE(O, N) case HloOpcode::O: return std::string(N)
 #define UNUSED_OPCODE(O) case HloOpcode::O: break;
 
-typedef poplar::Tensor (*popstd_unary_fn)(poplar::Graph &graph,
-                                          poplar::Tensor A,
-                                          poplar::program::Sequence &prog,
-                                          const std::string &debugPrefix);
 
-typedef poplar::Tensor (*popstd_binary_fn)(poplar::Graph &graph,
-                                           poplar::Tensor A, poplar::Tensor B,
-                                           poplar::program::Sequence &prog,
-                                           const std::string &debugPrefix);
-
-typedef void (*popstd_inplace_binary_fn)(poplar::Graph &graph,
-                                         poplar::Tensor A, poplar::Tensor B,
-                                         poplar::program::Sequence &prog,
-                                         const std::string &debugPrefix);
-
-static port::StatusOr<popstd_unary_fn>
+port::StatusOr<popstd_unary_fn>
 LookupUnaryFn(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAbs: return popstd::abs;
@@ -72,7 +58,7 @@ LookupUnaryFn(HloOpcode opcode) {
                                    HloOpcodeString(opcode)));
 }
 
-static port::StatusOr<popstd_binary_fn>
+port::StatusOr<popstd_binary_fn>
 LookupBinaryFn(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAdd: return popstd::add;
@@ -99,7 +85,7 @@ LookupBinaryFn(HloOpcode opcode) {
                                    HloOpcodeString(opcode)));
 }
 
-static port::StatusOr<popstd_inplace_binary_fn>
+port::StatusOr<popstd_inplace_fn>
 LookupBinaryInPlaceFn(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAdd: return popstd::addTo;
@@ -181,7 +167,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
       (in0.shape() == in1.shape()) &&
       in0.isParallelWriteable()) {
 
-    popstd_inplace_binary_fn fn;
+    popstd_inplace_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst->opcode()));
 
     poplar::program::Sequence seq;

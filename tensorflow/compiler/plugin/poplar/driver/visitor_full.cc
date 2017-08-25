@@ -116,7 +116,7 @@ Status FullVisitor::HandleReduce(
         HloInstruction* init_value,
         tensorflow::gtl::ArraySlice<int64> dimensions,
         HloComputation* function) {
-  if (IsReducableArtithmetic(inst, function)) {
+  if (IsReducableArtithmetic(function)) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleReduction(*graph_,
@@ -250,7 +250,7 @@ Status FullVisitor::HandleReduceWindow(
     sequence.add(prog);
     return Status::OK();
   }
-  if (IsReducableArtithmetic(inst, function)) {
+  if (IsReducableArtithmetic(function)) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleWindowReduction(*graph_,
@@ -265,8 +265,8 @@ Status FullVisitor::HandleReduceWindow(
 }
 
 Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
-  if (IsSimpleSelection(inst, inst->select()) &&
-      IsReducableArtithmetic(inst, inst->scatter())) {
+  if (IsSimpleSelection(inst->select()) &&
+      IsReducableArtithmetic(inst->scatter())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleSelectAndScatter(*graph_,

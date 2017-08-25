@@ -44,8 +44,7 @@ static const std::string reduction_lt("SelectionLt");
 static const std::string unknown("Unknown");
 
 bool
-IsReducableArtithmetic(const HloInstruction* inst,
-                       const HloComputation* computation) {
+IsReducableArtithmetic(const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
@@ -65,8 +64,7 @@ IsReducableArtithmetic(const HloInstruction* inst,
 }
 
 bool
-IsSimpleSelection(const HloInstruction* inst,
-                  const HloComputation* computation) {
+IsSimpleSelection(const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
@@ -116,6 +114,23 @@ IsPoplibsPool(const HloInstruction* inst,
   }
 
   return true;
+}
+
+static Literal
+GetIdentityConstantTensor(const HloInstruction* root) {
+  switch (root->opcode()) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kLogicalAnd:
+    default:
+      return Literal::Zero(root->shape().element_type());
+    case HloOpcode::kMultiply:
+    case HloOpcode::kLogicalOr:
+      return Literal::One(root->shape().element_type());
+    case HloOpcode::kMaximum:
+      return Literal::MinValue(root->shape().element_type());
+    case HloOpcode::kMinimum:
+      return Literal::MaxValue(root->shape().element_type());
+  }
 }
 
 static const std::string&
@@ -409,11 +424,13 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   poplar::Tensor init_val;
   TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 2));
 
+  HloInstruction* select_root(inst->select()->root_instruction());
+  HloInstruction* scatter_root(inst->scatter()->root_instruction());
+
   /*
    * Selection
    */
 
-  HloInstruction* select_root(inst->select()->root_instruction());
   std::string select_vertex_name =
           templateVertex(SelectionVertexBaseName(select_root),
                          operand.elementType());
@@ -431,8 +448,20 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(partial,
                       AddPlainTensor(graph, inst, partial_shape));
 
+  auto identity_shape =
+          ShapeUtil::MakeShape(scatter_root->shape().element_type(), {});
+
+  Literal identity_literal = GetIdentityConstantTensor(scatter_root);
+
+  poplar::Tensor identity_val;
+  TF_ASSIGN_OR_RETURN(identity_val,
+                      AddConstantTensor(graph,
+                                        identity_shape,
+                                        identity_literal,
+                                        res));
+
   poplar::Tensor init;
-  TF_ASSIGN_OR_RETURN(init, BroadcastTensor(init_val, partial_shape));
+  TF_ASSIGN_OR_RETURN(init, BroadcastTensor(identity_val, partial_shape));
 
   program_seq.add(poplar::program::Copy(init, partial));
 
@@ -513,7 +542,6 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
    * Reduction
    */
 
-  HloInstruction* scatter_root(inst->scatter()->root_instruction());
   std::string scatter_vertex_name =
           templateVertex(ReductionVertexBaseName(scatter_root),
                          operand.elementType());
@@ -526,7 +554,6 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   // Allocate the output tensor
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
   // One vertex per non-reduced element
@@ -542,6 +569,25 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     graph.setTileMapping(v, (i / device_info.numWorkerContexts)
                             % device_info.getNumTiles());
   }
+
+  /*
+   * Initial value application
+   */
+  auto* init_inst = inst->operand(2);
+  if (!(init_inst->IsConstant() &&
+        init_inst->literal().Equal(identity_literal))) {
+
+    // Create a binary op with the scatter_root opcode
+    TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
+
+    popstd_binary_fn fn;
+    TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(scatter_root->opcode()));
+
+    poplar::program::Sequence seq;
+    out = fn(graph, out, init_val, program_seq, inst->name() + "_initval");
+  }
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   return program_seq;
 }

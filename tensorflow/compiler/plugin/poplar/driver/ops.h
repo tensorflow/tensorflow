@@ -29,6 +29,25 @@ struct CompilerResources;
 
 using TensorMap = std::map<std::pair<std::string, int64>, poplar::Tensor>;
 
+typedef poplar::Tensor (*popstd_unary_fn)(poplar::Graph &graph,
+                                          poplar::Tensor A,
+                                          poplar::program::Sequence &prog,
+                                          const std::string &debugPrefix);
+
+typedef poplar::Tensor (*popstd_binary_fn)(poplar::Graph &graph,
+                                           poplar::Tensor A, poplar::Tensor B,
+                                           poplar::program::Sequence &prog,
+                                           const std::string &debugPrefix);
+
+typedef void (*popstd_inplace_fn)(poplar::Graph &graph,
+                                  poplar::Tensor A, poplar::Tensor B,
+                                  poplar::program::Sequence &prog,
+                                  const std::string &debugPrefix);
+
+port::StatusOr<popstd_unary_fn>  LookupUnaryFn(HloOpcode opcode);
+port::StatusOr<popstd_binary_fn> LookupBinaryFn(HloOpcode opcode);
+port::StatusOr<popstd_inplace_fn> LookupBinaryInPlaceFn(HloOpcode opcode);
+
 template<typename To, typename From>
 To convert_array(const From& from) {
   To out;
@@ -54,7 +73,6 @@ AddOutputTensor(TensorMap& map,
                 const HloInstruction* inst,
                 int64 n,
                 const poplar::Tensor& tensor);
-
 
 /* This returns the vector of all poplar tensors which are part of the n'th
  * member of the tuple which is the input to the instruction.
@@ -299,10 +317,10 @@ bool
 IsPoplibsPool(const HloInstruction*, const HloComputation*);
 
 bool
-IsSimpleSelection(const HloInstruction*, const HloComputation*);
+IsSimpleSelection(const HloComputation*);
 
 bool
-IsReducableArtithmetic(const HloInstruction*, const HloComputation*);
+IsReducableArtithmetic(const HloComputation*);
 
 port::StatusOr<bool>
 IsParallelMap(const HloInstruction*, const HloComputation*);
