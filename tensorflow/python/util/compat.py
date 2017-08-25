@@ -40,7 +40,6 @@ import numbers as _numbers
 import numpy as _np
 import six as _six
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -111,7 +110,7 @@ def as_str_any(value):
 
 # Numpy 1.8 scalars don't inherit from numbers.Integral in Python 3, so we
 # need to check them specifically.  The same goes from Real and Complex.
-integral_types = (_numbers.Integral, _np.integer, tensor_shape.Dimension)
+integral_types = (_numbers.Integral, _np.integer)
 real_types = (_numbers.Real, _np.integer, _np.floating)
 complex_types = (_numbers.Complex, _np.number)
 
