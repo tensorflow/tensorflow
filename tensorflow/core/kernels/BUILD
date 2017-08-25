@@ -245,6 +245,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
 )
@@ -1332,6 +1333,7 @@ tf_kernel_library(
     deps = [
         ":ops_util",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
     ],
@@ -1607,6 +1609,40 @@ tf_kernel_library(
     name = "lookup_table_op",
     prefix = "lookup_table_op",
     deps = LOOKUP_DEPS,
+)
+
+cc_library(
+    name = "checkpoint_ops",
+    deps = [
+        ":generate_vocab_remapping_op",
+        ":load_and_remap_matrix_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "generate_vocab_remapping_op",
+    srcs = ["generate_vocab_remapping_op.cc"],
+    deps = [
+        ":lookup_table_init_op",
+        ":lookup_table_op",
+        "//tensorflow/core:checkpoint_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "load_and_remap_matrix_op",
+    srcs = ["load_and_remap_matrix_op.cc"],
+    deps = [
+        "//tensorflow/core:checkpoint_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cc_tests(
@@ -2734,6 +2770,27 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_op_test",
+    srcs = ["shape_op_test.cc"],
+    deps = [
+        ":array",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

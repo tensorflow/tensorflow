@@ -52,12 +52,26 @@ setup(
         #   4 - Beta
         #   5 - Production/Stable
         'Development Status :: 3 - Alpha',
-
-        # Indicate who your project is intended for
+        
         'Intended Audience :: Developers',
-        'Topic :: Software Development',
+        'Intended Audience :: Education',
+        'Intended Audience :: Science/Research',
+        
         'License :: OSI Approved :: Apache Software License',
+        
+        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',  
+        'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     license='Apache 2.0',
     keywords='tensorflow performance tpu',)

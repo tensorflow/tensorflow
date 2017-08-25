@@ -49,7 +49,7 @@ struct TypeResolver {};
 template <typename T>
 void EncodeVariantImpl(const T& value, TypeResolver<T, true /* is_pod */>,
                        VariantTensorData* data) {
-  data->metadata_.assign(reinterpret_cast<const char*>(&value), sizeof(value));
+  data->set_metadata(value);
 }
 
 // Specialization for tensorflow::Tensor
@@ -83,16 +83,17 @@ void EncodeVariantImpl(const T& value,
 // Specialization for POD type
 template <typename T>
 bool DecodeVariantImpl(const VariantTensorData& data,
-                       TypeResolver<T, true /* is_pod */>, T* value) {
-  std::copy_n(data.metadata().data(), sizeof(*value),
-              reinterpret_cast<char*>(value));
-  return true;
+                       TypeResolver<T, true /* is_pod */, false /* Tensor */,
+                                    false /* protobuf */>,
+                       T* value) {
+  return data.get_metadata(value);
 }
 
 // Specialization for tensorflow::Tensor
 template <typename T>
 bool DecodeVariantImpl(const VariantTensorData& data,
-                       TypeResolver<T, false /* is_pod */, true /* Tensor */>,
+                       TypeResolver<T, false /* is_pod */, true /* Tensor */,
+                                    false /* protobuf */>,
                        T* value) {
   *value = data.tensors(0);
   return true;
@@ -104,7 +105,9 @@ bool DecodeVariantImpl(const VariantTensorData& data,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     true /* protobuf */>,
                        T* value) {
-  return value->ParseFromString(data.metadata());
+  string metadata;
+  data.get_metadata(&metadata);
+  return value->ParseFromString(std::move(metadata));
 }
 
 // Specialization for other types

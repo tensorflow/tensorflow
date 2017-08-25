@@ -200,11 +200,12 @@ def _MatrixTriangularSolveGrad(op, grad):
 def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
   """Gradient for SelfAdjointEigV2."""
   e = op.outputs[0]
-  v = op.outputs[1]
+  compute_v = op.get_attr("compute_v")
   # a = op.inputs[0], which satisfies
   # a[...,:,:] * v[...,:,i] = e[...,i] * v[...,i]
   with ops.control_dependencies([grad_e.op, grad_v.op]):
-    if grad_v is not None:
+    if compute_v:
+      v = op.outputs[1]
       # Construct the matrix f(i,j) = (i != j ? 1 / (e_i - e_j) : 0).
       # Notice that because of the term involving f, the gradient becomes
       # infinite (or NaN in practice) when eigenvalues are not unique.
@@ -223,6 +224,7 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
               v,
               adjoint_b=True))
     else:
+      _, v = linalg_ops.self_adjoint_eig(op.inputs[0])
       grad_a = math_ops.matmul(
           v, math_ops.matmul(
               array_ops.matrix_diag(grad_e), v, adjoint_b=True))

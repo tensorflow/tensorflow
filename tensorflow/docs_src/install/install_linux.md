@@ -33,7 +33,7 @@ must be installed on your system:
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v5.1. For details, see
+  * cuDNN v6.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Ensure that you create the `CUDA_HOME` environment variable as
     described in the NVIDIA documentation.
