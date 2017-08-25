@@ -1099,8 +1099,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
   CHECK_NOTNULL(workspace_tensors);
   CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
 
-  // Temporary solution to connect filter input of BackpropInput with the
-  // converted filter from Conv2D.
+  // TODO(nhasabni): Temporary solution to connect filter input of
+  // BackpropInput with the converted filter from Conv2D.
   bool do_connect_conv2d_backprop_input_filter = false;
   Node* conv2d_node = nullptr;
   // Filter node is 2nd input (slot index 1) of Conv2D.
@@ -1128,14 +1128,12 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
           // We will not connect filter input of Conv2DBackpropInput
           // to be safe here.
           do_connect_conv2d_backprop_input_filter = false;
+          break;
         } else {
           conv2d_node = e->dst();
+          do_connect_conv2d_backprop_input_filter = true;
         }
       }
-    }
-
-    if (conv2d_node != nullptr) {
-      do_connect_conv2d_backprop_input_filter = true;
     }
   }
 
