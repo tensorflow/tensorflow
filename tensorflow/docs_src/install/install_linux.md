@@ -33,7 +33,7 @@ must be installed on your system:
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v5.1. For details, see
+  * cuDNN v6. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Ensure that you create the `CUDA_HOME` environment variable as
     described in the NVIDIA documentation.
@@ -55,7 +55,7 @@ TensorFlow with GPU support, but only if you do the following:
   * Install TensorFlow from sources as documented in
     @{$install_sources$Installing TensorFlow from Sources}.
   * Install or upgrade to at least the following NVIDIA versions:
-    * CUDA toolkit 7.0 or greater
+    * CUDA toolkit 8.0 or greater
     * cuDNN v3 or greater
     * GPU card with CUDA Compute Capability 3.0 or higher.
 
