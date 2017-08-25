@@ -25,67 +25,70 @@ using namespace tensorflow;
 
 #define EIGEN_USE_GPU
 
-// Define the CUDA kernel.
+// CUDA kernel.
 template <typename T>
 __global__ void RollCudaKernel(int64 N, int D, int* dim_size, const T* input,
-                T* output, const int* thresholds, const int64* dim_strides) {
+                T* output, const int* threshold, const int64* dim_range) {
 
   const int64 start = blockIdx.x * blockDim.x + threadIdx.x;
-  int in_dim_i[D]; // array of indices for each dimension
-  int delta_i = 0; // the difference between out_i and in_i
-  // initialize in_dim_i and delta_i
+  const int64 end = N;
+
+  int indices[D]; // array of indices for each dimension
+  int offset = 0; // the shift along the flat tensor for current element
+  // initialize indices and offset
   for (int d = 0; d < D; d++) {
-    const int ds = dim_size[d];
     // stride is the number of indices over in the flattened tensor
     // you need to skip in order to make it over to an adjacent element
     // along a dimension.
-    const int64 stride = dim_strides[d] / ds;
-    // calculated this way will always be positive modulo of shift
-    const int shift = ds - thresholds[d];
-    const int indx = (start / stride) % ds;
-    in_dim_i[d] = indx;
+    const int64 stride = dim_range[d] / dim_size[d];
+    const int shift = dim_size[d] - threshold[d];
+    const int indx = (start / stride) % dim_size[d];
+    indices[d] = indx;
     // calculate dimension index after the shift
-    const int out_dim_i = (indx + shift) % ds;
-    delta_i += (out_dim_i - indx) * stride;
+    const int shifted_indx = (indx + shift) % dim_size[d];
+    offset += (shifted_indx - indx) * stride;
   }
 
-  for (int64 in_i = start; in_i < N; i += blockDim.x * gridDim.x) {
-    const int64 out_i = in_i + delta_i;
-    output_flat[out_i] = input_flat[in_i];
-
-    // create next combination of in_dim_i[d]
-    // while at it adjust delta_i if needed
+  for (int64 i = start; i < end; i += blockDim.x * gridDim.x) {
+    output[i + offset] = input[i];
+    // create next combination of indices
+    // while at it adjust offset if needed
     for (int d = D-1; d >= 0; d--) {
-      const int indx = (in_dim_i[d] + 1) % dim_size[d];
-      in_dim_i[d] = indx;
+      const int indx = (indices[d] + 1) % dim_size[d];
+      indices[d] = indx;
       if (indx != 0) {
-        if (indx == thresholds[d]) {
-          delta_i -= dim_strides[d]; // now wraps around
+        if (indx == threshold[d]) { // we've reached the threshold
+          // dim_range[d] = threshold[d] + shift[d]
+          // offset = shift[d] + ... other offsets
+          // offset - dim_range[d] = -threshold[d] + ... other offsets
+          // thus we undo our previous offset as well as add a new offset of
+          // -threshold[d] in one opperation
+          offset -= dim_range[d]; // now wraps around
         }
         break; // indx != 0 don't need to carry
-      }else{
-        delta_i += dim_strides[d]; // indx became 0 so reverse wrap around
+      }else if (threshold[d] != 0){ // if threshold is 0 shift is 0
+        offset += dim_range[d]; // indx became 0 so reverse wrap around
       }
     }
   }
 }
 
-// Define the GPU implementation that launches the CUDA kernel.
+// GPU implementation that launches the CUDA kernel.
 template <typename T>
 struct RollFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, int64 N, int D, int* dim_size, const T* input, T* output
-                  const int* thresholds, const int64* dim_strides){
+                  const int* threshold, const int64* dim_range){
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
     RollCudaKernel<T>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            N, D, dim_size, input, output, thresholds, dim_strides);
+            N, D, dim_size, input, output, threshold, dim_range);
   }
 };
 
 // Instantiate functors for the types of OpKernels registered.
 typedef Eigen::GpuDevice GPUDevice;
 
-// Definition of the GPU implementations declared in pad_op.cc.
+// Definition of the GPU implementations declared in roll_op.h.
 #define DEFINE_GPU_SPECS(T)                      \
   template struct RollFunctor<GPUDevice, T>; \
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);

@@ -19,8 +19,8 @@ limitations under the License.
 template <typename Device, typename T>
 struct RollFunctor {
     void operator()(const Device& d, tensorflow::int64 N, int D, int* dim_size,
-                    const T* input, T* output, const int* thresholds,
-                    const tensorflow::int64* dim_strides);
+                    const T* input, T* output, const int* threshold,
+                    const tensorflow::int64* dim_range);
 };
 
 #endif //KERNEL_ROLL_H_
