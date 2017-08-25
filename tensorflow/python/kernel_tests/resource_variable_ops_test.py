@@ -145,17 +145,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
               resource_variable_ops.var_is_initialized_op(abc.handle)),
           True)
 
-  # TODO(alive): fix bug in convert_to_tensor; get this to work in Eager.
+  @test_util.run_in_graph_and_eager_modes()
   def testConstraintArg(self):
     constraint = lambda x: x
     v = resource_variable_ops.ResourceVariable(
-        initial_value=lambda: 1, constraint=constraint)
+        initial_value=lambda: 1, constraint=constraint, name="var0")
     self.assertEqual(v.constraint, constraint)
 
     constraint = 0
     with self.assertRaises(ValueError):
       v = resource_variable_ops.ResourceVariable(
-          initial_value=lambda: 1, constraint=constraint)
+          initial_value=lambda: 1, constraint=constraint, name="var1")
 
   # TODO(alive): how should this work in Eager mode?
   def testInitFn(self):
@@ -165,18 +165,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
-  # TODO(alive): fix bug in convert_to_tensor; get this to work in Eager.
+  @test_util.run_in_graph_and_eager_modes()
   def testInitFnDtype(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(
-          initial_value=lambda: 1, dtype=dtypes.float32)
-      self.assertEqual(dtypes.float32, v.value().dtype)
+    v = resource_variable_ops.ResourceVariable(
+        initial_value=lambda: 1, dtype=dtypes.float32)
+    self.assertEqual(dtypes.float32, v.value().dtype)
 
-  # TODO(alive): fix bug in convert_to_tensor; get this to work in Eager.
+  @test_util.run_in_graph_and_eager_modes()
   def testInitFnNoDtype(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1)
-      self.assertEqual(dtypes.int32, v.value().dtype)
+    v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                               name="var2")
+    self.assertEqual(dtypes.int32, v.value().dtype)
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitializeAllVariables(self):
@@ -209,7 +208,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.test_session():
       init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
       v = resource_variable_ops.ResourceVariable(
-          constant_op.constant(init_value, dtype=dtypes.int32), name="var0")
+          constant_op.constant(init_value, dtype=dtypes.int32), name="var3")
       self.evaluate(variables.global_variables_initializer())
 
       value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
@@ -293,18 +292,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testSharedName(self):
-    v = resource_variable_ops.ResourceVariable(300.0, name="var1")
+    v = resource_variable_ops.ResourceVariable(300.0, name="var4")
     self.evaluate(variables.global_variables_initializer())
 
     w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var1")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4")
     w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
     self.assertEqual(300.0, self.evaluate(w_read))
 
     x = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var2")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5")
     if context.in_graph_mode():
-      with self.assertRaisesOpError("Resource .*/var2/.* does not exist"):
+      with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
         x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
         self.evaluate(x_read)
     else:
@@ -315,11 +314,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testSharedNameWithNamescope(self):
     with ops.name_scope("foo"):
-      v = resource_variable_ops.ResourceVariable(300.0, name="var3")
+      v = resource_variable_ops.ResourceVariable(300.0, name="var6")
       self.evaluate(variables.global_variables_initializer())
 
     w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var3")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var6")
     w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
     self.assertEqual(300.0, self.evaluate(w_read))
 
@@ -364,13 +363,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       constraint = lambda x: x
       with ops.name_scope("foo"):
         v = resource_variable_ops.ResourceVariable(
-            name="var5",
+            name="var7",
             initial_value=init,
             caching_device="cpu:0",
             constraint=constraint)
       # Test properties
       self.assertEqual(dtypes.int32, v.dtype)
-      self.assertEqual("foo/var5:0", v.name)
+      self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
       self.assertAllEqual(init.device, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
@@ -381,8 +380,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       # Callable init.
       callable_init = lambda: init * 2
       v2 = resource_variable_ops.ResourceVariable(
-          initial_value=callable_init, name="var6")
-      self.assertEqual("var6:0", v2.name)
+          initial_value=callable_init, name="var7")
+      self.assertEqual("var7:0", v2.name)
       self.assertAllEqual(2 * init.numpy(), v2.read_value().numpy())
 
       # Test assign_add.
