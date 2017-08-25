@@ -289,11 +289,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.add = "Add";
     csinfo_.maximum = "Maximum";
     csinfo_.mul = "Mul";
-    csinfo_.sub = "Sub";
     csinfo_.squared_difference = "SquaredDifference";
+    csinfo_.sub = "Sub";
     // End - element-wise ops. See note above.
 
     // NOTE: names are alphabetically sorted.
+    rinfo_.push_back({csinfo_.add,
+                      mkl_op_registry::GetMklOpName(csinfo_.add),
+                      CopyAttrsDataType, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsPooling, AlwaysRewrite, nullptr});
@@ -347,6 +350,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
                       CopyAttrsPooling, AlwaysRewrite, nullptr});
+    rinfo_.push_back({csinfo_.maximum,
+                      mkl_op_registry::GetMklOpName(csinfo_.maximum),
+                      CopyAttrsDataType, AlwaysRewrite, nullptr});
+    rinfo_.push_back({csinfo_.mul,
+                      mkl_op_registry::GetMklOpName(csinfo_.mul),
+                      CopyAttrsDataType, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.relu,
                       mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
@@ -356,21 +365,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.reshape,
                       mkl_op_registry::GetMklOpName(csinfo_.reshape),
                       CopyAttrsReshape, AlwaysRewrite, nullptr});
-    // Element-wise ops
-    rinfo_.push_back({csinfo_.add,
-                      mkl_op_registry::GetMklOpName(csinfo_.add),
+    rinfo_.push_back({csinfo_.squared_difference,
+                      mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.sub,
                       mkl_op_registry::GetMklOpName(csinfo_.sub),
-                      CopyAttrsDataType, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.mul,
-                      mkl_op_registry::GetMklOpName(csinfo_.mul),
-                      CopyAttrsDataType, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.maximum,
-                      mkl_op_registry::GetMklOpName(csinfo_.maximum),
-                      CopyAttrsDataType, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.squared_difference,
-                      mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
 
     // Add info about which ops to add workspace edge to and the slots.
@@ -454,6 +453,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure to store all constant strings
   /// NOTE: names are alphabetically sorted.
   typedef struct {
+    string add;
     string avg_pool;
     string avg_pool_grad;
     string bias_add;
@@ -471,20 +471,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string matmul;
     string max_pool;
     string max_pool_grad;
+    string maximum;
     string mkl_conv2d;
     string mkl_conv2d_grad_input;
     string mkl_conv2d_grad_filter;
     string mkl_conv2d_with_bias;
     string mkl_conv2d_with_bias_backprop_bias;
+    string mul;
     string relu;
     string relu_grad;
     string reshape;
     string split;
-    string sub;
-    string add;
-    string mul;
-    string maximum;
     string squared_difference;
+    string sub;
   } ConstStringsInfo;
 
  private:
@@ -932,11 +931,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConv2D(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsIdentity(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
-  static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
