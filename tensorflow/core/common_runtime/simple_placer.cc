@@ -147,7 +147,7 @@ class ColocationGraph {
       // attribute with the calls to ColocateNodeToGroup.
       bool found_spec = false;
       const AttrValue* attr_value =
-          AttrSlice(node->def()).Find(kColocationAttrNameStringPiece);
+          node->attrs().Find(kColocationAttrNameStringPiece);
       if (attr_value != nullptr && attr_value->has_list()) {
         for (const string& class_spec : attr_value->list().s()) {
           StringPiece spec(class_spec);
@@ -184,7 +184,7 @@ class ColocationGraph {
       // error, return it.
       Status s = ColocateNodes(*node, *root_node);
       if (!s.ok()) {
-        return AttachDef(s, node->def());
+        return AttachDef(s, *node);
       }
     }
     return Status::OK();
@@ -418,7 +418,7 @@ class ColocationGraph {
       }
       Status status = InitializeMember(*node, &members_[node->id()]);
       if (!status.ok()) {
-        return AttachDef(status, node->def());
+        return AttachDef(status, *node);
       }
     }
     return Status::OK();
@@ -682,7 +682,7 @@ Status SimplePlacer::Run() {
       int dst_root_id = colocation_graph.FindRoot(dst->id());
       auto& src_root = colocation_graph.members_[src_root_id];
       auto& dst_root = colocation_graph.members_[dst_root_id];
-      // If both the source node and this node have paritally
+      // If both the source node and this node have partially
       // specified a device, then 'node's device should be
       // cleared: the reference edge forces 'node' to be on the
       // same device as the source node.
@@ -690,17 +690,20 @@ Status SimplePlacer::Run() {
       const auto& dest_parsed_name = dst_root.device_name;
       if (DeviceNameUtils::HasSomeDetails(source_parsed_name) &&
           DeviceNameUtils::HasSomeDetails(dest_parsed_name)) {
-        // Add a log saying that we are ignoring a specified device
-        // for 'dst' if the two names were incompatible.
+        // Ignore a specified device for 'dst' if the two names were
+        // incompatible.
         if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
                                                     dest_parsed_name)) {
-          LOG(INFO) << "Ignoring device specification "
-                    << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
-                    << " for node '" << dst->name()
-                    << "' because the input edge from '" << src->name()
-                    << "' is a reference connection and already has a device "
-                       "field set to "
-                    << DeviceNameUtils::ParsedNameToString(source_parsed_name);
+          if (log_device_placement_) {
+            LOG(INFO) << "Ignoring device specification "
+                      << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
+                      << " for node '" << dst->name()
+                      << "' because the input edge from '" << src->name()
+                      << "' is a reference connection and already has a device "
+                         "field set to "
+                      << DeviceNameUtils::ParsedNameToString(
+                             source_parsed_name);
+          }
 
           // Make 'dst' colocated with the source
           dst_root.device_name = source_parsed_name;
@@ -727,7 +730,7 @@ Status SimplePlacer::Run() {
                                     "be on the same device), but the two nodes "
                                     "were assigned two different devices: ",
                                     status.error_message()),
-            dst->def());
+            *dst);
       }
     }
   }

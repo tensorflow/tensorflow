@@ -140,7 +140,7 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 }
 
 #define ALICE "/job:j/replica:0/task:0/cpu:0"
-#define BOB "/job:j/replica:0/task:0/gpu:0"
+#define BOB "/job:j/replica:0/task:0/device:GPU:0"
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b

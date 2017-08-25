@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -334,22 +333,103 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
                            error_spec_);
 }
 
+XLA_TEST_F(ConvolutionTest, Convolve2D_1x3x3x5_3x3x5x5_Valid) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<int64> input_dims = {1, 3, 3, 5};
+  std::vector<int64> filter_dims = {3, 3, 5, 3};
+  Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
+  Shape filter_shape = ShapeUtil::MakeShape(F32, filter_dims);
+  {
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto filter = builder.Parameter(1, filter_shape, "filter");
+
+    // Tensorflow dimension numbers for 2D convolution.
+    ConvolutionDimensionNumbers dnums;
+    dnums.set_batch_dimension(0);
+    dnums.add_spatial_dimensions(1);
+    dnums.add_spatial_dimensions(2);
+    dnums.set_feature_dimension(3);
+    dnums.add_kernel_spatial_dimensions(0);
+    dnums.add_kernel_spatial_dimensions(1);
+    dnums.set_kernel_input_feature_dimension(2);
+    dnums.set_kernel_output_feature_dimension(3);
+
+    builder.ConvWithGeneralDimensions(input, filter, {1, 1}, Padding::kValid,
+                                      dnums);
+  }
+
+  std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
+  std::iota(input_elems.begin(), input_elems.end(), 1.0f);
+  auto input_r1 = Literal::CreateR1<float>(input_elems);
+  auto input_r4 = input_r1->Reshape(input_dims).ConsumeValueOrDie();
+
+  std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
+  std::iota(filter_elems.begin(), filter_elems.end(), 1.0f);
+  auto filter_r1 = Literal::CreateR1<float>(filter_elems);
+  auto filter_r4 = filter_r1->Reshape(filter_dims).ConsumeValueOrDie();
+
+  auto expected_r1 = Literal::CreateR1<float>({92115, 93150, 94185});
+  auto expected_r4 = expected_r1->Reshape({1, 1, 1, 3}).ConsumeValueOrDie();
+
+  auto input_literal = client_->TransferToServer(*input_r4).ConsumeValueOrDie();
+  auto filter_literal =
+      client_->TransferToServer(*filter_r4).ConsumeValueOrDie();
+
+  ComputeAndCompareLiteral(&builder, *expected_r4,
+                           {input_literal.get(), filter_literal.get()},
+                           error_spec_);
+}
+
+XLA_TEST_F(ConvolutionTest, Convolve1D_Valid) {
+  ComputationBuilder builder(client_, TestName());
+  int64 output_feature = 1;
+  int64 input_feature = 64;
+  int64 batch = 1;
+  int64 length = 1;
+  std::vector<int64> input_dims = {batch, 4 + length - 1, input_feature};
+  std::vector<int64> filter_dims = {4, input_feature, output_feature};
+  Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
+  Shape filter_shape = ShapeUtil::MakeShape(F32, filter_dims);
+  {
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto filter = builder.Parameter(1, filter_shape, "filter");
+
+    // Tensorflow dimension numbers for 2D convolution.
+    ConvolutionDimensionNumbers dnums;
+    dnums.set_batch_dimension(0);
+    dnums.add_spatial_dimensions(1);
+    dnums.set_feature_dimension(2);
+    dnums.add_kernel_spatial_dimensions(0);
+    dnums.set_kernel_input_feature_dimension(1);
+    dnums.set_kernel_output_feature_dimension(2);
+
+    builder.ConvWithGeneralDimensions(input, filter, {1}, Padding::kValid,
+                                      dnums);
+  }
+
+  std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape), 1.0);
+  // std::iota(input_elems.begin(), input_elems.end(), 1.0f);
+  auto input_r1 = Literal::CreateR1<float>(input_elems);
+  auto input_r4 = input_r1->Reshape(input_dims).ConsumeValueOrDie();
+
+  std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape), 1.0);
+  // std::iota(filter_elems.begin(), filter_elems.end(), 1.0f);
+
+  auto filter_r1 = Literal::CreateR1<float>(filter_elems);
+  auto filter_r4 = filter_r1->Reshape(filter_dims).ConsumeValueOrDie();
+
+  std::vector<float> expect_elems(batch * output_feature * length, 256);
+  auto expected_r1 = Literal::CreateR1<float>(expect_elems);
+  auto expected_r4 =
+      expected_r1->Reshape({batch, length, output_feature}).ConsumeValueOrDie();
+
+  auto input_literal = client_->TransferToServer(*input_r4).ConsumeValueOrDie();
+  auto filter_literal =
+      client_->TransferToServer(*filter_r4).ConsumeValueOrDie();
+  ComputeAndCompareLiteral(&builder, *expected_r4,
+                           {input_literal.get(), filter_literal.get()},
+                           error_spec_);
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

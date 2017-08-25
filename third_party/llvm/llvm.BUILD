@@ -480,6 +480,15 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
+# This filegroup provides the docker build script in LLVM repo
+filegroup(
+    name = "docker",
+    srcs = glob([
+        "utils/docker/build_docker_image.sh",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "aarch64_asm_parser",
     srcs = glob([
@@ -899,6 +908,7 @@ cc_library(
         "include/llvm/Target/ARM/InstPrinter/*.h",
         "include/llvm/Target/ARM/InstPrinter/*.def",
         "include/llvm/Target/ARM/InstPrinter/*.inc",
+        "lib/Target/ARM/*.h",
         "lib/Target/ARM/InstPrinter/*.h",
     ]),
     copts = ["-Iexternal/llvm/lib/Target/ARM"],
@@ -1206,6 +1216,7 @@ cc_library(
         "lib/IR/*.h",
     ]),
     hdrs = glob([
+        "include/llvm/Analysis/*.def",
         "include/llvm/IR/*.h",
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
@@ -2022,6 +2033,8 @@ cc_library(
         "lib/Target/*.h",
     ]),
     hdrs = glob([
+        "include/llvm/CodeGen/*.h",
+        "include/llvm/CodeGen/*.def",
         "include/llvm/Target/*.h",
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",

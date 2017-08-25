@@ -89,7 +89,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
   if (shape.unknown_rank() || shape.dim_size() < rank) {
     *found_unknown_shapes = true;
     TensorShapeProto::Dim dim;
-    VLOG(1) << "WARNING: Use minimum shape because the rank is unknown.";
+    VLOG(2) << "Use minimum shape because the rank is unknown.";
     // The size of each dimension is at least 1, if unknown.
     dim.set_size(1);
     for (int i = 0; i < rank; i++) {
@@ -99,8 +99,7 @@ TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
     for (int i = 0; i < shape.dim_size(); i++) {
       if (shape.dim(i).size() == -1) {
         *found_unknown_shapes = true;
-        VLOG(1)
-            << "WARNING: Use minimum dim size 1 because the shape is unknown.";
+        VLOG(2) << "Use minimum dim size 1 because the shape is unknown.";
         // The size of each dimension is at least 1, if unknown.
         shape.mutable_dim(i)->set_size(1);
       }
@@ -497,16 +496,11 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   return CountMatMulOperations(op_features, nullptr, found_unknown_shapes);
 }
 
+// TODO(nishantpatil): Create separate estimator for Sparse Matmul
 int64 OpLevelCostEstimator::CountMatMulOperations(
     const OpInfo& op_features, MatMulDimensions* mat_mul,
     bool* found_unknown_shapes) const {
   double ops = 0;
-
-  // TODO(nishantpatil): Create separate estimator for Sparse Matmul
-  if ((op_features.op() != kMatMul) && (op_features.op() != kSparseMatMul)) {
-    LOG(ERROR) << "Invalid Operation";
-    return ops;
-  }
 
   // first matrix
   auto& a_matrix = op_features.inputs(0);
@@ -746,7 +740,7 @@ int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
 
 int64 OpLevelCostEstimator::CalculateTensorElementCount(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  VLOG(1) << "   with " << tensor.dtype() << " tensor of shape "
+  VLOG(2) << "   with " << tensor.dtype() << " tensor of shape "
           << tensor.shape().DebugString();
   int64 tensor_size = 1;
   int num_dims = std::max(1, tensor.shape().dim_size());

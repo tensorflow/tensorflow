@@ -42,9 +42,11 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -272,6 +274,106 @@ def enable_c_api(fn):
   return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
 
 
+def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
+                                 use_gpu=False, force_gpu=False):
+  """Runs the test in both graph and eager modes.
+
+  Args:
+    __unused__: Prevents sliently skipping tests.
+    graph: Optional graph to use during the returned session.
+    config: An optional config_pb2.ConfigProto to use to configure the
+      session.
+    use_gpu: If True, attempt to run as many ops as possible on GPU.
+    force_gpu: If True, pin all ops to `/device:GPU:0`.
+
+  Returns:
+    Returns a decorator that will run the decorated test function
+        using both a graph and using eager execution.
+  """
+
+  assert not __unused__, "Add () after run_in_graph_and_eager_modes."
+
+  def decorator(f):
+    """Test method decorator."""
+    def decorated(self):
+      """Decorated the test method."""
+      with context.graph_mode():
+        with self.test_session(graph, config, use_gpu, force_gpu):
+          f(self)
+
+      def run_eager_mode():
+        if force_gpu:
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/device:GPU:0"
+          with context.device(gpu_name):
+            f(self)
+        elif use_gpu:
+          # TODO(xpan): Support softplacement and gpu by default when available.
+          f(self)
+        else:
+          with context.device("/device:CPU:0"):
+            f(self)
+
+      with context.eager_mode():
+        if graph is None:
+          run_eager_mode()
+        else:
+          with graph.as_default():
+            run_eager_mode()
+
+    return decorated
+  return decorator
+
+
+def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
+  """Returns whether TensorFlow can access a GPU.
+
+  Args:
+    cuda_only: limit the search to CUDA gpus.
+    min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
+      CUDA compute capability required, or None if no requirement.
+
+  Returns:
+    True iff a gpu device of the requested kind is available.
+  """
+
+  def compute_capability_from_device_desc(device_desc):
+    # TODO(jingyue): The device description generator has to be in sync with
+    # this file. Another option is to put compute capability in
+    # DeviceAttributes, but I avoided that to keep DeviceAttributes
+    # target-independent. Reconsider this option when we have more things like
+    # this to keep in sync.
+    # LINT.IfChange
+    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
+    # LINT.ThenChange(//tensorflow/core/\
+    #                 common_runtime/gpu/gpu_device.cc)
+    if not match:
+      return 0, 0
+    return int(match.group(1)), int(match.group(2))
+
+  for local_device in device_lib.list_local_devices():
+    if local_device.device_type == "GPU":
+      if (min_cuda_compute_capability is None or
+          compute_capability_from_device_desc(local_device.physical_device_desc)
+          >= min_cuda_compute_capability):
+        return True
+    if local_device.device_type == "SYCL" and not cuda_only:
+      return True
+  return False
+
+
+@contextlib.contextmanager
+def device(use_gpu):
+  """Uses gpu when requested and available."""
+  if use_gpu and is_gpu_available():
+    dev = "/device:GPU:0"
+  else:
+    dev = "/device:CPU:0"
+  with ops.device(dev):
+    yield
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -385,6 +487,25 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
+  def evaluate(self, tensors):
+    """Evaluates tensors and returns numpy values.
+
+    Args:
+      tensors: A Tensor or a list of Tensors.
+
+    Returns:
+      tensors numpy values.
+    """
+    if context.in_eager_mode():
+      if isinstance(tensors, list):
+        assert all(isinstance(t, ops.EagerTensor) for t in tensors)
+        return [t.numpy() for t in tensors]
+      assert isinstance(tensors, ops.EagerTensor), "Must be list or EagerTensor"
+      return tensors.numpy()
+    else:
+      sess = ops.get_default_session()
+      return sess.run(tensors)
+
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def test_session(self,
@@ -404,7 +525,7 @@ class TensorFlowTestCase(googletest.TestCase):
     trigger the creation of a new session.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
-    `force_gpu` is True, all ops are pinned to `/gpu:0`. Otherwise, if `use_gpu`
+    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if `use_gpu`
     is True, TensorFlow tries to run as many ops on the GPU as possible. If both
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
@@ -426,7 +547,7 @@ class TensorFlowTestCase(googletest.TestCase):
       config: An optional config_pb2.ConfigProto to use to configure the
         session.
       use_gpu: If True, attempt to run as many ops as possible on GPU.
-      force_gpu: If True, pin all ops to `/gpu:0`.
+      force_gpu: If True, pin all ops to `/device:GPU:0`.
 
     Returns:
       A Session object that should be used as a context manager to surround
@@ -454,6 +575,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:
@@ -463,11 +586,11 @@ class TensorFlowTestCase(googletest.TestCase):
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
-          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # Use the name of an actual device if one is detected, or '/device:GPU:0'
           # otherwise
           gpu_name = gpu_device_name()
           if not gpu_name:
-            gpu_name = "/gpu:0"
+            gpu_name = "/device:GPU:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -478,11 +601,11 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
         if force_gpu:
-          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # Use the name of an actual device if one is detected, or '/device:GPU:0'
           # otherwise
           gpu_name = gpu_device_name()
           if not gpu_name:
-            gpu_name = "/gpu:0"
+            gpu_name = "/device:GPU:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -654,7 +777,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(b, a, rtol=rtol, atol=atol, err_msg=msg)
+      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
@@ -749,7 +872,7 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
-      np.testing.assert_array_equal(b, a)
+      np.testing.assert_array_equal(a, b)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager

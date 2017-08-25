@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -35,7 +39,12 @@ class SingleMachineTest : public ::testing::Test {
     // Provision a single machine with 3 cpu cores, and a short timeout of 5
     // seconds: since there isn't much work to process a test graph that should
     // be plenty.
-    cluster_.reset(new SingleMachine(5, 3, 0));
+    int timeout_s = 5;
+#ifdef THREAD_SANITIZER
+    timeout_s *= 5;
+#endif
+    cluster_.reset(
+        new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
     TF_CHECK_OK(cluster_->Provision());
   }
 
@@ -349,6 +358,7 @@ TEST_F(SingleMachineTest, InitializationMemory) {
 }
 
 namespace {
+
 template <class T>
 inline void SetNodeAttr(const string& key, const T& value, NodeDef* node) {
   AttrValue attr_value;
@@ -462,6 +472,125 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   EXPECT_TRUE(found_table_init);
   EXPECT_TRUE(found_hashtable);
 }
+
+#if defined(PLATFORM_GOOGLE)
+namespace {
+
+SessionOptions GetSessionOption(int num_cpu_cores, int num_gpus) {
+  SessionOptions options;
+  // Copied from single_machine.h
+  (*options.config.mutable_device_count())["CPU"] = 1;
+  if (num_gpus > 0) {
+    (*options.config.mutable_device_count())["GPU"] = num_gpus;
+  }
+  CHECK_GE(num_cpu_cores, 1);
+  options.config.set_intra_op_parallelism_threads(num_cpu_cores);
+  options.config.add_session_inter_op_thread_pool()->set_num_threads(
+      num_cpu_cores);
+  return options;
+}
+
+Status GetDeviceMemoryStats(
+    const SessionOptions& session_option,
+    std::unordered_map<string, AllocatorStats>* allocator_stats_by_device) {
+  std::vector<Device*> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(session_option,
+                                               "" /* name_prefix */, &devices));
+  allocator_stats_by_device->clear();
+  for (Device* device : devices) {
+    AllocatorStats stats;
+    auto* allocator = device->GetAllocator(AllocatorAttributes());
+    if (!allocator->TracksAllocationSizes()) {
+      return Status(error::INVALID_ARGUMENT,
+                    "Tracking allocation is not enabled.");
+    }
+    allocator->GetStats(&stats);
+    (*allocator_stats_by_device)[device->name()] = stats;
+    delete device;
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // Add a variable and initializer.
+  Output a = ops::Variable(s.WithOpName("a"), TensorShape({128, 256}),
+                           DataType::DT_FLOAT);
+  Output a_init =
+      ops::RandomNormal(s.WithOpName("a/init"), {128, 256}, DataType::DT_FLOAT);
+  Output a_init_assign = ops::Assign(s.WithOpName("a/init/assign"), a, a_init);
+
+  // Add a resource variable.
+  Output b =
+      ops::VarHandleOp(s.WithOpName("b"), DataType::DT_FLOAT, {256, 512});
+  Output b_read =
+      ops::ReadVariableOp(s.WithOpName("b/read"), b, DataType::DT_FLOAT);
+  Output b_init =
+      ops::RandomNormal(s.WithOpName("b/init"), {256, 512}, DataType::DT_FLOAT);
+  auto b_init_assign =
+      ops::AssignVariableOp(s.WithOpName("b/init/assign"), b, b_init);
+
+  // Add a queue.
+  ops::FIFOQueue queue(s.WithOpName("queue"), {DataType::DT_STRING});
+  Output some_string =
+      ops::Const(s.WithOpName("some_string"), string("nothing"));
+  ops::QueueEnqueue enqueue(s.WithOpName("enqueue"), queue, {some_string});
+  ops::QueueDequeue dequeue(s.WithOpName("dequeue"), queue,
+                            {DataType::DT_STRING});
+
+  // Add a IdentityReader.
+  ops::IdentityReader reader(s.WithOpName("identity_reader"));
+  ops::ReaderRead read(s.WithOpName("read_from_queue"), reader, queue);
+
+  Output var_mul = ops::MatMul(s.WithOpName("var_matmul"), a, b_read);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  QueueRunnerDef queue_runner;
+  queue_runner.set_queue_name("queue");
+  *queue_runner.add_enqueue_op_name() = "enqueue";
+  item.queue_runners.push_back(queue_runner);
+
+  item.init_ops.push_back("a/init/assign");
+  item.init_ops.push_back("b/init/assign");
+  item.fetch.push_back("var_matmul");
+  item.fetch.push_back("dequeue");
+
+  // Run the graph
+  TF_CHECK_OK(cluster_->Initialize(item));
+  EnableCPUAllocatorStats(true);
+
+  SessionOptions options =
+      GetSessionOption(3 /* cpu cores */, 0 /* num gpus */);
+  std::unordered_map<string, AllocatorStats> device_memory_before;
+  TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory_before));
+  EXPECT_EQ(device_memory_before.size(), 1);
+
+  RunMetadata metadata;
+  TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
+
+  // Check there is memory that is not released.
+  std::unordered_map<string, AllocatorStats> device_memory;
+  TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory));
+  EXPECT_EQ(device_memory.size(), 1);
+  EXPECT_GT(device_memory.begin()->second.bytes_in_use, 0);
+
+  // Reset cluster_ would release all memory.
+  cluster_.reset();
+  std::unordered_map<string, AllocatorStats> device_memory_after;
+  TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory_after));
+
+  // Check memory used by resources are released after cluster destruction.
+  EXPECT_EQ(device_memory_before.size(), 1);
+  EXPECT_EQ(device_memory_after.size(), 1);
+  EXPECT_EQ(device_memory_before.begin()->second.bytes_in_use, 0);
+  EXPECT_EQ(device_memory_after.begin()->second.bytes_in_use, 0);
+}
+#endif
 
 }  // namespace
 }  // namespace grappler

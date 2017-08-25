@@ -25,6 +25,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -290,6 +291,12 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
       self.assertAllEqual(values, tensor.eval())
 
+  def testConvertToTensorEager(self):
+    with context.eager_mode():
+      t = ops.EagerTensor(1)
+      converted = ops.convert_to_tensor(t)
+      self.assertTrue(isinstance(converted, ops.EagerTensor))
+
   def testConvertToTensorNestedTuple(self):
     with self.test_session():
       values = ((2,), (3,), (5,), (7,))
@@ -369,9 +376,12 @@ class OperationTest(test_util.TensorFlowTestCase):
             attrs={
                 "value": attr_value_pb2.AttrValue(i=32),
                 "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
-                "list": attr_value_pb2.AttrValue(list=list_value)
+                "list": attr_value_pb2.AttrValue(list=list_value),
+                "func": attr_value_pb2.AttrValue(
+                    func=attr_value_pb2.NameAttrList())
             }), ops.Graph(), [], [dtypes.int32])
     self.assertEqual(32, op.get_attr("value"))
+    self.assertEqual("", op.get_attr("func").name)
 
     d = op.get_attr("dtype")
     # First check that d is a DType, because the assertEquals will
@@ -1239,6 +1249,13 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 class OpScopeTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerDefaultScopeName(self):
+    with ops.name_scope(None, "default") as scope:
+      self.assertEqual(scope, "default/")
+      with ops.name_scope(None, "default2") as scope2:
+        self.assertEqual(scope2, "default/default2/")
+
   def testNoScopeName(self):
     g0 = ops.Graph()
     values = [
@@ -1552,26 +1569,26 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
 
   def testColocationDeviceInteraction(self):
     with ops.device("/cpu:0"):
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         a = constant_op.constant([2.0], name="a")
       with ops.colocate_with(a.op):
         # 'b' is created in the scope of /cpu:0, but it is
-        # colocated with 'a', which is on '/gpu:0'.  colocate_with
+        # colocated with 'a', which is on '/device:GPU:0'.  colocate_with
         # overrides devices because it is a stronger constraint.
         b = constant_op.constant(3.0)
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
     self.assertEqual(a.op.device, b.op.device)
 
   def testColocationCanonicalization(self):
-    with ops.device("/gpu:0"):
+    with ops.device("/device:GPU:0"):
       _ = constant_op.constant(2.0)
-    with ops.device(lambda op: "/gpu:0"):
+    with ops.device(lambda op: "/device:GPU:0"):
       b = constant_op.constant(3.0)
     with ops.get_default_graph().colocate_with(b):
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         c = constant_op.constant(4.0)
 
-    # A's device will be /gpu:0
+    # A's device will be /device:GPU:0
     # B's device will be /device:GPU:0
     # C's device will be /device:GPU:0 because it
     # inherits B's device name, after canonicalizing the names.
@@ -1579,10 +1596,10 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
 
   def testLocationOverrides(self):
     with ops.device("/cpu:0"):
-      with ops.device("/gpu:0"):
+      with ops.device("/device:GPU:0"):
         a = constant_op.constant([2.0], name="a")
         # Note that this colocation is "redundant", since we are
-        # within the scope of "/gpu:0".  However, we would like to
+        # within the scope of "/device:GPU:0".  However, we would like to
         # preserve in the GraphDef that these two ops should be
         # colocated in a portable way.
         with ops.colocate_with(a.op):
@@ -1649,7 +1666,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
   def testInconsistentDeviceWithinColocate(self):
-    with ops.device("/gpu:0"):
+    with ops.device("/device:GPU:0"):
       a = constant_op.constant([2.0], name="a")
       with ops.colocate_with(a.op):
         # This is allowed due to legacy but clearly wrong, since we

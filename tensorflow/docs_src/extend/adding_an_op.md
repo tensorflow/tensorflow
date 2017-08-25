@@ -178,9 +178,7 @@ suggested implementation is to:
    file, but the specialization for the GPUDevice is defined in a .cu.cc file,
    since it will be compiled with the CUDA compiler.
 
-<!--zippy-->
-
-Expand this to see the example implementation.
+Here is an example implementation.
 
 ```c++
 // example.h
@@ -307,8 +305,6 @@ template struct ExampleFunctor<GPUDevice, int32>;
 #endif  // GOOGLE_CUDA
 ```
 
-<!--endzippy-->
-
 ## Build the op library
 ### Compile the op using your system compiler (TensorFlow binary installation)
 
@@ -333,7 +329,7 @@ to compile your op into a dynamic library.
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I$TF_INC -I$TF_INC/external/nsync/public -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -528,7 +524,7 @@ REGISTER\_OP("ZeroOut")
 </code></pre>
 
 (Note that the set of [attribute types](#attr-types) is different from the
-@{$dims_types$tensor types} used for inputs and outputs.)
+@{tf.DType$tensor types} used for inputs and outputs.)
 
 Your kernel can then access this attr in its constructor via the `context`
 parameter:
@@ -603,7 +599,7 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
 
 * `{<type1>, <type2>}`: The value is of type `type`, and must be one of
   `<type1>` or `<type2>`, where `<type1>` and `<type2>` are supported
-  @{$dims_types#data-types$tensor types}.  You don't specify
+  @{tf.DType$tensor types}.  You don't specify
   that the type of the attr is `type`. This is implied when you have a list of
   types in `{...}`.  For example, in this case the attr `t` is a type that must
   be an `int32`, a `float`, or a `bool`:
@@ -685,7 +681,8 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
    .Attr("l_int: list(int) = [2, 3, 5, 7]");
 ```
 
-Note in particular that the values of type `type` use @{$dims_types#data-types$the `DT_*` names for the types}.
+Note in particular that the values of type `type`
+use @{tf.DType$the `DT_*` names for the types}.
 
 #### Polymorphism {#polymorphism}
 
@@ -763,7 +760,7 @@ Your op registration now specifies that the input's type must be `float`, or
 >   """
 > ```
 
-<pre><pre class="prettyprint"><code class="lang-cpp">
+<pre class="prettyprint"><code class="lang-cpp">
 \#include "tensorflow/core/framework/op_kernel.h"<br/>
 class ZeroOut<b>Int32</b>Op : public OpKernel {
   // as before
@@ -803,7 +800,7 @@ REGISTER\_KERNEL\_BUILDER(
     .Device(DEVICE\_CPU)
     .TypeConstraint&lt;float&gt;("T"),
     ZeroOutFloatOp);
-</b></code></pre></pre>
+</b></code></pre>
 
 > To preserve [backwards compatibility](#backwards-compatibility), you should
 > specify a [default value](#default-values-constraints) when adding an attr to
@@ -1015,7 +1012,7 @@ expressions:
   `string`). This specifies a single tensor of the given type.
 
   See
-  @{$dims_types#data-types$the list of supported Tensor types}.
+  @{tf.DType$the list of supported Tensor types}.
 
   ```c++
   REGISTER_OP("BuiltInTypesExample")
@@ -1058,7 +1055,7 @@ expressions:
 * For a sequence of tensors with the same type: `<number> * <type>`, where
   `<number>` is the name of an [Attr](#attrs) with type `int`.  The `<type>` can
   either be
-  @{$dims_types#data-types$a specific type like `int32` or `float`},
+  @{tf.DType$a specific type like `int32` or `float`},
   or the name of an attr with type `type`.  As an example of the first, this
   op accepts a list of `int32` tensors:
 
@@ -1201,10 +1198,10 @@ into a single dynamically loadable library:
 
 ```bash
 nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
--I $TF_INC -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
+-I $TF_INC -I$TF_INC/external/nsync/public -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
 
 g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
-cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
+cuda_op_kernel.cu.o -I $TF_INC -I$TF_INC/external/nsync/public -fPIC -lcudart
 ```
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the

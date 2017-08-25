@@ -38,10 +38,6 @@ _cudnn_rnn_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
 
 _flatten_transpose = lambda t: array_ops.reshape(array_ops.transpose(t), [-1])
-# pylint: disable=g-long-lambda
-_transpose_reshape = lambda t, shape: array_ops.transpose(
-    array_ops.reshape(t, shape))
-# pylint: enable=g-long-lambda
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -49,6 +45,92 @@ CUDNN_LSTM = "lstm"
 CUDNN_GRU = "gru"
 CUDNN_RNN_RELU = "rnn_relu"
 CUDNN_RNN_TANH = "rnn_tanh"
+
+
+class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
+  """Cudnn Compatible LSTMBlockCell.
+
+  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
+  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by
+  this cell seamlessly.
+  """
+
+  def __init__(self, num_units):
+    super(CudnnCompatibleLSTMCell, self).__init__(
+        num_units, forget_bias=0, clip_cell=False, use_peephole=False)
+    self._names.update({"scope": "cudnn_compatible_lstm_cell"})
+
+
+class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
+  """Cudnn Compatible GRUCell.
+
+  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
+  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by
+  it seamlessly.
+
+  It differs from non-cudnn-compatible GRUs in how the new memory gate is
+  calculated. Nvidia picks this variant based on GRU author's[1] suggestion and
+  the fact it has no accuracy impact[2].
+  [1] https://arxiv.org/abs/1406.1078
+  [2] http://svail.github.io/diff_graphs/
+
+  cuDNN compatible GRU (from cuDNN library user guide):
+  ```python
+  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
+  i_t = sigma(x_t * W_i + h_t-1 * R_i + b_Wi + b_Ru)  # update gate
+  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
+  h_t = (1 - i_t) .* h'_t + i_t .* h_t-1
+  ```
+
+  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
+  ```python
+  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  ```
+
+  Note: in addition to the extra bias term b_Rh,
+  ```python
+  r .* (h * R) != (r .* h) * R
+  ```
+
+  TODO(jamesqin): change the impl to mirror the canonical version, since cuDNN
+  will do the same after v7.1.
+  """
+
+  def __init__(self, num_units, reuse=None, kernel_initializer=None):
+    super(CudnnCompatibleGRUCell, self).__init__(
+        num_units,
+        activation=None,
+        reuse=reuse,
+        kernel_initializer=kernel_initializer)
+
+  def call(self, inputs, state):
+    """Gated recurrent unit (GRU) with nunits cells."""
+    with vs.variable_scope("gates"):  # Reset gate and update gate.
+      # We start with bias of 1.0 to not reset and not update.
+      bias_ones = self._bias_initializer
+      if self._bias_initializer is None:
+        dtype = inputs.dtype
+        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
+      # pylint: disable=protected-access
+      value = math_ops.sigmoid(
+          rnn_cell_impl._linear([inputs, state], 2 * self._num_units, True,
+                                bias_ones, self._kernel_initializer))
+      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
+      # pylint: enable=protected-access
+    with vs.variable_scope("candidate"):
+      # pylint: disable=protected-access
+      with vs.variable_scope("input_projection"):
+        hi = rnn_cell_impl._linear(inputs, self._num_units, True,
+                                   self._bias_initializer,
+                                   self._kernel_initializer)
+      with vs.variable_scope("hidden_projection"):
+        hh = r * (rnn_cell_impl._linear(state, self._num_units, True,
+                                        self._bias_initializer,
+                                        self._kernel_initializer))
+      # pylint: enable=protected-access
+      c = self._activation(hi + hh)
+    new_h = u * state + (1 - u) * c
+    return new_h, new_h
 
 
 # TODO(yaozhang): make sure we only save the canonical version of params and
@@ -132,7 +214,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         for param, param_name in zip(params, param_names)
     ]
     super(RNNParamsSaveable, self).__init__(
-        param_variables[0], specs, name)
+        array_ops.identity(param_variables[0]), specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
     if (self._cudnn_rnn.direction == CUDNN_RNN_UNIDIRECTION and
@@ -242,8 +324,6 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     transformed_weights, transformed_biases = [], []
     for i in range(self._cudnn_rnn.num_layers):
       base_idx = i * 8
-      num_units = self._cudnn_rnn.num_units
-      input_size = self._cudnn_rnn.input_size if i == 0 else num_units
       # cuDNN tensor shapes per time_step:
       # input.shape:         [batch_size, input_size],
       # input_weights.shape: [num_units, input_size] (first layer)
@@ -260,16 +340,11 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
 
       # Stitch weights together in this layer.
       stitched_w = []
+
       for j in range(4):
         stitched_w.append(
             array_ops.concat(
-                [
-                    array_ops.reshape(weights[base_idx + j],
-                                      [num_units, input_size]),
-                    array_ops.reshape(weights[base_idx + j + 4],
-                                      [num_units, num_units])
-                ],
-                axis=1))
+                [weights[base_idx + j], weights[base_idx + j + 4]], axis=1))
       # cuDNN weights are in ifco order, convert to icfo order.
       self._switch_inner(stitched_w, 0)
       transformed_weights.append(
@@ -307,8 +382,6 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     transformed_weights, transformed_biases = [], []
     for i in range(self._cudnn_rnn.num_layers):
       base_idx = i * 6
-      num_units = self._cudnn_rnn.num_units
-      input_size = self._cudnn_rnn.input_size if i == 0 else num_units
       # cuDNN tensor shapes per time_step:
       # input.shape:         [batch_size, input_size],
       # input_weights.shape: [num_units, input_size] (first layer)
@@ -335,19 +408,14 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         stitched_w.append(
             array_ops.concat(
                 [
-                    array_ops.reshape(weights[base_idx + j],
-                                      [num_units, input_size]),
-                    array_ops.reshape(weights[base_idx + j + 3],
-                                      [num_units, num_units])
-                ],
-                axis=1))
+                    weights[base_idx + j],
+                    weights[base_idx + j + 3],
+                ], axis=1))
       transformed_weights.append(
           array_ops.transpose(array_ops.concat(stitched_w[:2], axis=0)))
       # weights for new memory gate are kept separate.
-      transformed_weights.append(
-          _transpose_reshape(weights[base_idx + 2], [num_units, input_size]))
-      transformed_weights.append(
-          _transpose_reshape(weights[base_idx + 5], [num_units, num_units]))
+      transformed_weights.append(array_ops.transpose(weights[base_idx + 2]))
+      transformed_weights.append(array_ops.transpose(weights[base_idx + 5]))
 
       # Bias for reset and update gates.
       b_r = array_ops.concat(biases[base_idx:base_idx + 2], axis=0)
@@ -548,7 +616,12 @@ class _CudnnRNN(object):
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
+    Raises:
+      ValueError: if direction is invalid.
     """
+    if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
+      raise ValueError("Invalid direction: %s, expect %s or %s",
+                       direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION)
     self._num_layers = num_layers
     self._num_units = num_units
     self._input_size = input_size
@@ -644,6 +717,9 @@ class _CudnnRNN(object):
     Returns:
       A function for the specific-to-canonical conversion.
     """
+    num_params = self._num_layers * self._NUM_PARAMS_PER_LAYER
+    if self._direction != CUDNN_RNN_UNIDIRECTION:
+      num_params *= 2
     weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -652,7 +728,7 @@ class _CudnnRNN(object):
         dropout=self._dropout,
         seed=self._seed,
         seed2=self._seed2,
-        num_params=self._num_layers * self._NUM_PARAMS_PER_LAYER,
+        num_params=num_params,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
         direction=self._direction)
@@ -844,116 +920,6 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # 1 set of weight and bias parameters for the recurrent input, and 1 for the
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = 2
-
-
-class CudnnCompatibleLSTMBlockCell(lstm_ops.LSTMBlockCell):
-  """Cudnn Compatible LSTMBlockCell.
-
-  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by the
-  this cell seamlessly. It is the more performant than
-  @{tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell}, the same way
-  @{tf.contrib.rnn.LSTMBlockCell} can be more performant than
-  @{tf.nn.rnn_cell.LSTMCell}.
-  """
-
-  def __init__(self, num_units):
-    super(CudnnCompatibleLSTMBlockCell, self).__init__(
-        num_units, forget_bias=0, clip_cell=False, use_peephole=False)
-    self._names.update({"scope": "cudnn_compatible_lstm_cell"})
-
-
-class CudnnCompatibleLSTMCell(rnn_cell_impl.LSTMCell):
-  """Cudnn Compatible LSTMCell.
-
-  A simple wrapper around @{tf.nn.rnn_cell.LSTMCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by the
-  former seamlessly.
-  """
-
-  def __init__(self, num_units, reuse=None):
-    super(CudnnCompatibleLSTMCell, self).__init__(
-        num_units,
-        use_peepholes=False,
-        cell_clip=None,
-        num_proj=None,
-        proj_clip=None,
-        state_is_tuple=True,
-        activation=None,
-        reuse=reuse,
-        forget_bias=0)
-
-
-class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
-  """Cudnn Compatible GRUCell.
-
-  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by the
-  it seamlessly.
-
-  It differs from non-cudnn-compatible GRUs in how the new memory gate is
-  calculated. Nvidia picks this variant based on GRU author's[1] suggestion and
-  the fact it has no accuracy impact[2].
-  [1] https://arxiv.org/abs/1406.1078
-  [2] http://svail.github.io/diff_graphs/
-
-  cuDNN compatible GRU (from cuDNN library user guide):
-  ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  i_t = sigma(x_t * W_i + h_t-1 * R_i + b_Wi + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - i_t) .* h'_t + i_t .* h_t-1
-  ```
-
-  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
-  ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
-  ```
-
-  Note: in addition to the extra bias term b_Rh,
-  ```python
-  r .* (h * R) != (r .* h) * R
-  ```
-
-  TODO(jamesqin): change the impl to mirror the canonical version, since cuDNN
-  will do the same after v7.1.
-  """
-
-  def __init__(self, num_units, reuse=None, kernel_initializer=None):
-    super(CudnnCompatibleGRUCell, self).__init__(
-        num_units,
-        activation=None,
-        reuse=reuse,
-        kernel_initializer=kernel_initializer)
-
-  def call(self, inputs, state):
-    """Gated recurrent unit (GRU) with nunits cells."""
-    with vs.variable_scope("gates"):  # Reset gate and update gate.
-      # We start with bias of 1.0 to not reset and not update.
-      bias_ones = self._bias_initializer
-      if self._bias_initializer is None:
-        dtype = inputs.dtype
-        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
-      # pylint: disable=protected-access
-      value = math_ops.sigmoid(
-          rnn_cell_impl._linear([inputs, state], 2 * self._num_units, True,
-                                bias_ones, self._kernel_initializer))
-      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
-      # pylint: enable=protected-access
-    with vs.variable_scope("candidate"):
-      # pylint: disable=protected-access
-      with vs.variable_scope("input_projection"):
-        hi = rnn_cell_impl._linear(inputs, self._num_units, True,
-                                   self._bias_initializer,
-                                   self._kernel_initializer)
-      with vs.variable_scope("hidden_projection"):
-        hh = r * (rnn_cell_impl._linear(state, self._num_units, True,
-                                        self._bias_initializer,
-                                        self._kernel_initializer))
-      # pylint: enable=protected-access
-      c = self._activation(hi + hh)
-    new_h = u * state + (1 - u) * c
-    return new_h, new_h
 
 
 @ops.RegisterGradient("CudnnRNN")

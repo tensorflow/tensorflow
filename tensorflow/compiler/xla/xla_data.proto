@@ -369,7 +369,7 @@ message SliceRequest {
   ComputationDataHandle operand = 2;
   repeated int64 start_indices = 3;
   repeated int64 limit_indices = 4;
-  repeated int64 stride = 5;
+  repeated int64 strides = 5;
 }
 
 message DynamicSliceRequest {
@@ -489,6 +489,16 @@ message BatchNormTrainingRequest {
   ComputationDataHandle offset = 3;
   float epsilon = 4;
   int64 feature_index = 5;
+}
+
+message BatchNormInferenceRequest {
+  ComputationDataHandle operand = 1;
+  ComputationDataHandle scale = 2;
+  ComputationDataHandle offset = 3;
+  ComputationDataHandle mean = 4;
+  ComputationDataHandle variance = 5;
+  float epsilon = 6;
+  int64 feature_index = 7;
 }
 
 message BatchNormGradRequest {
@@ -813,7 +823,8 @@ message OpRequest {
     OutfeedRequest outfeed_request = 32;
     BatchNormTrainingRequest batch_norm_training_request = 35;
     BatchNormGradRequest batch_norm_grad_request = 37;
-    // Next: 38
+    BatchNormInferenceRequest batch_norm_inference_request = 38;
+    // Next: 39
   }
 }
 

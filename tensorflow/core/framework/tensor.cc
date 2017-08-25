@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -947,6 +948,10 @@ string Tensor::SummarizeValue(int64 max_entries) const {
           case DT_STRING:
             strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
             break;
+          case DT_VARIANT: {
+            const Variant& v = flat<Variant>()(i);
+            strings::StrAppend(&ret, v.DebugString());
+          } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
             // complex64, quantized).

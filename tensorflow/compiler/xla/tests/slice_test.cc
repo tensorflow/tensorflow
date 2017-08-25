@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -194,12 +193,27 @@ class SliceR1Test : public ClientLibraryTestBase,
   }
 };
 
-XLA_TEST_P(SliceR1Test, DoIt) {
+XLA_TEST_P(SliceR1Test, DoIt_F32) {
   Run<float>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_F64) {
   Run<double>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_U32) {
   Run<uint32>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_S32) {
   Run<int32>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_U64) {
   Run<uint64>(GetParam());
+}
+
+XLA_TEST_P(SliceR1Test, DoIt_S64) {
   Run<int64>(GetParam());
 }
 
@@ -294,20 +308,3 @@ INSTANTIATE_TEST_CASE_P(
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

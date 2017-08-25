@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
+#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -34,24 +35,23 @@ class CompilerFunctor {
   struct VectorIntrinsics {
     bool sse_intrinsics;
     bool avx_intrinsics;
+    bool neon_intrinsics;
   };
 
   // Returns a VectorIntrinsics where all intrinsics are available.
   static VectorIntrinsics AllIntrinsics();
 
-  // A callback of this type can be run before and/or after IR-level
-  // optimization to e.g. dump out the generated IR to disk or gather some
-  // statistics.
-  using ModuleHook = std::function<Status(const llvm::Module&)>;
-
-  explicit CompilerFunctor(llvm::TargetMachine* target_machine,
-                           const Disassembler* disassembler, int opt_level,
-                           const VectorIntrinsics& available_intrinsics,
-                           ModuleHook pre_optimization_hook = nullptr,
-                           ModuleHook post_optimization_hook = nullptr)
+  explicit CompilerFunctor(
+      llvm::TargetMachine* target_machine, const Disassembler* disassembler,
+      int opt_level, bool optimize_for_size, bool enable_fast_math,
+      const VectorIntrinsics& available_intrinsics,
+      LLVMCompiler::ModuleHook pre_optimization_hook = nullptr,
+      LLVMCompiler::ModuleHook post_optimization_hook = nullptr)
       : target_machine_(target_machine),
         disassembler_(CHECK_NOTNULL(disassembler)),
         opt_level_(opt_level),
+        optimize_for_size_(optimize_for_size),
+        enable_fast_math_(enable_fast_math),
         available_intrinsics_(available_intrinsics),
         pre_optimization_hook_(pre_optimization_hook),
         post_optimization_hook_(post_optimization_hook) {}
@@ -61,17 +61,23 @@ class CompilerFunctor {
       llvm::Module& module) const;  // NOLINT
 
  private:
+  // Populates the given pass manager with TargetLibraryInfo and
+  // TargetTransformInfo passes.
+  void AddTargetInfoPasses(llvm::legacy::PassManagerBase* passes) const;
+
   // Populates the given pass managers based on the optimization level.
-  void AddOptimizationPasses(
-      llvm::legacy::PassManagerBase* module_passes,
-      llvm::legacy::FunctionPassManager* function_passes) const;
+  void AddOptimizationPasses(llvm::legacy::PassManagerBase* module_passes,
+                             llvm::legacy::FunctionPassManager* function_passes,
+                             unsigned opt_level, unsigned size_level) const;
 
   llvm::TargetMachine* target_machine_;
   const Disassembler* disassembler_;
   const unsigned opt_level_;
+  const bool optimize_for_size_;
+  const bool enable_fast_math_;
   const VectorIntrinsics available_intrinsics_;
-  ModuleHook pre_optimization_hook_;
-  ModuleHook post_optimization_hook_;
+  LLVMCompiler::ModuleHook pre_optimization_hook_;
+  LLVMCompiler::ModuleHook post_optimization_hook_;
 };
 
 }  // namespace cpu

@@ -165,14 +165,16 @@ def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
   if dtype is None:
     dtype = primary.dtype
   slot_shape = primary.get_shape()
-  slot_shape = (slot_shape if slot_shape.is_fully_defined()
-                else array_ops.shape(primary.initialized_value()))
   if slot_shape.is_fully_defined():
     initializer = init_ops.zeros_initializer(dtype)
     return create_slot_with_initializer(
         primary, initializer, slot_shape, dtype, name,
         colocate_with_primary=colocate_with_primary)
   else:
+    if isinstance(primary, variables.Variable):
+      slot_shape = array_ops.shape(primary.initialized_value())
+    else:
+      slot_shape = array_ops.shape(primary)
     val = array_ops.zeros(slot_shape, dtype=dtype)
     return create_slot(primary, val, name,
                        colocate_with_primary=colocate_with_primary)

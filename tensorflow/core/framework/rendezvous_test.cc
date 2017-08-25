@@ -34,15 +34,16 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace {
 
 TEST(RendezvousTest, Key) {
   const string key = Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/CPU:0", 7890,
-      "/job:mnist/replica:1/task:2/GPU:0", "var0", FrameAndIter(0, 0));
+      "/job:mnist/replica:1/task:2/device:GPU:0", "var0", FrameAndIter(0, 0));
   EXPECT_EQ(key,
             "/job:mnist/replica:1/task:2/CPU:0;"
             "0000000000001ed2;"  // 7890 = 0x1ed2
-            "/job:mnist/replica:1/task:2/GPU:0;"
+            "/job:mnist/replica:1/task:2/device:GPU:0;"
             "var0;"
             "0:0");
   Rendezvous::ParsedKey parsed;
@@ -50,12 +51,12 @@ TEST(RendezvousTest, Key) {
   EXPECT_EQ(parsed.src_device, "/job:mnist/replica:1/task:2/CPU:0");
   EXPECT_EQ(parsed.src_incarnation, 7890);
   EXPECT_EQ(parsed.src.type, "CPU");
-  EXPECT_EQ(parsed.dst_device, "/job:mnist/replica:1/task:2/GPU:0");
+  EXPECT_EQ(parsed.dst_device, "/job:mnist/replica:1/task:2/device:GPU:0");
   EXPECT_EQ(parsed.dst.type, "GPU");
 
   EXPECT_FALSE(Rendezvous::ParseKey("foo;bar;baz", &parsed).ok());
   EXPECT_FALSE(Rendezvous::ParseKey("/job:mnist/replica:1/task:2/CPU:0;"
-                                    "/job:mnist/replica:1/task:2/GPU:0;",
+                                    "/job:mnist/replica:1/task:2/device:GPU:0;",
                                     &parsed)
                    .ok());
   EXPECT_FALSE(
@@ -64,22 +65,22 @@ TEST(RendezvousTest, Key) {
 
 class LocalRendezvousTest : public ::testing::Test {
  public:
-  LocalRendezvousTest()
-      : threads_(new thread::ThreadPool(Env::Default(), "test", 16)) {
+  LocalRendezvousTest() : threads_(Env::Default(), "test", 16) {
     rendez_ = NewLocalRendezvous();
   }
 
   ~LocalRendezvousTest() override {
     rendez_->Unref();
-    delete threads_;
   }
 
-  void SchedClosure(std::function<void()> fn) { threads_->Schedule(fn); }
+  void SchedClosure(std::function<void()> fn) {
+    threads_.Schedule(std::move(fn));
+  }
 
   Rendezvous* rendez_;
 
  private:
-  thread::ThreadPool* threads_;
+  thread::ThreadPool threads_;
 };
 
 // string -> Tensor<string>
@@ -96,12 +97,9 @@ string V(const Tensor& tensor) {
   return tensor.scalar<string>()();
 }
 
-const char* kFoo = "/cpu:0;1;/cpu:1;foo;1;2";
-const char* kBar = "/gpu:0;2;/gpu:1;bar;1;2";
-
 Rendezvous::ParsedKey MakeKey(const string& name) {
   string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
-                                   "/job:mnist/replica:1/task:2/GPU:0", name,
+                                   "/job:mnist/replica:1/task:2/device:GPU:0", name,
                                    FrameAndIter(0, 0));
   Rendezvous::ParsedKey k;
   TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));
@@ -213,7 +211,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
   state.done.WaitForNotification();
 }
 
-static void RandomSleep() {
+void RandomSleep() {
   if (std::rand() % 10 == 0) {
     Env::Default()->SleepForMicroseconds(1000);
   }
@@ -310,7 +308,7 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   args1.device_context->Unref();
 }
 
-static void BM_SendRecv(int iters) {
+void BM_SendRecv(int iters) {
   Rendezvous* rendez = NewLocalRendezvous();
   Tensor orig = V("val");
   Tensor val(DT_STRING, TensorShape({}));
@@ -328,7 +326,7 @@ static void BM_SendRecv(int iters) {
 }
 BENCHMARK(BM_SendRecv);
 
-static void BM_PingPong(int iters) {
+void BM_PingPong(int iters) {
   CHECK_GT(iters, 0);
   thread::ThreadPool* pool = new thread::ThreadPool(Env::Default(), "test", 1);
 
@@ -362,4 +360,5 @@ static void BM_PingPong(int iters) {
 }
 BENCHMARK(BM_PingPong);
 
+}  // namespace
 }  // namespace tensorflow

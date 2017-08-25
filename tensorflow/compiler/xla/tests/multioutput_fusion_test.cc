@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -43,17 +42,15 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::gtl::ArraySlice;
-
 namespace xla {
 namespace {
 
-class MultiOutputFusionTest : public HloTestBase {
- public:
-  ErrorSpec error_spec_{0.0001, 1e-2};
+using ::tensorflow::gtl::ArraySlice;
 
+class MultiOutputFusionTest : public HloTestBase {
  protected:
-  MultiOutputFusionTest() {}
+  MultiOutputFusionTest() { error_spec_ = ErrorSpec{0.0001, 1e-2}; }
+
   void RunTest2D(bool manual_fusion, int64 size) {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewModule();
@@ -177,21 +174,3 @@ XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-
-  return RUN_ALL_TESTS();
-}

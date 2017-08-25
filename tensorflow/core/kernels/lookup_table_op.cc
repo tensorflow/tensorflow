@@ -124,6 +124,20 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   TensorShape value_shape() const override { return TensorShape(); }
 
+  int64 MemoryUsed() const override {
+    int64 ret = 0;
+    mutex_lock l(mu_);
+    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
+      size_t bucket_size = table_.bucket_size(i);
+      if (bucket_size == 0) {
+        ret++;
+      } else {
+        ret += bucket_size;
+      }
+    }
+    return sizeof(MutableHashTableOfScalars) + ret;
+  }
+
  private:
   // TODO(andreasst): consider using a read/write lock or a concurrent map
   mutable mutex mu_;
@@ -238,6 +252,20 @@ class MutableHashTableOfTensors final : public LookupInterface {
   TensorShape key_shape() const final { return TensorShape(); }
 
   TensorShape value_shape() const override { return value_shape_; }
+
+  int64 MemoryUsed() const override {
+    int64 ret = 0;
+    mutex_lock l(mu_);
+    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
+      size_t bucket_size = table_.bucket_size(i);
+      if (bucket_size == 0) {
+        ret++;
+      } else {
+        ret += bucket_size;
+      }
+    }
+    return sizeof(MutableHashTableOfTensors) + ret;
+  }
 
  private:
   TensorShape value_shape_;
@@ -466,6 +494,12 @@ class MutableDenseHashTable final : public LookupInterface {
   TensorShape key_shape() const override { return key_shape_; }
 
   TensorShape value_shape() const override { return value_shape_; }
+
+  int64 MemoryUsed() const override {
+    mutex_lock l(mu_);
+    return sizeof(MutableDenseHashTable) + key_buckets_.AllocatedBytes() +
+           value_buckets_.AllocatedBytes() + empty_key_.AllocatedBytes();
+  }
 
  private:
   Status DoInsert(OpKernelContext* ctx, const Tensor& key, const Tensor& value,

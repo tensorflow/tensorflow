@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -182,7 +183,10 @@ class TensorArrayOp : public XlaOpKernel {
                                dtype_, value, &var));
     var->tensor_array_size = size;
     ctx->SetResourceOutput(0, var);
-    ctx->SetConstantOutput(1, Tensor(DT_FLOAT));
+
+    Tensor flow(DT_FLOAT, TensorShape({}));
+    flow.scalar<float>()() = 0.0f;
+    ctx->SetConstantOutput(1, flow);
   }
 
  private:
@@ -216,6 +220,7 @@ class TensorArrayWriteOp : public XlaOpKernel {
     xla::ComputationDataHandle ta = resource->value;
     xla::ComputationDataHandle index = ctx->Input(1);
     xla::ComputationDataHandle value = ctx->Input(2);
+    xla::ComputationDataHandle flow = ctx->Input(3);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
     auto start_indices = XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
@@ -228,7 +233,7 @@ class TensorArrayWriteOp : public XlaOpKernel {
         DynamicAddSlice(b, ta, update, slice_shape.dim_sizes(), start_indices);
 
     resource->value = written;
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -302,36 +307,12 @@ class TensorArrayGatherOp : public XlaOpKernel {
     const TensorShape indices_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, indices_shape.dims() == 1,
                 errors::InvalidArgument("indices must be rank 1"));
-    const int num_indices = indices_shape.dim_size(0);
     auto indices = ctx->Input(1);
 
     xla::ComputationDataHandle ta = resource->value;
 
-    // For each index in `indices`, add the corresponding slice to `slices`.
-    std::vector<xla::ComputationDataHandle> slices(num_indices);
-    for (int i = 0; i < num_indices; ++i) {
-      // Slices the i-th index out of `indices`, and pads it with zeros in the
-      // minor dimensions to form an index into the TensorArray storage.
-      auto index = b->Slice(indices, {i}, {i + 1}, {1});
-
-      // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-      auto start_indices =
-          XlaHelpers::PadWithZeros(b, index, ta_shape.dims() - 1);
-
-      auto slice_shape = ta_shape.dim_sizes();
-      slice_shape[0] = 1LL;
-
-      slices[i] = b->DynamicSlice(ta, start_indices, slice_shape);
-    }
-
-    xla::ComputationDataHandle gather;
-    if (slices.empty()) {
-      auto shape = ta_shape.dim_sizes();
-      shape[0] = 0;
-      gather = b->Broadcast(XlaHelpers::Zero(b, dtype_), shape);
-    } else {
-      gather = b->ConcatInDim(slices, 0);
-    }
+    xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
+        ctx, ta, ta_shape, indices, indices_shape, dtype_, b);
     ctx->SetOutput(0, gather);
   }
 
@@ -369,6 +350,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
 
     xla::ComputationDataHandle ta = resource->value;
     const xla::ComputationDataHandle value = ctx->Input(2);
+    const xla::ComputationDataHandle flow = ctx->Input(3);
 
     auto slice_dims = value_shape.dim_sizes();
     slice_dims[0] = 1LL;
@@ -394,7 +376,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
     }
 
     resource->value = ta;
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -489,6 +471,7 @@ class TensorArraySplitOp : public XlaOpKernel {
                     lengths.size(), " vs. ", resource->tensor_array_size, ")"));
 
     const xla::ComputationDataHandle value = ctx->Input(1);
+    const xla::ComputationDataHandle flow = ctx->Input(3);
 
     OP_REQUIRES(ctx, value_shape.num_elements() == ta_shape.num_elements(),
                 errors::InvalidArgument("mismatched element count ",
@@ -497,7 +480,7 @@ class TensorArraySplitOp : public XlaOpKernel {
 
     resource->value = b->Add(ta, b->Reshape(value, ta_shape.dim_sizes()));
 
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:

@@ -55,14 +55,17 @@ TEST_F(HloEvaluatorTest, DoesClamp) {
   auto value = Literal::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
 
   Shape shape = low->shape();
-  auto c1 = HloInstruction::CreateConstant(std::move(low));
-  auto c2 = HloInstruction::CreateConstant(std::move(high));
-  auto c3 = HloInstruction::CreateConstant(std::move(value));
-  auto instruction = HloInstruction::CreateTernary(
-      shape, HloOpcode::kClamp, c1.get(), c2.get(), c3.get());
+  HloComputation::Builder b(TestName());
+  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
+  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
+  auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+  auto instruction = b.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
+  HloModule module(TestName());
+  module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
   auto expected = Literal::CreateR2<float>({{0, 4}, {2, 4}});
 
@@ -77,14 +80,19 @@ TEST_F(HloEvaluatorTest, DoesSelect) {
   auto on_false = Literal::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
 
   Shape shape = on_true->shape();
-  auto c1 = HloInstruction::CreateConstant(std::move(pred));
-  auto c2 = HloInstruction::CreateConstant(std::move(on_true));
-  auto c3 = HloInstruction::CreateConstant(std::move(on_false));
-  auto instruction = HloInstruction::CreateTernary(
-      shape, HloOpcode::kSelect, c1.get(), c2.get(), c3.get());
+  HloComputation::Builder b(TestName());
+  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(pred)));
+  auto c2 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(on_true)));
+  auto c3 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(on_false)));
+  auto instruction = b.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kSelect, c1, c2, c3));
+  HloModule module(TestName());
+  module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
   auto expected = Literal::CreateR2<float>({{2, 5}, {0, 4}});
 
@@ -98,13 +106,16 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
   auto rhs = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
 
   Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
-  auto c1 = HloInstruction::CreateConstant(std::move(lhs));
-  auto c2 = HloInstruction::CreateConstant(std::move(rhs));
-  auto instruction =
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, c1.get(), c2.get());
+  HloComputation::Builder b(TestName());
+  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs)));
+  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs)));
+  auto instruction = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, c1, c2));
+  HloModule module(TestName());
+  module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
   auto expected = Literal::CreateR2<int64>({{3, 4}, {-96, 8}});
 
@@ -114,81 +125,114 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
 TEST_F(HloEvaluatorTest, DoesDivide) {
-  auto lhs_s64 = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
-  auto rhs_s64 = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
+  {
+    auto lhs_s64 = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
+    auto rhs_s64 = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
 
-  Shape shape_s64 = ShapeUtil::MakeShape(S64, {2, 2});
-  auto c1_s64 = HloInstruction::CreateConstant(std::move(lhs_s64));
-  auto c2_s64 = HloInstruction::CreateConstant(std::move(rhs_s64));
-  auto instruction = HloInstruction::CreateBinary(shape_s64, HloOpcode::kDivide,
-                                                  c1_s64.get(), c2_s64.get());
+    Shape shape_s64 = ShapeUtil::MakeShape(S64, {2, 2});
+    HloComputation::Builder b(TestName());
+    auto c1_s64 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_s64)));
+    auto c2_s64 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_s64)));
+    auto instruction = b.AddInstruction(HloInstruction::CreateBinary(
+        shape_s64, HloOpcode::kDivide, c1_s64, c2_s64));
+    HloModule module(TestName());
+    module.AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
+    std::unique_ptr<Literal> result =
+        evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
-  auto expected = Literal::CreateR2<int64>({{0, 0}, {-25, 1}});
+    auto expected = Literal::CreateR2<int64>({{0, 0}, {-25, 1}});
 
-  LiteralTestUtil::ExpectEqual(*expected, *result);
+    LiteralTestUtil::ExpectEqual(*expected, *result);
+  }
+  {
+    auto lhs_f64 = Literal::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
+    auto rhs_f64 = Literal::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
 
-  auto lhs_f64 = Literal::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
-  auto rhs_f64 = Literal::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
+    Shape shape_f64 = ShapeUtil::MakeShape(F64, {2, 2});
+    HloComputation::Builder b(TestName());
+    auto c1_f64 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_f64)));
+    auto c2_f64 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_f64)));
+    auto instruction = b.AddInstruction(HloInstruction::CreateBinary(
+        shape_f64, HloOpcode::kDivide, c1_f64, c2_f64));
+    HloModule module(TestName());
+    module.AddEntryComputation(b.Build());
 
-  Shape shape_f64 = ShapeUtil::MakeShape(F64, {2, 2});
-  auto c1_f64 = HloInstruction::CreateConstant(std::move(lhs_f64));
-  auto c2_f64 = HloInstruction::CreateConstant(std::move(rhs_f64));
-  instruction = HloInstruction::CreateBinary(shape_f64, HloOpcode::kDivide,
-                                             c1_f64.get(), c2_f64.get());
+    auto result = evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
-  result = evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
+    auto expected =
+        Literal::CreateR2<double>({{0.45454545454545453, 0}, {-25, 1}});
 
-  expected = Literal::CreateR2<double>({{0.45454545454545453, 0}, {-25, 1}});
-
-  LiteralTestUtil::ExpectEqual(*expected, *result);
+    LiteralTestUtil::ExpectEqual(*expected, *result);
+  }
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise abs op with 1 operand.
 TEST_F(HloEvaluatorTest, DoesAbs) {
-  auto operand = Literal::CreateR2<int64>({{1, -20}, {-100, 4}});
-  const Shape& shape = ShapeUtil::MakeShape(S64, {2, 2});
-  auto c1 = HloInstruction::CreateConstant(std::move(operand));
-  auto instruction =
-      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, c1.get());
+  {
+    auto operand = Literal::CreateR2<int64>({{1, -20}, {-100, 4}});
+    const Shape& shape = ShapeUtil::MakeShape(S64, {2, 2});
+    HloComputation::Builder b(TestName());
+    auto c1 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
+    auto instruction = b.AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kAbs, c1));
+    HloModule module(TestName());
+    module.AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
+    std::unique_ptr<Literal> result =
+        evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
-  auto expected = Literal::CreateR2<int64>({{1, 20}, {100, 4}});
+    auto expected = Literal::CreateR2<int64>({{1, 20}, {100, 4}});
 
-  LiteralTestUtil::ExpectEqual(*expected, *result);
+    LiteralTestUtil::ExpectEqual(*expected, *result);
+  }
 
   // For R0 literal.
-  const Shape& r0 = ShapeUtil::MakeShape(F32, {});
-  operand = Literal::CreateR0<float>(-1.0f);
-  c1 = HloInstruction::CreateConstant(std::move(operand));
-  instruction = HloInstruction::CreateUnary(r0, HloOpcode::kAbs, c1.get());
-  result = evaluator_->Evaluate(instruction.get()).ConsumeValueOrDie();
-  expected = Literal::CreateR0<float>(1.0f);
+  {
+    const Shape& r0 = ShapeUtil::MakeShape(F32, {});
+    auto operand = Literal::CreateR0<float>(-1.0f);
+    HloComputation::Builder b(TestName());
+    auto c1 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
+    auto instruction =
+        b.AddInstruction(HloInstruction::CreateUnary(r0, HloOpcode::kAbs, c1));
+    HloModule module(TestName());
+    module.AddEntryComputation(b.Build());
 
-  LiteralTestUtil::ExpectEqual(*expected, *result);
+    auto result = evaluator_->Evaluate(instruction).ConsumeValueOrDie();
+    auto expected = Literal::CreateR0<float>(1.0f);
+
+    LiteralTestUtil::ExpectEqual(*expected, *result);
+  }
 
   // For R1 literal with dimension of size 0.
-  Shape empty_r1 = ShapeUtil::MakeShape(F32, {0});
-  operand = Literal::CreateR1<float>({});
-  c1 = HloInstruction::CreateConstant(std::move(operand));
-  instruction =
-      HloInstruction::CreateUnary(empty_r1, HloOpcode::kAbs, c1.get());
+  {
+    Shape empty_r1 = ShapeUtil::MakeShape(F32, {0});
+    auto operand = Literal::CreateR1<float>({});
+    HloComputation::Builder b(TestName());
+    auto c1 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
+    auto instruction = b.AddInstruction(
+        HloInstruction::CreateUnary(empty_r1, HloOpcode::kAbs, c1));
+    HloModule module(TestName());
+    module.AddEntryComputation(b.Build());
 
-  result = evaluator_->Evaluate(instruction.get()).ConsumeValueOrDie();
-  expected = Literal::CreateR1<float>({});
+    auto result = evaluator_->Evaluate(instruction).ConsumeValueOrDie();
+    auto expected = Literal::CreateR1<float>({});
 
-  LiteralTestUtil::ExpectEqual(*expected, *result);
+    LiteralTestUtil::ExpectEqual(*expected, *result);
+  }
 }  // namespace
 
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
 TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
-  HloComputation::Builder builder(TestName());
   auto lhs = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
   auto rhs = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
   auto rhs2 = Literal::CreateR2<int64>({{1, -20}, {-100, 4}});
@@ -196,18 +240,23 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
 
   Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
 
-  auto param_lhs = HloInstruction::CreateParameter(0, shape, "lhs");
-  auto param_rhs = HloInstruction::CreateParameter(1, shape, "rhs");
-  auto lhs_instruction = HloInstruction::CreateBinary(
-      shape, HloOpcode::kAdd, param_lhs.get(), param_rhs.get());
+  HloComputation::Builder b(TestName());
+  auto param_lhs =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "lhs"));
+  auto param_rhs =
+      b.AddInstruction(HloInstruction::CreateParameter(1, shape, "rhs"));
+  auto lhs_instruction = b.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, param_lhs, param_rhs));
 
-  auto param_rhs2 = HloInstruction::CreateParameter(2, shape, "rhs2");
-  auto root_instruction = HloInstruction::CreateBinary(
-      shape, HloOpcode::kAdd, lhs_instruction.get(), param_rhs2.get());
+  auto param_rhs2 =
+      b.AddInstruction(HloInstruction::CreateParameter(2, shape, "rhs2"));
+  b.AddInstruction(HloInstruction::CreateBinary(shape, HloOpcode::kAdd,
+                                                lhs_instruction, param_rhs2));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
-  builder.AddInstruction(std::move(root_instruction));
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(builder.Build().get(), args).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, args).ConsumeValueOrDie();
 
   auto expected = Literal::CreateR2<int64>({{4, -16}, {-196, 12}});
 
@@ -216,22 +265,24 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
 
 // Verifies Reshape operation is correctly evaluated.
 TEST_F(HloEvaluatorTest, DoesReshape) {
-  HloComputation::Builder builder(TestName());
+  HloComputation::Builder b(TestName());
   const int64 dimensions[] = {11, 8, 7, 5, 9};
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralTestUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
   auto literal_clone = literal->CloneToUnique();
-  HloInstruction* literal_instruction = builder.AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal)));
+  HloInstruction* literal_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
   const int64 permutation[] = {1, 2, 0, 4, 3};
-  builder.AddInstruction(
+  b.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result->EachCell<NativeT>(
@@ -243,24 +294,46 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
 // Verifies Broadcast operation is correctly evaluated.
 TEST_F(HloEvaluatorTest, DoesBroadcast) {
-  HloComputation::Builder builder(TestName());
+  HloComputation::Builder b(TestName());
   auto input_literal = Literal::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}});
   auto output_literal = Literal::CreateR3<int32>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{1, 2}, {3, 4}, {5, 6}}});
-  HloInstruction* literal_instruction = builder.AddInstruction(
+  HloInstruction* literal_instruction = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-
-  builder.AddInstruction(HloInstruction::CreateBroadcast(
+  b.AddInstruction(HloInstruction::CreateBroadcast(
       output_literal->shape(), literal_instruction, {1, 2}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  LiteralTestUtil::ExpectEqual(*result, *output_literal);
+}
+
+TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
+  HloComputation::Builder b(TestName());
+  auto input_literal = Literal::CreateR0<int32>(111);
+  auto output_literal = Literal::CreateR2<int32>(
+      {{111, 111}, {111, 111}, {111, 111}, {111, 111}, {111, 111}, {111, 111}});
+
+  HloInstruction* literal_instruction = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+  // Broadcast dimension is ignored in the case of scalars.
+  b.AddInstruction(HloInstruction::CreateBroadcast(
+      output_literal->shape(), literal_instruction,
+      /*broadcast_dimensions=*/{1}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectEqual(*result, *output_literal);
 }
 
 TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {
-  HloComputation::Builder builder(TestName());
+  HloComputation::Builder b(TestName());
 
   auto input_literal = Literal::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}});
   auto expected =
@@ -268,19 +341,20 @@ TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {
   ASSERT_TRUE(LayoutUtil::LayoutsInShapesEqual(input_literal->shape(),
                                                expected->shape()));
 
-  HloInstruction* constant = builder.AddInstruction(
+  HloInstruction* constant = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-  builder.AddInstruction(
-      HloInstruction::CreateConvert(expected->shape(), constant));
+  b.AddInstruction(HloInstruction::CreateConvert(expected->shape(), constant));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectEqual(*result, *expected);
 }
 
 TEST_F(HloEvaluatorTest, ConvertWithDifferentLayout) {
-  HloComputation::Builder builder(TestName());
+  HloComputation::Builder b(TestName());
 
   auto input_literal = Literal::CreateR2WithLayout<int32>(
       {{1, 2}, {3, 4}, {5, 6}}, LayoutUtil::MakeLayout({0, 1}));
@@ -289,13 +363,14 @@ TEST_F(HloEvaluatorTest, ConvertWithDifferentLayout) {
   ASSERT_FALSE(LayoutUtil::LayoutsInShapesEqual(input_literal->shape(),
                                                 expected->shape()));
 
-  HloInstruction* constant = builder.AddInstruction(
+  HloInstruction* constant = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-  builder.AddInstruction(
-      HloInstruction::CreateConvert(expected->shape(), constant));
+  b.AddInstruction(HloInstruction::CreateConvert(expected->shape(), constant));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectEqual(*result, *expected);
 }
@@ -315,20 +390,23 @@ PaddingConfig CreatePaddingConfig(
 
 TEST_F(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
   auto operand = Literal::CreateR2<int32>({{}, {}});
-  auto operand_instruction = HloInstruction::CreateConstant(std::move(operand));
+  HloComputation::Builder b(TestName());
+  auto operand_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
 
   constexpr int32 kPadValue = 10;
   auto pad_value = Literal::CreateR0<int32>(kPadValue);
   auto padding_value_instruction =
-      HloInstruction::CreateConstant(std::move(pad_value));
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(pad_value)));
 
   auto padding_config = CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}});
   Shape shape = ShapeUtil::MakeShape(S32, {5, 2});
-  auto pad_instruction = HloInstruction::CreatePad(
-      shape, operand_instruction.get(), padding_value_instruction.get(),
-      padding_config);
+  auto pad_instruction = b.AddInstruction(HloInstruction::CreatePad(
+      shape, operand_instruction, padding_value_instruction, padding_config));
+  HloModule module(TestName());
+  module.AddEntryComputation(b.Build());
 
-  auto result = evaluator_->Evaluate(pad_instruction.get()).ConsumeValueOrDie();
+  auto result = evaluator_->Evaluate(pad_instruction).ConsumeValueOrDie();
 
   auto expected = Literal::CreateR2<int32>(
       {{10, 10}, {10, 10}, {10, 10}, {10, 10}, {10, 10}});
@@ -353,9 +431,11 @@ TEST_F(HloEvaluatorTest, Pad4DFloatArrayWithInteriorPadding) {
       CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}, {{0, 0, 0}}, {{0, 0, 0}}});
   b.AddInstruction(HloInstruction::CreatePad(
       shape, input_instruction, pad_instruction, r4_padding_on_dim0_dim1));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   auto expected_array = MakeUnique<Array4D<float>>(8, 5, 1, 1);
   expected_array->Fill(kPadValue);
@@ -397,8 +477,11 @@ TEST_F(HloEvaluatorTest, NegativePadding2D) {
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
 
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   // f32[1,5] { 7.0, 2.718, 2.718, 2.718, 2.718 }
   auto expected_array = MakeUnique<Array2D<float>>(1, 5);
@@ -441,8 +524,11 @@ TEST_F(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
 
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   auto expected_array = MakeUnique<Array2D<float>>(0, 9);
   auto expected = Literal::CreateR2FromArray2D<float>(*expected_array);
@@ -475,9 +561,11 @@ TEST_F(HloEvaluatorTest, DotRank2AndRank1) {
   Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
   b.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   // clang-format off
   auto expected_array = Array2D<float>({
@@ -517,9 +605,11 @@ TEST_F(HloEvaluatorTest, DotRank1AndRank2) {
   Shape shape = ShapeUtil::MakeShape(F32, {2});
   b.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   auto expected = Literal::CreateR1<float>({22.f, 28.f});
 
@@ -557,12 +647,17 @@ TEST_F(HloEvaluatorTest, DotRank2AndRank2) {
   Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
   b.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   auto expected_array = Array2D<float>({
-      {22.f, 28.f}, {58.f, 76.f}, {94.f, 124.f}, {130.f, 172.f},
+      {22.f, 28.f},
+      {58.f, 76.f},
+      {94.f, 124.f},
+      {130.f, 172.f},
   });
   auto expected = Literal::CreateR2FromArray2D<float>(expected_array);
 
@@ -604,9 +699,11 @@ TEST_F(HloEvaluatorTest, SimpleConv1D) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   Array3D<float> expected_array = {{{11.f, 18.f, 9.f}}};
   auto expected = Literal::CreateR3FromArray3D<float>(expected_array);
@@ -658,9 +755,11 @@ TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   Array4D<float> expected_array(1, 1, 4, 4);
   // clang-format off
@@ -734,9 +833,11 @@ TEST_F(HloEvaluatorTest, Conv2DGeneralDimensions) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
@@ -791,9 +892,11 @@ TEST_F(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   Array4D<float> expected_array(1, 1, 7, 7);
   expected_array.FillWithYX(Array2D<float>({
@@ -854,9 +957,11 @@ TEST_F(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   Array4D<float> expected_array(1, 1, 8, 8);
   expected_array.FillWithYX(Array2D<float>({
@@ -925,9 +1030,11 @@ TEST_F(HloEvaluatorTest,
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(b.Build().get(), {}).ConsumeValueOrDie();
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   Array4D<float> expected_array(1, 1, 9, 3);
   expected_array.FillWithYX(Array2D<float>({
@@ -942,6 +1049,328 @@ TEST_F(HloEvaluatorTest,
       {91, 98, 105},
   }));
   auto expected = Literal::CreateR4FromArray4D<float>(expected_array);
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, ReduceAdd) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  arg_array->FillUnique(1.0f);
+  auto arg_literal = Literal::CreateR2FromArray2D<float>(*arg_array);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+  HloModule module(TestName());
+  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
+  b.AddInstruction(
+      HloInstruction::CreateReduce(shape, arg_instruction, init_value,
+                                   /*dimensions_to_reduce=*/{1}, add_func));
+
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR1<float>({6, 18});
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, StridedSlice) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[3,5] {
+  //  { 1, 2, 3, 4, 5 },
+  //  { 9, 10, 11, 12, 13 },
+  //  { 17, 18, 19, 20, 21 },
+  // }
+  auto operand_array = MakeUnique<Array2D<float>>(3, 5);
+  operand_array->FillUnique(1.0f);
+  auto operand_literal = Literal::CreateR2FromArray2D<float>(*operand_array);
+
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1});
+  b.AddInstruction(HloInstruction::CreateSlice(shape, operand,
+                                               /*start_indices=*/{0, 2},
+                                               /*limit_indices=*/{3, 5},
+                                               /*strides=*/{2, 3}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({
+      {3},
+      {19},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, DynamicSlice) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,4] {
+  //  { 1, 2, 3, 4 },
+  //  { 5, 6, 7, 8 },
+  // }
+  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  operand_array->FillUnique(1.0f);
+  auto operand_literal = Literal::CreateR2FromArray2D<float>(*operand_array);
+
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  auto start_indices = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({0, 1})));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
+                                                      start_indices, {2, 3}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({
+      {2, 3, 4},
+      {6, 7, 8},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+// Verifies that the HloEvaluator's implementation goes along with existing
+// backends' behavior, although this is not required by the spec.
+TEST_F(HloEvaluatorTest, DynamicSliceModSlice) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,4] {
+  //  { 1, 2, 3, 4 },
+  //  { 5, 6, 7, 8 },
+  // }
+  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  operand_array->FillUnique(1.0f);
+  auto operand_literal = Literal::CreateR2FromArray2D<float>(*operand_array);
+
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  auto start_indices = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2, 1})));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
+                                                      start_indices, {2, 3}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({
+      {2, 3, 4},
+      {6, 7, 8},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, DynamicSliceUpdate) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  operand_array->FillUnique(1.0);
+  auto operand_literal = Literal::CreateR2FromArray2D<double>(*operand_array);
+
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  auto start_indices = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 1})));
+
+  auto update = b.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<double>({{-2.0, -3.0}, {-6.0, -7.0}})));
+
+  Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
+  b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      shape, operand, update, start_indices));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<double>({
+      {1, -2, -3},
+      {5, -6, -7},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, SetAndGetTuples) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  operand_array->FillUnique(1.0);
+  auto operand_literal2 = Literal::CreateR2FromArray2D<double>(*operand_array);
+
+  HloInstruction* operand2 = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal2)));
+  HloInstruction* operand1 = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 1})));
+
+  auto tuple =
+      b.AddInstruction(HloInstruction::CreateTuple({operand1, operand2}));
+
+  Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
+  b.AddInstruction(HloInstruction::CreateGetTupleElement(shape, tuple, 1));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<double>({
+      {1, 2, 3},
+      {5, 6, 7},
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, SetAndGetNestedTuples) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  operand_array->FillUnique(1.0);
+
+  HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2FromArray2D<double>(*operand_array)));
+  HloInstruction* operand1 = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 1})));
+
+  auto tuple1 =
+      b.AddInstruction(HloInstruction::CreateTuple({operand1, operand2}));
+  auto tuple2 =
+      b.AddInstruction(HloInstruction::CreateTuple({operand2, operand2}));
+
+  auto outer_tuple =
+      b.AddInstruction(HloInstruction::CreateTuple({tuple1, tuple2}));
+
+  b.AddInstruction(
+      HloInstruction::CreateGetTupleElement(tuple2->shape(), outer_tuple, 1));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto result_inner_literal =
+      Literal::CreateR2FromArray2D<double>(*operand_array);
+  auto expected = Literal::MakeTuple({
+      result_inner_literal.get(),
+      result_inner_literal.get(),
+  });
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, Reverse) {
+  HloComputation::Builder b(TestName());
+
+  // Input shape is float[4x3x2x1].
+  // clang-format off
+  Array4D<float> input({
+    {{{1.0f}, {2.0f}},
+     {{3.0f}, {4.0f}},
+     {{5.0f}, {6.0f}}},
+    {{{7.0f}, {8.0f}},
+     {{9.0f}, {10.0f}},
+     {{11.0f}, {12.0f}}},
+    {{{13.0f}, {14.0f}},
+     {{15.0f}, {16.0f}},
+     {{17.0f}, {18.0f}}},
+    {{{19.0f}, {20.0f}},
+     {{21.0f}, {22.0f}},
+     {{23.0f}, {24.0f}}},
+  });
+  // clang-format on
+  auto operand_literal = Literal::CreateR4FromArray4D<float>(input);
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  const Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 2, 1});
+  b.AddInstruction(HloInstruction::CreateReverse(shape, operand, {0, 1}));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  // clang-format off
+  auto expected = Literal::CreateR4FromArray4D<float>({
+    {{{23.0f}, {24.0f}},
+     {{21.0f}, {22.0f}},
+     {{19.0f}, {20.0f}}},
+
+    {{{17.0f}, {18.0f}},
+     {{15.0f}, {16.0f}},
+     {{13.0f}, {14.0f}}},
+
+    {{{11.0f}, {12.0f}},
+     {{9.0f}, {10.0f}},
+     {{7.0f}, {8.0f}}},
+
+    {{{5.0f}, {6.0f}},
+     {{3.0f}, {4.0f}},
+     {{1.0f}, {2.0f}}},
+  });
+  // clang-format on
 
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }

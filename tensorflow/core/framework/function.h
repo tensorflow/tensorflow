@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -37,6 +36,7 @@ class CancellationManager;
 class GraphDef;
 class OpKernel;
 class ResourceMgr;
+class Rendezvous;
 class ScopedStepContainer;
 class StepStatsCollector;
 class Node;
@@ -347,8 +347,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
  private:
   // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
   struct FunctionDefAndOpRegistration {
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
-        : fdef(fdef_in), op_registration_data(fdef.signature()) {}
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
     FunctionDef fdef;
     OpRegistrationData op_registration_data;
@@ -398,11 +397,10 @@ class FunctionLibraryRuntime {
   //
   // Does not take ownership of "rets".
   struct Options {
-    CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
-
-    // Per-step container.
+    Rendezvous* rendezvous = nullptr;
+    CancellationManager* cancellation_manager = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollector* stats_collector = nullptr;
 
@@ -438,7 +436,15 @@ class FunctionLibraryRuntime {
 
   // Returns the graph version number.
   virtual int graph_def_version() = 0;
+
+  typedef uint64 LocalHandle;
 };
+
+const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
+const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
+typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
+                             std::unique_ptr<OpKernel>*)>
+    CustomKernelCreator;
 
 // To register a gradient function for a builtin op, one should use
 //   REGISTER_OP_GRADIENT(<op_name>, <c++ grad factory>);

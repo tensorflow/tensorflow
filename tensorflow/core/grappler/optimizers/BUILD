@@ -109,6 +109,7 @@ cc_test(
     name = "constant_folding_test",
     size = "small",
     srcs = ["constant_folding_test.cc"],
+    shard_count = 5,
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
@@ -134,6 +135,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
@@ -149,6 +151,40 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "arithmetic_optimizer",
+    srcs = ["arithmetic_optimizer.cc"],
+    hdrs = [
+        "arithmetic_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+cc_test(
+    name = "arithmetic_optimizer_test",
+    size = "small",
+    srcs = ["arithmetic_optimizer_test.cc"],
+    deps = [
+        ":arithmetic_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -266,6 +302,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":arithmetic_optimizer",
         ":auto_parallel",
         ":constant_folding",
         ":graph_optimizer",

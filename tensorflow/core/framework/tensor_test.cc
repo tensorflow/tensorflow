@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -50,14 +51,18 @@ inline bool operator==(const Variant& a, const Variant& b) {
   a.Encode(&a_data);
   b.Encode(&b_data);
 
-  if (a_data.metadata != b_data.metadata) return false;
+  string a_metadata;
+  string b_metadata;
+  a_data.get_metadata(&a_metadata);
+  b_data.get_metadata(&b_metadata);
+  if (a_metadata != b_metadata) return false;
 
-  if (a_data.tensors.size() != b_data.tensors.size()) return false;
+  if (a_data.tensors_size() != b_data.tensors_size()) return false;
 
-  for (int i = 0; i < a_data.tensors.size(); ++i) {
+  for (int i = 0; i < a_data.tensors_size(); ++i) {
     TensorProto a_proto, b_proto;
-    a_data.tensors[i].AsProtoTensorContent(&a_proto);
-    b_data.tensors[i].AsProtoTensorContent(&b_proto);
+    a_data.tensors(i).AsProtoTensorContent(&a_proto);
+    b_data.tensors(i).AsProtoTensorContent(&b_proto);
     string a_str, b_str;
     a_proto.SerializeToString(&a_str);
     b_proto.SerializeToString(&b_str);

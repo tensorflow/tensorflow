@@ -23,11 +23,15 @@ filegroup(
 
 py_library(
     name = "cluster_resolver_pip",
-    srcs = ["python/training/__init__.py"],
+    srcs = [
+        "__init__.py",
+        "python/training/__init__.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":cluster_resolver_py",
         ":gce_cluster_resolver_py",
+        ":tpu_cluster_resolver_py",
     ],
 )
 
@@ -46,6 +50,18 @@ py_library(
     name = "gce_cluster_resolver_py",
     srcs = [
         "python/training/gce_cluster_resolver.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cluster_resolver_py",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "tpu_cluster_resolver_py",
+    srcs = [
+        "python/training/tpu_cluster_resolver.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -80,4 +96,18 @@ tf_py_test(
         "//tensorflow/python:platform_test",
     ],
     main = "python/training/gce_cluster_resolver_test.py",
+)
+
+tf_py_test(
+    name = "tpu_cluster_resolver_py_test",
+    size = "small",
+    srcs = ["python/training/tpu_cluster_resolver_test.py"],
+    additional_deps = [
+        ":tpu_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+    main = "python/training/tpu_cluster_resolver_test.py",
 )

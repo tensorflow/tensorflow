@@ -132,7 +132,10 @@ cc_library(
 cc_library(
     name = "statusor",
     srcs = ["statusor.cc"],
-    hdrs = ["statusor.h"],
+    hdrs = [
+        "statusor.h",
+        "statusor_internals.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":status",
@@ -504,6 +507,7 @@ cc_library(
         ":util",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -560,6 +564,9 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_evaluator",
+        "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
         "//tensorflow/core:lib",
     ],

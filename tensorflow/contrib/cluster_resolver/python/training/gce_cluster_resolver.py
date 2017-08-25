@@ -25,6 +25,7 @@ from tensorflow.python.training.server_lib import ClusterSpec
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
   from googleapiclient import discovery  # pylint: disable=g-import-not-at-top
+  from oauth2client.client import GoogleCredentials  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
@@ -45,7 +46,7 @@ class GceClusterResolver(ClusterResolver):
                instance_group,
                port,
                job_name='worker',
-               credentials=None,
+               credentials='default',
                service=None):
     """Creates a new GceClusterResolver object.
 
@@ -59,7 +60,7 @@ class GceClusterResolver(ClusterResolver):
       instance_group: Name of the GCE instance group
       port: Port of the listening TensorFlow server (default: 8470)
       job_name: Name of the TensorFlow job this set of instances belongs to
-      credentials: GCE Credentials. This defaults to
+      credentials: GCE Credentials. If nothing is specified, this defaults to
         GoogleCredentials.get_application_default()
       service: The GCE API object returned by the googleapiclient.discovery
         function. (Default: discovery.build('compute', 'v1')). If you specify a
@@ -73,13 +74,19 @@ class GceClusterResolver(ClusterResolver):
     self._instance_group = instance_group
     self._job_name = job_name
     self._port = port
+    self._credentials = credentials
+
+    if credentials == 'default':
+      if _GOOGLE_API_CLIENT_INSTALLED:
+        self._credentials = GoogleCredentials.get_application_default()
+
     if service is None:
-      if _GOOGLE_API_CLIENT_INSTALLED is True:
-        self._service = discovery.build('compute', 'v1',
-                                        credentials=credentials)
-      else:
+      if not _GOOGLE_API_CLIENT_INSTALLED:
         raise ImportError('googleapiclient must be installed before using the '
                           'GCE cluster resolver')
+      self._service = discovery.build(
+          'compute', 'v1',
+          credentials=self._credentials)
     else:
       self._service = service
 

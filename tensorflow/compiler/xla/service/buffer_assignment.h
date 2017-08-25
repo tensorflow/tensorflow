@@ -281,6 +281,11 @@ class BufferAssignment {
   std::set<BufferAllocation::Slice> GetAllSlices(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
+  // Convenience function which returns whether the buffer of the
+  // instruction at the given index is assigned an allocation.
+  bool HasAllocationAt(const HloInstruction* instruction,
+                       const ShapeIndex& index) const;
+
   // Convenience function which returns whether the top-level buffer of the
   // instruction (index == {}) is assigned an allocation.
   bool HasTopLevelAllocation(const HloInstruction* instruction) const;
@@ -301,7 +306,7 @@ class BufferAssignment {
 
   // Returns the set LogicalBuffers which may be the source of the value at the
   // given index and instruction.
-  const std::vector<const LogicalBuffer*>& GetSourceBuffers(
+  const PointsToSet::BufferList& GetSourceBuffers(
       const HloInstruction* instruction, const ShapeIndex& index) const {
     return GetPointsToSet(instruction).element(index);
   }

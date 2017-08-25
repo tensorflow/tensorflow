@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/executor/compiler.h"
 #include "tensorflow/compiler/plugin/executor/executable.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
+#include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -55,6 +57,8 @@ Status ExecutorCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
+  pipeline.AddPass<LayoutAssignment>(
+      hlo_module->mutable_entry_computation_layout());
 
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
@@ -107,10 +111,16 @@ ExecutorCompiler::ShapeSizeBytesFunction() const {
   return ExecutorExecutable::ShapeSizeBytes;
 }
 
+static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
+  return xla::MakeUnique<xla::ComputationPlacer>();
+}
+
 REGISTER_MODULE_INITIALIZER(executor_compiler, {
   xla::Compiler::RegisterCompilerFactory(sep::kExecutorPlatformId, []() {
     return xla::MakeUnique<xla::executorplugin::ExecutorCompiler>();
   });
+  xla::ComputationPlacer::RegisterComputationPlacer(sep::kExecutorPlatformId,
+                                                    &CreateComputationPlacer);
 });
 
 }  // namespace executorplugin

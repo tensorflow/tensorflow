@@ -55,6 +55,9 @@ class GraphRewriter {
   // device.
   bool IsDrivenByAnotherDevice(const NodeDef& node) const;
 
+  // Returns true if the node has input from a stateful op.
+  bool ReceivesRefValue(const NodeDef& node) const;
+
  private:
   void RecordConnectivity(const NodeDef& node,
                           const std::unordered_set<string>& function_names);
@@ -63,11 +66,20 @@ class GraphRewriter {
       const std::unordered_set<const NodeDef*>& nodes_to_delete,
       NodeDef* new_node);
 
-  std::unordered_map<string, const NodeDef*> nodes_;
+  struct NodeInfo {
+    const NodeDef* def;
+
+    // These are filled in when the NodeInfo is built, but not that they
+    // may be empty - if the op could not be loaded from the registry.
+    DataTypeVector outputs;
+  };
+
+  std::unordered_map<string, std::unique_ptr<NodeInfo>> nodes_;
   std::unordered_map<string, const NodeDef*> optimized_nodes_;
   std::unordered_set<const NodeDef*> control_dependency_drivers_;
   std::unordered_set<const NodeDef*> function_neighbors_;
   std::unordered_set<const NodeDef*> cross_device_receivers_;
+  std::unordered_set<const NodeDef*> ref_receivers_;
 };
 
 }  // end namespace grappler

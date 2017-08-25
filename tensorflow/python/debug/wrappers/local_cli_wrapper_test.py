@@ -36,9 +36,11 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import monitored_session
 
 
 class LocalCLIDebuggerWrapperSessionForTest(
@@ -134,6 +136,10 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.m = constant_op.constant(
         [[0.0, 1.0, 2.0], [-4.0, -1.0, 0.0]], dtype=dtypes.float32, name="m")
     self.y = math_ops.matmul(self.m, self.xph, name="y")
+
+    self.sparse_ph = array_ops.sparse_placeholder(
+        dtypes.float32, shape=([5, 5]), name="sparse_placeholder")
+    self.sparse_add = sparse_ops.sparse_add(self.sparse_ph, self.sparse_ph)
 
     self.sess = session.Session()
 
@@ -247,6 +253,16 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual([1, 2, 3],
                      wrapped_sess.observers["run_start_cli_run_numbers"])
     self.assertEqual([], wrapped_sess.observers["run_end_cli_run_numbers"])
+
+  def testRunningWithSparsePlaceholderFeedWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
+
+    sparse_feed = ([[0, 1], [0, 2]], [10.0, 20.0])
+    sparse_result = wrapped_sess.run(
+        self.sparse_add, feed_dict={self.sparse_ph: sparse_feed})
+    self.assertAllEqual([[0, 1], [0, 2]], sparse_result.indices)
+    self.assertAllClose([20.0, 40.0], sparse_result.values)
 
   def testRunsUnderNonDebugThenDebugMode(self):
     # Do two NON_DEBUG_RUNs, followed by DEBUG_RUNs.
@@ -387,7 +403,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
     # Use an impossible device name to cause an error before graph execution.
-    with ops.device("/gpu:1337"):
+    with ops.device("/device:GPU:1337"):
       w = variables.Variable([1.0] * 10, name="w")
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
@@ -405,7 +421,6 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     def v_greater_than_twelve(datum, tensor):
       return datum.node_name == "v" and tensor > 12.0
-
     wrapped_sess.add_tensor_filter("v_greater_than_twelve",
                                    v_greater_than_twelve)
 
@@ -426,6 +441,46 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
+
+  def testRunTillFilterPassesWorksInConjunctionWithOtherNodeNameFilter(self):
+    """Test that --.*_filter flags work in conjunction with -f.
+
+    In other words, test that you can use a tensor filter on a subset of
+    the tensors.
+    """
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run", "-f", "v_greater_than_twelve", "--node_name_filter", "v$"],
+         ["run", "-f", "v_greater_than_twelve", "--node_name_filter", "v$"],
+         ["run"]],
+        self.sess,
+        dump_root=self._tmp_dir)
+
+    def v_greater_than_twelve(datum, tensor):
+      return datum.node_name == "v" and tensor > 12.0
+    wrapped_sess.add_tensor_filter("v_greater_than_twelve",
+                                   v_greater_than_twelve)
+
+    # run five times.
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+
+    self.assertAllClose(15.0, self.sess.run(self.v))
+
+    self.assertEqual([1], wrapped_sess.observers["run_start_cli_run_numbers"])
+
+    # run-end CLI should NOT have been launched for run #2 and #3, because only
+    # starting from run #4 v becomes greater than 12.0.
+    self.assertEqual([4, 5], wrapped_sess.observers["run_end_cli_run_numbers"])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    self.assertEqual(1, len(debug_dumps[0].dumped_tensor_data))
+    self.assertEqual("v:0", debug_dumps[0].dumped_tensor_data[0].tensor_name)
+    self.assertEqual(1, len(debug_dumps[1].dumped_tensor_data))
+    self.assertEqual("v:0", debug_dumps[1].dumped_tensor_data[0].tensor_name)
 
   def testRunsUnderDebugModeWithWatchFnFilteringNodeNames(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
@@ -580,6 +635,25 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(wrapped_sess.observers["profiler_py_graphs"]))
     self.assertIsInstance(
         wrapped_sess.observers["profiler_py_graphs"][0], ops.Graph)
+
+  def testCallingHookDelBeforeAnyRun(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess)
+    del wrapped_sess
+
+  def testCallingShouldStopMethodOnNonWrappedNonMonitoredSessionErrors(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess)
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"The wrapped session .* does not have a method .*should_stop.*"):
+      wrapped_sess.should_stop()
+
+  def testLocalCLIDebugWrapperSessionWorksOnMonitoredSession(self):
+    monitored_sess = monitored_session.MonitoredSession()
+    wrapped_monitored_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], monitored_sess)
+    self.assertFalse(wrapped_monitored_sess.should_stop())
 
 
 if __name__ == "__main__":

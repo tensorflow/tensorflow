@@ -155,8 +155,8 @@ class MakeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-    OP_REQUIRES_OK(ctx,
-                   iterator_resource->set_iterator(dataset->MakeIterator()));
+    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
+                            dataset->MakeIterator("Iterator")));
     iterator_resource->Unref();
   }
 };
@@ -311,7 +311,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // Create an iterator for the dataset that was created in the
     // factory function. This transfers ownership of the dataset to
     // the iterator, so we can delete it from the resource manager.
-    TF_RETURN_IF_ERROR((*iterator)->set_iterator(dataset->MakeIterator()));
+    TF_RETURN_IF_ERROR(
+        (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
     TF_RETURN_IF_ERROR(DeleteResource<DatasetBase>(ctx, dataset_resource));
 
     (*iterator)->Ref();

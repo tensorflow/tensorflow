@@ -48,10 +48,16 @@ function main() {
   DEST=$(real_path $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
-  GPU_FLAG=""
+  PKG_NAME_FLAG=""
+  GPU_BUILD=0
+  NIGHTLY_BUILD=0
   while true; do
-    if [[ "$1" == "--gpu" ]]; then
-      GPU_FLAG="--project_name tensorflow_gpu"
+    if [[ "$1" == "--nightly_flag" ]]; then
+      NIGHTLY_BUILD=1
+    elif [[ "$1" == "--gpu" ]]; then
+      GPU_BUILD=1
+    elif [[ "$1" == "--gpudirect" ]]; then
+      PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
     fi
     shift
 
@@ -59,6 +65,14 @@ function main() {
       break
     fi
   done
+
+  if [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_gpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly"
+  elif [[ ${GPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_gpu"
+  fi
 
   echo $(date) : "=== Using tmpdir: ${TMPDIR}"
 
@@ -130,7 +144,7 @@ function main() {
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow}
-  for header in $(find protobuf -name \*.h); do
+  for header in $(find protobuf_archive -name \*.h); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done
@@ -148,7 +162,7 @@ function main() {
   pushd ${TMPDIR}
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${GPU_FLAG} >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd

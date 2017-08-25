@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/util/event.proto";
 
 // Reply message from EventListener to the client, i.e., to the source of the
@@ -24,18 +25,25 @@ import "tensorflow/core/util/event.proto";
 // TensorFlow graph being executed.
 message EventReply {
   message DebugOpStateChange {
-    enum Change {
-      DISABLE = 0;
-      ENABLE = 1;
+    enum State {
+      STATE_UNSPECIFIED = 0;
+      DISABLED = 1;
+      READ_ONLY = 2;
+      READ_WRITE = 3;
     }
 
-    Change change = 1;
+    State state = 1;
     string node_name = 2;
     int32 output_slot = 3;
     string debug_op = 4;
   }
 
   repeated DebugOpStateChange debug_op_state_changes = 1;
+
+  // New tensor value to override the current tensor value with.
+  TensorProto tensor = 2;
+  // TODO(cais): Make use of this field to implement overriding of tensor value
+  // during debugging.
 }
 
 // EventListener: Receives Event protos, e.g., from debugged TensorFlow

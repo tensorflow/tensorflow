@@ -36,25 +36,48 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":bijectors_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/learn",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:histogram_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+cuda_py_test(
+    name = "estimator_test",
+    size = "small",
+    srcs = ["python/kernel_tests/estimator_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/learn:head_test",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:session",
+    ],
+    tags = ["no_pip"],  # contrib/learn:head_test is not available in pip.
 )
 
 cuda_py_test(
@@ -306,6 +329,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "poisson_lognormal_test",
+    size = "small",
+    srcs = ["python/kernel_tests/poisson_lognormal_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "sample_stats_test",
     size = "small",
     srcs = ["python/kernel_tests/sample_stats_test.py"],
@@ -496,19 +530,13 @@ cuda_py_test(
 
 cuda_py_test(
     name = "vector_diffeomixture_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/kernel_tests/vector_diffeomixture_test.py"],
     additional_deps = [
-        ":bijectors_py",
         ":distributions_py",
         "//third_party/py/numpy",
         "//tensorflow/contrib/linalg:linalg_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform_test",
     ],
 )
 

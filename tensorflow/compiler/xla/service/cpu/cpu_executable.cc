@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -54,7 +54,7 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
-    : Executable(std::move(hlo_module), CpuExecutable::ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)) {
@@ -316,7 +316,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
                 if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
+                  const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton.
@@ -378,6 +378,10 @@ CpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& CpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> CpuExecutable::CreateCostAnalysis() const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

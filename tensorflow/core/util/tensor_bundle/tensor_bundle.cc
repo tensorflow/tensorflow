@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <utility>
 
@@ -590,6 +592,13 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   return status;
 }
 
+// TODO(b/64763924): Remove after Jan 1st 2018.
+bool GetLenientNames() {
+  const char* lenient_names_str = std::getenv("TF_SAVER_LENIENT_NAMES");
+  return lenient_names_str != nullptr &&
+         std::strcmp(lenient_names_str, "") != 0;
+}
+
 // Interface for reading a tensor bundle.
 
 BundleReader::BundleReader(Env* env, StringPiece prefix)
@@ -635,6 +644,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   }
   status_ = CheckVersions(header.version(), kTensorBundleVersion,
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
+  lenient_names_ = GetLenientNames();
 }
 
 BundleReader::~BundleReader() {
@@ -657,6 +667,23 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_CHECK_OK(status_);
   Seek(key);
   if (!iter_->Valid() || iter_->key() != key) {
+    if (lenient_names_ && !key.ends_with(":0")) {
+      // TODO(b/64763924): Remove after Jan 1st 2018.
+      // Try appending ":0" to the key.
+      const string key_with_colon_zero = key.ToString() + ":0";
+      Status status = GetBundleEntryProto(key_with_colon_zero, entry);
+      if (status.ok()) {
+        LOG(WARNING) << "Key " << key << " was not found; using key "
+                     << key_with_colon_zero << " instead. This lenient naming "
+                     << "behavior will be removed on Jan 1st 2018, so please "
+                     << "update your checkpoint file.";
+        return status;
+      } else if (status.code() != error::NOT_FOUND) {
+        return status;
+      }
+      LOG(INFO) << "Looked for both " << key << " and " << key_with_colon_zero
+                << " in checkpoint.";
+    }
     return errors::NotFound("Key ", key, " not found in checkpoint");
   }
 

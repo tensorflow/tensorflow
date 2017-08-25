@@ -17,10 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/allocation_description.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
-#include "tensorflow/core/framework/tensor_description.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -38,10 +35,12 @@ namespace tensorflow {
 // Forward declarations.  In particular, we forward declare protos so that their
 // symbols can be removed from .so exports.
 class AllocationDescription;
+class Allocator;
 class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
+class VariantTensorData;
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.
@@ -190,7 +189,7 @@ class Tensor {
   /// The returned tensor shares the underlying tensor buffer with this
   /// tensor.
   ///
-  /// NOTE: The returned tensor may not satisfies the same alignment
+  /// NOTE: The returned tensor may not satisfy the same alignment
   /// requirement as this tensor depending on the shape. The caller
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).

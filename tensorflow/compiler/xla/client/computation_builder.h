@@ -211,11 +211,21 @@ class ComputationBuilder {
   //
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
-  // The stride parameter determines the stride over the slice
+  // The strides parameter determines the stride over the slice
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
                               tensorflow::gtl::ArraySlice<int64> limit_indices,
-                              tensorflow::gtl::ArraySlice<int64> stride);
+                              tensorflow::gtl::ArraySlice<int64> strides);
+
+  // Enqueues a slice operation in a given dimension, taking all other
+  // dimensions as they are; e.g. if dimno is 1 from start_index 2 to
+  // limit_index 4 by 1, and the shape is f32[7,8,9], this call is short-hand
+  // for:
+  //
+  //  array[:, 2:4:1, :]
+  ComputationDataHandle SliceInDim(const ComputationDataHandle& operand,
+                                   int64 start_index, int64 limit_index,
+                                   int64 stride, int64 dimno);
 
   // Enqueues a slice operation onto the computation that slices the 'operand'
   // from dynamic start indices which are passed in 'start_indices'.
@@ -669,12 +679,12 @@ class ComputationBuilder {
   // Computes the value of a constant indicated by a
   // ComputationDataHandle.
   //
-  // The handle must be from the computation currently being built -
+  // The operand must be from the computation currently being built -
   // i.e., returned from this builder with no intervening call to
   // Build(). This happens to currently work regardless of that, but
   // that may stop working at any time.
   //
-  // The handle must represent a constant value, which in this case
+  // The operand must represent a constant value, which in this case
   // means that it must not statically depend on a parameter to the
   // computation that is being built.
   //
@@ -692,8 +702,8 @@ class ComputationBuilder {
   //
   // If output_layout is non-null, then the output of the computation
   // will be stored using that layout.
-  StatusOr<std::unique_ptr<GlobalData>> ComputeConstant(
-      const ComputationDataHandle& handle,
+  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+      const ComputationDataHandle& operand,
       const Layout* output_layout = nullptr);
 
   // Returns a new ComputationBuilder whose resultant Computation is used only

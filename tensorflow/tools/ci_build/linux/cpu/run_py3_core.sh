@@ -29,7 +29,7 @@ export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
 export TF_NEED_CUDA=0
 export PYTHON_BIN_PATH=`which python3`
-yes "" | ./configure
+yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test --test_lang_filters=py -k \

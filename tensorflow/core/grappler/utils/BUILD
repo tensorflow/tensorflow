@@ -18,9 +18,12 @@ cc_library(
     hdrs = ["scc.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:utils",
     ],
 )
 
@@ -28,6 +31,9 @@ cc_test(
     name = "scc_test",
     size = "small",
     srcs = ["scc_test.cc"],
+    data = [
+        "//tensorflow/core/grappler/costs:graph_properties_testdata",
+    ],
     deps = [
         ":scc",
         "//tensorflow/core:lib_proto_parsing",
