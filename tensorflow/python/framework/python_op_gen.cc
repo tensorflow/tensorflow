@@ -724,7 +724,7 @@ This file is MACHINE GENERATED! Do not edit.
  
   // Mention the original source file so someone tracing back through generated
   // Python code will know where to look next.
-  if (source_file_name.size() > 0) {
+  if (!source_file_name.empty()) {
     strings::StrAppend(&result, "Original C++ source file: ");
     strings::StrAppend(&result, source_file_name);
     strings::StrAppend(&result, "\n");
