@@ -71,7 +71,7 @@ namespace {
   __global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V)
   {
     CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-      V[i] = V[i]>=0 ? (Scalar)1 : (Scalar)0
+      V[i] = V[i]>=0 ? (Scalar)1 : (Scalar)0;
     }
   }
 }
