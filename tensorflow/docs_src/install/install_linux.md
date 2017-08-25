@@ -55,7 +55,7 @@ TensorFlow with GPU support, but only if you do the following:
   * Install TensorFlow from sources as documented in
     @{$install_sources$Installing TensorFlow from Sources}.
   * Install or upgrade to at least the following NVIDIA versions:
-    * CUDA toolkit 7.0 or greater
+    * CUDA toolkit 8.0 or greater
     * cuDNN v3 or greater
     * GPU card with CUDA Compute Capability 3.0 or higher.
 
