@@ -192,6 +192,144 @@ TEST_F(ReducePrecisionInsertionTest, InsertionIsNotRecursive) {
   EXPECT_EQ(computation->root_instruction()->operand(0), b);
 }
 
+TEST_F(ReducePrecisionInsertionTest, SkipRedundantReducePrecision) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+  HloInstruction* y = builder.AddInstruction(
+      HloInstruction::CreateReducePrecision(shape, x, 5, 10));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Confirm expected graph before adding ops.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(y));
+  EXPECT_EQ(computation->root_instruction(), y);
+
+  // Since the new reduce-precision operation would be redundant, this
+  // should not change the graph.
+  EXPECT_FALSE(
+      InsertOps(module.get(), HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                [](const HloInstruction* instruction) {
+                  return instruction->opcode() == HloOpcode::kParameter;
+                }));
+
+  // Confirm that graph has not changed.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(y));
+  EXPECT_EQ(computation->root_instruction(), y);
+}
+
+TEST_F(ReducePrecisionInsertionTest, AddNonRedundantReducePrecision) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+  HloInstruction* y = builder.AddInstruction(
+      HloInstruction::CreateReducePrecision(shape, x, 8, 23));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Confirm expected graph before adding ops.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(y));
+  EXPECT_EQ(computation->root_instruction(), y);
+
+  // Since the new reduce-precision operation is not the same as the existing
+  // one, this should add a new one.
+  EXPECT_TRUE(InsertOps(module.get(),
+                        HloReducePrecisionOptions::BEFORE_OP_FUSION,
+                        [](const HloInstruction* instruction) {
+                          return instruction->opcode() == HloOpcode::kParameter;
+                        }));
+
+  // Confirm that graph is as expected.
+  EXPECT_EQ(computation->root_instruction(), y);
+  EXPECT_THAT(y->operand(0), op::ReducePrecision(x));
+}
+
+TEST_F(ReducePrecisionInsertionTest, IgnoreOpsInsideFusionNode) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+  HloInstruction* y = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Manually fuse the kCos operation into a fusion operation.
+  HloInstruction* z = computation->AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kLoop, y));
+  EXPECT_IS_OK(computation->ReplaceUsesOfInstruction(y, z));
+  EXPECT_IS_OK(computation->RemoveInstruction(y));
+
+  // Confirm expected graph before adding reduce-precision ops.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(z));
+  EXPECT_EQ(computation->root_instruction(), z);
+  HloInstruction* y_fused = z->fused_expression_root();
+  EXPECT_EQ(y_fused->opcode(), HloOpcode::kCos);
+
+  // The ReducePrecisionInsertion pass should not see inside the fusion
+  // operation, so this should not change the graph.
+  EXPECT_FALSE(InsertOps(module.get(),
+                         HloReducePrecisionOptions::AFTER_OP_FUSION,
+                         [](const HloInstruction* instruction) {
+                           return instruction->opcode() == HloOpcode::kCos;
+                         }));
+
+  // Confirm that graph has not changed.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(z));
+  EXPECT_EQ(computation->root_instruction(), z);
+  EXPECT_EQ(z->fused_expression_root(), y_fused);
+}
+
+TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInTailOfFusionNode) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+  HloInstruction* y = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, x));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Manually fuse the kCos operation into a fusion operation.
+  HloInstruction* z = computation->AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kLoop, y));
+  EXPECT_IS_OK(computation->ReplaceUsesOfInstruction(y, z));
+  EXPECT_IS_OK(computation->RemoveInstruction(y));
+
+  // Confirm expected graph before adding reduce-precision ops.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(z));
+  EXPECT_EQ(computation->root_instruction(), z);
+  HloInstruction* y_fused = z->fused_expression_root();
+  EXPECT_EQ(y_fused->opcode(), HloOpcode::kCos);
+
+  // This should see that the fusion computation contains a kCos operation,
+  // and insert a new reduce-precision node at its root.
+  EXPECT_TRUE(InsertOps(module.get(),
+                        HloReducePrecisionOptions::FUSION_BY_CONTENT,
+                        [](const HloInstruction* instruction) {
+                          return instruction->opcode() == HloOpcode::kCos;
+                        }));
+
+  // This should refuse to insert a second reduce-precision operation, as
+  // it would be redundant with the first.
+  EXPECT_FALSE(InsertOps(module.get(),
+                         HloReducePrecisionOptions::FUSION_BY_CONTENT,
+                         [](const HloInstruction* instruction) {
+                           return instruction->opcode() == HloOpcode::kCos;
+                         }));
+
+  // Confirm that the top-level computation still only contains the fusion
+  // instruction, but that the fused computation now has a reduce-precision
+  // instruction inserted as its root.
+  EXPECT_THAT(x->users(), UnorderedElementsAre(z));
+  EXPECT_EQ(computation->root_instruction(), z);
+  EXPECT_THAT(z->fused_expression_root(), op::ReducePrecision(y_fused));
+}
+
 TEST_F(ReducePrecisionInsertionTest, MakeFilterFunctionNoSubstrings) {
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4});

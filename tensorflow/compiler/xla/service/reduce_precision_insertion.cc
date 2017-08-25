@@ -93,14 +93,49 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
 
     bool computation_changed = false;
     for (auto& instruction : instructions_to_suffix(computation.get())) {
-      HloInstruction* reduced =
-          computation->AddInstruction(HloInstruction::CreateReducePrecision(
-              instruction->shape(), instruction, exponent_bits_,
-              mantissa_bits_));
-      TF_RETURN_IF_ERROR(
-          computation->ReplaceUsesOfInstruction(instruction, reduced));
-      VLOG(2) << "Inserted new op after instruction: "
+      VLOG(2) << "Adding reduce-precision operation to output of instruction: "
               << instruction->ToString();
+
+      // Check that we haven't already inserted an equivalant reduce-precision
+      // operation after this instruction.
+      if (instruction->user_count() == 1) {
+        HloInstruction* user = instruction->users()[0];
+
+        if (user->opcode() == HloOpcode::kReducePrecision &&
+            user->exponent_bits() == exponent_bits_ &&
+            user->mantissa_bits() == mantissa_bits_) {
+          VLOG(2) << "Skipped; instruction already followed by equivalent"
+                     " reduce-precision instruction:"
+                  << user->ToString();
+          continue;
+        }
+      }
+
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        // Insert the reduce-precision operation as the last operation inside
+        // the fusion computation.
+        instruction = instruction->fused_expression_root();
+
+        VLOG(2) << "Inserting new operation after existing fusion root: "
+                << instruction->ToString();
+
+        if (instruction->opcode() == HloOpcode::kReducePrecision &&
+            instruction->exponent_bits() == exponent_bits_ &&
+            instruction->mantissa_bits() == mantissa_bits_) {
+          VLOG(2) << "Skipped; fused computation already ends in equivalent"
+                     " reduce-precision instruction:"
+                  << instruction->ToString();
+          continue;
+        }
+      }
+
+      HloInstruction* reduced = instruction->parent()->AddInstruction(
+          HloInstruction::CreateReducePrecision(instruction->shape(),
+                                                instruction, exponent_bits_,
+                                                mantissa_bits_));
+
+      TF_RETURN_IF_ERROR(instruction->parent()->ReplaceUsesOfInstruction(
+          instruction, reduced));
       computation_changed = true;
     }
 
