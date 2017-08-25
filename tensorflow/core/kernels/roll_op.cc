@@ -21,11 +21,145 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #include "roll_op.h"
 
-using namespace tensorflow;
+namespace tensorflow {
 
 #define EIGEN_USE_THREADS
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+
+template <typename T>
+void DoRollV1(OpKernelContext* context, const int64 N,
+                const int D, const int* dim_size,
+                const T* input, T* output, const int* thresholds,
+                const int64* dim_strides) {
+
+  auto work = [input, output, D, &dim_size,
+               &thresholds, &dim_strides](int64 start, int64 end) {
+    int in_dim_i[D]; // array of indices for each dimension
+    int delta_i = 0; // the difference between out_i and in_i
+    // initialize in_dim_i and delta_i
+    for (int d = 0; d < D; d++) {
+      const int ds = dim_size[d];
+      // stride is the number of indices over in the flattened tensor
+      // you need to skip in order to make it over to an adjacent element
+      // along a dimension.
+      const int64 stride = dim_strides[d] / ds;
+      // calculated this way will always be positive modulo of shift
+      const int shift = ds - thresholds[d];
+      const int indx = (start / stride) % ds;
+      in_dim_i[d] = indx;
+      // calculate dimension index after the shift
+      const int out_dim_i = (indx + shift) % ds;
+      delta_i += (out_dim_i - indx) * stride;
+    }
+
+    for (int64 in_i = start; in_i < end; in_i++) {
+      const int64 out_i = in_i + delta_i;
+      output[out_i] = input[in_i];
+
+      // create next combination of in_dim_i[d]
+      // while at it adjust delta_i if needed
+      for (int d = D-1; d >= 0; d--) {
+        const int indx = (in_dim_i[d] + 1) % dim_size[d];
+        in_dim_i[d] = indx;
+        if (indx != 0) {
+          if (indx == thresholds[d]) {
+            delta_i -= dim_strides[d]; // now wraps around
+          }
+          break; // indx != 0 don't need to carry
+        }else{
+          delta_i += dim_strides[d]; // indx became 0 so reverse wrap around
+        }
+      }
+    }
+  };
+  // Shard
+  auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+  const int64 S = fmin(worker_threads->num_threads, N);
+  const int64 cost_per_unit = N / fmax(S, 1);
+  Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
+        std::move(work));
+}
+
+// template <typename T>
+// void DoRollV2(OpKernelContext* context, const int64 N,
+//                 const int D, const int* dim_size,
+//                 const T* input, T* output, const int* thresholds,
+//                 const int64* dim_strides) {
+//   auto work = [input, output, D, &dim_size,
+//                &thresholds, &dim_strides](int64 start, int64 end) {
+//     const T* in_ptr = &input[0];
+//     T* out_ptr = &output[0];
+//     in_ptr += start;
+//     out_ptr += start;
+//
+//     int in_dim_i[D]; // array of indices for each dimension
+//     // initialize in_dim_i and delta_i
+//     for (int d = 0; d < D; d++) {
+//       const int ds = dim_size[d];
+//       // stride is the number of indices over in the flattened tensor
+//       // you need to skip in order to make it over to an adjacent element
+//       // along a dimension.
+//       const int64 stride = dim_strides[d] / ds;
+//       // calculated this way will always be positive modulo of shift
+//       const int shift = ds - thresholds[d];
+//       const int indx = (start / stride) % ds;
+//       in_dim_i[d] = indx;
+//       // calculate dimension index after the shift
+//       const int out_dim_i = (indx + shift) % ds;
+//       out_ptr += (out_dim_i - indx) * stride;
+//     }
+//
+//     const int isd = D-1; // inner shift dimension
+//     const int64 isd_stride = dim_strides[isd] / dim_size[isd];
+//
+//
+//     int64 i = start;
+//     while (i < end){
+//       int group_dim_stride = 0;
+//       int64 group_size = 0;
+//       if (in_dim_i[isd] < thresholds[isd]){
+//         group_dim_stride = thresholds[isd] - in_dim_i[isd];
+//         group_size = group_dim_stride * isd_stride;
+//       }else{
+//         group_dim_stride = dim_size[isd] - in_dim_i[isd];
+//         group_size = group_dim_stride * isd_stride;
+//       }
+//
+//       memcpy(out_ptr, in_ptr, group_size * sizeof(T));
+//       i += group_size;
+//       out_ptr += group_size;
+//       in_ptr += group_size;
+//
+//       // create next combination of in_dim_i[d]
+//       // while at it adjust delta_i if needed
+//       for (int d = isd; d >= 0; d--) {
+//         int inc = 1;
+//         if (d == isd){
+//           inc = group_dim_stride;
+//         }
+//         const int indx = (in_dim_i[d] + inc) % dim_size[d];
+//         in_dim_i[d] = indx;
+//         if (indx != 0) {
+//           if (indx == thresholds[d]) {
+//             out_ptr -= dim_strides[d]; // now wraps around
+//           }
+//           break; // indx != 0 don't need to carry
+//         }else{
+//           out_ptr += dim_strides[d]; // indx became 0 so reverse wrap around
+//         }
+//       }
+//
+//     }
+//   };
+//   // Shard
+//   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+//   const int64 S = fmin(worker_threads->num_threads, N);
+//   const int64 cost_per_unit = N / fmax(S, 1);
+//   //worker_threads->num_threads
+//   Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
+//         std::move(work));
+// }
 
 template <typename Device, typename T, typename Tshift, typename Taxis>
 class RollOp : public OpKernel {
@@ -92,66 +226,13 @@ class RollOp : public OpKernel {
     auto output_flat = output->flat<T>().data();
 
     if (std::is_same<Device, CPUDevice>::value) {
-      auto work = [input_flat, output_flat, D, &dim_size,
-                   &thresholds, &dim_strides](int64 start, int64 end) {
-        int in_dim_i[D]; // array of indices for each dimension
-        int delta_i = 0; // the difference between out_i and in_i
-        // initialize in_dim_i and delta_i
-        for (int d = 0; d < D; d++) {
-          const int ds = dim_size[d];
-          // stride is the number of indices over in the flattened tensor
-          // you need to skip in order to make it over to an adjacent element
-          // along a dimension.
-          const int64 stride = dim_strides[d] / ds;
-          // calculated this way will always be positive modulo of shift
-          const int shift = ds - thresholds[d];
-          const int indx = (start / stride) % ds;
-          in_dim_i[d] = indx;
-          // calculate dimension index after the shift
-          const int out_dim_i = (indx + shift) % ds;
-          delta_i += (out_dim_i - indx) * stride;
-        }
-
-        for (int64 in_i = start; in_i < end; in_i++) {
-          const int64 out_i = in_i + delta_i;
-          output_flat[out_i] = input_flat[in_i];
-
-          // create next combination of in_dim_i[d]
-          // while at it adjust delta_i if needed
-          for (int d = D-1; d >= 0; d--) {
-            const int indx = (in_dim_i[d] + 1) % dim_size[d];
-            in_dim_i[d] = indx;
-            if (indx != 0) {
-              if (indx == thresholds[d]) {
-                delta_i -= dim_strides[d]; // now wraps around
-              }
-              break; // indx != 0 don't need to carry
-            }else{
-              delta_i += dim_strides[d]; // indx became 0 so reverse wrap around
-            }
-          }
-        }
-      };
-      // Shard
-      auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-      const int64 S = fmin(worker_threads->num_threads, N);
-      const int64 cost_per_unit = N / fmax(S, 1);
-      Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
-            std::move(work));
+      DoRollV1<T>(context, N, D, dim_size, input_flat, output_flat,
+                     thresholds, dim_strides);
       return;
     }
 
-
-    RollFunctor<Device, T>()(
-        context->eigen_device<Device>(),
-        N,
-        D,
-        dim_size,
-        input_flat,
-        output_flat,
-        thresholds,
-        dim_strides
-    );
+    RollFunctor<Device, T>()(context->eigen_device<Device>(), N, D, dim_size,
+                             input_flat, output_flat, thresholds, dim_strides);
 
   }
 };
@@ -219,3 +300,4 @@ REGISTER_KERNEL_BUILDER(Name("Roll")                              \
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU)
 #endif  // GOOGLE_CUDA
+} // namespace tensorflow
