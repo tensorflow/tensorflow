@@ -237,7 +237,7 @@ One way to reduce this code duplication would be via a `for` loop:
 ```python
 net = ...
 for i in range(3):
-  net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
+  net = slim.conv2d(net, 256, [3, 3], scope='conv3_%d' % (i+1))
 net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
