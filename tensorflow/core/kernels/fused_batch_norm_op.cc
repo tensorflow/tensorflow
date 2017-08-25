@@ -39,7 +39,7 @@ namespace functor {
 // Functor used by FusedBatchNormOp to do the computations.
 template <typename Device, typename T>
 struct FusedBatchNorm;
-// Functor used by FusedBatchNormGradOp to do the computations.
+// Functor used by FusedBatchNormGradOp to do the computations when is_training=True.
 template <typename Device, typename T>
 struct FusedBatchNormGrad;
 
@@ -468,6 +468,22 @@ struct FusedBatchNormGrad<GPUDevice, T> {
     }
   }
 };
+
+// Forward declarations of the functor specializations for GPU.
+#define DECLARE_GPU_SPEC(T)                                                \
+  template <>                                                              \
+  void FusedBatchNormFreezeGrad<GPUDevice, T>::operator()(                 \
+                  const GPUDevice& d, const Tensor& y_backprop_input,      \
+                  const Tensor& x_input, const Tensor& scale_input,        \
+                  const Tensor& mean_input, const Tensor& variance_input,  \
+                  T epsilon, Tensor* x_backprop_output,                    \
+                  Tensor* scale_backprop_output, Tensor* offset_backprop_output, \
+                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2, \
+                  TensorFormat tensor_format \
+      ); \
+  extern template struct FusedBatchNormFreezeGrad<GPUDevice, T>;
+DECLARE_GPU_SPEC(float);
+
 #endif  // GOOGLE_CUDA
 }  // namespace functor
 
@@ -511,7 +527,7 @@ class FusedBatchNormOp : public OpKernel {
     if (is_training_) {
       OP_REQUIRES(
           context, estimated_mean.dim_size(0) == 0,
-          errors::InvalidArgument("estimated_mean empty for training",
+          errors::InvalidArgument("estimated_mean must be empty for training",
                                   estimated_mean.shape().DebugString()));
       OP_REQUIRES(context, estimated_variance.dim_size(0) == 0,
                   errors::InvalidArgument(
@@ -559,6 +575,7 @@ class FusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -607,14 +624,33 @@ class FusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
 
-    functor::FusedBatchNormGrad<Device, T>()(
-        context, y_backprop, x, scale, saved_mean, saved_maybe_inv_var,
-        epsilon_, x_backprop, scale_backprop, offset_backprop, tensor_format_);
+    if (is_training_) {
+      functor::FusedBatchNormGrad<Device, T>()(
+          context, y_backprop, x, scale, saved_mean, saved_maybe_inv_var,
+          epsilon_, x_backprop, scale_backprop, offset_backprop, tensor_format_);
+
+    } else {
+      int depth = scale_offset_shape.dim_size(0);
+      Tensor scratch1;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                              DataTypeToEnum<T>::value,
+                              TensorShape({depth}), &scratch1));
+      Tensor scratch2;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                              DataTypeToEnum<T>::value,
+                              TensorShape({depth}), &scratch2));
+      const Device& d = context->eigen_device<Device>();
+      functor::FusedBatchNormFreezeGrad<Device, T>()(
+          d, y_backprop, x, scale, saved_mean, saved_maybe_inv_var,
+          epsilon_, x_backprop, scale_backprop, offset_backprop,
+          scratch1.vec<T>(), scratch2.vec<T>(), tensor_format_);
+    }
   }
 
  private:
   T epsilon_;
   TensorFormat tensor_format_;
+  bool is_training_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNorm").Device(DEVICE_CPU),

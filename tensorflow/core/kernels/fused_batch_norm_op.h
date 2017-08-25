@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_FUSED_BATCH_NORM_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_types.h"
+
+#include "tensorflow/core/framework/op_kernel.h" // TODO remove it
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace functor {
@@ -43,6 +47,70 @@ struct InvVarianceToVariance {
   void operator()(const Eigen::GpuDevice& d, double epsilon, int sample_size,
                   int channels, T* variance);
 };
+
+
+// Functor used by FusedBatchNormGradOp to do the computations when is_training=False.
+// Both CPU and GPU will use this functor.
+template <typename Device, typename T>
+struct FusedBatchNormFreezeGrad {
+  void operator()(const Device& d, const Tensor& y_backprop_input,
+                  const Tensor& x_input, const Tensor& scale_input,
+                  const Tensor& mean_input, const Tensor& variance_input,
+                  T epsilon, Tensor* x_backprop_output,
+                  Tensor* scale_backprop_output, Tensor* offset_backprop_output,
+                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2,
+                  TensorFormat tensor_format) {
+    CHECK(tensor_format == FORMAT_NHWC)
+        << "The implementation of FusedBatchNormFreezeGrad only support "
+        << "NHWC tensor format for now.";
+    typename TTypes<T, 4>::ConstTensor out_backprop(y_backprop_input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
+    typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
+    typename TTypes<T>::ConstVec mean(mean_input.vec<T>());
+    typename TTypes<T>::ConstVec var(variance_input.vec<T>());
+    typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
+    typename TTypes<T>::Vec scale_backprop(scale_backprop_output->vec<T>());
+    typename TTypes<T>::Vec offset_backprop(offset_backprop_output->vec<T>());
+
+    const int depth = mean.dimension(0);
+    const int rest_size = input.size() / depth;
+
+    Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
+    Eigen::array<int, 1> reduction_axis{0};
+    Eigen::array<int, 2> rest_by_one({rest_size, 1});
+#else
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
+    one_by_depth.set(1, depth);
+    Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > rest_by_one;
+    rest_by_one.set(0, rest_size);
+#endif
+
+    // db = out_backprop
+    // dg = out_backprop * ((x - m) * rsqrt(v + epsilon))
+    // dx = out_backprop * (gamma * rsqrt(v + epsilon))
+    offset_backprop.device(d) = out_backprop.reshape(rest_by_depth).sum(reduction_axis);
+
+    // scratch1 = rsqrt(v + epsilon)
+    scratch1.device(d) = (var + var.constant(epsilon)).rsqrt();
+
+    // scratch2 = sum_over_rest(out_backprop * (x - m))
+    scratch2.device(d) = (out_backprop.reshape(rest_by_depth) *
+                          (input.reshape(rest_by_depth) -
+                           mean.reshape(one_by_depth).broadcast(rest_by_one)))
+                           .sum(reduction_axis);
+
+    x_backprop.reshape(rest_by_depth).device(d) =
+        out_backprop.reshape(rest_by_depth) * ((scratch1 * scale)
+                                               .eval()
+                                               .reshape(one_by_depth)
+                                               .broadcast(rest_by_one));
+    scale_backprop.device(d) = scratch2 * scratch1;
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 
