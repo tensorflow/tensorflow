@@ -313,31 +313,21 @@ class FeatureColumnTest(test.TestCase):
         expected_shape = (id_tensor_shape[:output_rank - 1] + [vocab_size])
         self.assertEquals(expected_shape, list(one_hot_value.shape))
 
-  def testMissingValueInOneHotColumnForSparseColumnWithKeys(self):
-    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
-    one_hot = fc.one_hot_column(ids)
-    features = {
-      'ids': constant_op.constant(['marlo', 'skywalker', 'omar'],
-                                  shape=(1, 3)),
-    }
-    one_hot_tensor = feature_column_ops.input_from_feature_columns(
-      features, [one_hot])
-    with self.test_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      sess.run(lookup_ops.tables_initializer())
-      self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
-
-  def testMissingValueInOneHotColumnForWeightedSparseColumn(self):
+  def testOneHotColumnForWeightedSparseColumn(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     one_hot = fc.one_hot_column(weighted_ids)
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
 
+  def testMissingValueInOneHotColumnForWeightedSparseColumn(self):
+    # Github issue 12583
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    one_hot = fc.one_hot_column(weighted_ids)
     features = {
-        'ids': constant_op.constant(['marlo', 'skywalker', 'omar'],
-                                    shape=(1, 3)),
-        'weights': constant_op.constant([2., 4., 6.], shape=(1, 3))
+        'ids': constant_op.constant([['marlo', 'unknown', 'omar']]),
+        'weights': constant_op.constant([[2., 4., 6.]])
     }
     one_hot_tensor = feature_column_ops.input_from_feature_columns(
       features, [one_hot])
@@ -345,6 +335,19 @@ class FeatureColumnTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       self.assertAllEqual([[2., 6., 0.]], one_hot_tensor.eval())
+
+  def testMissingValueInOneHotColumnForSparseColumnWithKeys(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    one_hot = fc.one_hot_column(ids)
+    features = {
+      'ids': constant_op.constant([['marlo', 'unknown', 'omar']])
+    }
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+      features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
 
   def testOneHotColumnDeepCopy(self):
     a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
