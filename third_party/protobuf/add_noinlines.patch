@@ -1,3 +1,14 @@
+--- a/BUILD	2017-05-31 12:01:30.000000000 +0000
++++ b/BUILD	2017-08-25 18:55:24.690290712 +0000
+@@ -20,7 +20,7 @@
+     "//conditions:default": [
+         "-DHAVE_PTHREAD",
+         "-Wall",
+-        "-Wwrite-strings",
++        "-Wno-write-strings",
+         "-Woverloaded-virtual",
+         "-Wno-sign-compare",
+         "-Wno-unused-function",
 diff -u -r a/src/google/protobuf/compiler/cpp/cpp_file.cc b/src/google/protobuf/compiler/cpp/cpp_file.cc
 --- a/src/google/protobuf/compiler/cpp/cpp_file.cc	2017-02-10 23:55:34.000000000 +0100
 +++ b/src/google/protobuf/compiler/cpp/cpp_file.cc	2017-03-21 13:41:46.931979154 +0100
