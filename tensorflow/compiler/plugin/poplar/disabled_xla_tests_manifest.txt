@@ -95,3 +95,5 @@ DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR // Bad test
 DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
 
 CopyOpTest.CopyParameterScalar POPLAR // We return the parameter - not a copy
+
+R4ReduceWindowLargeTest POPLAR // Big
