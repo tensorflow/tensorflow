@@ -201,73 +201,100 @@ CreateSimpleReduction(poplar::Graph &graph,
                       const HloInstruction *inst,
                       const xla::Shape& output_shape,
                       TensorMap& tensor_map) {
-
-  // Find the input tensors
-  poplar::Tensor to_reduce;
-  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
-
-  poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
-
-  // Find the type and vertex
-  HloInstruction* root(inst->to_apply()->root_instruction());
-  std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
-                                           to_reduce.elementType());
-
-
-  // Convert the tensor into a NxM 2D tensor with the dimensions
-  // to reduce in the minor part
-  int64 reduction_flatten_elements = 1;
-  std::set<unsigned> reduction_dims;
-  for (auto d : inst->dimensions()) {
-    reduction_dims.insert(d);
-    reduction_flatten_elements *= to_reduce.dim(d);
-  }
-
-  std::vector<unsigned int> dim_shuffle(to_reduce.rank());
-  std::iota(dim_shuffle.begin(), dim_shuffle.end(), 0);
-
-  std::sort(dim_shuffle.begin(), dim_shuffle.end(),
-            [&reduction_dims](unsigned a, unsigned b) {
-              bool a_is_reduction =
-                      (reduction_dims.find(a) != reduction_dims.end());
-              bool b_is_reduction =
-                      (reduction_dims.find(b) != reduction_dims.end());
-              if (a_is_reduction && !b_is_reduction) return false;
-              if (b_is_reduction && !a_is_reduction) return true;
-              return a < b;
-            });
-
-  poplar::Tensor shuffled = to_reduce.dimShuffle(dim_shuffle);
-
-  // Reshape to a 2D tensor
-  std::vector<size_t> reshaped(2);
-  reshaped[0] = to_reduce.numElements() / reduction_flatten_elements;
-  reshaped[1] = reduction_flatten_elements;
-  shuffled = shuffled.reshape(reshaped);
-
-  // Allocate the output tensor
+  poplar::program::Sequence seq;
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  // One vertex per non-reduced element
-  auto cs = graph.addComputeSet(inst->name());
+  if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
+    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, inst, output_shape));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  } else {
+    // Find the input tensors
+    poplar::Tensor to_reduce;
+    TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
-  //   reduceByDstMapping(graph, shuffled, out, graph.getTileMapping(out), cs);
+    // Find the type and vertex
+    HloInstruction* root(inst->to_apply()->root_instruction());
+    std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
+                                             to_reduce.elementType());
 
-  const unsigned long N = out.dim(0);
-  const auto &device_info = graph.getDevice().getDeviceInfo();
 
-  for (unsigned i = 0; i < N; ++i) {
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{"a", shuffled[i]},
-                              {"out", out.slice(i, i+1)}});
-    graph.setTileMapping(v, (i / device_info.numWorkerContexts) % device_info.getNumTiles());
+    // Convert the tensor into a NxM 2D tensor with the dimensions
+    // to reduce in the minor part
+    int64 reduction_flatten_elements = 1;
+    std::set<unsigned> reduction_dims;
+    for (auto d : inst->dimensions()) {
+      reduction_dims.insert(d);
+      reduction_flatten_elements *= to_reduce.dim(d);
+    }
+
+    std::vector<unsigned int> dim_shuffle(to_reduce.rank());
+    std::iota(dim_shuffle.begin(), dim_shuffle.end(), 0);
+
+    std::sort(dim_shuffle.begin(), dim_shuffle.end(),
+              [&reduction_dims](unsigned a, unsigned b) {
+                bool a_is_reduction =
+                        (reduction_dims.find(a) != reduction_dims.end());
+                bool b_is_reduction =
+                        (reduction_dims.find(b) != reduction_dims.end());
+                if (a_is_reduction && !b_is_reduction) return false;
+                if (b_is_reduction && !a_is_reduction) return true;
+                return a < b;
+              });
+
+    poplar::Tensor shuffled = to_reduce.dimShuffle(dim_shuffle);
+
+    // Reshape to a 2D tensor
+    std::vector<size_t> reshaped(2);
+    reshaped[0] = to_reduce.numElements() / reduction_flatten_elements;
+    reshaped[1] = reduction_flatten_elements;
+    shuffled = shuffled.reshape(reshaped);
+
+    // Allocate the output tensor
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+    out = out.flatten();
+
+    // One vertex per non-reduced element
+    auto cs = graph.addComputeSet(inst->name());
+
+    // TODO - this?
+    // reduceByDstMapping(graph, shuffled, out, graph.getTileMapping(out), cs);
+
+    const unsigned long N = out.dim(0);
+    const auto &device_info = graph.getDevice().getDeviceInfo();
+
+    for (unsigned i = 0; i < N; ++i) {
+      auto v = graph.addVertex(cs, vertex_name,
+                               {{"a", shuffled[i]},
+                                {"out", out.slice(i, i+1)}});
+      graph.setTileMapping(v, (i / device_info.numWorkerContexts)
+                              % device_info.getNumTiles());
+    }
+
+    seq.add(poplar::program::Execute(cs));
+
+    // Apply initial value
+    Literal identity_literal = GetIdentityConstantTensor(inst);
+    auto* init_inst = inst->operand(1);
+    if (!(init_inst->IsConstant() &&
+          init_inst->literal().Equal(identity_literal))) {
+
+      poplar::Tensor init_val;
+      TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
+
+      // Create a binary op with the scatter_root opcode
+      TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
+      init_val = init_val.flatten();
+
+      popstd_binary_fn fn;
+      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root->opcode()));
+
+      out = fn(graph, out, init_val, seq, inst->name() + "_initval");
+    }
+
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   }
 
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>
@@ -276,78 +303,105 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
                             const HloInstruction *inst,
                             const xla::Shape& output_shape,
                             TensorMap& tensor_map) {
-
-  // Find the input tensors
-  poplar::Tensor to_reduce;
-  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
-
-  poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
-
-  // Find the type and vertex
-  HloInstruction* root(inst->to_apply()->root_instruction());
-  std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
-                                           to_reduce.elementType());
-
-  const Window& window(inst->window());
-
-  // Find the number of windows in each dimension
-  std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
-  for (int64 d=0; d<window.dimensions().size(); d++) {
-    std::size_t input_dim(to_reduce.dim(d));
-    input_dim += window.dimensions(d).padding_low();
-    input_dim += window.dimensions(d).padding_high();
-
-    window_count[d] = window_util::StridedBound(input_dim,
-                                                window.dimensions(d).size(),
-                                                window.dimensions(d).stride());
-  }
-
-  // Allocate the output tensor
+  poplar::program::Sequence seq;
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->name());
-  const unsigned long N = out.dim(0);
-  const auto &device_info = graph.getDevice().getDeviceInfo();
+  if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
+    TF_ASSIGN_OR_RETURN(out,AddPlainTensor(graph, inst, output_shape));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  } else {
+    // Find the input tensors
+    poplar::Tensor to_reduce;
+    TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
-  unsigned dim_count(to_reduce.rank());
+    // Find the type and vertex
+    HloInstruction* root(inst->to_apply()->root_instruction());
+    std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
+                                             to_reduce.elementType());
 
-  // Vector for walking the window through the tensor
-  std::vector<std::size_t> pos(dim_count, 0);
+    const Window& window(inst->window());
 
-  // Slice boundaries
-  std::vector<std::size_t> start(dim_count);
-  std::vector<std::size_t> end(dim_count);
+    // Find the number of windows in each dimension
+    std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
+    for (int64 d=0; d<window.dimensions().size(); d++) {
+      std::size_t input_dim(to_reduce.dim(d));
+      input_dim += window.dimensions(d).padding_low();
+      input_dim += window.dimensions(d).padding_high();
 
-  for (unsigned i = 0; i < N; ++i) {
-    // Find the window
-    for (unsigned d=0; d<dim_count; d++) {
-      const auto& wd(window.dimensions(d));
-
-      int s(pos[d] * wd.stride() - wd.padding_low());
-      int e(s + wd.size());
-      start[d] = std::max(s, 0);
-      end[d] = std::min(e, (int)to_reduce.dim(d));
+      window_count[d] = window_util::StridedBound(input_dim,
+                                                  window.dimensions(d).size(),
+                                                  window.dimensions(d).stride());
     }
 
-    poplar::Tensor w = to_reduce.slice(start, end).flatten();
+    // Allocate the output tensor
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+    poplar::Tensor out_flat = out.flatten();
 
-    // Create the vertex
-    auto v = graph.addVertex(cs, vertex_name, {{"a", w}, {"out", out.slice(i,i+1)}});
-    graph.setTileMapping(v, (i / device_info.numWorkerContexts) % device_info.getNumTiles());
+    auto cs = graph.addComputeSet(inst->name());
+    const unsigned long N = out_flat.dim(0);
+    const auto &device_info = graph.getDevice().getDeviceInfo();
 
-    // Advance the window
-    for (int d=dim_count-1; d>=0; d--) {
-      pos[d]++;
-      if (pos[d] < window_count[d]) break;
-      pos[d] = 0;
+    unsigned dim_count(to_reduce.rank());
+
+    // Vector for walking the window through the tensor
+    std::vector<std::size_t> pos(dim_count, 0);
+
+    // Slice boundaries
+    std::vector<std::size_t> start(dim_count);
+    std::vector<std::size_t> end(dim_count);
+
+    for (unsigned i = 0; i < N; ++i) {
+      // Find the window
+      for (unsigned d=0; d<dim_count; d++) {
+        const auto& wd(window.dimensions(d));
+
+        int s(pos[d] * wd.stride() - wd.padding_low());
+        int e(s + wd.size());
+        start[d] = std::min(std::max(s, 0), (int)to_reduce.dim(d));
+        end[d] = std::min(std::max(e, 0), (int)to_reduce.dim(d));
+      }
+
+      poplar::Tensor w = to_reduce.slice(start, end).flatten();
+
+      // Create the vertex
+      auto v = graph.addVertex(cs,
+                               vertex_name,
+                               {{"a", w},
+                                {"out", out_flat.slice(i,i+1)}});
+      graph.setTileMapping(v, (i / device_info.numWorkerContexts)
+                              % device_info.getNumTiles());
+
+      // Advance the window
+      for (int d=dim_count-1; d>=0; d--) {
+        pos[d]++;
+        if (pos[d] < window_count[d]) break;
+        pos[d] = 0;
+      }
     }
+
+    seq.add(poplar::program::Execute(cs));
+
+    // Apply initial value
+    Literal identity_literal = GetIdentityConstantTensor(inst);
+    auto* init_inst = inst->operand(1);
+    if (!(init_inst->IsConstant() &&
+          init_inst->literal().Equal(identity_literal))) {
+
+      poplar::Tensor init_val;
+      TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
+
+      // Create a binary op with the scatter_root opcode
+      TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
+
+      popstd_binary_fn fn;
+      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root->opcode()));
+
+      out = fn(graph, out, init_val, seq, inst->name() + "_initval");
+    }
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   }
 
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>
@@ -356,52 +410,61 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
                              const HloInstruction *inst,
                              const xla::Shape& output_shape,
                              TensorMap& tensor_map) {
-  const HloInstruction* pooling_inst;
-
-  PoolingType reduction_type;
-
-  // Find the type of the reduction
-  if (inst->opcode() == HloOpcode::kCall) {
-    reduction_type = PoolingType::AVG;
-    pooling_inst = inst->to_apply()->root_instruction()->operand(0);
-  } else if (inst->to_apply()->root_instruction()->opcode() ==
-          HloOpcode::kMaximum) {
-    reduction_type = PoolingType::MAX;
-    pooling_inst = inst;
-  } else {
-    reduction_type = PoolingType::SUM;
-    pooling_inst = inst;
-  }
-
-  // Find the input tensors
-  poplar::Tensor to_reduce;
-  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
-
-  const Window& window(pooling_inst->window());
-  std::vector<std::size_t> kernel_shape = {
-    (std::size_t)window.dimensions(1).size(),
-    (std::size_t)window.dimensions(2).size()
-  };
-  std::vector<unsigned> stride = {
-    (unsigned)window.dimensions(1).stride(),
-    (unsigned)window.dimensions(2).stride()
-  };
-  std::vector<int> padding_lower = {
-    (int)window.dimensions(1).padding_low(),
-    (int)window.dimensions(2).padding_low()
-  };
-  std::vector<int> padding_upper = {
-    (int)window.dimensions(1).padding_high(),
-    (int)window.dimensions(2).padding_high()
-  };
 
   poplar::program::Sequence prog;
-  poplar::Tensor out = popnn::pooling::pool(graph, reduction_type,
-                                            kernel_shape, stride,
-                                            padding_lower, padding_upper,
-                                            to_reduce, prog, inst->name());
+  poplar::Tensor out;
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
+    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, inst, output_shape));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  } else {
+    const HloInstruction* pooling_inst;
+
+    PoolingType reduction_type;
+
+    // Find the type of the reduction
+    if (inst->opcode() == HloOpcode::kCall) {
+      reduction_type = PoolingType::AVG;
+      pooling_inst = inst->to_apply()->root_instruction()->operand(0);
+    } else if (inst->to_apply()->root_instruction()->opcode() ==
+               HloOpcode::kMaximum) {
+      reduction_type = PoolingType::MAX;
+      pooling_inst = inst;
+    } else {
+      reduction_type = PoolingType::SUM;
+      pooling_inst = inst;
+    }
+
+    // Find the input tensors
+    poplar::Tensor to_reduce;
+    TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
+
+    const Window& window(pooling_inst->window());
+    std::vector<std::size_t> kernel_shape = {
+            (std::size_t)window.dimensions(1).size(),
+            (std::size_t)window.dimensions(2).size()
+    };
+    std::vector<unsigned> stride = {
+            (unsigned)window.dimensions(1).stride(),
+            (unsigned)window.dimensions(2).stride()
+    };
+    std::vector<int> padding_lower = {
+            (int)window.dimensions(1).padding_low(),
+            (int)window.dimensions(2).padding_low()
+    };
+    std::vector<int> padding_upper = {
+            (int)window.dimensions(1).padding_high(),
+            (int)window.dimensions(2).padding_high()
+    };
+
+    out = popnn::pooling::pool(graph, reduction_type,
+                               kernel_shape, stride,
+                               padding_lower, padding_upper,
+                               to_reduce, prog, inst->name());
+
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  }
+
   return prog;
 }
 
@@ -412,6 +475,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
                              const xla::Shape& output_shape,
                              TensorMap& tensor_map) {
 
+  poplar::Tensor out;
   poplar::program::Sequence program_seq;
 
   // Find the input tensors
@@ -420,9 +484,6 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   poplar::Tensor source;
   TF_ASSIGN_OR_RETURN(source, FindInstructionInput(tensor_map, inst, 1));
-
-  poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 2));
 
   HloInstruction* select_root(inst->select()->root_instruction());
   HloInstruction* scatter_root(inst->scatter()->root_instruction());
@@ -472,9 +533,10 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     input_dim += window.dimensions(d).padding_low();
     input_dim += window.dimensions(d).padding_high();
 
-    window_count[d] = window_util::StridedBound(input_dim,
-                                                window.dimensions(d).size(),
-                                                window.dimensions(d).stride());
+    window_count[d] =
+            window_util::StridedBound(input_dim,
+                                      window.dimensions(d).size(),
+                                      window.dimensions(d).stride());
   }
 
   auto select_cs = graph.addComputeSet(inst->name());
@@ -502,8 +564,8 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
       int s(pos[d] * wd.stride() - wd.padding_low());
       int e(s + wd.size());
-      start_in[d] = std::max(s, 0);
-      end_in[d] = std::min(e, (int)operand.dim(d));
+      start_in[d] = std::min(std::max(s, 0), (int)operand.dim(d));
+      end_in[d] = std::min(std::max(e, 0), (int)operand.dim(d));
 
       start_par[d] = start_in[d];
       end_par[d] = end_in[d];
@@ -528,7 +590,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
                               {"out", w_par}});
     graph.setTileMapping(v,
                          (i / device_info.numWorkerContexts) %
-                                 device_info.getNumTiles());
+                         device_info.getNumTiles());
 
     // Advance the window
     for (int d=dim_count-1; d>=0; d--) {
@@ -552,20 +614,19 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   partial = partial.reshape(reshaped);
 
   // Allocate the output tensor
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-  out = out.flatten();
+  poplar::Tensor out_flat = out.flatten();
 
   // One vertex per non-reduced element
   auto scatter_cs = graph.addComputeSet(inst->name());
   program_seq.add(poplar::program::Execute(scatter_cs));
 
-  const unsigned long num_reductions = out.dim(0);
+  const unsigned long num_reductions = out_flat.dim(0);
 
   for (unsigned i = 0; i < num_reductions; ++i) {
     auto v = graph.addVertex(scatter_cs, scatter_vertex_name,
                              {{"a", partial[i]},
-                              {"out", out.slice(i, i+1)}});
+                              {"out", out_flat.slice(i, i+1)}});
     graph.setTileMapping(v, (i / device_info.numWorkerContexts)
                             % device_info.getNumTiles());
   }
@@ -577,13 +638,15 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   if (!(init_inst->IsConstant() &&
         init_inst->literal().Equal(identity_literal))) {
 
+    poplar::Tensor init_val;
+    TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 2));
+
     // Create a binary op with the scatter_root opcode
     TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
     popstd_binary_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(scatter_root->opcode()));
 
-    poplar::program::Sequence seq;
     out = fn(graph, out, init_val, program_seq, inst->name() + "_initval");
   }
 
