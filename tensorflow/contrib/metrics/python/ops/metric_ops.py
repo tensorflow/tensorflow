@@ -414,7 +414,8 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
       values=values, weights=weights, metrics_collections=metrics_collections,
       updates_collections=updates_collections, name=name)
 
-
+@deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
+    "inputs of labels and predictions have been switched.")
 def streaming_accuracy(predictions, labels, weights=None,
                        metrics_collections=None, updates_collections=None,
                        name=None):
@@ -1642,7 +1643,7 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None, "Please switch to tf.metrics.mean.")
 def streaming_mean_absolute_error(predictions, labels, weights=None,
                                   metrics_collections=None,
                                   updates_collections=None,
