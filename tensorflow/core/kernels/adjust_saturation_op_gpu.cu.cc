@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -17,25 +17,27 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/adjust_hsv_gpu.cu.h"
-#include "tensorflow/core/kernels/adjust_hue_op.h"
+#include "tensorflow/core/kernels/adjust_saturation_op.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
 namespace functor {
 
-void AdjustHueGPU::operator()(GPUDevice* device, const int64 number_of_elements,
-                              const float* const input,
-                              const float* const delta, float* const output) {
+void AdjustSaturationGPU::operator()(GPUDevice* device,
+                                     const int64 number_of_elements,
+                                     const float* const input,
+                                     const float* const scale,
+                                     float* const output) {
   const auto stream = device->stream();
   const CudaLaunchConfig config =
       GetCudaLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  internal::adjust_hsv_nhwc<true, false, false>
+  internal::adjust_hsv_nhwc<false, true, false>
       <<<block_count, threads_per_block, 0, stream>>>(
-          number_of_elements, input, output, delta, nullptr, nullptr);
+          number_of_elements, input, output, nullptr, scale, nullptr);
 }
 }  // namespace functor
 }  // namespace tensorflow

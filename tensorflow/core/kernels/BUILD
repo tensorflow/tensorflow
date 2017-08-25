@@ -1833,13 +1833,33 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "adjust_hue_op",
-    prefix = "adjust_hue_op",
+    srcs = [
+        "adjust_hue_op.cc",
+    ],
+    hdrs = [
+        "adjust_hue_op.h",
+    ],
+    gpu_srcs = [
+        "adjust_hsv_gpu.cu.h",
+        "adjust_hue_op.h",
+        "adjust_hue_op_gpu.cu.cc",
+    ],
     deps = IMAGE_DEPS,
 )
 
 tf_kernel_library(
     name = "adjust_saturation_op",
-    prefix = "adjust_saturation_op",
+    srcs = [
+        "adjust_saturation_op.cc",
+    ],
+    hdrs = [
+        "adjust_saturation_op.h",
+    ],
+    gpu_srcs = [
+        "adjust_hsv_gpu.cu.h",
+        "adjust_saturation_op.h",
+        "adjust_saturation_op_gpu.cu.cc",
+    ],
     deps = IMAGE_DEPS,
 )
 
