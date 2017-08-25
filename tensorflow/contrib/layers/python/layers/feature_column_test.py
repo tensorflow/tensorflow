@@ -313,7 +313,7 @@ class FeatureColumnTest(test.TestCase):
         expected_shape = (id_tensor_shape[:output_rank - 1] + [vocab_size])
         self.assertEquals(expected_shape, list(one_hot_value.shape))
 
-  def testOneHotColumnForSparseColumnWithKeys(self):
+  def testMissingValueInOneHotColumnForSparseColumnWithKeys(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     one_hot = fc.one_hot_column(ids)
     features = {
@@ -327,7 +327,7 @@ class FeatureColumnTest(test.TestCase):
       sess.run(lookup_ops.tables_initializer())
       self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
 
-  def testOneHotColumnForWeightedSparseColumn(self):
+  def testMissingValueInOneHotColumnForWeightedSparseColumn(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     one_hot = fc.one_hot_column(weighted_ids)

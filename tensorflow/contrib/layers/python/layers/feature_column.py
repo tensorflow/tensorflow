@@ -939,7 +939,7 @@ class _OneHotColumn(
       weighted_column = sparse_ops.sparse_merge(sp_ids=sparse_id_column,
                                                 sp_values=weight_tensor,
                                                 vocab_size=self.length)
-      # Remove -1 index
+      # Remove (?, -1) index
       weighted_column = sparse_ops.sparse_slice(
           weighted_column,
           [0, 0],
