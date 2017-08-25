@@ -13,25 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_RDMA_UTIL_H_
-#define TENSORFLOW_CONTRIB_RDMA_UTIL_H_
-
-#include <string>
-
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
 
-class TensorProto;
+bool GpuOpFilter(KernelDef* kdef) {
+  // TODO(b/31361304): The GPU backend does not parallelize PRNG ops, leading to
+  // slow code.
+  // TODO(b/34969189) The implementation of TruncatedNormal generates illegal
+  // code on GPU.
+  if (kdef->op() == "RandomStandardNormal" || kdef->op() == "RandomUniform" ||
+      kdef->op() == "RandomUniformInt" || kdef->op() == "TruncatedNormal") {
+    return false;
+  }
+  return true;
+}
 
-class VerbsUtil {
- public:
-  static string AppendStepidToKey(const string& key, int64 step_id);
-  static void GetKeyAndStepId(const string& key_with_step_id, string& key,
-                              int64& step_id);
-};
+REGISTER_XLA_BACKEND(DEVICE_GPU_XLA_JIT, kGpuAllTypes, GpuOpFilter);
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_RDMA_UTIL_H_

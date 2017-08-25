@@ -465,6 +465,7 @@ cc_binary(
         "//tensorflow/c:c_api",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -474,6 +475,7 @@ cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",

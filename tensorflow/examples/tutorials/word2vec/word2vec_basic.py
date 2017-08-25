@@ -78,10 +78,8 @@ def build_dataset(words, n_words):
   data = list()
   unk_count = 0
   for word in words:
-    if word in dictionary:
-      index = dictionary[word]
-    else:
-      index = 0  # dictionary['UNK']
+    index = dictionary.get(word, 0)
+    if index == 0:  # dictionary['UNK']
       unk_count += 1
     data.append(index)
   count[0][1] = unk_count
@@ -110,14 +108,13 @@ def generate_batch(batch_size, num_skips, skip_window):
   buffer.extend(data[data_index:data_index + span])
   data_index += span
   for i in range(batch_size // num_skips):
-    target = skip_window  # target label at the center of the buffer
-    targets_to_avoid = [skip_window]
+    context_words = [w for w in range(span) if w != skip_window]
+    random.shuffle(context_words)
+    words_to_use = collections.deque(context_words)
     for j in range(num_skips):
-      while target in targets_to_avoid:
-        target = random.randint(0, span - 1)
-      targets_to_avoid.append(target)
       batch[i * num_skips + j] = buffer[skip_window]
-      labels[i * num_skips + j, 0] = buffer[target]
+      context_word = words_to_use.pop()
+      labels[i * num_skips + j, 0] = buffer[context_word]
     if data_index == len(data):
       buffer[:] = data[:span]
       data_index = span

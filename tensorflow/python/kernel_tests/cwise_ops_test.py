@@ -70,7 +70,6 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   return sparse_tensor.SparseTensor(
       indices=x_indices, values=x_values, dense_shape=x_shape), x_values
 
-
 def _default_tolerance(dtype):
   """Returns a sensible default tolerance for comparing results of a given
   type"""
@@ -81,7 +80,7 @@ def _default_tolerance(dtype):
   elif dtype in (np.float64, np.complex128):
     return 1e-5
   else:
-    return None  # Fail fast for unexpected types
+    return None # Fail fast for unexpected types
 
 
 class UnaryOpTest(test.TestCase):
@@ -1957,7 +1956,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = tf_angle.eval()
+      tf_angle_val = sess.run([tf_angle])
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
@@ -2116,22 +2115,21 @@ class AccumulateTest(test.TestCase):
       with self.assertRaises(ValueError):
         a = variables.Variable(0.2)
         b = variables.Variable(0.1)
-        tf_val = math_ops.accumulate_n(
-            [a, b], shape=[2, 2])  # Should be shape=[]
+        tf_val = math_ops.accumulate_n([a,b], shape=[2,2]) # Should be shape=[]
 
   def testWrongType(self):
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
-        tf_val = math_ops.accumulate_n([a, b], tensor_dtype=np.int32)
+        tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
-        tf_val = math_ops.accumulate_n([a], tensor_dtype=np.int32)
+        tf_val = math_ops.accumulate_n([a], tensor_dtype=np.int32) 
 
 
 if __name__ == "__main__":

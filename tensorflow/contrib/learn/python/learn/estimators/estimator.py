@@ -29,7 +29,6 @@ import numpy as np
 import six
 
 from google.protobuf import message
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
@@ -58,6 +57,7 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
@@ -97,8 +97,7 @@ def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
 
-    if contrib_framework.is_tensor(x) or (y is not None and
-                                          contrib_framework.is_tensor(y)):
+    if tensor_util.is_tensor(x) or y is not None and tensor_util.is_tensor(y):
       raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
 
     if feed_fn is not None:
@@ -847,7 +846,7 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
@@ -908,7 +907,7 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      contrib_framework.create_global_step(g)
+      training_util.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
@@ -978,7 +977,7 @@ class BaseEstimator(
     self._graph = ops.Graph()
     with self._graph.as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
       model_fn_ops = self._get_train_ops(features, labels)
@@ -1132,13 +1131,14 @@ class Estimator(BaseEstimator):
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
-  def _call_model_fn(self, features, labels, mode):
+  def _call_model_fn(self, features, labels, mode, metrics=None):
     """Calls model function with support of 2, 3 or 4 arguments.
 
     Args:
       features: features dict.
       labels: labels dict.
       mode: ModeKeys
+      metrics: Dict of metrics.
 
     Returns:
       A `ModelFnOps` object. If model_fn returns a tuple, wraps them up in a
@@ -1161,17 +1161,24 @@ class Estimator(BaseEstimator):
     model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
-      return model_fn_results
+      model_fn_ops = model_fn_results
+    else:
+      # Here model_fn_results should be a tuple with 3 elements.
+      if len(model_fn_results) != 3:
+        raise ValueError('Unrecognized value returned by model_fn, '
+                         'please return ModelFnOps.')
+      model_fn_ops = model_fn_lib.ModelFnOps(
+          mode=mode,
+          predictions=model_fn_results[0],
+          loss=model_fn_results[1],
+          train_op=model_fn_results[2])
 
-    # Here model_fn_results should be a tuple with 3 elements.
-    if len(model_fn_results) != 3:
-      raise ValueError('Unrecognized value returned by model_fn, '
-                       'please return ModelFnOps.')
-    return model_fn_lib.ModelFnOps(
-        mode=mode,
-        predictions=model_fn_results[0],
-        loss=model_fn_results[1],
-        train_op=model_fn_results[2])
+    # Custom metrics should overwrite defaults.
+    if metrics:
+      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
+        metrics, features, labels, model_fn_ops.predictions))
+
+    return model_fn_ops
 
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
@@ -1215,13 +1222,7 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `labels`.
     """
     model_fn_ops = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL)
-
-    features, labels = self._feature_engineering_fn(features, labels)
-    # Custom metrics should overwrite defaults.
-    if metrics:
-      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
-          metrics, features, labels, model_fn_ops.predictions))
+        features, labels, model_fn_lib.ModeKeys.EVAL, metrics)
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (

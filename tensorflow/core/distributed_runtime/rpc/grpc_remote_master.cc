@@ -32,6 +32,8 @@ namespace tensorflow {
 // GrpcRemoteMaster is an implementation of the MasterInterface
 // that uses gRPC to talk to the Master service.
 class GrpcRemoteMaster : public MasterInterface {
+  using MasterServiceStub = grpc::MasterService::Stub;
+
  public:
   explicit GrpcRemoteMaster(const SharedGrpcChannelPtr& client_channel)
       : stub_(grpc::MasterService::NewStub(client_channel)) {}
@@ -42,63 +44,56 @@ class GrpcRemoteMaster : public MasterInterface {
                        const CreateSessionRequest* request,
                        CreateSessionResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->CreateSession(&ctx, *request, response));
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::CreateSession);
   }
 
   Status ExtendSession(CallOptions* call_options,
                        const ExtendSessionRequest* request,
                        ExtendSessionResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->ExtendSession(&ctx, *request, response));
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::ExtendSession);
   }
 
   Status PartialRunSetup(CallOptions* call_options,
                          const PartialRunSetupRequest* request,
                          PartialRunSetupResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->PartialRunSetup(&ctx, *request, response));
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::PartialRunSetup);
   }
 
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
                  MutableRunStepResponseWrapper* response) override {
     ::grpc::ClientContext ctx;
     auto trace = TraceRpc("RunStep/Client", &ctx);
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(),
-                                         get_proto_from_wrapper(response)));
+    return Call(&ctx, call_options, &request->ToProto(),
+                get_proto_from_wrapper(response),
+                &MasterServiceStub::RunStep);
   }
 
   Status CloseSession(CallOptions* call_options,
                       const CloseSessionRequest* request,
                       CloseSessionResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->CloseSession(&ctx, *request, response));
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::CloseSession);
   }
 
   Status ListDevices(CallOptions* call_options,
                      const ListDevicesRequest* request,
                      ListDevicesResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->ListDevices(&ctx, *request, response));
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::ListDevices);
   }
 
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override {
     ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->Reset(&ctx, *request, response));
+    return Call(&ctx, call_options, request, response,
+                &MasterServiceStub::Reset);
   }
 
  private:
@@ -110,13 +105,23 @@ class GrpcRemoteMaster : public MasterInterface {
     return port::Tracing::TraceMe(name, trace_id);
   }
 
-  std::unique_ptr<grpc::MasterService::Stub> stub_;
-
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {
     if (time_in_ms > 0) {
       ctx->set_deadline(gpr_time_from_millis(time_in_ms, GPR_TIMESPAN));
     }
   }
+
+  template <typename Request, typename Response>
+  Status Call(::grpc::ClientContext* ctx, CallOptions* call_options,
+              const Request* request, Response* response,
+              ::grpc::Status (MasterServiceStub::*pfunc)(
+                  ::grpc::ClientContext*, const Request&, Response*)) {
+    ctx->set_fail_fast(false);
+    SetDeadline(ctx, call_options->GetTimeout());
+    return FromGrpcStatus((stub_.get()->*pfunc)(ctx, *request, response));
+  }
+
+  std::unique_ptr<MasterServiceStub> stub_;
 };
 
 MasterInterface* NewGrpcMaster(const SharedGrpcChannelPtr& channel) {
