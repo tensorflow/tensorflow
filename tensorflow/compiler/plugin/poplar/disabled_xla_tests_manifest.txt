@@ -8,6 +8,8 @@ DotOperationTest.VectorDotF64    POPLAR // F64
 ConvertTest.ConvertR1F32ToR1F64 POPLAR // F64
 ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
 SliceR1Test.DoIt_F64 POPLAR // F64
+MultiOutputFusionTest.DiffentTypesNoFusion POPLAR // F64
+MultiOutputFusionTest.DiffentTypesFusion POPLAR // F64
 
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
