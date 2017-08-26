@@ -37,7 +37,7 @@ void DoRoll(OpKernelContext* context, const int64 N,
   auto work = [input, output, D, &dim_size,
                &threshold, &dim_range](int64 start, int64 end) {
     int indices[D]; // array of indices for each dimension
-    int offset = 0; // the shift along the flat tensor for current element
+    int offset = 0; // the shift along the flattened tensor for current element
     // initialize indices and offset
     for (int d = 0; d < D; d++) {
       // stride is the number of indices over in the flattened tensor
@@ -77,10 +77,118 @@ void DoRoll(OpKernelContext* context, const int64 N,
   };
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-  const int cost_per_unit = 50; // rough esitmate 
+  const int cost_per_unit = 50; // rough esitmate
   Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
         std::move(work));
 }
+
+template <typename T>
+// Use memcpy to copy memory in groups when the data type supports memcpy
+void DoRollV2(OpKernelContext* context, const int64 N,
+                const int D, const int* dim_size,
+                const T* input, T* output, const int* threshold,
+                const int64* dim_range, const int64 isd) {
+  auto work = [input, output, D, &dim_size,
+               &threshold, &dim_range, isd](int64 start, int64 end) {
+    const T* in_ptr = &input[0];
+    T* out_ptr = &output[0];
+    in_ptr += start;
+    out_ptr += start;
+
+    // array of indices for each dimension
+    // indicies = [i, j, k, l, m, n]
+    int indicies[D];
+    // the offset needed to make all inner non-shifting dimensions become 0
+    int64 remainder_offset = 0;
+    // initialize indicies
+    for (int d = 0; d < D; d++) {
+      // stride is the number of indices over in the flattened tensor
+      // you need to skip in order to make it over to an adjacent element
+      // along a dimension.
+      const int64 stride = dim_range[d] / dim_size[d];
+      const int shift = dim_size[d] - threshold[d];
+      const int indx = (start / stride) % dim_size[d];
+      indicies[d] = indx;
+      // calculate dimension index after the shift
+      int out_indx = (indx + shift) % dim_size[d];
+      if (d > isd) {
+        // trailing zeroes for indices after the inner shifted dimension
+        out_indx = 0;
+        remainder_offset += (out_indx - indx) * stride;
+      }
+      out_ptr += (out_indx - indx) * stride;
+    }
+    // set trailing zeroes for indices after the inner shifted dimension
+    for (int d = D-1; d > isd; d--) indicies[d] = 0;
+    // the distance along the flattend tensor to the next element in the isd
+    const int64 isd_stride = dim_range[isd] / dim_size[isd];
+
+    // the number of indices in the isd dimension the next group will skip
+    // to make it to the next threshold or end point
+    int isd_indx_skip = 0;
+    // the size of the next group
+    int64 group_size = 0;
+    // initialize isd_indx_skip and group_size
+    if (indicies[isd] < threshold[isd]){
+      isd_indx_skip = threshold[isd] - indicies[isd];
+      group_size = isd_indx_skip * isd_stride + remainder_offset;
+    }else{
+      isd_indx_skip = dim_size[isd] - indicies[isd];
+      group_size = isd_indx_skip * isd_stride + remainder_offset;
+    }
+
+    int64 i = start;
+    while (i < end){
+      // copy group of elements
+      memcpy(out_ptr, in_ptr, group_size * sizeof(T));
+
+      // shift i and the pointers over to the next group position
+      i += group_size;
+      out_ptr += group_size;
+      in_ptr += group_size;
+
+      // produce next combination of indices and adjust the out_ptr position
+      // to fix the offset if necessary
+      // the isd should skip to next threshold or endpoint
+      // all dimensions to the left increment by 1 when a digit is carried
+      // all dimensions to the right remain set to 0
+      //            +1 +1 +1 +isd_indx_skip
+      // indicies = [i, j, k, l, 0, 0]
+      //                      ^isd
+      for (int d = isd; d >= 0; d--) {
+        int inc = 1;
+        if (d == isd) inc = isd_indx_skip;
+        const int indx = (indicies[d] + inc) % dim_size[d];
+        indicies[d] = indx;
+        if (indx != 0) {
+          if (indx == threshold[d]) {
+            out_ptr -= dim_range[d]; // now wraps around
+          }
+          break; // indx != 0 don't need to carry
+        }else{
+          out_ptr += dim_range[d]; // indx became 0 so reverse wrap around
+        }
+      }
+
+      // set isd_indx_skip and group_size for next iteration
+      if (indicies[isd] < threshold[isd]){
+        isd_indx_skip = threshold[isd] - indicies[isd];
+        group_size = isd_indx_skip * isd_stride;
+      }else{
+        isd_indx_skip = dim_size[isd] - indicies[isd];
+        group_size = isd_indx_skip * isd_stride;
+      }
+
+    }
+  };
+  // Shard
+  auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+  const int64 ave_group_size = dim_range[isd] / 2;
+  const int cost_per_unit = 50 / fmax(ave_group_size, 1); // rough esitmate
+  Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
+        std::move(work));
+}
+
 
 template <typename Device, typename T, typename Tshift, typename Taxis>
 class RollOp : public OpKernel {
@@ -123,18 +231,21 @@ class RollOp : public OpKernel {
       // modulo that works with negatives: ((x % y) + y) % y
       shift_mod_sum[a] = (sum % ds + ds) % ds;
     }
-
+    // the size of each dimension
     int dim_size[D];
-    int threshold[D]; // the index that the roll starts to wrap around
+    // threshold[d] is the index that the roll starts to wrap back to the front
+    int threshold[D];
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
     int64 dim_range[D];
     int64 dim_size_prod = 1;
+    // inner shift dimension (inner most shifted dimension)
+    int64 isd = 0;
     for (int d = D-1; d >= 0; d--) {
+      if (!isd && shift_mod_sum[d]) isd = d;
       const int ds = fmax(static_cast<int>(input.dim_size(d)), 1);
       dim_size[d] = ds;
-      // modulo that works with negatives: ((x % y) + y) % y
       threshold[d] = (ds - shift_mod_sum[d]) % ds;
       dim_size_prod *= static_cast<int64>(input.dim_size(d));
       dim_range[d] = dim_size_prod;
@@ -148,9 +259,18 @@ class RollOp : public OpKernel {
 
 
     if (std::is_same<Device, CPUDevice>::value) {
-      DoRoll<T>(context, N, D, dim_size, input_flat, output_flat,
-                     threshold, dim_range);
-    }else{ // GPUs and beyond
+      if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())){
+        // V2 copies memory in groups instead of element by element
+        // much faster
+        DoRollV2<T>(context, N, D, dim_size, input_flat, output_flat,
+                       threshold, dim_range, isd);
+      }else{
+        // incase memcpy does not work for current data type
+        DoRoll<T>(context, N, D, dim_size, input_flat, output_flat,
+                       threshold, dim_range);
+      }
+    }else{
+      // for GPUs and beyond
       RollFunctor<Device, T>()(context->eigen_device<Device>(), N, D, dim_size,
                                input_flat, output_flat, threshold, dim_range);
     }
