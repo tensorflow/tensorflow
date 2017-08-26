@@ -205,7 +205,9 @@ CreateSimpleReduction(poplar::Graph &graph,
   poplar::Tensor out;
 
   if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
-    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, inst, output_shape));
+    auto zero = Literal::Zero(inst->shape().element_type());
+    TF_ASSIGN_OR_RETURN(out,
+                        AddConstantTensor(graph, inst->shape(), zero, res));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     // Find the input tensors
@@ -306,7 +308,9 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
   poplar::Tensor out;
 
   if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
-    TF_ASSIGN_OR_RETURN(out,AddPlainTensor(graph, inst, output_shape));
+    auto zero = Literal::Zero(inst->shape().element_type());
+    TF_ASSIGN_OR_RETURN(out,
+                        AddConstantTensor(graph, inst->shape(), zero, res));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     // Find the input tensors
@@ -409,12 +413,13 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
                              const HloInstruction *inst,
                              const xla::Shape& output_shape,
                              TensorMap& tensor_map) {
-
   poplar::program::Sequence prog;
   poplar::Tensor out;
 
   if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
-    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, inst, output_shape));
+    auto zero = Literal::Zero(inst->shape().element_type());
+    TF_ASSIGN_OR_RETURN(out,
+                        AddConstantTensor(graph, inst->shape(), zero, res));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     const HloInstruction* pooling_inst;
