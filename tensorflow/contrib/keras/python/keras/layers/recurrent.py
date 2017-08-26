@@ -279,6 +279,12 @@ class Recurrent(Layer):
     return inputs
 
   def __call__(self, inputs, initial_state=None, **kwargs):
+    if (isinstance(inputs, (list, tuple)) and
+        len(inputs) > 1
+        and initial_state is None):
+      initial_state = inputs[1:]
+      inputs = inputs[0]
+
     # If `initial_state` is specified,
     # and if it a Keras tensor,
     # then add it to the inputs and temporarily
