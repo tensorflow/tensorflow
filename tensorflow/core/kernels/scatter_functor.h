@@ -160,54 +160,39 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
     Index result = -1 GUARDED_BY(mu);
     auto work = [&params, &updates, &indices, &flags, flags_size, limit, &mu, &result]
             (int64 start, int64 end) {
-
-#define BOUNDS_CHECK                                                    \
-      if (!FastBoundsCheck(index, limit)) {                             \
-        mutex_lock l(mu);                                               \
-        result = i;                                                     \
-        return;                                                         \
-      }
-
-#define ACQUIRE_LOCK                                                   \
-      flags_idx = index % flags_size;                                  \
-      while (flags[flags_idx].test_and_set(std::memory_order_acquire)) ;
-
-
-#define RELEASE_LOCK  flags[flags_idx].clear(std::memory_order_release);
-
-      Index flags_idx;
+      std::function<void(Index index, Index i)> assign_func;
       if (op != scatter_op::UpdateOp::ASSIGN || std::is_same<T, string>::value) {
-        for (Index i = start; i < end; i++) {
-          // Grab the index and check its validity.  An earlier version of the
-          // code checked it and then grabbed it from memory a second time, which
-          // was a security risk since it could have changed in between.
-          const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-          BOUNDS_CHECK
-          ACQUIRE_LOCK
-          // Copy last Ndim-1 dimensions of updates[i] to params[index]
+        assign_func = [&params, &updates](Index index, Index i) {
           scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
                                                 updates.template chip<0>(i));
-          RELEASE_LOCK
-        }
+        };
       } else {
-        for (Index i = start; i < end; i++) {
-          // Grab the index and check its validity.  An earlier version of the
-          // code checked it and then grabbed it from memory a second time, which
-          // was a security risk since it could have changed in between.
-          const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-
-          BOUNDS_CHECK
-          ACQUIRE_LOCK
+        assign_func = [&params, &updates](Index index, Index i) {
           memmove(params.data() + index * params.dimension(1),
                   updates.data() + i * updates.dimension(1),
                   updates.dimension(1) * sizeof(T));
-          RELEASE_LOCK
+        };
+      }
+      Index flags_idx;
+      for (Index i = start; i < end; i++) {
+        // Grab the index and check its validity.  An earlier version of the
+        // code checked it and then grabbed it from memory a second time, which
+        // was a security risk since it could have changed in between.
+        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, limit)) {
+          mutex_lock l(mu);
+          result = i;
+          return;
         }
+        // acquire lock
+        flags_idx = index % flags_size;
+        while (flags[flags_idx].test_and_set(std::memory_order_acquire)) ;
+        // Copy last Ndim-1 dimensions of updates[i] to params[index]
+        assign_func(index, i);
+        // release lock
+        flags[flags_idx].clear(std::memory_order_release);
       }
     };
-#undef RELEASE_LOCK
-#undef ACQUIRE_LOCK
-#undef BOUNDS_CHECK
 
     Shard(worker_threads->num_threads, worker_threads->workers, N,
           updates.dimension(1) * sizeof(T), work);
