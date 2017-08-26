@@ -1,0 +1,17 @@
+.DS_Store
+.ipynb_checkpoints
+node_modules
+/.bazelrc
+/.tf_configure.bazelrc
+/bazel-*
+/bazel_pip
+/tools/python_bin_path.sh
+/tools/git/gen
+/pip_test
+/_python_build
+*.pyc
+__pycache__
+*.swp
+.vscode/
+cmake_build/
+.idea/**
