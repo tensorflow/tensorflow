@@ -782,6 +782,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"

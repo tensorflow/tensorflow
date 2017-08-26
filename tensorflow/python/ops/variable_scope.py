@@ -28,6 +28,7 @@ import traceback
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -840,6 +841,7 @@ def no_regularizer(_):
   return None
 
 
+# TODO(alive): support caching devices and partitioned variables in Eager mode.
 class VariableScope(object):
   """Variable scope object to carry defaults to provide to `get_variable`.
 
@@ -894,6 +896,14 @@ class VariableScope(object):
     self._dtype = dtype
     self._use_resource = use_resource
     self._constraint = constraint
+    if context.in_eager_mode():
+      if self._caching_device is not None:
+        raise NotImplementedError("Caching devices is not yet supported "
+                                  "in Eager mode.")
+      if self._partitioner is not None:
+        raise NotImplementedError("Partitioned variables are not yet supported "
+                                  "in Eager mode.")
+      self._use_resource = True
 
   @property
   def name(self):
@@ -961,10 +971,16 @@ class VariableScope(object):
 
   def set_caching_device(self, caching_device):
     """Set caching_device for this scope."""
+    if context.in_eager_mode():
+      raise NotImplementedError("Partitioned variables are not yet supported "
+                                "in Eager mode.")
     self._caching_device = caching_device
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
+    if context.in_eager_mode():
+      raise NotImplementedError("Partitioned variables are not yet supported "
+                                "in Eager mode.")
     self._partitioner = partitioner
 
   def set_custom_getter(self, custom_getter):
@@ -1034,8 +1050,11 @@ class VariableScope(object):
         constraint = self._constraint
       if dtype is None:
         dtype = self._dtype
-      if use_resource is None:
-        use_resource = self._use_resource
+      if context.in_graph_mode():
+        if use_resource is None:
+          use_resource = self._use_resource
+      else:
+        use_resource = True
 
       return var_store.get_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
@@ -1060,6 +1079,9 @@ class VariableScope(object):
                                 use_resource=None,
                                 constraint=None):
     """Gets an existing variable with this name or create a new one."""
+    if context.in_eager_mode():
+      raise NotImplementedError("Partitioned variables are not yet supported "
+                                "in Eager mode.")
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:

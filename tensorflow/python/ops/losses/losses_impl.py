@@ -213,9 +213,14 @@ def absolute_difference(
     shape as `labels`; otherwise, it is scalar.
 
   Raises:
-    ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.
+    ValueError: If the shape of `predictions` doesn't match that of
+      `labels` or if the shape of `weights` is invalid or if `labels`
+      or `predictions` is None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if predictions is None:
+    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "absolute_difference",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -252,10 +257,14 @@ def cosine_distance(
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
-      `weights` is `None`.
+      `dim`, `labels`, `predictions` or `weights` is `None`.
   """
   if dim is None:
     raise ValueError("`dim` cannot be None.")
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if predictions is None:
+    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -289,8 +298,13 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
     shape as `labels`; otherwise, it is scalar.
 
   Raises:
-    ValueError: If the shapes of `logits` and `labels` don't match.
+    ValueError: If the shapes of `logits` and `labels` don't match or
+      if `labels` or `logits` is None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if logits is None:
+    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "hinge_loss", (logits, labels, weights)) as scope:
     logits = math_ops.to_float(logits)
     labels = math_ops.to_float(labels)
@@ -346,8 +360,13 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.
+      if the shape of `weights` is invalid.  Also if `labels` or
+     `predictions` is None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if predictions is None:
+    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "huber_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -397,8 +416,13 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
+      is None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if predictions is None:
+    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "log_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -454,8 +478,13 @@ def mean_pairwise_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions
+      is None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if predictions is None:
+    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       (predictions, labels, weights)) as scope:
     weights = math_ops.to_float(weights)
@@ -524,8 +553,13 @@ def mean_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
+      is None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if predictions is None:
+    raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "mean_squared_error",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
@@ -571,8 +605,12 @@ def sigmoid_cross_entropy(
   Raises:
     ValueError: If the shape of `logits` doesn't match that of
       `multi_class_labels` or if the shape of `weights` is invalid, or if
-      `weights` is None.
+      `weights` is None.  Also if `multi_class_labels` or `logits` is None.
   """
+  if multi_class_labels is None:
+    raise ValueError("multi_class_labels must not be None.")
+  if logits is None:
+    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
@@ -624,8 +662,13 @@ def softmax_cross_entropy(
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
-      or if the shape of `weights` is invalid or if `weights` is None.
+      or if the shape of `weights` is invalid or if `weights` is None.  Also if
+      `onehot_labels` or `logits` is None.
   """
+  if onehot_labels is None:
+    raise ValueError("onehot_labels must not be None.")
+  if logits is None:
+    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
                       (logits, onehot_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
@@ -727,9 +770,13 @@ def sparse_softmax_cross_entropy(
     `NONE`, this has the same shape as `labels`; otherwise, it is scalar.
 
   Raises:
-    ValueError: If the shapes of logits, labels, and weight are incompatible, or
-      if `weights` is None.
+    ValueError: If the shapes of `logits`, `labels`, and `weights` are
+      incompatible, or if any of them are None.
   """
+  if labels is None:
+    raise ValueError("labels must not be None.")
+  if logits is None:
+    raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       (logits, labels, weights)) as scope:
     # As documented above in Args, labels contain class IDs and logits contains
