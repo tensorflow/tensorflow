@@ -53,6 +53,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -490,6 +491,9 @@ class TensorFlowTestCase(googletest.TestCase):
   def _eval_helper(self, tensors):
     if isinstance(tensors, ops.EagerTensor):
       return tensors.numpy()
+    if isinstance(tensors, resource_variable_ops.ResourceVariable):
+      return tensors.read_value().numpy()
+
     if isinstance(tensors, tuple):
       return tuple([self._eval_helper(t) for t in tensors])
     elif isinstance(tensors, list):

@@ -315,6 +315,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testSharedNameWithNamescope(self):
     with ops.name_scope("foo"):
       v = resource_variable_ops.ResourceVariable(300.0, name="var6")
+      self.assertEqual("foo/var6", v._shared_name)  # pylint: disable=protected-access
+      self.assertEqual("foo/var6:0", v.name)
       self.evaluate(variables.global_variables_initializer())
 
     w = resource_variable_ops.var_handle_op(
