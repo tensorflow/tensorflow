@@ -67,7 +67,7 @@ class MultiOutputFusionTest : public HloTestBase {
         elem_shape0, HloOpcode::kAdd, param0, const0));
 
     HloInstruction* broadcast = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(elem_shape2, add1, {0, 1}));
+        HloInstruction::CreateBroadcast(elem_shape2, add1, {}));
 
     auto param1 = builder.AddInstruction(
         HloInstruction::CreateParameter(1, elem_shape2, "1"));

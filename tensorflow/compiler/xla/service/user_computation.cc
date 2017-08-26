@@ -2472,7 +2472,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   // Do explicit broadcast for scalar.
   if (ShapeUtil::IsScalar(operand->shape())) {
     return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-        broadcast_shape, operand, AsInt64Slice(broadcast_shape.dimensions())));
+        broadcast_shape, operand, {}));
   }
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;
