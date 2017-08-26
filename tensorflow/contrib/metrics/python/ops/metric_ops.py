@@ -415,7 +415,7 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
       updates_collections=updates_collections, name=name)
 
 @deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
-    "inputs of labels and predictions have been switched.")
+    "of the inputs of labels and predictions have been switched.")
 def streaming_accuracy(predictions, labels, weights=None,
                        metrics_collections=None, updates_collections=None,
                        name=None):
@@ -830,7 +830,8 @@ def streaming_curve_points(labels=None,
 
     return points, update_op
 
-
+@deprecated(None, "Please switch to tf.metrics.auc. Note that the order of "
+    "the inputs of labels and predictions have been switched.")
 def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
                   metrics_collections=None, updates_collections=None,
                   curve='ROC', name=None):
@@ -1010,7 +1011,9 @@ def streaming_sensitivity_at_specificity(
       metrics_collections=metrics_collections,
       updates_collections=updates_collections, name=name)
 
-
+@deprecated(
+    None, "Please switch to tf.metrics.precision_at_thresholds. Note that the "
+    "order of of the inputs of labels and predictions have been switched.")
 def streaming_precision_at_thresholds(predictions, labels, thresholds,
                                       weights=None,
                                       metrics_collections=None,
@@ -1063,7 +1066,9 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections, name=name)
 
-
+@deprecated(
+    None, "Please switch to tf.metrics.recall_at_thresholds. Note that the "
+    "order of of the inputs of labels and predictions have been switched.")
 def streaming_recall_at_thresholds(predictions, labels, thresholds,
                                    weights=None, metrics_collections=None,
                                    updates_collections=None, name=None):
@@ -1124,8 +1129,8 @@ def _at_k_name(name, k=None, class_id=None):
   return name
 
 
-@deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
-            'and reshape labels from [batch_size] to [batch_size, 1].')
+@deprecated("2016-11-08", "Please use `streaming_sparse_recall_at_k`, "
+            "and reshape labels from [batch_size] to [batch_size, 1].")
 def streaming_recall_at_k(predictions, labels, k, weights=None,
                           metrics_collections=None, updates_collections=None,
                           name=None):
