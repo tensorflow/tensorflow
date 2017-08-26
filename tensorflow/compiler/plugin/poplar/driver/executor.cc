@@ -386,14 +386,23 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
       // b) output buffer isn't an input to the current engine
       // c) output buffer isn't currently in the right place for the new input
       for (const auto &tc : allocations_) {
-        if (tc->on_device == true && !tc->output_handle.empty()) {
-          if (engine_changed) {
-            TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-          } else if (tc->input_handle.empty()) {
-            TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-          } else if (arg_map.count(tc->input_handle) > 0 &&
-                     tc != arg_map[tc->input_handle].first) {
-            TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+        if (tc->on_device == true) {
+          if (!tc->output_handle.empty()) {
+            if (engine_changed) {
+              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+            } else if (tc->input_handle.empty()) {
+              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+            } else if (arg_map.count(tc->input_handle) > 0 &&
+                       tc != arg_map[tc->input_handle].first) {
+              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+            }
+          } else {
+            if (arg_map.count(tc->input_handle) > 0 &&
+                tc != arg_map[tc->input_handle].first) {
+              // Mark any old inputs as invalid
+              tc->input_handle.clear();
+              tc->on_device = false;
+            }
           }
         }
       }
