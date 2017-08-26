@@ -683,7 +683,7 @@ class GradLoopState(object):
     # The while loop context for backprop.
     self._grad_context = None
 
-    # The loop counter added by AddBackPropLoopCounter. It is the value
+    # The loop counter added by AddBackpropLoopCounter. It is the value
     # of the loop counter for the current iteration.
     self._grad_index = None
 
@@ -725,8 +725,8 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      real_cnt = outer_grad_state.AddBackPropAccumulatedValue(history_cnt, cnt)
-      self._grad_index = self._grad_context.AddBackPropLoopCounter(
+      real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
+      self._grad_index = self._grad_context.AddBackpropLoopCounter(
           real_cnt, outer_grad_state)
       outer_grad_ctxt.Exit()
     else:
@@ -736,7 +736,7 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      self._grad_index = self._grad_context.AddBackPropLoopCounter(
+      self._grad_index = self._grad_context.AddBackpropLoopCounter(
           cnt, outer_grad_state)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
 
@@ -907,7 +907,7 @@ class GradLoopState(object):
       push.op._add_control_input(add_op)
       return acc
 
-  def AddBackPropAccumulatedValue(self, history_value, value,
+  def AddBackpropAccumulatedValue(self, history_value, value,
                                   dead_branch=False):
     """Add the getter for an accumulated value in the grad context.
 
@@ -1003,7 +1003,7 @@ class GradLoopState(object):
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = cur_grad_state.AddBackPropAccumulatedValue(history_value,
+        real_value = cur_grad_state.AddBackpropAccumulatedValue(history_value,
                                                                 cur_value)
         if cur_grad_state != self:
           real_value = self._grad_context.AddValue(real_value)
@@ -1160,7 +1160,7 @@ class ControlFlowState(object):
         # Get the shape back from the stack.
         outer_grad_ctxt = outer_grad_state.grad_context
         outer_grad_ctxt.Enter()
-        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
+        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
             history_shape, shape)
         result = array_ops.zeros(real_shape, val.dtype)
         outer_grad_ctxt.Exit()
@@ -1230,7 +1230,7 @@ class ControlFlowState(object):
       grad_state.grad_context.Enter()
 
       # Create a zero tensor with the right shape.
-      shape = grad_state.AddBackPropAccumulatedValue(
+      shape = grad_state.AddBackpropAccumulatedValue(
           history_zeros_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
@@ -2267,7 +2267,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return total_iterations, next_n
 
-  def AddBackPropLoopCounter(self, count, outer_grad_state):
+  def AddBackpropLoopCounter(self, count, outer_grad_state):
     """Add the backprop loop that controls the iterations.
 
     This is added to the backprop loop. It is used to control the loop
@@ -2321,7 +2321,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return next_count
 
-  def AddBackPropAccumulator(self, op, grad):
+  def AddBackpropAccumulator(self, op, grad):
     """Add an accumulation loop for every loop invariant.
 
     This is added to the backprop loop. It is used to accumulate partial
@@ -2367,7 +2367,7 @@ class WhileContext(ControlFlowContext):
         history_zeros_shape = outer_grad_state.AddForwardAccumulator(
             zeros_shape)
         self.outer_context.Enter()
-        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
+        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
             history_zeros_shape, zeros_shape)
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
@@ -2397,10 +2397,10 @@ class WhileContext(ControlFlowContext):
     self.ExitResult([result_acc])
     return result_acc
 
-  def AddBackPropIndexedSlicesAccumulator(self, op, grad):
+  def AddBackpropIndexedSlicesAccumulator(self, op, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
-    This is essentially the equavalent of AddBackPropAccumulator but optimized
+    This is essentially the equivalent of AddBackpropAccumulator but optimized
     for things like updating embeddings from within a while loop.
 
     Args:
@@ -2671,7 +2671,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
   call to `while_loop`, and not at all during `Session.run()`). `while_loop`
   stitches together the graph fragments created during the `cond` and `body`
-  calls with some additional graph nodes to create the graph flow that 
+  calls with some additional graph nodes to create the graph flow that
   repeats `body` until `cond` returns false.
 
   For correctness, `tf.while_loop()` strictly enforces shape invariants for

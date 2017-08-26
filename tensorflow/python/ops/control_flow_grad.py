@@ -117,7 +117,7 @@ def _MergeGrad(op, grad, _):
 
         # Add the stack pop op. If pred.op is in a (outer) CondContext,
         # the stack pop will be guarded with a switch.
-        real_pred = grad_state.AddBackPropAccumulatedValue(history_pred, pred)
+        real_pred = grad_state.AddBackpropAccumulatedValue(history_pred, pred)
         grad_state.history_map[pred.name] = real_pred
       pred = real_pred
     # pylint: disable=protected-access
@@ -214,9 +214,9 @@ def _EnterGrad(op, grad):
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
     if isinstance(grad, ops.Tensor):
-      result = grad_ctxt.AddBackPropAccumulator(op, grad)
+      result = grad_ctxt.AddBackpropAccumulator(op, grad)
     elif isinstance(grad, ops.IndexedSlices):
-      result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(op, grad)
+      result = grad_ctxt.AddBackpropIndexedSlicesAccumulator(op, grad)
     else:
       # TODO(yuanbyu, lukasr): Add support for SparseTensor.
       raise TypeError("Type %s not supported" % type(grad))

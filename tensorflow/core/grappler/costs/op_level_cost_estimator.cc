@@ -26,8 +26,8 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kConv2d[] = "Conv2D";
-constexpr char kConv2dBackPropFilter[] = "Conv2DBackpropFilter";
-constexpr char kConv2dBackPropInput[] = "Conv2DBackpropInput";
+constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
+constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kIdentity[] = "Identity";
@@ -150,10 +150,10 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
   device_cost_impl_ = {
       {kConv2d, wrap(&OpLevelCostEstimator::PredictConv2D)},
-      {kConv2dBackPropFilter,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackPropFilter)},
-      {kConv2dBackPropInput,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackPropInput)},
+      {kConv2dBackpropFilter,
+       wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter)},
+      {kConv2dBackpropInput,
+       wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -668,20 +668,20 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   return ops;
 }
 
-// TODO(cliffy): Dedup this method and CountConv2DBackPropFilterOperations.
-int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
+// TODO(cliffy): Dedup this method and CountConv2DBackpropFilterOperations.
+int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
 
-  if (op_features.op() != kConv2dBackPropInput) {
+  if (op_features.op() != kConv2dBackpropInput) {
     LOG(ERROR) << "Invalid Operation";
     return ops;
   }
 
   if (op_features.outputs_size() != 1) {
     // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackPropInput op.";
+    LOG(ERROR) << "No output shape in Conv2DBackpropInput op.";
     return ops;
   }
 
@@ -696,7 +696,7 @@ int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
   ops *= conv_dims.iz * conv_dims.oz;
   ops *= kOpsPerMac;
 
-  VLOG(1) << "Operations for Conv2DBackPropInput " << ops;
+  VLOG(1) << "Operations for Conv2DBackpropInput " << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
@@ -704,18 +704,18 @@ int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
   return ops;
 }
 
-int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
+int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
-  if (op_features.op() != kConv2dBackPropFilter) {
+  if (op_features.op() != kConv2dBackpropFilter) {
     LOG(ERROR) << "Invalid Operation";
     return ops;
   }
 
   if (op_features.outputs_size() != 1) {
     // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackPropFilter op.";
+    LOG(ERROR) << "No output shape in Conv2DBackpropFilter op.";
     return ops;
   }
 
@@ -730,7 +730,7 @@ int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
   ops *= conv_dims.iz * conv_dims.oz;
   ops *= kOpsPerMac;
 
-  VLOG(1) << "Operations for Conv2DBackPropFilter" << ops;
+  VLOG(1) << "Operations for Conv2DBackpropFilter" << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
@@ -814,22 +814,22 @@ Costs OpLevelCostEstimator::PredictConv2D(const OpInfo& op_features) const {
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictConv2DBackPropInput(
+Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
     const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   auto costs =
-      PredictOpCountBasedCost(CountConv2DBackPropInputOperations(
+      PredictOpCountBasedCost(CountConv2DBackpropInputOperations(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictConv2DBackPropFilter(
+Costs OpLevelCostEstimator::PredictConv2DBackpropFilter(
     const OpInfo& op_features) const {
   bool found_unknown_shapes = false;
   auto costs =
-      PredictOpCountBasedCost(CountConv2DBackPropFilterOperations(
+      PredictOpCountBasedCost(CountConv2DBackpropFilterOperations(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
