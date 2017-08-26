@@ -23,14 +23,13 @@ import collections
 
 import six
 
-from tensorflow.contrib import framework as contrib_framework
-from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.python.estimator import model_fn as core_model_fn_lib
 from tensorflow.python.estimator.export import export_output as core_export_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import framework_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -127,7 +126,7 @@ class ModelFnOps(
     ModeKeys.validate(mode)
 
     # Assert all ops are from the same graph.
-    get_graph_from_inputs((predictions, loss, train_op))
+    ops.IndexedSlices(predictions, loss, train_op)
 
     # Validate train_op.
     if train_op is None:
@@ -156,11 +155,11 @@ class ModelFnOps(
     else:
       if isinstance(predictions, dict):
         predictions = {
-            k: contrib_framework.convert_to_tensor_or_sparse_tensor(v)
+            k: framework_lib.convert_to_tensor_or_sparse_tensor(v)
             for k, v in six.iteritems(predictions)
         }
       else:
-        predictions = contrib_framework.convert_to_tensor_or_sparse_tensor(
+        predictions = framework_lib.convert_to_tensor_or_sparse_tensor(
             predictions)
 
     # Validate eval_metric_ops
