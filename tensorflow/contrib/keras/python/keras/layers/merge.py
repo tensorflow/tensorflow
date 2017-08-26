@@ -172,7 +172,7 @@ class _Merge(Layer):
     else:
       return self._merge_function(inputs)
 
-  def compute_output_shape(self, input_shape):
+  def _compute_output_shape(self, input_shape):
     if input_shape[0] is None:
       output_shape = None
     else:

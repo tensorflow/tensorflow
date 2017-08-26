@@ -25,9 +25,9 @@ from tensorflow.contrib.keras.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class NoiseLayersTest(test.TestCase):
+class NormalizationLayersTest(test.TestCase):
 
-  def basic_batchnorm_test(self):
+  def test_basic_batchnorm(self):
     with self.test_session():
       testing_utils.layer_test(
           keras.layers.BatchNormalization,
@@ -53,7 +53,7 @@ class NoiseLayersTest(test.TestCase):
                   'center': False},
           input_shape=(3, 3))
 
-  def batchnorm_weights_test(self):
+  def test_batchnorm_weights(self):
     with self.test_session():
       layer = keras.layers.BatchNormalization(scale=False, center=False)
       layer.build((None, 3, 4))
@@ -65,16 +65,18 @@ class NoiseLayersTest(test.TestCase):
       self.assertEqual(len(layer.trainable_weights), 2)
       self.assertEqual(len(layer.weights), 4)
 
-  def batchnorm_regularization_test(self):
+  def test_batchnorm_regularization(self):
     with self.test_session():
       layer = keras.layers.BatchNormalization(
           gamma_regularizer='l1', beta_regularizer='l1')
       layer.build((None, 3, 4))
       self.assertEqual(len(layer.losses), 2)
+      max_norm = keras.constraints.max_norm
       layer = keras.layers.BatchNormalization(
-          gamma_constraint='l1', beta_constraint='l1')
+          gamma_constraint=max_norm, beta_constraint=max_norm)
       layer.build((None, 3, 4))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.gamma.constraint, max_norm)
+      self.assertEqual(layer.beta.constraint, max_norm)
 
   def test_batchnorm_correctness(self):
     with self.test_session():

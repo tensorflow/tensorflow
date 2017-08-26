@@ -33,7 +33,7 @@ must be installed on your system:
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v5.1. For details, see
+  * cuDNN v6.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Ensure that you create the `CUDA_HOME` environment variable as
     described in the NVIDIA documentation.
@@ -231,7 +231,7 @@ Python is automatically installed on Ubuntu.  Take a moment to confirm
 versions is already installed on your system:
 
   * Python 2.7
-  * Python 3.3+
+  * Python 3.4+
 
 The pip or pip3 package manager is *usually* installed on Ubuntu.  Take a
 moment to confirm (by issuing a `pip -V` or `pip3 -V` command)

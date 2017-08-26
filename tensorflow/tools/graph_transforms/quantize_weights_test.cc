@@ -40,7 +40,7 @@ class QuantizeWeightsTest : public ::testing::Test {
                      const TensorShape& weight_shape,
                      std::initializer_list<float> weight_values,
                      GraphDef* original_graph_def) {
-    auto root = tensorflow::Scope::NewRootScope();
+    auto root = tensorflow::Scope::DisabledShapeInferenceScope();
 
     Tensor input_data(DT_FLOAT, input_shape);
     test::FillValues<float>(&input_data, input_values);

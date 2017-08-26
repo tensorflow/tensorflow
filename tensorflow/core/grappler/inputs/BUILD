@@ -66,3 +66,20 @@ cc_library(
         "//tensorflow/core/kernels:aggregate_ops",
     ],
 )
+
+cc_library(
+    name = "file_input_yielder",
+    srcs = ["file_input_yielder.cc"],
+    hdrs = [
+        "file_input_yielder.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":input_yielder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler:utils",
+    ],
+)

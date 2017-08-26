@@ -41,7 +41,9 @@ REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 template <typename Device, typename T>
 class ReadVariableOp : public OpKernel {
  public:
-  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
@@ -63,8 +65,16 @@ class ReadVariableOp : public OpKernel {
                    ctx->allocate_output(0, variable->tensor()->shape(), &out));
     functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
     const Tensor& t = *variable->tensor();
+    OP_REQUIRES(
+        ctx, dtype_ == t.dtype(),
+        errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. Expected ",
+            DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
     copy_functor(ctx->eigen_device<Device>(), out->flat<T>(), t.flat<T>());
   }
+
+ private:
+  DataType dtype_;
 };
 
 // TODO(apassos) register for the GPU as well.
@@ -126,6 +136,49 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA
 
+template <typename T>
+class VariableShapeOp : public OpKernel {
+ public:
+  explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    core::ScopedUnref s(variable);
+    TensorShape shape = variable->tensor()->shape();
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {shape.dims()}, &output));
+    for (int i = 0; i < shape.dims(); ++i) {
+      output->flat<T>()(i) = shape.dim_size(i);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
+    VariableShapeOp<int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int64>("out_type"),
+    VariableShapeOp<int64>);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(Name("VariableShape")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("out_type")
+                            .HostMemory("output")
+                            .HostMemory("input"),
+                        VariableShapeOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("VariableShape")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("out_type")
+                            .HostMemory("output")
+                            .HostMemory("input"),
+                        VariableShapeOp<int64>);
+
+#endif  // GOOGLE_CUDA
+
 class DestroyResourceOp : public OpKernel {
  public:
   explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -179,6 +232,12 @@ class AssignVariableOp : public OpKernel {
               return Status::OK();
             }));
     core::ScopedUnref s(variable);
+
+    OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(dtype_)));
 
     // TODO(apassos): holding a lock and copying is unnecessary if we are the
     // last user of the value tensor. This should essentially always be the

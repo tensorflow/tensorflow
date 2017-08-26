@@ -120,6 +120,28 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "checkpoint_ops_test",
+    size = "medium",
+    srcs = ["checkpoint_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:checkpoint_ops_gen",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+)
+
 cuda_py_test(
     name = "cholesky_op_test",
     size = "medium",
@@ -228,6 +250,18 @@ tf_py_test(
         "//tensorflow/python:image_ops",
         "//tensorflow/python:nn_grad",
     ],
+)
+
+tf_py_test(
+    name = "decode_jpeg_op_test",
+    srcs = ["decode_jpeg_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:platform",
+    ],
+    data = ["//tensorflow/core:image_testdata"],
 )
 
 tf_py_test(
@@ -604,6 +638,7 @@ cuda_py_test(
     srcs = ["resource_variable_ops_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -901,6 +936,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
     tags = ["no_windows"],

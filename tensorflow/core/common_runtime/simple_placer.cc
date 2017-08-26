@@ -690,17 +690,20 @@ Status SimplePlacer::Run() {
       const auto& dest_parsed_name = dst_root.device_name;
       if (DeviceNameUtils::HasSomeDetails(source_parsed_name) &&
           DeviceNameUtils::HasSomeDetails(dest_parsed_name)) {
-        // Add a log saying that we are ignoring a specified device
-        // for 'dst' if the two names were incompatible.
+        // Ignore a specified device for 'dst' if the two names were
+        // incompatible.
         if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
                                                     dest_parsed_name)) {
-          LOG(INFO) << "Ignoring device specification "
-                    << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
-                    << " for node '" << dst->name()
-                    << "' because the input edge from '" << src->name()
-                    << "' is a reference connection and already has a device "
-                       "field set to "
-                    << DeviceNameUtils::ParsedNameToString(source_parsed_name);
+          if (log_device_placement_) {
+            LOG(INFO) << "Ignoring device specification "
+                      << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
+                      << " for node '" << dst->name()
+                      << "' because the input edge from '" << src->name()
+                      << "' is a reference connection and already has a device "
+                         "field set to "
+                      << DeviceNameUtils::ParsedNameToString(
+                             source_parsed_name);
+          }
 
           // Make 'dst' colocated with the source
           dst_root.device_name = source_parsed_name;

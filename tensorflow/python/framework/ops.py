@@ -69,15 +69,14 @@ from tensorflow.python.util import tf_contextlib
 _USE_C_API = False
 
 
-def _tensor_id(t):
+def tensor_id(t):
   """Returns a unique identifier for this Tensor."""
   t = ag_core.getval(t)
   return t._id  # pylint: disable=protected-access
 
 
-# TODO(ashankar): use actual device type.
 def _in_gpu_device():
-  return context.get_default_context()._device_index > 0  # pylint: disable=protected-access
+  return "GPU" == context.context().device_spec.device_type
 
 
 @tf_contextlib.contextmanager
@@ -621,7 +620,11 @@ class EagerTensor(Tensor):
     self._id = uid()
     if not isinstance(value, np.ndarray):
       npt = None if dtype is None else dtype.as_numpy_dtype
-      value = np.array(value, dtype=npt)
+      try:
+        value = np.array(value, dtype=npt)
+      except ValueError as e:
+        raise ValueError(
+            "Cannot convert %s to array. Error: %s" % (str(value), e))
       if dtype is None:
         value = _maybe_modify_numpy_dtype_determination(value)
     elif dtype is not None:
@@ -661,7 +664,7 @@ class EagerTensor(Tensor):
     # eager execution and TensorFlow graphs. However, as of July 2017, there
     # were no known GPU kernels that kept int32 tensors in device memory.
     if _in_gpu_device() and value.dtype != np.int32:
-      ctx = context.get_default_context()
+      ctx = context.context()
       # pylint: disable=protected-access
       device_name = ctx.device_name
       with errors.raise_exception_on_not_ok_status() as status:
@@ -679,7 +682,7 @@ class EagerTensor(Tensor):
     self._handle_data = None
     if core.active_trace() is not None:
       core.active_trace().record_tensor("MANUAL",
-                                        _tensor_id(self), self.device,
+                                        tensor_id(self), self.device,
                                         self.shape.num_elements())
 
   def __del__(self):
@@ -687,9 +690,9 @@ class EagerTensor(Tensor):
       if c_api is not None and c_api.TFE_DeleteTensorHandle is not None:
         c_api.TFE_DeleteTensorHandle(self._handle)
       if core.active_trace() is not None:
-        core.active_trace().delete_tensor(_tensor_id(self))
-    except TypeError:
-      # Sometimes deletion during program shutdown throws TypeError as other
+        core.active_trace().delete_tensor(tensor_id(self))
+    except (AttributeError, TypeError):
+      # Sometimes deletion during program shutdown throws exception as other
       # modules are no longer available.
       pass
 
@@ -739,7 +742,7 @@ class EagerTensor(Tensor):
     # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
-      ctx = context.get_default_context()
+      ctx = context.context()
     if device_name is None:
       device_name = ctx.device_name
     with errors.raise_exception_on_not_ok_status() as status:
@@ -748,7 +751,7 @@ class EagerTensor(Tensor):
     new_tensor = _tensor_from_handle(h)
     if core.active_trace() is not None:
       core.active_trace().record_tensor("COPY",
-                                        _tensor_id(new_tensor),
+                                        tensor_id(new_tensor),
                                         new_tensor.device,
                                         new_tensor.shape.num_elements())
     return new_tensor
@@ -809,7 +812,7 @@ class EagerTensor(Tensor):
 
   def as_cpu_tensor(self):
     """A copy of this Tensor with contents backed by host memory."""
-    return self._copy(context.get_default_context(), "CPU:0")
+    return self._copy(context.context(), "CPU:0")
 
   def as_gpu_tensor(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
@@ -822,7 +825,7 @@ class EagerTensor(Tensor):
       A GPU-memory backed Tensor object initialized with the same contents
       as this Tensor.
     """
-    return self._copy(context.get_default_context(), "GPU:" + str(gpu_index))
+    return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
     if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
@@ -871,29 +874,6 @@ class EagerTensor(Tensor):
 
   def eval(self, feed_dict=None, session=None):
     raise NotImplementedError("eval not supported for Eager Tensors.")
-
-
-# TODO(josh11b): Support other cases like converting TensorShape, lists/tuples and
-# other custom conversion functions.
-def convert_to_eager_tensor(t, dtype=None):
-  """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(ag_core.getval(t), EagerTensor):
-    if dtype is not None and t.dtype != dtype:
-      raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
-    return t
-  # Handle converting ResourceVariable to Tensor.
-  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
-  # general scheme in place.
-  try:
-    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
-  except AttributeError:
-    pass
-  return EagerTensor(t, dtype=dtype)
-
-
-def convert_n_to_eager_tensor(values, dtype):
-  """Converts the given `values` to a list of `EagerTensor`."""
-  return [convert_to_eager_tensor(t, dtype) for t in values]
 
 
 def _tensor_from_handle(handle):
@@ -987,8 +967,6 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
-  if context.in_eager_mode():
-    return convert_to_eager_tensor(value, dtype=dtype)
   return internal_convert_to_tensor(
       value=value,
       dtype=dtype,
@@ -1033,8 +1011,6 @@ def internal_convert_to_tensor(value,
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
-  if context.in_eager_mode():
-    return convert_to_eager_tensor(value, dtype=dtype)
   error_prefix = "" if name is None else "%s: " % name
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1066,7 +1042,7 @@ def internal_convert_to_tensor(value,
         if ret is NotImplemented:
           continue
 
-        if not isinstance(ret, Tensor):
+        if not isinstance(ag_core.getval(ret), Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r" %
               (error_prefix, conversion_func, base_type, ret))
@@ -1113,21 +1089,17 @@ def internal_convert_n_to_tensor(values,
   """
   if not isinstance(values, collections.Sequence):
     raise TypeError("values must be a list.")
-  if context.in_graph_mode():
-    ret = []
-    for i, value in enumerate(values):
-      n = None if name is None else "%s_%d" % (name, i)
-      ret.append(
-          internal_convert_to_tensor(
-              value,
-              dtype=dtype,
-              name=n,
-              as_ref=as_ref,
-              preferred_dtype=preferred_dtype))
-    return ret
-  else:
-    # TODO(josh11b): handle preferred_dtype, as_ref
-    return convert_n_to_eager_tensor(values, dtype=dtype)
+  ret = []
+  for i, value in enumerate(values):
+    n = None if name is None else "%s_%d" % (name, i)
+    ret.append(
+        internal_convert_to_tensor(
+            value,
+            dtype=dtype,
+            name=n,
+            as_ref=as_ref,
+            preferred_dtype=preferred_dtype))
+  return ret
 
 
 def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
@@ -2380,8 +2352,8 @@ class OpStats(object):
 
   def __iadd__(self, other):
     if other.statistic_type != self.statistic_type:
-      raise ValueError("Can't add an OpStat of type %s to one of %s.",
-                       self.statistic_type, other.statistic_type)
+      raise ValueError("Can't add an OpStat of type %s to one of %s." %
+                       (self.statistic_type, other.statistic_type))
     if self.value is None:
       self.value = other.value
     elif other.value is not None:
@@ -4348,9 +4320,7 @@ def colocate_with(op, ignore_existing=False):
   if context.in_graph_mode():
     return get_default_graph().colocate_with(op, ignore_existing)
   else:
-    if not ignore_existing:
-      raise ValueError("ignore_existing must currently be True in EAGER mode.")
-    if op:
+    if op is not None:
       return device(op.device)
     else:
       return _null_contextmanager()
@@ -4378,7 +4348,48 @@ def control_dependencies(control_inputs):
     return _null_contextmanager()
 
 
-_default_session_stack = context._DefaultStack()  # pylint: disable=protected-access
+class _DefaultStack(threading.local):
+  """A thread-local stack of objects for providing implicit defaults."""
+
+  def __init__(self):
+    super(_DefaultStack, self).__init__()
+    self._enforce_nesting = True
+    self.stack = []
+
+  def get_default(self):
+    return self.stack[-1] if len(self.stack) >= 1 else None
+
+  def reset(self):
+    self.stack = []
+
+  def is_cleared(self):
+    return not self.stack
+
+  @property
+  def enforce_nesting(self):
+    return self._enforce_nesting
+
+  @enforce_nesting.setter
+  def enforce_nesting(self, value):
+    self._enforce_nesting = value
+
+  @tf_contextlib.contextmanager
+  def get_controller(self, default):
+    """A context manager for manipulating a default stack."""
+    try:
+      self.stack.append(default)
+      yield default
+    finally:
+      if self._enforce_nesting:
+        if self.stack[-1] is not default:
+          raise AssertionError(
+              "Nesting violated for default stack of %s objects" %
+              type(default))
+        self.stack.pop()
+      else:
+        self.stack.remove(default)
+
+_default_session_stack = _DefaultStack()  # pylint: disable=protected-access
 
 
 def default_session(session):
@@ -4521,7 +4532,7 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
   session.run(operation, feed_dict)
 
 
-class _DefaultGraphStack(context._DefaultStack):  # pylint: disable=protected-access
+class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   """A thread-local stack of objects for providing an implicit default graph."""
 
   def __init__(self):
@@ -4912,22 +4923,21 @@ def name_scope(name, default_name=None, values=None):
     ValueError: if neither `name` nor `default_name` is provided
       but `values` are.
   """
-  n = default_name if name is None else name
+  name = default_name if name is None else name
   if context.in_eager_mode():
-    if n is None:
-      raise ValueError(
-          "At least one of name (%s) and default_name (%s) should be provided" %
-          (name, default_name))
-    ctx = context.get_default_context()
+    ctx = context.context()
     old_name = ctx.scope_name
-    scope_name = "%s/%s" % (old_name, name) if old_name else name
+    if name is None:
+      scope_name = ""
+    else:
+      scope_name = "%s%s/" % (old_name, name) if old_name else "%s/" % name
     ctx.scope_name = scope_name
     try:
       yield scope_name
     finally:
       ctx.scope_name = old_name
   else:
-    if n is None and values is not None:
+    if name is None and values is not None:
       # We only raise an error if values is not None (provided) because
       # currently tf.name_scope(None) (values=None then) is sometimes used as an
       # idiom to reset to top scope.
@@ -4937,7 +4947,7 @@ def name_scope(name, default_name=None, values=None):
     if values is None:
       values = []
     g = _get_graph_from_inputs(values)
-    with g.as_default(), g.name_scope(n) as scope:
+    with g.as_default(), g.name_scope(name) as scope:
       yield scope
 
 

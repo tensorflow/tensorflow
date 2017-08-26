@@ -267,11 +267,13 @@ class NodeProcessor {
   virtual Status AddLayoutTransposeToInputs() {
     std::vector<int> input_pos = GetInputPos();
     for (const auto& pos : input_pos) {
-      string base_name = strings::StrCat(node_->name(), "-", node_->input(pos));
+      int output_pos;
+      string input_node_name = ParseNodeName(node_->input(pos), &output_pos);
+      string base_name =
+          strings::StrCat(node_->name(), "-", input_node_name, "-", output_pos);
       string node_name =
           AddPrefixToNodeName(base_name, kTransposeNHWCToNCHW, "-");
       auto input_node = node_map_->GetNode(node_->input(pos));
-      int output_pos = NodePosition(node_->input(pos));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       AddNodeTranspose(
@@ -1138,6 +1140,7 @@ class DataLayoutOptimizer {
     std::unordered_set<string> nodes_removable;
     for (int i = 0; i < graph_->node_size(); i++) {
       auto node = graph_->mutable_node(i);
+      node->mutable_attr()->erase("_output_shapes");
       if (IsNodeNHWCToNCHW(node->name())) {
         if (IsNodeNCHWToNHWC(node->input(0))) {
           const string& trans_first = node->input(0);

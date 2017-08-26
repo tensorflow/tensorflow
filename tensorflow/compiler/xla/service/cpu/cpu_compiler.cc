@@ -212,6 +212,15 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     hlo_to_profile_idx_->insert({hlo_instruction, hlo_to_profile_idx_->size()});
     return Status::OK();
   }
+
+  Status HandleCall(HloInstruction* call) override {
+    TF_RETURN_IF_ERROR(DefaultAction(call));
+    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
+    TF_RETURN_IF_ERROR(
+        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    return Status::OK();
+  }
+
   // Skip constants, there is nothing to profile.
   Status HandleConstant(HloInstruction* /*constant*/,
                         const Literal& /*literal*/) override {
@@ -260,6 +269,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddPass<BatchNormRewriter>(
         /*rewrite_training_op=*/true,
+        /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
         /*use_fusion=*/false);
     pass.AddPass<AlgebraicSimplifier>(
@@ -283,6 +293,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       HloReducePrecisionOptions::AFTER_OP_FUSION);
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      HloReducePrecisionOptions::FUSION_BY_CONTENT);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());

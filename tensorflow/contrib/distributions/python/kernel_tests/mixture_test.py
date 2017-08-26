@@ -47,6 +47,28 @@ def _swap_first_last_axes(array):
   return array.transpose(transpose)
 
 
+def _mixture_stddev_np(pi_vector, mu_vector, sigma_vector):
+  """Computes the standard deviation of a univariate mixture distribution.
+
+  Acts upon `np.array`s (not `tf.Tensor`s).
+
+  Args:
+    pi_vector: A `np.array` of mixture weights. Shape `[batch, components]`.
+    mu_vector: A `np.array` of means. Shape `[batch, components]`
+    sigma_vector: A `np.array` of stddevs. Shape `[batch, components]`.
+
+  Returns:
+    A `np.array` containing the batch of standard deviations.
+  """
+  pi_vector = np.expand_dims(pi_vector, axis=1)
+  mean_wa = np.matmul(pi_vector, np.expand_dims(mu_vector, axis=2))
+  var_wa = np.matmul(pi_vector, np.expand_dims(sigma_vector**2, axis=2))
+  mid_term = np.matmul(pi_vector, np.expand_dims(mu_vector**2, axis=2))
+  mixture_variance = (
+      np.squeeze(var_wa) + np.squeeze(mid_term) - np.squeeze(mean_wa**2))
+  return np.sqrt(mixture_variance)
+
+
 @contextlib.contextmanager
 def _test_capture_mvndiag_sample_outputs():
   """Use monkey-patching to capture the output of an MVNDiag _sample_n."""
@@ -249,6 +271,106 @@ class MixtureTest(test.TestCase):
             [c_p * m for (c_p, m) in zip(cat_probs_value, dist_means_value)])
 
         self.assertAllClose(true_mean, mean_value)
+
+  def testStddevShapeUnivariate(self):
+    num_components = 2
+    # This is the same shape test which is done in 'testMeanUnivariate'.
+    with self.test_session() as sess:
+      for batch_shape in ((), (2,), (2, 3)):
+        dist = make_univariate_mixture(
+            batch_shape=batch_shape, num_components=num_components)
+        dev = dist.stddev()
+        self.assertEqual(batch_shape, dev.get_shape())
+
+        cat_probs = nn_ops.softmax(dist.cat.logits)
+        dist_devs = [d.stddev() for d in dist.components]
+        dist_means = [d.mean() for d in dist.components]
+
+        res = sess.run([dev, cat_probs, dist_devs, dist_means])
+        dev_value, cat_probs_values, dist_devs_values, dist_means_values = res
+        # Manual computation of stddev.
+        batch_shape_res = cat_probs_values.shape[:-1]
+        event_shape_res = dist_devs_values[0].shape[len(batch_shape_res):]
+        stacked_mean_res = np.stack(dist_means_values, -1)
+        stacked_dev_res = np.stack(dist_devs_values, -1)
+
+        # Broadcast cat probs over event dimensions.
+        for _ in range(len(event_shape_res)):
+          cat_probs_values = np.expand_dims(cat_probs_values, len(batch_shape))
+        cat_probs_values = cat_probs_values + np.zeros_like(stacked_dev_res)  # pylint: disable=g-no-augmented-assignment
+
+        # Perform stddev computation on a flattened batch.
+        flat_batch_manual_dev = _mixture_stddev_np(
+            np.reshape(cat_probs_values, [-1, num_components]),
+            np.reshape(stacked_mean_res, [-1, num_components]),
+            np.reshape(stacked_dev_res, [-1, num_components]))
+
+        # Reshape to full shape.
+        full_shape_res = list(batch_shape_res) + list(event_shape_res)
+        manual_dev = np.reshape(flat_batch_manual_dev, full_shape_res)
+        self.assertEqual(batch_shape, dev_value.shape)
+        self.assertAllClose(manual_dev, dev_value)
+
+  def testStddevShapeMultivariate(self):
+    num_components = 2
+
+    # This is the same shape test which is done in 'testMeanMultivariate'.
+    with self.test_session() as sess:
+      for batch_shape in ((), (2,), (2, 3)):
+        dist = make_multivariate_mixture(
+            batch_shape=batch_shape,
+            num_components=num_components,
+            event_shape=(4,))
+        dev = dist.stddev()
+        self.assertEqual(batch_shape + (4,), dev.get_shape())
+
+        cat_probs = nn_ops.softmax(dist.cat.logits)
+        dist_devs = [d.stddev() for d in dist.components]
+        dist_means = [d.mean() for d in dist.components]
+
+        res = sess.run([dev, cat_probs, dist_devs, dist_means])
+        dev_value, cat_probs_values, dist_devs_values, dist_means_values = res
+        # Manual computation of stddev.
+        batch_shape_res = cat_probs_values.shape[:-1]
+        event_shape_res = dist_devs_values[0].shape[len(batch_shape_res):]
+        stacked_mean_res = np.stack(dist_means_values, -1)
+        stacked_dev_res = np.stack(dist_devs_values, -1)
+
+        # Broadcast cat probs over event dimensions.
+        for _ in range(len(event_shape_res)):
+          cat_probs_values = np.expand_dims(cat_probs_values, len(batch_shape))
+        cat_probs_values = cat_probs_values + np.zeros_like(stacked_dev_res)  # pylint: disable=g-no-augmented-assignment
+
+        # Perform stddev computation on a flattened batch.
+        flat_batch_manual_dev = _mixture_stddev_np(
+            np.reshape(cat_probs_values, [-1, num_components]),
+            np.reshape(stacked_mean_res, [-1, num_components]),
+            np.reshape(stacked_dev_res, [-1, num_components]))
+
+        # Reshape to full shape.
+        full_shape_res = list(batch_shape_res) + list(event_shape_res)
+        manual_dev = np.reshape(flat_batch_manual_dev, full_shape_res)
+        self.assertEqual(tuple(full_shape_res), dev_value.shape)
+        self.assertAllClose(manual_dev, dev_value)
+
+  def testSpecificStddevValue(self):
+    cat_probs = np.array([0.5, 0.5])
+    component_means = np.array([-10, 0.1])
+    component_devs = np.array([0.05, 2.33])
+    ground_truth_stddev = 5.3120805
+
+    mixture_dist = distributions_py.Mixture(
+        cat=distributions_py.Categorical(probs=cat_probs),
+        components=[
+            distributions_py.Normal(loc=component_means[0],
+                                    scale=component_devs[0]),
+            distributions_py.Normal(loc=component_means[1],
+                                    scale=component_devs[1]),
+        ])
+    mix_dev = mixture_dist.stddev()
+    with self.test_session() as sess:
+      actual_stddev = sess.run(mix_dev)
+    self.assertAllClose(actual_stddev, ground_truth_stddev)
 
   def testProbScalarUnivariate(self):
     with self.test_session() as sess:

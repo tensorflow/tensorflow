@@ -58,7 +58,8 @@ class Scope::Impl {
     enum class Colocate;
   };
 
-  Impl(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner);
+  Impl(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner,
+       bool disable_shape_inference);
   Impl(const Scope& other, Tags::ScopeName, const string& name,
        bool copy_names);
   Impl(const Scope& other, Tags::OpName, const string& name,
@@ -103,6 +104,10 @@ class Scope::Impl {
   const string kernel_label_ = "";
   const string device_ = "";
   const std::unordered_set<string> colocation_constraints_;
+
+  // If true, Scope::DoShapeInference() always returns Status:OK().
+  // TODO(skyewm): remove this when possible
+  const bool disable_shape_inference_;
 };
 
 }  // namespace tensorflow

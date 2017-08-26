@@ -135,6 +135,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       // instead.
       pass.AddPass<BatchNormRewriter>(
           /*rewrite_training_op=*/true,
+          /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
           /*use_fusion=*/false);
       pass.AddPass<AlgebraicSimplifier>(
@@ -166,6 +167,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         HloReducePrecisionOptions::AFTER_OP_FUSION);
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::FUSION_BY_CONTENT);
     StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
     TF_RETURN_IF_ERROR(reduce_result.status());
 

@@ -63,6 +63,39 @@ class FusedBatchNormTest(XLATestCase):
     grad_offset = np.sum(grad_y, axis=(0, 1, 2))
     return grad_x, grad_scale, grad_offset
 
+  def testInference(self):
+    x_shape = [2, 2, 6, 2]
+    scale_shape = [2]
+    x_val = np.random.random_sample(x_shape).astype(np.float32)
+    scale_val = np.random.random_sample(scale_shape).astype(np.float32)
+
+    offset_val = np.random.random_sample(scale_shape).astype(np.float32)
+    data_format = "NHWC"
+    with self.test_session() as sess, self.test_scope():
+      # To avoid constant folding
+      t_val = array_ops.placeholder(np.float32, shape=x_shape, name="x")
+      scale = array_ops.placeholder(np.float32, shape=[2], name="scale")
+      offset = array_ops.placeholder(np.float32, shape=[2], name="offset")
+      epsilon = 0.001
+      y_ref, mean_ref, var_ref = self._reference_training(
+          x_val, scale_val, offset_val, epsilon, data_format)
+      y, mean, variance = nn.fused_batch_norm(
+          t_val,
+          scale,
+          offset,
+          mean=mean_ref,
+          variance=var_ref,
+          epsilon=epsilon,
+          data_format=data_format,
+          is_training=False)
+
+      y_val, _, _ = sess.run(
+          [y, mean,
+           variance], {t_val: x_val,
+                       scale: scale_val,
+                       offset: offset_val})
+      self.assertAllClose(y_val, y_ref, atol=1e-3)
+
   def _testLearning(self, use_gradient_checker):
     x_shape = [2, 2, 6, 2]
     scale_shape = [2]

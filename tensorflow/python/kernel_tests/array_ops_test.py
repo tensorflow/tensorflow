@@ -285,7 +285,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
   def testReverse1DimAuto(self):
     for dtype in [
-        np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
+        np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
+        np.bool, np.float16, np.float32,
         np.float64, np.complex64, np.complex128,
         np.array(b"").dtype.type
     ]:
@@ -293,7 +294,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
   def testReverse2DimAuto(self):
     for dtype in [
-        np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
+        np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
+        np.bool, np.float16, np.float32,
         np.float64, np.complex64, np.complex128,
         np.array(b"").dtype.type
     ]:
@@ -474,6 +476,17 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker2[None]
         _ = checker2[...]
         _ = checker2[tuple()]
+
+  def testInt64GPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+    with self.test_session(use_gpu=True, force_gpu=True):
+      x = constant_op.constant([1., 2., 3.])
+      begin = constant_op.constant([2], dtype=dtypes.int64)
+      end = constant_op.constant([3], dtype=dtypes.int64)
+      strides = constant_op.constant([1], dtype=dtypes.int64)
+      s = array_ops.strided_slice(x, begin, end, strides)
+      self.assertAllEqual([3.], self.evaluate(s))
 
   def testDegenerateSlices(self):
     with self.test_session(use_gpu=True):
@@ -988,7 +1001,6 @@ class IdentityTest(test_util.TensorFlowTestCase):
         self.skipTest("No GPUs found")
 
       def _test(x, y, device):
-        self.assertIsNot(x, y)
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())
 

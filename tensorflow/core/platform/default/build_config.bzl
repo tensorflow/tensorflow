@@ -182,9 +182,6 @@ def tf_env_time_srcs():
       ], exclude = []),
   })
 
-def tf_additional_stream_executor_srcs():
-  return ["platform/default/stream_executor.h"]
-
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
@@ -232,7 +229,7 @@ def tf_additional_lib_defines():
   })
 
 def tf_additional_lib_deps():
-  return select({
+  return ["@nsync//:nsync_cpp"] + select({
       "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc"],
       "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc"],
       "//conditions:default": [],
