@@ -420,6 +420,22 @@ compression_type: A scalar containing either (i) the empty string (no
 buffer_size: A scalar containing the number of bytes to buffer.
 )doc");
 
+REGISTER_OP("SqlDataset")
+    .Input("driver_name: string")
+    .Input("data_source_name: string")
+    .Input("query: string")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that executes a SQL query and emits rows of the result set.
+
+driver_name: The database type. Currently, the only supported type is 'sqlite'.
+data_source_name: A connection string to connect to the database.
+query: A SQL query to execute.
+)doc");
+
 REGISTER_OP("FixedLengthRecordDataset")
     .Input("filenames: string")
     .Input("header_bytes: int64")

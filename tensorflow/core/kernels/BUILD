@@ -4649,6 +4649,7 @@ filegroup(
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
             "spectrogram_convert_test_data.cc",
+            "sql_dataset_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
@@ -5856,6 +5857,28 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "sql_dataset_ops",
+    srcs = [
+        "sql/driver_manager.cc",
+        "sql/sqlite_query_connection.cc",
+        "sql_dataset_ops.cc",
+    ],
+    hdrs = [
+        "sql/driver_manager.h",
+        "sql/query_connection.h",
+        "sql/sqlite_query_connection.h",
+    ],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@sqlite_archive//:sqlite",
+    ],
+)
+
+tf_kernel_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.cc"],
     deps = [
@@ -5905,6 +5928,7 @@ tf_kernel_library(
         ":shuffle_dataset_op",
         ":skip_dataset_op",
         ":sparse_tensor_slice_dataset_op",
+        ":sql_dataset_ops",
         ":take_dataset_op",
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",

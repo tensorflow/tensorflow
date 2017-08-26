@@ -2292,6 +2292,46 @@ class TextLineDataset(Dataset):
     return dtypes.string
 
 
+class SqlDataset(Dataset):
+  """A `Dataset` consisting of the results from a SQL query."""
+
+  def __init__(self, driver_name, data_source_name, query, output_types):
+    """Creates a `SqlDataset`.
+
+    Args:
+      driver_name: A 0-D `tf.string` tensor containing the database type.
+        Currently, the only supported value is 'sqlite'.
+      data_source_name: A 0-D `tf.string` tensor containing a connection string
+        to connect to the database.
+      query: A 0-D `tf.string` tensor containing the SQL query to execute.
+      output_types: A tuple of `tf.DType` objects representing the types of the
+        columns returned by `query`.
+    """
+    super(SqlDataset, self).__init__()
+    self._driver_name = ops.convert_to_tensor(
+        driver_name, dtype=dtypes.string, name="driver_name")
+    self._data_source_name = ops.convert_to_tensor(
+        data_source_name, dtype=dtypes.string, name="data_source_name")
+    self._query = ops.convert_to_tensor(
+        query, dtype=dtypes.string, name="query")
+    self._output_types = output_types
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.sql_dataset(self._driver_name,
+                                       self._data_source_name, self._query,
+                                       nest.flatten(self.output_types),
+                                       nest.flatten(self.output_shapes))
+
+  @property
+  def output_shapes(self):
+    return nest.map_structure(lambda _: tensor_shape.TensorShape([]),
+                              self._output_types)
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+
 class TFRecordDataset(Dataset):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
