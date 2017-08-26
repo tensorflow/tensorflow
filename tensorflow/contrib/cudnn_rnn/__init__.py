@@ -18,7 +18,10 @@
 @@CudnnLSTM
 @@CudnnRNNRelu
 @@CudnnRNNTanh
-@@RNNParamsSaveable
+@@CudnnLSTMSaveable
+@@CudnnGRUSaveable
+@@CudnnRNNReluSaveable
+@@CudnnRNNTanhSaveable
 """
 
 from __future__ import absolute_import
@@ -26,10 +29,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnGRU
+from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnGRUSaveable
 from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnLSTM
+from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnLSTMSaveable
 from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNRelu
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNTanh
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import RNNParamsSaveable
+from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNReluSaveable
+from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNTanhSaveable
 
 from tensorflow.python.util.all_util import remove_undocumented
 
@@ -38,7 +43,10 @@ _allowed_symbols = [
     "CudnnLSTM",
     "CudnnRNNRelu",
     "CudnnRNNTanh",
-    "RNNParamsSaveable",
+    "CudnnLSTMSaveable",
+    "CudnnGRUSaveable",
+    "CudnnRNNReluSaveable",
+    "CudnnRNNTanhSaveable",
 ]
 
 remove_undocumented(__name__)

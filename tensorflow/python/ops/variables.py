@@ -1364,7 +1364,7 @@ def variables_initializer(var_list, name="init"):
   Returns:
     An Op that run the initializers of all the specified variables.
   """
-  if var_list:
+  if var_list and context.in_graph_mode():
     return control_flow_ops.group(*[v.initializer for v in var_list], name=name)
   return control_flow_ops.no_op(name=name)
 

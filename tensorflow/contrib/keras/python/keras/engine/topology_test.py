@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import shutil
+
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
@@ -29,6 +32,11 @@ try:
   import yaml  # pylint:disable=g-import-not-at-top
 except ImportError:
   yaml = None
+
+try:
+  import h5py  # pylint:disable=g-import-not-at-top
+except ImportError:
+  h5py = None
 
 
 class TopologyConstructionTest(test.TestCase):
@@ -92,6 +100,41 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(model.trainable_weights, [])
     self.assertListEqual(model.non_trainable_weights, weights)
 
+  def test_weight_loading(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3)(a)
+      b = keras.layers.Dense(1)(x)
+      model = keras.models.Model(a, b)
+
+      x = np.random.random((3, 2))
+      ref_y = model.predict(x)
+      weights = model.get_weights()
+      model.set_weights(weights)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
+      with self.assertRaises(ValueError):
+        model.set_weights(weights[1:])
+      with self.assertRaises(ValueError):
+        model.set_weights(weights[::-1])
+
+      if h5py is None:
+        return  # Skip rest of test if H5py isn't available.
+
+      temp_dir = self.get_temp_dir()
+      self.addCleanup(shutil.rmtree, temp_dir)
+
+      h5_path = os.path.join(temp_dir, 'test.h5')
+      model.save_weights(h5_path)
+      model.load_weights(h5_path)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
+      model.load_weights(h5_path, by_name=True)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
   def test_learning_phase(self):
     with self.test_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
@@ -153,6 +196,11 @@ class TopologyConstructionTest(test.TestCase):
     # test basics
     a = keras.layers.Input(shape=(32,), name='input_a')
     b = keras.layers.Input(shape=(32,), name='input_b')
+
+    with self.assertRaises(ValueError):
+      _ = keras.layers.Input(shape=(32,), batch_shape=(10, 32))
+    with self.assertRaises(ValueError):
+      _ = keras.layers.Input(shape=(32,), unknwon_kwarg=None)
 
     self.assertListEqual(a.get_shape().as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history
@@ -498,6 +546,96 @@ class TopologyConstructionTest(test.TestCase):
     model = keras.models.Model(a, b)
     self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
 
+  def test_weight_preprocessing(self):
+    input_dim = 3
+    output_dim = 3
+    size = 2
+    cases = [
+        [
+            (keras.layers.Bidirectional(keras.layers.SimpleRNN(2))),
+            [np.random.random((2, 1)), np.random.random((2, 1))],
+            (None, 3, 2),
+        ],
+        [
+            (keras.layers.TimeDistributed(keras.layers.Dense(1))),
+            [np.random.random((2, 1)), np.random.random((1,))],
+            (None, 3, 2),
+        ],
+        [
+            (keras.layers.Conv1D(output_dim, size, use_bias=False)),
+            [np.random.random((output_dim, input_dim, size, 1))],
+            (None, 4, input_dim),
+        ],
+        [
+            (keras.layers.Conv2D(output_dim, size,
+                                 use_bias=False, data_format='channels_first')),
+            [np.random.random((output_dim, input_dim, size, size))],
+            (None, input_dim, 4, 4),
+        ],
+        [
+            (keras.layers.Conv2DTranspose(output_dim, size,
+                                          use_bias=False,
+                                          data_format='channels_first')),
+            [np.random.random((output_dim, input_dim, size, size))],
+            (None, input_dim, 4, 4),
+        ],
+        [
+            (keras.layers.Conv2DTranspose(output_dim, size,
+                                          use_bias=False,
+                                          data_format='channels_last')),
+            [np.random.random((size, size, input_dim, output_dim))],
+            (None, 4, 4, input_dim),
+        ],
+        [
+            (keras.layers.Conv3D(output_dim, size,
+                                 use_bias=False, data_format='channels_first')),
+            [np.random.random((output_dim, input_dim, size, size, size))],
+            (None, input_dim, 4, 4, 4),
+        ],
+        [
+            (keras.layers.GRU(output_dim)),
+            [np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,))],
+            (None, 4, input_dim),
+        ],
+        [
+            (keras.layers.LSTM(output_dim)),
+            [np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,))],
+            (None, 4, input_dim),
+        ],
+    ]
+    for layer, weights, input_shape in cases:
+      layer.build(input_shape)
+      _ = keras.engine.topology.preprocess_weights_for_loading(
+          layer, weights, original_keras_version='1')
+
+    model = keras.models.Sequential([keras.layers.Dense(2, input_dim=2)])
+    _ = keras.engine.topology.preprocess_weights_for_loading(
+        model, model.weights, original_keras_version='1')
+
+    x = keras.Input((2,))
+    y = keras.layers.Dense(2)(x)
+    model = keras.models.Model(x, y)
+    _ = keras.engine.topology.preprocess_weights_for_loading(
+        model, model.weights, original_keras_version='1')
 
 if __name__ == '__main__':
   test.main()

@@ -459,49 +459,65 @@ HloInstruction* HloComputation::CreateFusionInstructionForBackwardConvolution(
   return fusion_instruction;
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyTuple(
-    HloInstruction* instruction) {
-  TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()));
-  std::vector<HloInstruction*> element_copies;
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
-       ++i) {
-    HloInstruction* gte = AddInstruction(HloInstruction::CreateGetTupleElement(
-        ShapeUtil::GetSubshape(instruction->shape(), {i}), instruction, i));
-    // Recurse to copy tuple elements. For array elements, insert a kCopy
-    // because GetTupleElement forwards a pointer to the tuple element buffer.
-    HloInstruction* element_copy;
-    if (ShapeUtil::IsTuple(gte->shape())) {
-      TF_ASSIGN_OR_RETURN(element_copy, DeepCopyTuple(gte));
+StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
+    HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
+    ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
+  if (ShapeUtil::IsArray(instruction->shape())) {
+    if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
+      // Use kCopy to copy array elements
+      HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
+          instruction->shape(), HloOpcode::kCopy, instruction));
+      if (copies_added != nullptr) {
+        *copies_added->mutable_element(*index) = copy;
+      }
+      return copy;
     } else {
-      element_copy = AddInstruction(
-          HloInstruction::CreateUnary(gte->shape(), HloOpcode::kCopy, gte));
+      // Array elements which are not to be copied are passed through
+      // transparently.
+      return instruction;
     }
-    element_copies.push_back(element_copy);
-  }
+  } else if (ShapeUtil::IsTuple(instruction->shape())) {
+    std::vector<HloInstruction*> elements;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
+         i++) {
+      HloInstruction* gte =
+          AddInstruction(HloInstruction::CreateGetTupleElement(
+              ShapeUtil::GetTupleElementShape(instruction->shape(), i),
+              instruction, i));
 
-  // Gather element copies into a tuple with a new Tuple instruction.
-  return AddInstruction(HloInstruction::CreateTuple(element_copies));
+      index->push_back(i);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * element,
+          DeepCopyHelper(gte, indices_to_copy, copies_added, index));
+      elements.push_back(element);
+      index->pop_back();
+    }
+    return AddInstruction(HloInstruction::CreateTuple(elements));
+  } else {
+    return FailedPrecondition(
+        "Can only copy array and tuple shaped instructions");
+  }
 }
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
-    HloInstruction* instruction) {
+    HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
+    ShapeTree<HloInstruction*>* copies_added) {
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
         instruction->name().c_str(), name().c_str());
   }
 
-  // For tuple instructions, perform a deep copy. For array instructions, copy
-  // with a kCopy instruction.
-  if (ShapeUtil::IsTuple(instruction->shape())) {
-    return DeepCopyTuple(instruction);
-  } else if (ShapeUtil::IsArray(instruction->shape())) {
-    return AddInstruction(HloInstruction::CreateUnary(
-        instruction->shape(), HloOpcode::kCopy, instruction));
-  } else {
+  if (indices_to_copy != nullptr &&
+      !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
-        "Can only copy array and tuple shaped instructions");
+        "Can't deep copy instruction %s: given shape tree of indices to copy "
+        "has incompatible shape",
+        instruction->name().c_str());
   }
+
+  ShapeIndex index;
+  return DeepCopyHelper(instruction, indices_to_copy, copies_added, &index);
 }
 
 ProgramShape HloComputation::ComputeProgramShape() const {

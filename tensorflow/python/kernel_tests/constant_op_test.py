@@ -116,9 +116,12 @@ class ConstantTest(test.TestCase):
       variant_tensor = tensor_pb2.TensorProto(
           dtype=dtypes_lib.variant.as_datatype_enum,
           tensor_shape=tensor_shape.TensorShape([]).as_proto(),
-          variant_val=[tensor_pb2.VariantTensorDataProto(
-              type_name=b"int",
-              metadata=np.array(1, dtype=np.int32).tobytes())])
+          variant_val=[
+              tensor_pb2.VariantTensorDataProto(
+                  # Match registration in variant_op_registry.cc
+                  type_name=b"int32",
+                  metadata=np.array(1, dtype=np.int32).tobytes())
+          ])
       const_op = constant_op.constant(variant_tensor).op
       const_value = const_op.get_attr("value")
 

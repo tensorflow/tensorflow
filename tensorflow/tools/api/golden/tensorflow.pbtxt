@@ -369,6 +369,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "linalg"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "logging"
     mtype: "<type \'module\'>"
   }

@@ -41,7 +41,9 @@ REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 template <typename Device, typename T>
 class ReadVariableOp : public OpKernel {
  public:
-  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
@@ -63,8 +65,16 @@ class ReadVariableOp : public OpKernel {
                    ctx->allocate_output(0, variable->tensor()->shape(), &out));
     functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
     const Tensor& t = *variable->tensor();
+    OP_REQUIRES(
+        ctx, dtype_ == t.dtype(),
+        errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. Expected ",
+            DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
     copy_functor(ctx->eigen_device<Device>(), out->flat<T>(), t.flat<T>());
   }
+
+ private:
+  DataType dtype_;
 };
 
 // TODO(apassos) register for the GPU as well.
@@ -222,6 +232,12 @@ class AssignVariableOp : public OpKernel {
               return Status::OK();
             }));
     core::ScopedUnref s(variable);
+
+    OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(dtype_)));
 
     // TODO(apassos): holding a lock and copying is unnecessary if we are the
     // last user of the value tensor. This should essentially always be the

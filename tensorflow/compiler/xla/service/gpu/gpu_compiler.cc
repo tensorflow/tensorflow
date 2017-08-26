@@ -167,6 +167,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         HloReducePrecisionOptions::AFTER_OP_FUSION);
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::FUSION_BY_CONTENT);
     StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
     TF_RETURN_IF_ERROR(reduce_result.status());
 
