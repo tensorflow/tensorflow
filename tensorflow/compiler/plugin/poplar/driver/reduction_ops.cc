@@ -251,7 +251,7 @@ CreateSimpleReduction(poplar::Graph &graph,
 
     // Allocate the output tensor
     TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-    out = out.flatten();
+    poplar::Tensor out_flat = out.flatten();
 
     // One vertex per non-reduced element
     auto cs = graph.addComputeSet(inst->name());
@@ -259,13 +259,13 @@ CreateSimpleReduction(poplar::Graph &graph,
     // TODO - this?
     // reduceByDstMapping(graph, shuffled, out, graph.getTileMapping(out), cs);
 
-    const unsigned long N = out.dim(0);
+    const unsigned long N = out_flat.dim(0);
     const auto &device_info = graph.getDevice().getDeviceInfo();
 
     for (unsigned i = 0; i < N; ++i) {
       auto v = graph.addVertex(cs, vertex_name,
                                {{"a", shuffled[i]},
-                                {"out", out.slice(i, i+1)}});
+                                {"out", out_flat.slice(i, i+1)}});
       graph.setTileMapping(v, (i / device_info.numWorkerContexts)
                               % device_info.getNumTiles());
     }
@@ -283,7 +283,6 @@ CreateSimpleReduction(poplar::Graph &graph,
 
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
-      init_val = init_val.flatten();
 
       popstd_binary_fn fn;
       TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root->opcode()));
