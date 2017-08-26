@@ -33,6 +33,15 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
               << " computation: " << computation.get();
         }
       }
+      if (instruction->opcode() == HloOpcode::kBroadcast) {
+        // If you see this failure then someone has confused the difference
+        // between the HLO broadcast op, and the UserComputation broadcast
+        // op.  See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
+        // or ComputationLowerer::Visit()
+        TF_RET_CHECK(instruction->dimensions().size() ==
+                     ShapeUtil::Rank(instruction->operand(0)->shape()))
+                << "Broadcast HLO has invalid number of dimensions.";
+      }
 
       auto previous = instructions.find(instruction->name());
       TF_RET_CHECK(previous == instructions.end())
