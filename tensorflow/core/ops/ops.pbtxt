@@ -629,7 +629,7 @@ op {
     }
   }
   summary: "Returns the argument of a complex number."
-  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the argument of each element in `input`. All elements in\n`input` must be complex numbers of the form \\(a + bj\\), where *a*\nis the real part and *b* is the imaginary part.\n\nThe argument returned by this operation is of the form \\(atan2(b, a)\\).\n\nFor example:\n```\n # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.angle(input) ==> [2.0132, 1.056]\n```"
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the argument of each element in `input`. All elements in\n`input` must be complex numbers of the form \\\\(a + bj\\\\), where *a*\nis the real part and *b* is the imaginary part.\n\nThe argument returned by this operation is of the form \\\\(atan2(b, a)\\\\).\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.angle(input) ==> [2.0132, 1.056]\n```\n\n@compatibility(numpy)\nEquivalent to np.angle.\n@end_compatibility"
 }
 op {
   name: "Any"
@@ -6714,11 +6714,12 @@ op {
       list {
         s: "MIN_COMBINED"
         s: "MIN_FIRST"
+        s: "SCALED"
       }
     }
   }
   summary: "Dequantize the \'input\' tensor into a float Tensor."
-  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```c++\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / number_of_steps\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```"
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```c++\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / number_of_steps\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (2 * m) / (max_fixed - min_fixed)\n```\n\nNow we can dequantize the elements of our tensor:\n```c++\nresult = input * s\n```"
 }
 op {
   name: "DeserializeManySparse"
@@ -8324,6 +8325,11 @@ op {
     description: "A scalar representing the number of bytes to skip at the end\nof a file."
     type: DT_INT64
   }
+  input_arg {
+    name: "buffer_size"
+    description: "A scalar representing the number of bytes to buffer. Must be > 0."
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_RESOURCE
@@ -9399,6 +9405,43 @@ op {
   }
   summary: "Gather slices from `params` axis `axis` according to `indices`."
   description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `params.shape[:axis] + indices.shape +\nparams.shape[axis + 1:]` where:\n\n```python\n    # Scalar indices (output is rank(params) - 1).\n    output[a_0, ..., a_n, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices, b_0, ..., b_n]\n\n    # Vector indices (output is rank(params)).\n    output[a_0, ..., a_n, i, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]\n\n    # Higher rank indices (output is rank(params) + rank(indices) - 1).\n    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =\n      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/Gather.png\" alt>\n</div>"
+}
+op {
+  name: "GenerateVocabRemapping"
+  input_arg {
+    name: "new_vocab_file"
+    description: "Path to the new vocab file."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "old_vocab_file"
+    description: "Path to the old vocab file."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "remapping"
+    description: "A Tensor of length num_new_vocab where the element at index i\nis equal to the old ID that maps to the new ID i.  This element is -1 for any\nnew ID that is not found in the old vocabulary."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "num_present"
+    description: "Number of new vocab entries found in old vocab."
+    type: DT_INT32
+  }
+  attr {
+    name: "new_vocab_offset"
+    type: "int"
+    description: "How many entries into the new vocab file to start reading."
+    has_minimum: true
+  }
+  attr {
+    name: "num_new_vocab"
+    type: "int"
+    description: "Number of entries in the new vocab file to remap."
+    has_minimum: true
+  }
+  summary: "Given a path to new and old vocabulary files, returns a remapping Tensor of"
+  description: "length `num_new_vocab`, where `remapping[i]` contains the row number in the old\nvocabulary that corresponds to row `i` in the new vocabulary (starting at line\n`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`\nin the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables\nuse in the partitioned variable case, and should generally be set through\nexamining partitioning info.  The format of the files should be a text file,\nwith each line containing a single entity within the vocabulary.\n\nFor example, with `new_vocab_file` a text file containing each of the following\nelements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],\n`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be\n`[0, -1, 2]`.\n\nThe op also returns a count of how many entries in the new vocabulary\nwere present in the old vocabulary, which is used to calculate the number of\nvalues to initialize in a weight matrix remapping\n\nThis functionality can be used to remap both row vocabularies (typically,\nfeatures) and column vocabularies (typically, classes) from TensorFlow\ncheckpoints.  Note that the partitioning logic relies on contiguous vocabularies\ncorresponding to div-partitioned variables.  Moreover, the underlying remapping\nuses an IndexTable (as opposed to an inexact CuckooTable), so client code should\nuse the corresponding index_table_from_file() as the FeatureColumn framework\ndoes (as opposed to tf.feature_to_id(), which uses a CuckooTable)."
 }
 op {
   name: "GetSessionHandle"
@@ -11173,6 +11216,63 @@ op {
   }
   summary: "Computes the difference between two lists of numbers or strings."
   description: "Given a list `x` and a list `y`, this operation returns a list `out` that\nrepresents all values that are in `x` but not in `y`. The returned list `out`\nis sorted in the same order that the numbers appear in `x` (duplicates are\npreserved). This operation also returns a list `idx` that represents the\nposition of each `out` element in `x`. In other words:\n\n`out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`\n\nFor example, given this input:\n\n```\nx = [1, 2, 3, 4, 5, 6]\ny = [1, 3, 5]\n```\n\nThis operation would return:\n\n```\nout ==> [2, 4, 6]\nidx ==> [1, 3, 5]\n```"
+}
+op {
+  name: "LoadAndRemapMatrix"
+  input_arg {
+    name: "ckpt_path"
+    description: "Path to the TensorFlow checkpoint (version 2, `TensorBundle`) from\nwhich the old matrix `Tensor` will be loaded."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "old_tensor_name"
+    description: "Name of the 2-D `Tensor` to load from checkpoint."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "row_remapping"
+    description: "An int `Tensor` of row remappings (generally created by\n`generate_vocab_remapping`).  Even if no row remapping is needed, this must\nstill be an index-valued Tensor (e.g. [0, 1, 2, ...]), or a shifted\nindex-valued `Tensor` (e.g. [8, 9, 10, ...], for partitioned `Variables`)."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_remapping"
+    description: "An int `Tensor` of column remappings (generally created by\n`generate_vocab_remapping`).  May be a size-0 `Tensor` if only row remapping\nis to be done (e.g. column ordering is the same)."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "initializing_values"
+    description: "A float `Tensor` containing  values to fill in for cells\nin the output matrix that are not loaded from the checkpoint. Length must be\nexactly the same as the number of missing / new cells."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_matrix"
+    description: "Output matrix containing existing values loaded from the\ncheckpoint, and with any missing values filled in from initializing_values."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_rows"
+    type: "int"
+    description: "Number of rows (length of the 1st dimension) in the output matrix."
+    has_minimum: true
+  }
+  attr {
+    name: "num_cols"
+    type: "int"
+    description: "Number of columns (length of the 2nd dimension) in the output matrix."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_rows_in_memory"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The maximum number of rows to load from the checkpoint at\nonce. If less than or equal to 0, the entire matrix will be loaded into\nmemory. Setting this arg trades increased disk reads for lower memory usage."
+  }
+  summary: "Loads a 2-D (matrix) `Tensor` with name `old_tensor_name` from the checkpoint"
+  description: "at `ckpt_path` and potentially reorders its rows and columns using the\nspecified remappings.\n\nMost users should use one of the wrapper initializers (such as\n`tf.contrib.framework.load_and_remap_matrix_initializer`) instead of this\nfunction directly.\n\nThe remappings are 1-D tensors with the following properties:\n\n* `row_remapping` must have exactly `num_rows` entries. Row `i` of the output\n  matrix will be initialized from the row corresponding to index\n  `row_remapping[i]` in the old `Tensor` from the checkpoint.\n* `col_remapping` must have either 0 entries (indicating that no column\n  reordering is needed) or `num_cols` entries. If specified, column `j` of the\n  output matrix will be initialized from the column corresponding to index\n  `col_remapping[j]` in the old `Tensor` from the checkpoint.\n* A value of -1 in either of the remappings signifies a \"missing\" entry. In that\n  case, values from the `initializing_values` tensor will be used to fill that\n  missing row or column. If `row_remapping` has `r` missing entries and\n  `col_remapping` has `c` missing entries, then the following condition must be\n  true:\n\n`(r * num_cols) + (c * num_rows) - (r * c) == len(initializing_values)`\n\nThe remapping tensors can be generated using the GenerateVocabRemapping op.\n\nAs an example, with row_remapping = [1, 0, -1], col_remapping = [0, 2, -1],\ninitializing_values = [0.5, -0.5, 0.25, -0.25, 42], and w(i, j) representing\nthe value from row i, column j of the old tensor in the checkpoint, the output\nmatrix will look like the following:\n\n[[w(1, 0),  w(1, 2),  0.5],\n [w(0, 0),  w(0, 2), -0.5],\n [0.25,    -0.25,      42]]"
+  is_stateful: true
 }
 op {
   name: "Log"
@@ -15248,14 +15348,9 @@ op {
     type_list_attr: "Targuments"
   }
   input_arg {
-    name: "num_threads"
-    description: "The number of threads to use to process elements from\n`input_dataset`."
+    name: "num_parallel_calls"
+    description: "The number of concurrent invocations of `f` that process\nelements from `input_dataset` in parallel."
     type: DT_INT32
-  }
-  input_arg {
-    name: "output_buffer_size"
-    description: "The maximum number of output elements to buffer in an\niterator over this dataset."
-    type: DT_INT64
   }
   output_arg {
     name: "handle"
@@ -15283,7 +15378,7 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset uses\nup to `num_threads` threads to process elements from `input_dataset`\nin parallel."
+  description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `num_parallel_calls` copies of `f` in parallel."
   is_stateful: true
 }
 op {
@@ -16490,11 +16585,12 @@ op {
       list {
         s: "MIN_COMBINED"
         s: "MIN_FIRST"
+        s: "SCALED"
       }
     }
   }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
-  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\n*SCALED mode Example*\n\n`SCALED` mode matches the quantization approach used in\n`QuantizeAndDequantize{V2|V3}`.\n\nIf the mode is `SCALED`, we do not use the full range of the output type,\nchoosing to elide the lowest possible value for symmetry (e.g., output range is\n-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to\n0.\n\nWe first find the range of values in our tensor. The\nrange we use is always centered on 0, so we find m such that\n```c++\n  m = max(abs(input_min), abs(input_max))\n```\n\nOur input tensor range is then `[-m, m]`.\n\nNext, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.\nIf T is signed, this is\n```\n  num_bits = sizeof(T) * 8\n  [min_fixed, max_fixed] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]\n```\n\nOtherwise, if T is unsigned, the fixed-point range is\n```\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]\n```\n\nFrom this we compute our scaling factor, s:\n```c++\n  s = (max_fixed - min_fixed) / (2 * m)\n```\n\nNow we can quantize the elements of our tensor:\n```c++\nresult = (input * s).round_to_nearest()\n```\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
 }
 op {
   name: "QuantizedAdd"
@@ -22064,6 +22160,8 @@ op {
       list {
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
@@ -22166,6 +22264,8 @@ op {
       list {
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
@@ -28555,6 +28655,14 @@ op {
     description: "a length-2 vector of int64 representing the shape of the sparse\ntensor, where the first value is N and the second value is the maximum number\nof tokens in a single input entry."
     type: DT_INT64
   }
+  attr {
+    name: "skip_empty"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "A `bool`. If `True`, skip the empty strings from the result."
+  }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
   description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty, or a string of split characters. If `delimiter` is an\n empty string, each element of `input` is split into individual single-byte\n character strings, including splitting of UTF-8 multibyte sequences. Otherwise\n every character of `delimiter` is a potential split point.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
@@ -28914,6 +29022,11 @@ op {
     name: "compression_type"
     description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
     type: DT_STRING
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "A scalar representing the number of bytes to buffer. A value of\n0 means no buffering will be performed."
+    type: DT_INT64
   }
   output_arg {
     name: "handle"
@@ -30277,6 +30390,11 @@ op {
     name: "compression_type"
     description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
     type: DT_STRING
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "A scalar containing the number of bytes to buffer."
+    type: DT_INT64
   }
   output_arg {
     name: "handle"

@@ -147,6 +147,7 @@ cc_library(
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:protobuf_util",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -1448,12 +1449,27 @@ cc_test(
 )
 
 cc_library(
+    name = "logical_buffer_analysis",
+    srcs = ["logical_buffer_analysis.cc"],
+    hdrs = ["logical_buffer_analysis.h"],
+    deps = [
+        ":hlo",
+        ":logical_buffer",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "tuple_points_to_analysis",
     srcs = ["tuple_points_to_analysis.cc"],
     hdrs = ["tuple_points_to_analysis.h"],
     deps = [
         ":hlo",
         ":logical_buffer",
+        ":logical_buffer_analysis",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",

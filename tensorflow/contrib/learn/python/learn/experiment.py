@@ -512,10 +512,11 @@ class Experiment(object):
                       delay_secs=None,
                       throttle_delay_secs=None,
                       evaluate_checkpoint_only_once=True,
-                      continuous_eval_predicate_fn=None):
+                      continuous_eval_predicate_fn=None,
+                      name="continuous"):
     self._continuous_eval(
         self._eval_input_fn,
-        name="continuous",
+        name=name,
         delay_secs=delay_secs,
         throttle_delay_secs=throttle_delay_secs,
         evaluate_checkpoint_only_once=evaluate_checkpoint_only_once,
@@ -524,10 +525,11 @@ class Experiment(object):
   def continuous_eval_on_train_data(self,
                                     delay_secs=None,
                                     throttle_delay_secs=None,
-                                    continuous_eval_predicate_fn=None):
+                                    continuous_eval_predicate_fn=None,
+                                    name="continuous_on_train_data"):
     self._continuous_eval(
         self._train_input_fn,
-        name="continuous_on_train_data",
+        name=name,
         delay_secs=delay_secs,
         throttle_delay_secs=throttle_delay_secs,
         continuous_eval_predicate_fn=continuous_eval_predicate_fn)

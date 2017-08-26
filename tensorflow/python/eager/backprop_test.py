@@ -30,7 +30,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.training import training
 
 
 class BackpropTest(test.TestCase):
@@ -70,15 +75,85 @@ class BackpropTest(test.TestCase):
       self.assertAllClose(grad.numpy(), tf_dense_grad.eval())
 
   def testImplicitGradWithResourceVariable(self):
-    x = resource_variable_ops.ResourceVariable(initial_value=tensor.Tensor(1.0),
-                                               name='x')
+    x = resource_variable_ops.ResourceVariable(
+        initial_value=tensor.Tensor(1.0), name='x')
+
     def fn():
       tape.watch(x.handle)
       b = tensor.Tensor(2.0)
       c = math_ops.add(x.value(), b)
       return math_ops.add(c, tensor.Tensor(3.0))
+
     grad = backprop.implicit_grad(fn)()[0][1]
     self.assertEqual(grad.numpy(), 1.0)
+
+  def testImplicitGradOverEmbeddingLookup(self):
+    batch_size = 8
+    embedding_size = 512
+    vocab_size = 1000
+    lrn_rate = 0.1
+    random_init = random_ops.random_uniform([vocab_size, embedding_size])
+
+    x = array_ops.ones((batch_size), dtypes.int64)
+    embedding = resource_variable_ops.ResourceVariable(
+        initial_value=random_init, dtype=dtypes.float32, name='embedding')
+
+    def f():
+      tape.watch(embedding.handle)
+      embedded_x = embedding_ops.embedding_lookup(embedding, x)
+      return tensor.Tensor(1.0, dtypes.float32) - embedded_x
+
+    grad = backprop.implicit_grad(f)()[0][1]
+    opt = training.GradientDescentOptimizer(lrn_rate)
+
+    with context.graph_mode(), self.test_session():
+      tf_x = array_ops.ones((batch_size), dtypes.int64)
+      # TODO(ashankar,apassos): Change to ResourceVariable.
+      tf_embedding = variables.Variable(
+          random_init.numpy(), name='tf_embedding')
+      tf_embedded_x = embedding_ops.embedding_lookup(tf_embedding, tf_x)
+      tf_y = 1.0 - tf_embedded_x
+      tf_grad = gradients.gradients(tf_y, [tf_embedding])[0]
+      tf_opt = training.GradientDescentOptimizer(0.1)
+      tf_embedding.initializer.run()
+
+      self.assertAllClose(tf_grad.indices.eval(), grad.indices.numpy())
+      self.assertAllClose(tf_grad.values.eval(), grad.values.numpy())
+
+      tf_opt.apply_gradients([(tf_grad, tf_embedding)]).run()
+      expected = tf_embedding.eval()
+    opt.apply_gradients([(grad, embedding)])
+    self.assertAllClose(expected, embedding.read_value().numpy())
+
+  def testGradientNone(self):
+
+    def loss(x, l):
+      return math_ops.reduce_mean(
+          nn_ops.softmax_cross_entropy_with_logits(logits=x, labels=l),
+          tensor.Tensor([0]))
+
+    logits = tensor.Tensor([[0.0, 0.0]])
+    labels = tensor.Tensor([[1.0, 0.0]])
+    # softmax_cross_entropy_with_logits returns two outputs and in this case the
+    # gradient wrt the second is None.
+    g, = backprop.gradients_function(loss, [0])(logits, labels)
+    self.assertAllEqual(g.numpy(), [[-0.5, 0.5]])
+
+  def testSecondGrad(self):
+
+    def first(x):
+      l = tensor.Tensor([[0.0]])
+      x = nn_ops.softmax_cross_entropy_with_logits(labels=l, logits=x)
+      x = math_ops.reduce_sum(x, tensor.Tensor([0]))
+      return x
+
+    def second(x):
+      grad = backprop.gradients_function(first, [0])(x)[0]
+      return math_ops.reduce_sum(grad, tensor.Tensor([0]))
+
+    f = tensor.Tensor([[0.1]])
+    grad = backprop.gradients_function(second, [0])(f)[0]
+    self.assertAllEqual([[0.0]], grad.numpy())
 
   def testGPU(self):
     if not context.context().num_gpus():
@@ -94,6 +169,20 @@ class BackpropTest(test.TestCase):
 
     grad = backprop.gradients_function(fn, [0])(tensor.Tensor(1.0))[0]
     self.assertEqual(grad.numpy(), 1.0)
+
+  def testGPUImplicitGrad(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPU found')
+    with context.device('gpu:0'):
+      v = resource_variable_ops.ResourceVariable(tensor.Tensor(1.0), name='v')
+
+    def f():
+      with context.device('gpu:0'):
+        tape.watch(v.handle)
+        return v.read_value()
+
+    self.assertEqual(
+        backprop.implicit_grad(f)()[0][1].as_cpu_tensor().numpy(), 1.0)
 
   def testCPU(self):
 

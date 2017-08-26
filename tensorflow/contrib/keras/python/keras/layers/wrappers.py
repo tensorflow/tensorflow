@@ -204,7 +204,6 @@ class TimeDistributed(Wrapper):
           step,
           inputs,
           initial_states=[],
-          input_length=input_shape[1],
           unroll=False)
       y = outputs
     else:
@@ -292,7 +291,7 @@ class Bidirectional(Wrapper):
     self.backward_layer.set_weights(weights[nw // 2:])
 
   def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
     if self.merge_mode in ['sum', 'ave', 'mul']:
       return self.forward_layer._compute_output_shape(input_shape)  # pylint: disable=protected-access
     elif self.merge_mode == 'concat':

@@ -56,6 +56,24 @@ class CoreLayersTest(test.TestCase):
           kwargs={'rate': 0.5},
           input_shape=(2, 3, 4, 5))
 
+    with self.test_session():
+      testing_utils.layer_test(
+          keras.layers.SpatialDropout2D,
+          kwargs={'rate': 0.5, 'data_format': 'channels_first'},
+          input_shape=(2, 3, 4, 5))
+
+    with self.test_session():
+      testing_utils.layer_test(
+          keras.layers.SpatialDropout3D,
+          kwargs={'rate': 0.5},
+          input_shape=(2, 3, 4, 4, 5))
+
+    with self.test_session():
+      testing_utils.layer_test(
+          keras.layers.SpatialDropout3D,
+          kwargs={'rate': 0.5, 'data_format': 'channels_first'},
+          input_shape=(2, 3, 4, 4, 5))
+
   def test_activation(self):
     # with string argument
     with self.test_session():
@@ -185,6 +203,7 @@ class CoreLayersTest(test.TestCase):
       layer = keras.layers.ActivityRegularization(l1=0.1)
       layer(keras.backend.variable(np.ones((2, 4))))
       self.assertEqual(1, len(layer.losses))
+      _ = layer.get_config()
 
 
 if __name__ == '__main__':

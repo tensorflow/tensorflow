@@ -226,6 +226,7 @@ py_test(
     name = "resample_test",
     size = "medium",
     srcs = ["resample_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
