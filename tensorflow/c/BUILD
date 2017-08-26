@@ -85,6 +85,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api",
+        ":c_api_internal",
         "//tensorflow/core:lib",
     ],
 )

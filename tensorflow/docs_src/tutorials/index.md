@@ -43,6 +43,8 @@ The following tutorials focus on linear models:
   * @{$kernel_methods$Improving Linear Models Using Explicit Kernel Methods},
     which shows how to improve the quality of a linear model by using explicit
     kernel mappings.
+  * @{$audio_recognition$Simple Audio Recognition}, which shows how to
+    build a basic speech recognition network.
 
 Although TensorFlow specializes in machine learning, you may also use
 TensorFlow to solve other kinds of math problems.  For example:

@@ -487,21 +487,30 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
+  def _eval_helper(self, tensors):
+    if isinstance(tensors, ops.EagerTensor):
+      return tensors.numpy()
+    if isinstance(tensors, tuple):
+      return tuple([self._eval_helper(t) for t in tensors])
+    elif isinstance(tensors, list):
+      return [self._eval_helper(t) for t in tensors]
+    elif isinstance(tensors, dict):
+      assert not tensors, "Only support empty dict now."
+      return dict()
+    else:
+      raise ValueError("Unsupported type.")
+
   def evaluate(self, tensors):
     """Evaluates tensors and returns numpy values.
 
     Args:
-      tensors: A Tensor or a list of Tensors.
+      tensors: A Tensor or a nested list/tuple of Tensors.
 
     Returns:
       tensors numpy values.
     """
     if context.in_eager_mode():
-      if isinstance(tensors, list):
-        assert all(isinstance(t, ops.EagerTensor) for t in tensors)
-        return [t.numpy() for t in tensors]
-      assert isinstance(tensors, ops.EagerTensor), "Must be list or EagerTensor"
-      return tensors.numpy()
+      return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
       return sess.run(tensors)

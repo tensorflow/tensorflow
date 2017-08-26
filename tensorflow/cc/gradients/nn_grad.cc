@@ -108,7 +108,8 @@ Status BiasAddGradHelper(const Scope& scope, const Operation& op,
                          std::vector<Output>* grad_outputs) {
   string data_format;
   BiasAddGrad::Attrs input_attrs;
-  GetNodeAttr(op.output(0).node()->attrs(), "data_format", &data_format);
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), "data_format", &data_format));
   input_attrs.DataFormat(data_format);
   auto dx_1 = BiasAddGrad(scope, grad_inputs[0], input_attrs);
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));

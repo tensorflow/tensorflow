@@ -24,6 +24,7 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
+#include "tensorflow/contrib/tpu/profiler/op_profile.pb.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
@@ -48,8 +49,11 @@ using ::tensorflow::TPUProfiler;
 
 using ::grpc::ClientContext;
 using ::tensorflow::io::JoinPath;
+using ::tensorflow::protobuf::util::JsonOptions;
+using ::tensorflow::protobuf::util::MessageToJsonString;
 
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
+constexpr char kJsonOpProfileFileName[] = "op_profile.json";
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
@@ -75,12 +79,15 @@ Status WriteGzippedDataToFile(const string& filename, const string& data) {
   return Status::OK();
 }
 
-// This dumps a rawproto trace and a JSON trace to
-// <logdir>/plugins/profile/<run>/.
-void DumpTraceToLogDirectory(StringPiece logdir, StringPiece run,
-                             const string& encoded_trace) {
+// Dumps profile data to <logdir>/plugins/profile/<run>/.
+inline string CreateProfileRunDirectory(const string& logdir,
+                                        const string& run) {
   string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
   TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
+  return run_dir;
+}
+
+void DumpTraceToLogDirectory(StringPiece run_dir, const string& encoded_trace) {
   string proto_path = JoinPath(run_dir, kProtoTraceFileName);
   TF_CHECK_OK(WriteStringToFile(Env::Default(), proto_path, encoded_trace));
   LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
@@ -92,6 +99,22 @@ void DumpTraceToLogDirectory(StringPiece logdir, StringPiece run,
             << std::endl;
   TF_CHECK_OK(WriteGzippedDataToFile(json_path, TraceEventsToJson(trace)));
   std::cout << "Dumped JSON trace data to " << json_path << std::endl;
+}
+
+void DumpOpProfileToLogDirectory(StringPiece run_dir,
+                                 const tpu::op_profile::Profile& profile) {
+  string path = JoinPath(run_dir, kJsonOpProfileFileName);
+  string json;
+  JsonOptions options;
+  options.always_print_primitive_fields = true;
+  auto status = MessageToJsonString(profile, &json, options);
+  if (!status.ok()) {
+    std::cerr << "Failed to convert op profile to json. Skipping... "
+              << status.error_message() << std::endl;
+    return;
+  }
+  TF_CHECK_OK(WriteStringToFile(Env::Default(), path, json));
+  std::cout << "Dumped json op profile data to " << path << std::endl;
 }
 
 ProfileResponse Profile(const string& service_addr, int duration_ms) {
@@ -153,14 +176,15 @@ int main(int argc, char** argv) {
       tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
   // Use the current timestamp as the run name.
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
+  tensorflow::string run_dir =
+      tensorflow::tpu::CreateProfileRunDirectory(FLAGS_logdir, run);
   // Ignore computation_graph for now.
   if (response.encoded_trace().empty()) {
     std::cout << "No trace event is collected during the " << duration_ms
               << "ms interval." << std::endl;
   } else {
     LOG(INFO) << "Converting trace events to TraceViewer JSON.";
-    tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir, run,
-                                             response.encoded_trace());
+    tensorflow::tpu::DumpTraceToLogDirectory(run_dir, response.encoded_trace());
   }
   int num_graphs = response.computation_graph_size();
   if (num_graphs > 0) {
@@ -174,6 +198,12 @@ int main(int argc, char** argv) {
     }
     tensorflow::tpu::DumpGraph(
         FLAGS_logdir, run, response.computation_graph(0).SerializeAsString());
+  }
+  if (response.has_op_profile() &&
+      (response.op_profile().has_by_program_structure() ||
+       response.op_profile().has_by_category())) {
+    tensorflow::tpu::DumpOpProfileToLogDirectory(run_dir,
+                                                 response.op_profile());
   }
   // Print this at the end so that it's not buried in irrelevant LOG messages.
   std::cout

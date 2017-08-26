@@ -42,14 +42,20 @@ class LLVMCompiler : public Compiler {
   void SetPreOptimizationHook(ModuleHook hook) {
     CHECK(!user_pre_optimization_hook_)
         << "Pre-optimization hook is already set";
+    CHECK(hook) << "hook cannot be null";
     user_pre_optimization_hook_ = hook;
   }
+
+  void RemovePreOptimizationHook() { user_pre_optimization_hook_ = nullptr; }
 
   void SetPostOptimizationHook(ModuleHook hook) {
     CHECK(!user_post_optimization_hook_)
         << "Post-optimization hook is already set";
+    CHECK(hook) << "hook cannot be null";
     user_post_optimization_hook_ = hook;
   }
+
+  void RemovePostOptimizationHook() { user_post_optimization_hook_ = nullptr; }
 
  protected:
   ModuleHook user_pre_optimization_hook_;

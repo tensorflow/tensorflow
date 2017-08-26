@@ -73,6 +73,7 @@ from tensorflow.python.ops.standard_ops import *
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
+from tensorflow.python.ops import linalg_ns as linalg
 
 # pylint: enable=wildcard-import
 
@@ -228,6 +229,8 @@ _allowed_symbols.extend([
     'gfile',
     'graph_util',
     'image',
+    'initializers',
+    'linalg',
     'logging',
     'losses',
     'metrics',
@@ -245,7 +248,6 @@ _allowed_symbols.extend([
     'user_ops',
     'layers',
     'profiler',
-    'initializers',
 ])
 
 # Variables framework.versions:
