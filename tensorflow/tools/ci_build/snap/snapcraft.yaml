@@ -1,0 +1,34 @@
+name: tensorflow
+version: 'v1.3.0'
+summary: An open-source software library for Machine Intelligence
+description: |
+  TensorFlow™ is an open source software library or numerical computation
+  using data flow graphs. Nodes in the graph represent mathematical operations,
+  while the graph edges represent the multidimensional data arrays (tensors)
+  communicated between them. The flexible architecture allows you to deploy
+  computation to one or more CPUs or GPUs in a desktop, server, or mobile device
+  with a single API. TensorFlow was originally developed by researchers and
+  engineers working on the Google Brain Team within Google's Machine Intelligence
+  research organization for the purposes of conducting machine learning and deep
+  neural networks research, but the system is general enough to be applicable in
+  a wide variety of other domains as well.
+
+grade: devel # must be 'stable' to release into candidate/stable channels
+confinement: devmode # use 'strict' once you have the right plugs and slots
+
+parts:
+  tensorflow:
+    source: https://github.com/tensorflow/tensorflow/archive/$SNAPCRAFT_PROJECT_VERSION.tar.gz
+    plugin: python
+    python-version: python2
+
+    build-packages:
+      - openjdk-8-jdk
+      - oracle-java8-installer
+      - bazel
+    build:
+      pip install six numpy wheel 
+      cd tensorflow
+      ./configure
+      bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package
+      pip install /tmp/tensorflow_pkg/tensorflow-1.3.0-py2-none-any.whl
