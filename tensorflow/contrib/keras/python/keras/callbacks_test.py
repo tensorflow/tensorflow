@@ -35,6 +35,11 @@ try:
 except ImportError:
   h5py = None
 
+try:
+  import requests  # pylint:disable=g-import-not-at-top
+except ImportError:
+  requests = None
+
 
 TRAIN_SAMPLES = 10
 TEST_SAMPLES = 10
@@ -158,6 +163,24 @@ class KerasCallbacksTest(test.TestCase):
       assert os.path.exists(filepath)
       os.remove(filepath)
 
+      # Case: metric not available.
+      cbks = [
+          keras.callbacks.ModelCheckpoint(
+              filepath,
+              monitor='unknown',
+              save_best_only=True)
+      ]
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=1,
+          verbose=0)
+      # File won't be written.
+      assert not os.path.exists(filepath)
+
       # case 5
       save_best_only = False
       period = 2
@@ -179,7 +202,7 @@ class KerasCallbacksTest(test.TestCase):
           validation_data=(x_test, y_test),
           callbacks=cbks,
           epochs=4,
-          verbose=0)
+          verbose=1)
       assert os.path.exists(filepath.format(epoch=1))
       assert os.path.exists(filepath.format(epoch=3))
       os.remove(filepath.format(epoch=1))
@@ -187,9 +210,16 @@ class KerasCallbacksTest(test.TestCase):
       assert not os.path.exists(filepath.format(epoch=0))
       assert not os.path.exists(filepath.format(epoch=2))
 
+      # Invalid use: this will raise a warning but not an Exception.
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          mode='unknown')
+
   def test_EarlyStopping(self):
     with self.test_session():
-      np.random.seed(1337)
+      np.random.seed(123)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
           test_samples=TEST_SAMPLES,
@@ -206,37 +236,28 @@ class KerasCallbacksTest(test.TestCase):
           loss='categorical_crossentropy',
           optimizer='rmsprop',
           metrics=['accuracy'])
-      mode = 'max'
-      monitor = 'val_acc'
-      patience = 0
-      cbks = [
-          keras.callbacks.EarlyStopping(
-              patience=patience, monitor=monitor, mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=20,
-          verbose=0)
 
-      mode = 'auto'
-      monitor = 'val_acc'
-      patience = 2
-      cbks = [
-          keras.callbacks.EarlyStopping(
-              patience=patience, monitor=monitor, mode=mode)
+      cases = [
+          ('max', 'val_acc'),
+          ('min', 'val_loss'),
+          ('auto', 'val_acc'),
+          ('auto', 'loss'),
+          ('unknown', 'unknown')
       ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=20,
-          verbose=0)
+      for mode, monitor in cases:
+        patience = 0
+        cbks = [
+            keras.callbacks.EarlyStopping(
+                patience=patience, monitor=monitor, mode=mode)
+        ]
+        model.fit(
+            x_train,
+            y_train,
+            batch_size=BATCH_SIZE,
+            validation_data=(x_test, y_test),
+            callbacks=cbks,
+            epochs=5,
+            verbose=0)
 
   def test_EarlyStopping_reuse(self):
     with self.test_session():
@@ -259,6 +280,14 @@ class KerasCallbacksTest(test.TestCase):
       model.set_weights(weights)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0)
     assert len(hist.epoch) >= patience
+
+  def test_RemoteMonitor(self):
+    if requests is None:
+      return
+
+    monitor = keras.callbacks.RemoteMonitor()
+    # This will raise a warning since the default address in unreachable:
+    monitor.on_epoch_end(0, logs={'loss': 0.})
 
   def test_LearningRateScheduler(self):
     with self.test_session():

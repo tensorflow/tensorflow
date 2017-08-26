@@ -1764,6 +1764,13 @@ string HloInstruction::ToString(bool compact_operands,
   if (opcode() == HloOpcode::kGetTupleElement) {
     StrAppend(&extra, ", index=", tuple_index());
   }
+  if (!control_successors_.empty()) {
+    StrAppend(
+        &extra, ", control-successors=",
+        Join(control_successors_, ", ", [](string* out, HloInstruction* succ) {
+          StrAppend(out, succ->name());
+        }));
+  }
   if (include_metadata &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {

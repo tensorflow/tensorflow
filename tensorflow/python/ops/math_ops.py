@@ -2494,8 +2494,8 @@ def tensordot(a, b, axes, name=None):
         b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
         raise ValueError(
-            "Different number of contraction axes 'a' and 'b', %s != %s.",
-            len(a_axes), len(b_axes))
+            "Different number of contraction axes 'a' and 'b', %s != %s." %
+            (len(a_axes), len(b_axes)))
       return a_axes, b_axes
     else:
       axes = ops.convert_to_tensor(axes, name="axes", dtype=dtypes.int32)

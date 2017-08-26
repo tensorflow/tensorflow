@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.keras.python import keras
 from tensorflow.python.platform import test
 
@@ -37,6 +39,20 @@ class InceptionV3Test(test.TestCase):
                                            include_top=False,
                                            pooling='avg')
     self.assertEqual(model.output_shape, (None, 2048))
+
+  def test_weight_loading(self):
+    with self.assertRaises(ValueError):
+      keras.applications.InceptionV3(weights='unknown',
+                                     include_top=False)
+    with self.assertRaises(ValueError):
+      keras.applications.InceptionV3(weights='imagenet',
+                                     classes=2000)
+
+  def test_preprocess_input(self):
+    x = np.random.uniform(0, 255, (2, 300, 200, 3))
+    out1 = keras.applications.inception_v3.preprocess_input(x)
+    self.assertAllClose(np.mean(out1), 0., atol=0.1)
+
 
 if __name__ == '__main__':
   test.main()

@@ -104,6 +104,16 @@ class TestImage(test.TestCase):
       x = np.random.random((32, 10, 10))
       generator.flow(np.arange(x.shape[0]))
 
+    with self.assertRaises(ValueError):
+      generator = keras.preprocessing.image.ImageDataGenerator(
+          data_format='unknown')
+
+    generator = keras.preprocessing.image.ImageDataGenerator(
+        zoom_range=(2, 2))
+    with self.assertRaises(ValueError):
+      generator = keras.preprocessing.image.ImageDataGenerator(
+          zoom_range=(2, 2, 2))
+
   def test_image_data_generator_fit(self):
     generator = keras.preprocessing.image.ImageDataGenerator(
         featurewise_center=True,
@@ -169,6 +179,12 @@ class TestImage(test.TestCase):
         im.save(os.path.join(temp_dir, filename))
         count += 1
 
+    # Test image loading util
+    fname = os.path.join(temp_dir, filenames[0])
+    _ = keras.preprocessing.image.load_img(fname)
+    _ = keras.preprocessing.image.load_img(fname, grayscale=True)
+    _ = keras.preprocessing.image.load_img(fname, target_size=(10, 10))
+
     # create iterator
     generator = keras.preprocessing.image.ImageDataGenerator()
     dir_iterator = generator.flow_from_directory(temp_dir)
@@ -177,6 +193,7 @@ class TestImage(test.TestCase):
     self.assertEqual(len(dir_iterator.class_indices), num_classes)
     self.assertEqual(len(dir_iterator.classes), count)
     self.assertEqual(sorted(dir_iterator.filenames), sorted(filenames))
+    _ = dir_iterator.next()
 
   def test_img_utils(self):
     if PIL is None:
@@ -213,6 +230,16 @@ class TestImage(test.TestCase):
     self.assertEqual(img.size, (width, height))
     x = keras.preprocessing.image.img_to_array(img, data_format='channels_last')
     self.assertEqual(x.shape, (height, width, 1))
+
+  def test_img_transforms(self):
+    x = np.random.random((3, 200, 200))
+    _ = keras.preprocessing.image.random_rotation(x, 20)
+    _ = keras.preprocessing.image.random_shift(x, 0.2, 0.2)
+    _ = keras.preprocessing.image.random_shear(x, 2.)
+    _ = keras.preprocessing.image.random_zoom(x, (0.5, 0.5))
+    with self.assertRaises(ValueError):
+      keras.preprocessing.image.random_zoom(x, (0, 0, 0))
+    _ = keras.preprocessing.image.random_channel_shift(x, 2.)
 
 
 if __name__ == '__main__':

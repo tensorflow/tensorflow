@@ -37,18 +37,6 @@ class ImageNetUtilsTest(test.TestCase):
         np.transpose(x, (0, 3, 1, 2)), 'channels_first')
     self.assertAllClose(out1, out2.transpose(0, 2, 3, 1))
 
-  def test_decode_predictions(self):
-    x = np.zeros((2, 1000))
-    x[0, 372] = 1.0
-    x[1, 549] = 1.0
-    outs = keras.applications.imagenet_utils.decode_predictions(x, top=1)
-    scores = [out[0][2] for out in outs]
-    self.assertEqual(scores[0], scores[1])
-
-    # the numbers of columns and ImageNet classes are not identical.
-    with self.assertRaises(ValueError):
-      keras.applications.imagenet_utils.decode_predictions(np.ones((2, 100)))
-
   def test_obtain_input_shape(self):
     # input_shape and default_size are not identical.
     with self.assertRaises(ValueError):
@@ -137,3 +125,7 @@ class ImageNetUtilsTest(test.TestCase):
         min_size=139,
         data_format='channels_first',
         include_top=False) == (3, None, None)
+
+
+if __name__ == '__main__':
+  test.main()
