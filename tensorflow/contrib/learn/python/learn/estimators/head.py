@@ -654,7 +654,7 @@ def _create_model_fn_ops(features,
       loss=loss,
       train_op=train_op,
       eval_metric_ops=eval_metric_ops,
-      output_alternatives=create_output_alternatives_fn(predictions))
+      export_outputs=create_output_alternatives_fn(predictions))
 
 
 class _RegressionHead(_SingleHead):
@@ -1715,7 +1715,7 @@ class _MultiHead(Head):
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.PREDICT,
         predictions=predictions,
-        output_alternatives=output_alternatives)
+        export_outputs=output_alternatives)
 
   def _merge_eval(self, all_model_fn_ops):
     """Merges list of EstimatorSpec for eval.
