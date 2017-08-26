@@ -136,6 +136,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//third_party/eigen3",
     ],

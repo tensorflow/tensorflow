@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.keras.python import keras
 from tensorflow.python.platform import test
 
@@ -37,6 +39,25 @@ class MobileNetTest(test.TestCase):
                                          include_top=False,
                                          pooling='avg')
     self.assertEqual(model.output_shape, (None, 1024))
+
+  def test_weight_loading(self):
+    with self.assertRaises(ValueError):
+      keras.applications.MobileNet(weights='unknown',
+                                   include_top=False)
+    with self.assertRaises(ValueError):
+      keras.applications.MobileNet(weights='imagenet',
+                                   classes=2000)
+
+  def test_preprocess_input(self):
+    x = np.random.uniform(0, 255, (2, 300, 200, 3))
+    out1 = keras.applications.mobilenet.preprocess_input(x)
+    self.assertAllClose(np.mean(out1), 0., atol=0.1)
+
+  def test_invalid_use_cases(self):
+    keras.backend.set_image_data_format('channels_first')
+    model = keras.applications.MobileNet(weights=None)
+    self.assertEqual(model.output_shape, (None, 1000))
+    keras.backend.set_image_data_format('channels_last')
 
 if __name__ == '__main__':
   test.main()

@@ -402,10 +402,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "nsync",
       urls = [
-          "https://github.com/google/nsync/archive/215217c445e27cd76c27e45960c7b4721e59a4d9.tar.gz",
+          "https://github.com/google/nsync/archive/ad722c76c6e6653f66be2e1f69521b7f7517da55.tar.gz",
       ],
-      sha256 = "355a99d88c2ae1fb2838d75ce99b9042d547edc0133c5271d06804160091ac8a",
-      strip_prefix = "nsync-215217c445e27cd76c27e45960c7b4721e59a4d9",
+      sha256 = "7dd8ca49319f77e8226cd020a9210a525f88ac26e7041c59c95418223a1cdf55",
+      strip_prefix = "nsync-ad722c76c6e6653f66be2e1f69521b7f7517da55",
   )
 
   native.http_archive(

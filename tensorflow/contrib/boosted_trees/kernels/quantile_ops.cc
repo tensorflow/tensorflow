@@ -894,12 +894,14 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
                 errors::InvalidArgument("Expected sorted boundaries"));
 
     const Tensor& input_tensor = context->input(0);
+    VLOG(1) << "Inputs has shape: " << input_tensor.shape().DebugString()
+            << " Dtype: " << tensorflow::DataTypeString(input_tensor.dtype());
     auto input = input_tensor.flat<T>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int32>();
+    auto output = output_tensor->template flat<int64>();
 
     for (size_t i = 0; i < input.size(); i++) {
       output(i) = CalculateBucketIndex(input(i));
@@ -907,7 +909,7 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
   }
 
  private:
-  int32 CalculateBucketIndex(const T value) {
+  int64 CalculateBucketIndex(const T value) {
     auto first_bigger_it =
         std::upper_bound(boundaries_.begin(), boundaries_.end(), value);
     return first_bigger_it - boundaries_.begin();

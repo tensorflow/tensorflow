@@ -134,7 +134,24 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
     'train_op',
     'eval_metrics',
     'export_outputs'])):
-  """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`."""
+  """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
+
+  See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
+  'export_outputs`.
+
+  TPU evaluation expects a slightly different signature from the
+  ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and a tensor
+  list.  The tensor list specifies the list of tensors, usually model logits,
+  which are transferred back from TPU system to CPU host. All tensors must have
+  be batch-major, i.e., the batch size is the first dimension. Once all tensors
+  are available at CPU host, they are joined and passed as positional arguments
+  to the `metric_fn`. `metric_fn` takes the tensor list (concatenated on CPU
+  from all shards) and returns a dict from metric string name to the result of
+  calling a metric function, namely a `(metric_tensor, update_op)` tuple.
+
+  See `TPUEstimator` for MNIST example how to specify the `eval_metrics`.
+  """
 
   def __new__(cls,
               mode,
@@ -1007,15 +1024,19 @@ class TPUEstimator(estimator_lib.Estimator):
         `input_fn` and `model_fn`.  Keys are names of parameters, values are
         basic python types. There are reserved keys for `TPUEstimator`,
         including 'batch_size'.
-      use_tpu: A bool indicating whether TPU support is enabled. Currently, only
-        applied to training. Evaluate and predict still happen on CPU.
+      use_tpu: A bool indicating whether TPU support is enabled. Currently,
+        - TPU training respects this bit.
+        - If true, see `eval_batch_size` for evaluate support.
+        - Predict still happens on CPU.
       train_batch_size: An int representing the global training batch size.
         TPUEstimator transforms this global batch size to a per-shard batch
         size, as params['batch_size'], when calling `input_fn` and `model_fn`.
         Cannot be `None` if `use_tpu` is `True`. Must be divisible by
         `config.tpu_config.num_shards`.
       eval_batch_size: An int representing the global training batch size.
-        If `None`, evaluation is executed on CPU.
+        Currently, if `None`, evaluation is still executed on CPU (even when
+        `use_tpu` is True). In near future, `use_tpu` will be the only option to
+        switch between TPU/CPU evaluation.
       batch_axis: A python tuple of int values describing how each tensor
         produced by the Estimator `input_fn` should be split across the TPU
         compute shards. For example, if your input_fn produced (images, labels)
