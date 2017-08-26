@@ -22,7 +22,6 @@ import abc
 
 import six
 
-from tensorflow.contrib import framework as framework_lib
 from tensorflow.contrib import layers as layers_lib
 from tensorflow.contrib import lookup as lookup_lib
 from tensorflow.contrib.learn.python.learn.estimators import constants
@@ -30,6 +29,7 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey as mkey
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import framework_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
