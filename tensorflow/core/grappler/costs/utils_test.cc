@@ -146,5 +146,31 @@ TEST_F(UtilsTest, ConvOpInfo) {
   }
 }
 
+TEST_F(UtilsTest, TestSkipControlInput) {
+  GraphDef graph;
+  TF_CHECK_OK(NodeDefBuilder("constant", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Finalize(graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("constfold", "NoOp")
+                  .ControlInput("constant")
+                  .Finalize(graph.add_node()));
+
+  std::unordered_map<string, const NodeDef*> name_to_node;
+  for (const auto& node : graph.node()) {
+    name_to_node[node.name()] = &node;
+  }
+
+  bool node_found = false;
+  for (const auto& node : graph.node()) {
+    if (node.name() == "constfold") {
+      std::vector<OpInfo::TensorProperties> inputs;
+      OpInfo info = BuildOpInfoWithoutDevice(node, name_to_node, inputs);
+      node_found = true;
+      EXPECT_EQ(0, info.inputs_size());
+    }
+  }
+  EXPECT_TRUE(node_found);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

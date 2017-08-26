@@ -24,13 +24,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A global UnaryVariantOpRegistry is used to hold shape functions
+// A global UnaryVariantOpRegistry is used to hold callback functions
 // for different variant types.  To be used by ShapeOp, RankOp, and
-// SizeOp.
+// SizeOp, decoding, etc.
 
 class UnaryVariantOpRegistry {
  public:
-  typedef std::function<Status(Variant*, TensorShape*)> VariantShapeFn;
+  typedef std::function<Status(const Variant& v, TensorShape*)> VariantShapeFn;
+  typedef std::function<bool(Variant*)> VariantDecodeFn;
 
   // Add a shape lookup function to the registry.
   void RegisterShapeFn(const string& type_name, const VariantShapeFn& shape_fn);
@@ -38,25 +39,38 @@ class UnaryVariantOpRegistry {
   // Returns nullptr if no shape function was found for the given TypeName.
   VariantShapeFn* GetShapeFn(const string& type_name);
 
+  // Add a decode function to the registry.
+  void RegisterDecodeFn(const string& type_name,
+                        const VariantDecodeFn& decode_fn);
+
+  // Returns nullptr if no decode function was found for the given TypeName.
+  VariantDecodeFn* GetDecodeFn(const string& type_name);
+
   static UnaryVariantOpRegistry* Global();
 
  private:
   std::unordered_map<string, VariantShapeFn> shape_fns;
+  std::unordered_map<string, VariantDecodeFn> decode_fns;
 };
 
 // Gets a TensorShape from a Tensor containing a scalar Variant.
 // Returns an Internal error if the Variant does not have a registered shape
 // function, or if it's a serialized Variant that cannot be decoded.
 //
-// Tensor is passed by value (instead of a const ref) because the
-// underlying data will be accessed via Variant::MaybeDecodeAndGet,
-// which in turn may decode the Variant (if it is serialized).
-//
 // REQUIRES:
 //   variant_tensor.dtype() == DT_VARIANT
 //   variant_tensor.dims() == 0
 //
-Status GetUnaryVariantShape(Tensor variant_tensor, TensorShape* shape);
+Status GetUnaryVariantShape(const Tensor& variant_tensor, TensorShape* shape);
+
+// Decodes the Variant whose data_type has a registered decode
+// function.  Returns an Internal error if the Variant does not have a
+// registered decode function, or if the decoding function fails.
+//
+// REQUIRES:
+//   variant is not null.
+//
+bool DecodeUnaryVariant(Variant* variant);
 
 namespace variant_op_registry_fn_registration {
 
@@ -64,16 +78,12 @@ template <typename T>
 class UnaryVariantShapeRegistration {
  public:
   typedef std::function<Status(const T& t, TensorShape*)> LocalVariantShapeFn;
+
   UnaryVariantShapeRegistration(const string& type_name,
                                 const LocalVariantShapeFn& shape_fn) {
-    // The Variant is passed by pointer because it should be
-    // mutable: MaybeDecodeAndGet below may Decode the variant, which
-    // is a self-mutating behavior.  The variant is not modified in
-    // any other way.
-    auto wrapped_fn = [type_name, shape_fn](/* const */ Variant* v,
-                                            TensorShape* s) {
-      CHECK_NOTNULL(v);
-      T* t = v->MaybeDecodeAndGet<T>();
+    auto wrapped_fn = [type_name, shape_fn](const Variant& v,
+                                            TensorShape* s) -> Status {
+      const T* t = v.get<T>();
       if (t == nullptr) {
         return errors::Internal(
             "VariantShapeFn: Could not access object, type_name: ", type_name);
@@ -81,6 +91,32 @@ class UnaryVariantShapeRegistration {
       return shape_fn(*t, s);
     };
     UnaryVariantOpRegistry::Global()->RegisterShapeFn(type_name, wrapped_fn);
+  }
+};
+
+template <typename T>
+class UnaryVariantDecodeRegistration {
+ public:
+  UnaryVariantDecodeRegistration(const string& type_name) {
+    // The Variant is passed by pointer because it should be
+    // mutable: get below may Decode the variant, which
+    // is a self-mutating behavior.  The variant is not modified in
+    // any other way.
+    auto wrapped_fn = [type_name](Variant* v) -> bool {
+      CHECK_NOTNULL(v);
+      VariantTensorDataProto* t = v->get<VariantTensorDataProto>();
+      if (t == nullptr) {
+        return false;
+      }
+      Variant decoded = T();
+      VariantTensorData data(*t);
+      if (!decoded.Decode(data)) {
+        return false;
+      }
+      *v = std::move(decoded);
+      return true;
+    };
+    UnaryVariantOpRegistry::Global()->RegisterDecodeFn(type_name, wrapped_fn);
   }
 };
 
@@ -100,7 +136,20 @@ class UnaryVariantShapeRegistration {
 #define REGISTER_UNARY_VARIANT_SHAPE_FUNCTION_UNIQ(ctr, T, type_name,          \
                                                    shape_function)             \
   static variant_op_registry_fn_registration::UnaryVariantShapeRegistration<T> \
-      register_unary_variant_op_registry_fn_##ctr(type_name, shape_function)
+      register_unary_variant_op_shape_registration_fn_##ctr(type_name,         \
+                                                            shape_function)
+
+// Register a unary decode variant function for the given type.
+#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION(T, type_name) \
+  REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ_HELPER(__COUNTER__, T, type_name)
+
+#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ_HELPER(ctr, T, type_name) \
+  REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name)
+
+#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name)        \
+  static variant_op_registry_fn_registration::UnaryVariantDecodeRegistration< \
+      T>                                                                      \
+      register_unary_variant_op_decoder_fn_##ctr(type_name)
 
 }  // end namespace tensorflow
 

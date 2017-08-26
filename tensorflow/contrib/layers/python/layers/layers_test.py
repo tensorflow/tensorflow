@@ -3399,7 +3399,7 @@ class SpatialSoftmaxTests(test.TestCase):
     height2, width2 = (20, 20)
     batch_shape1 = (batch_size, height1, width1, nchannels)
     batch_shape2 = (batch_size, height2, width2, nchannels)
-    variable_sized_shape = (None, None, None, None)
+    variable_sized_shape = (None, None, None, 2)
 
     # Put high activations on single spatial locations.
     features = array_ops.placeholder(dtypes.float32, shape=variable_sized_shape)
@@ -3473,6 +3473,17 @@ class SpatialSoftmaxTests(test.TestCase):
       feed_dict = {features: np_features}
       keypoints = sess.run(spatial_softmax, feed_dict)
       self.assertAllClose(keypoints, np_keypoints)
+
+  def testSpatialSoftmaxToFullyConnected(self):
+    batch_shape = (2, 35, 35, 2)
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(features)
+    net = _layers.fully_connected(spatial_softmax, 10)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      sess.run(net, feed_dict)
 
 
 class StackTests(test.TestCase):
