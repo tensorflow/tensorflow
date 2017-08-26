@@ -258,7 +258,8 @@ class RollOp : public OpKernel {
     auto output_flat = output->flat<T>().data();
 
 
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same<Device, CPUDevice>::value || N > kint32max) {
+      // if N > kint32max this is too large for GPUs so we'll use CPU
       if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())){
         // V2 copies memory in groups instead of element by element
         // much faster
@@ -270,7 +271,7 @@ class RollOp : public OpKernel {
                        threshold, dim_range);
       }
     }else{
-      // for GPUs and beyond
+      // for GPUs
       RollFunctor<Device, T>()(context->eigen_device<Device>(), N, D, dim_size,
                                input_flat, output_flat, threshold, dim_range);
     }

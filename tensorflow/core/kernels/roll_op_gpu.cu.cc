@@ -49,7 +49,7 @@ __global__ void RollCudaKernel(int64 N, int D, int* dim_size, const T* input,
     offset += (shifted_indx - indx) * stride;
   }
 
-  for (int64 i = start; i < end; i += blockDim.x * gridDim.x) {
+  CUDA_1D_KERNEL_LOOP(start, end) {
     output[i + offset] = input[i];
     // create next combination of indices
     // while at it adjust offset if needed
