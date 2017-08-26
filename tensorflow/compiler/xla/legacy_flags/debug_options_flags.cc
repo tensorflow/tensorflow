@@ -38,7 +38,7 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_backend_optimization_level(3);
   flags->set_xla_cpu_multi_thread_eigen(true);
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
-  flags->set_xla_eliminate_hlo_implicit_broadcast(false);
+  flags->set_xla_eliminate_hlo_implicit_broadcast(true);
 }
 
 // Allocates flag_values and flag_objects; this function must not be called more
