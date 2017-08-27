@@ -18,8 +18,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "roll_op.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 using namespace tensorflow;
 
@@ -28,13 +28,13 @@ using namespace tensorflow;
 // CUDA kernel.
 template <typename T>
 __global__ void RollCudaKernel(int64 N, int D, int* dim_size, const T* input,
-                T* output, const int* threshold, const int64* dim_range) {
-
+                               T* output, const int* threshold,
+                               const int64* dim_range) {
   const int64 start = blockIdx.x * blockDim.x + threadIdx.x;
   const int64 end = N;
 
-  int indices[D]; // array of indices for each dimension
-  int offset = 0; // the shift along the flat tensor for current element
+  int indices[D];  // array of indices for each dimension
+  int offset = 0;  // the shift along the flat tensor for current element
   // initialize indices and offset
   for (int d = 0; d < D; d++) {
     // stride is the number of indices over in the flattened tensor
@@ -53,21 +53,21 @@ __global__ void RollCudaKernel(int64 N, int D, int* dim_size, const T* input,
     output[i + offset] = input[i];
     // create next combination of indices
     // while at it adjust offset if needed
-    for (int d = D-1; d >= 0; d--) {
+    for (int d = D - 1; d >= 0; d--) {
       const int indx = (indices[d] + 1) % dim_size[d];
       indices[d] = indx;
       if (indx != 0) {
-        if (indx == threshold[d]) { // we've reached the threshold
+        if (indx == threshold[d]) {  // we've reached the threshold
           // dim_range[d] = threshold[d] + shift[d]
           // offset = shift[d] + ... other offsets
           // offset - dim_range[d] = -threshold[d] + ... other offsets
           // thus we undo our previous offset as well as add a new offset of
           // -threshold[d] in one opperation
-          offset -= dim_range[d]; // now wraps around
+          offset -= dim_range[d];  // now wraps around
         }
-        break; // indx != 0 don't need to carry
-      }else if (threshold[d] != 0){ // if threshold is 0 shift is 0
-        offset += dim_range[d]; // indx became 0 so reverse wrap around
+        break;                         // indx != 0 don't need to carry
+      } else if (threshold[d] != 0) {  // if threshold is 0 shift is 0
+        offset += dim_range[d];        // indx became 0 so reverse wrap around
       }
     }
   }
@@ -76,8 +76,9 @@ __global__ void RollCudaKernel(int64 N, int D, int* dim_size, const T* input,
 // GPU implementation that launches the CUDA kernel.
 template <typename T>
 struct RollFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, int64 N, int D, int* dim_size, const T* input, T* output
-                  const int* threshold, const int64* dim_range){
+  void operator()(const GPUDevice& d, int64 N, int D, int* dim_size,
+                  const T* input, T* output const int* threshold,
+                  const int64* dim_range) {
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
     RollCudaKernel<T>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
@@ -89,8 +90,8 @@ struct RollFunctor<GPUDevice, T> {
 typedef Eigen::GpuDevice GPUDevice;
 
 // Definition of the GPU implementations declared in roll_op.h.
-#define DEFINE_GPU_SPECS(T)                      \
+#define DEFINE_GPU_SPECS(T)                  \
   template struct RollFunctor<GPUDevice, T>; \
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+  TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 #endif  // GOOGLE_CUDA
