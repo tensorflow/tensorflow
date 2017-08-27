@@ -41,6 +41,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -52,6 +53,7 @@ from tensorflow.python.training import training
 
 
 _INITIAL_LOSS = 1e7
+_ZERO_LOSS = 0.
 _BATCH_SIZE_KEY = 'batch_size'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
@@ -132,7 +134,24 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
     'train_op',
     'eval_metrics',
     'export_outputs'])):
-  """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`."""
+  """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
+
+  See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
+  'export_outputs`.
+
+  TPU evaluation expects a slightly different signature from the
+  ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and a tensor
+  list.  The tensor list specifies the list of tensors, usually model logits,
+  which are transferred back from TPU system to CPU host. All tensors must have
+  be batch-major, i.e., the batch size is the first dimension. Once all tensors
+  are available at CPU host, they are joined and passed as positional arguments
+  to the `metric_fn`. `metric_fn` takes the tensor list (concatenated on CPU
+  from all shards) and returns a dict from metric string name to the result of
+  calling a metric function, namely a `(metric_tensor, update_op)` tuple.
+
+  See `TPUEstimator` for MNIST example how to specify the `eval_metrics`.
+  """
 
   def __new__(cls,
               mode,
@@ -727,9 +746,8 @@ class _ModelFnWrapper(object):
     """
     eval_metrics = _EvalMetrics()
 
-    def eval_step(loss):
+    def eval_step(total_loss):
       """Evaluation step function for use inside a while loop."""
-      del loss  # unused; required in function signature.
       features, labels = dequeue_fn()
 
       tpu_estimator_spec = self._call_model_fn(features, labels, use_tpu=True)
@@ -743,7 +761,7 @@ class _ModelFnWrapper(object):
       outfeed_ops = tpu_ops.outfeed_enqueue_tuple(eval_metrics.outfeed_tensors)
 
       with ops.control_dependencies([outfeed_ops]):
-        return array_ops.identity(loss)
+        return math_ops.add(total_loss, loss)
     return eval_step, eval_metrics
 
   @property
@@ -989,7 +1007,7 @@ class TPUEstimator(estimator_lib.Estimator):
                use_tpu=True,
                train_batch_size=None,
                eval_batch_size=None,
-               shard_dimensions=None):
+               batch_axis=None):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -1006,16 +1024,20 @@ class TPUEstimator(estimator_lib.Estimator):
         `input_fn` and `model_fn`.  Keys are names of parameters, values are
         basic python types. There are reserved keys for `TPUEstimator`,
         including 'batch_size'.
-      use_tpu: A bool indicating whether TPU support is enabled. Currently, only
-        applied to training. Evaluate and predict still happen on CPU.
+      use_tpu: A bool indicating whether TPU support is enabled. Currently,
+        - TPU training respects this bit.
+        - If true, see `eval_batch_size` for evaluate support.
+        - Predict still happens on CPU.
       train_batch_size: An int representing the global training batch size.
         TPUEstimator transforms this global batch size to a per-shard batch
         size, as params['batch_size'], when calling `input_fn` and `model_fn`.
         Cannot be `None` if `use_tpu` is `True`. Must be divisible by
         `config.tpu_config.num_shards`.
       eval_batch_size: An int representing the global training batch size.
-        If `None`, evaluation is executed on CPU.
-      shard_dimensions: A python tuple of int values describing how each tensor
+        Currently, if `None`, evaluation is still executed on CPU (even when
+        `use_tpu` is True). In near future, `use_tpu` will be the only option to
+        switch between TPU/CPU evaluation.
+      batch_axis: A python tuple of int values describing how each tensor
         produced by the Estimator `input_fn` should be split across the TPU
         compute shards. For example, if your input_fn produced (images, labels)
         where the images tensor is in `HWCN` format, your shard dimensions would
@@ -1024,7 +1046,7 @@ class TPUEstimator(estimator_lib.Estimator):
         labels to match up with the corresponding images. If None is supplied,
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
-        False, shard_dimensions is ignored.
+        False, batch_axis is ignored.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -1071,7 +1093,7 @@ class TPUEstimator(estimator_lib.Estimator):
     # config.model_dir.
     model_function = _augment_model_fn(model_fn, train_batch_size,
                                        eval_batch_size, use_tpu,
-                                       shard_dimensions)
+                                       batch_axis)
 
     super(TPUEstimator, self).__init__(
         model_fn=model_function,
@@ -1165,15 +1187,15 @@ class TPUEstimator(estimator_lib.Estimator):
       return input_fn(**kwargs)
 
 
-# TODO(b/64607814): Ensure shard_dimensions works with nested structures.
+# TODO(b/64607814): Ensure batch_axis works with nested structures.
 def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
-                                              shard_dimensions):
+                                              batch_axis):
   """Utility to convert input_fn to enqueue and dequeue fns for TPU.
 
   Args:
     inputs_holder: An `_InputsHolder` holding features and labels.
     run_config: A `RunConfig` instance.
-    shard_dimensions: A python list of shard dimensions.
+    batch_axis: A python list of batch dimensions.
 
   Returns:
     A tuple of (dequeue_fn, enqueue_fn)
@@ -1189,7 +1211,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
     infeed_queue = tpu_feed.InfeedQueue(
         tuple_types=[t.dtype for t in unsharded_inputs],
         tuple_shapes=[t.shape for t in unsharded_inputs],
-        shard_dimensions=shard_dimensions)
+        shard_dimensions=batch_axis)
     infeed_queue.set_number_of_shards(inputs_holder.num_shards)
 
   def dequeue_fn():
@@ -1231,7 +1253,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
 
 
 def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
-                      shard_dimensions):
+                      batch_axis):
   """Returns a new model_fn, which wraps the TPU support."""
 
   def _model_fn(features, labels, mode, config, params):
@@ -1248,7 +1270,7 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
                            num_shards=config.tpu_config.num_shards)
 
     dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(
-        inputs, config, shard_dimensions)
+        inputs, config, batch_axis)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       loss = _train_on_tpu_system(model_fn_wrapper, dequeue_fn)
@@ -1269,15 +1291,18 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
           train_op=control_flow_ops.group(*update_ops))
 
     # Now eval.
-    loss, eval_metric_ops = _eval_on_tpu_system(model_fn_wrapper, dequeue_fn)
+    total_loss, eval_metric_ops = _eval_on_tpu_system(
+        model_fn_wrapper, dequeue_fn)
+    mean_loss = math_ops.div(total_loss,
+                             config.tpu_config.iterations_per_loop)
 
     # Creates a dummy metric update_op for all metrics. Estimator expects all
     # metrics in eval_metric_ops have update_op and calls them one by one. The
     # real metric update_ops are invoked in a separated thread. So, here give
     # Estimator the dummy op for all metrics.
-    with ops.control_dependencies([loss]):
-      # After TPU evaluation computation is done (the loss tensor), reads all
-      # variables back from TPU and updates the eval step counter properly.
+    with ops.control_dependencies([mean_loss]):
+      # After TPU evaluation computation is done (the mean_loss tensor), reads
+      # all variables back from TPU and updates the eval step counter properly.
       internal_ops_to_run = _sync_variables_ops()
       internal_ops_to_run.append(
           _increase_eval_step_op(config.tpu_config.iterations_per_loop))
@@ -1289,14 +1314,11 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
             config, dummy_update_op))
     hooks = [
         TPUInfeedOutfeedSessionHook(config, enqueue_fn, eval_update_ops),
-        training.LoggingTensorHook(
-            {'loss': array_ops.identity(loss)},
-            every_n_secs=30)
     ]
 
     return model_fn_lib.EstimatorSpec(
         mode,
-        loss=loss,
+        loss=mean_loss,
         evaluation_hooks=hooks,
         eval_metric_ops=eval_metric_ops)
   return _model_fn
@@ -1312,7 +1334,7 @@ def _eval_on_tpu_system(model_fn_wrapper, dequeue_fn):
       model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn))
 
   multi_tpu_eval_steps_on_single_shard = (lambda: training_loop.repeat(  # pylint: disable=g-long-lambda
-      iterations_per_loop, single_tpu_eval_step, [_INITIAL_LOSS], name='loop'))
+      iterations_per_loop, single_tpu_eval_step, [_ZERO_LOSS], name='loop'))
 
   (loss,) = tpu.shard(multi_tpu_eval_steps_on_single_shard,
                       inputs=[],

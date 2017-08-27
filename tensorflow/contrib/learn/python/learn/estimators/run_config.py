@@ -232,10 +232,18 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                session_config=None):
     """Constructor.
 
-    Note that the superclass `ClusterConfig` may set properties like
-    `cluster_spec`, `is_chief`, `master` (if `None` in the args),
-    `num_ps_replicas`, `task_id`, and `task_type` based on the `TF_CONFIG`
-    environment variable. See `ClusterConfig` for more details.
+    The superclass `ClusterConfig` may set properties like `cluster_spec`,
+    `is_chief`, `master` (if `None` in the args), `num_ps_replicas`, `task_id`,
+    and `task_type` based on the `TF_CONFIG` environment variable. See
+    `ClusterConfig` for more details.
+
+    N.B.: If `save_checkpoints_steps` or `save_checkpoints_secs` is set,
+    `keep_checkpoint_max` might need to be adjusted accordingly, especially in
+    distributed training. For example, setting `save_checkpoints_secs` as 60
+    without adjusting `keep_checkpoint_max` (defaults to 5) leads to situation
+    that checkpoint would be garbage collected after 5 minutes. In distributed
+    training, the evaluation job starts asynchronously and might fail to load or
+    find the checkpoint due to race condition.
 
     Args:
       master: TensorFlow master. Defaults to empty string for local.

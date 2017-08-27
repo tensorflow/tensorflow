@@ -56,30 +56,30 @@ class CopyOpTest : public HloTestBase {
                                 tensorflow::gtl::ArraySlice<int64> permutation);
 };
 
-TEST_F(CopyOpTest, CopyR0Bool) { TestCopyOp(*Literal::CreateR0<bool>(true)); }
+XLA_TEST_F(CopyOpTest, CopyR0Bool) { TestCopyOp(*Literal::CreateR0<bool>(true)); }
 
-TEST_F(CopyOpTest, CopyR1S0U32) { TestCopyOp(*Literal::CreateR1<uint32>({})); }
+XLA_TEST_F(CopyOpTest, CopyR1S0U32) { TestCopyOp(*Literal::CreateR1<uint32>({})); }
 
-TEST_F(CopyOpTest, CopyR1S3U32) {
+XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
   TestCopyOp(*Literal::CreateR1<uint32>({1, 2, 3}));
 }
 
-TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
+XLA_TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
   TestCopyOp(*Literal::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
                                  {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
 }
 
-TEST_F(CopyOpTest, CopyR4S32_2x2x3x2) {
+XLA_TEST_F(CopyOpTest, CopyR4S32_2x2x3x2) {
   TestCopyOp(*Literal::CreateR4(
       {{{{1, -2}, {-4, 5}, {6, 7}}, {{8, 9}, {10, 11}, {12, 13}}},
        {{{10, 3}, {7, -2}, {3, 6}}, {{2, 5}, {-11, 5}, {-2, -5}}}}));
 }
 
-TEST_F(CopyOpTest, CopyR4S32_0x2x3x2) {
+XLA_TEST_F(CopyOpTest, CopyR4S32_0x2x3x2) {
   TestCopyOp(*Literal::CreateR4FromArray4D(Array4D<int32>(0, 2, 3, 2)));
 }
 
-TEST_F(CopyOpTest, CopyParameterScalar) {
+XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   auto builder = HloComputation::Builder(TestName());
 
   // Copy literal to device to use as parameter.
@@ -102,7 +102,7 @@ TEST_F(CopyOpTest, CopyParameterScalar) {
   LiteralTestUtil::ExpectR0Near<float>(42.0f, *result, error_spec_);
 }
 
-TEST_F(CopyOpTest, CopyConstantR2Twice) {
+XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
   auto builder = HloComputation::Builder(TestName());
 
   auto literal = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
@@ -123,7 +123,7 @@ TEST_F(CopyOpTest, CopyConstantR2Twice) {
                                        error_spec_);
 }
 
-TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
+XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   HloComputation::Builder builder(TestName());
 
   std::unique_ptr<Literal> literal =

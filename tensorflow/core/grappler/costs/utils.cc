@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -86,6 +87,9 @@ static void ExtractExtraProperties(
   for (int i = 0; i < node.input_size(); ++i) {
     const string input_name = node.input(i);
     CHECK(!input_name.empty());
+    if (IsControlInput(input_name)) {
+      continue;
+    }
     TensorId input_tensor_id = ParseTensorName(input_name);
     const string input_node_name = input_tensor_id.first.ToString();
 
@@ -93,8 +97,15 @@ static void ExtractExtraProperties(
     if (iter == name_to_node.end()) continue;
     const NodeDef* input_node = iter->second;
 
+    if (i >= op_info->inputs_size()) {
+      LOG(ERROR) << "OpInfo's inputs doesn't match the graph! OpInfo: "
+                 << op_info->DebugString()
+                 << "\nCurrent node: " << node.DebugString()
+                 << "\nInput node: " << input_node->DebugString();
+    }
+
     // The value attribute in Const input is useful for cost prediction.
-    if (input_node->op() == "Const") {
+    if (input_node->op() == "Const" && i < op_info->inputs_size()) {
       auto it = input_node->attr().find("value");
       if (it == input_node->attr().end()) continue;
 

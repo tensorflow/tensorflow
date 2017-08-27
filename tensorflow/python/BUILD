@@ -64,6 +64,7 @@ py_library(
         ":initializers_ns",
         ":io_ops",
         ":lib",
+        ":linalg_ns",
         ":math_ops",
         ":nn",
         ":platform",
@@ -241,6 +242,20 @@ cc_library(
         "//tensorflow/core:script_ops_op_lib",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
+    ],
+)
+
+cc_library(
+    name = "ndarray_tensor",
+    srcs = ["lib/core/ndarray_tensor.cc"],
+    hdrs = ["lib/core/ndarray_tensor.h"],
+    deps = [
+        ":ndarray_tensor_bridge",
+        ":numpy_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -1153,6 +1168,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "checkpoint_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/framework:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
     deps = [
@@ -1604,6 +1627,18 @@ py_library(
         ":framework_for_generated_wrappers",
         ":io_ops_gen",
         ":lib",
+    ],
+)
+
+py_library(
+    name = "linalg_ns",
+    srcs = ["ops/linalg_ns.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":linalg_ops",
+        ":math_ops",
+        ":special_math_ops",
     ],
 )
 
@@ -2190,6 +2225,7 @@ py_library(
         ":resource_variable_ops",
         ":tensor_shape",
         ":variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
@@ -2798,6 +2834,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":test_ops_kernels",
@@ -3981,6 +4018,7 @@ py_library(
         "grappler/tf_optimizer.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [":pywrap_tensorflow_internal"],
 )
 

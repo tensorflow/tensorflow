@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.reduce_slice_ops.ops import gen_reduce_slice_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.platform import resource_loader
+
 
 _reduce_slice_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile("_reduce_slice_ops.so"))
 
-reduce_slice_sum = _reduce_slice_ops.reduce_slice_sum
-reduce_slice_prod = _reduce_slice_ops.reduce_slice_prod
-reduce_slice_max = _reduce_slice_ops.reduce_slice_max
-reduce_slice_min = _reduce_slice_ops.reduce_slice_min
+
+reduce_slice_sum = gen_reduce_slice_ops.reduce_slice_sum
+reduce_slice_prod = gen_reduce_slice_ops.reduce_slice_prod
+reduce_slice_max = gen_reduce_slice_ops.reduce_slice_max
+reduce_slice_min = gen_reduce_slice_ops.reduce_slice_min

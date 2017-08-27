@@ -448,22 +448,22 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   for (LogicalBuffer::Id id = 0; id < points_to_analysis.num_logical_buffers();
        id++) {
     auto& buffer = points_to_analysis.logical_buffer(id);
-    if (HasAllocation(*buffer)) {
-      LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
+    if (HasAllocation(buffer)) {
+      LogicalBufferProto proto_buffer = buffer.ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);
 
       // Fill buffer aliases.
       for (const BufferAlias& alias :
-           points_to_analysis.GetBufferAliases(*buffer)) {
-        if (alias.instruction() == buffer->instruction() &&
-            alias.index() == buffer->index()) {
+           points_to_analysis.GetBufferAliases(buffer)) {
+        if (alias.instruction() == buffer.instruction() &&
+            alias.index() == buffer.index()) {
           continue;  // skip self-aliases
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto.add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
             LogicalBuffer::ToLocationProto(*alias.instruction(), alias.index());
-        proto_alias->set_source_buffer_id(buffer->id());
+        proto_alias->set_source_buffer_id(buffer.id());
         proto_alias->mutable_location()->Swap(&proto_alias_location);
       }
     }
