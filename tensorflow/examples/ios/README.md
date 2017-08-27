@@ -44,7 +44,7 @@ open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
    below indicating that the example Grace Hopper image in directory data has
    been analyzed, with a military uniform recognized.
 
- - Run the other samples using the same process. The camera and camption
+ - Run the other samples using the same process. The camera and caption
    examples require a real device connected. Once you build and run that, you
    should get a live camera view that you can point at objects to get real-time
    recognition results (tap to generate a caption in the caption example).
