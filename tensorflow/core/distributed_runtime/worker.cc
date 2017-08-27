@@ -25,9 +25,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Find worker session by session handle. It's will be not null.
-template<typename Request>
-WorkerSession* Worker::FindWorkerSession(const Request* request) const {
+// The return value is guaranteed not to be null.
+//
+// REQUIRES: `request` is not null.
+WorkerSession* Worker::FindWorkerSessionBy(const Request* request) const {
   return env_->session_mgr->WorkerSessionForSession(request->session_handle());
 }
 
@@ -57,7 +58,7 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
 void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
-  auto session = FindWorkerSession(request);
+  auto session = FindWorkerSessionBy(request);
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
       request->debug_options(), response->mutable_graph_handle());
@@ -67,7 +68,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
 void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
-  auto session = FindWorkerSession(request);
+  auto session = FindWorkerSessionBy(request);
   Status s = session->graph_mgr->Deregister(request->graph_handle());
 
   done(s);
@@ -159,7 +160,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     }
   }
 
-  auto session = FindWorkerSession(request);
+  auto session = FindWorkerSessionBy(request);
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session, request->exec_opts(),
       collector, response, cm, in,
@@ -219,7 +220,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     AbortStep(step_id);
   });
 
-  auto session = FindWorkerSession(request);
+  auto session = FindWorkerSessionBy(request);
 
   // If this is a new partial run request, the request will need to start the
   // executors.

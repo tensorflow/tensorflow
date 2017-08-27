@@ -112,7 +112,7 @@ class Worker : public WorkerInterface {
                          StatusCallback done);
 
   template<typename Request>
-  WorkerSession* FindWorkerSession(const Request* req) const;
+  WorkerSession* FindWorkerSessionBy(const Request* req) const;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Worker);
 };
