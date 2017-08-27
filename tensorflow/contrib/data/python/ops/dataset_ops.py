@@ -1903,7 +1903,8 @@ class DenseToSparseBatchDataset(Dataset):
 
 def _should_unpack_args(args):
   """Returns `True` if `args` should be `*args` when passed to a callable."""
-  return nest.is_sequence(args) and not isinstance(args, dict)
+  is_namedtuple = isinstance(args, tuple) and hasattr(args, "_fields")
+  return nest.is_sequence(args) and not isinstance(args, dict) and not is_namedtuple
 
 
 class _ResourceDataset(Dataset):
