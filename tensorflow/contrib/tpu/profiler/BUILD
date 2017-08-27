@@ -10,7 +10,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )
 
@@ -19,6 +19,7 @@ cc_binary(
     srcs = ["capture_tpu_profile.cc"],
     visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
     deps = [
+        ":op_profile_proto_cc",
         ":tpu_profiler_proto_cc",
         ":trace_events_proto_cc",
         ":trace_events_to_json",
@@ -59,4 +60,11 @@ cc_test(
         "//tensorflow/core:test_main",
         "@jsoncpp_git//:jsoncpp",
     ],
+)
+
+tf_proto_library_cc(
+    name = "op_profile_proto",
+    srcs = ["op_profile.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
 )

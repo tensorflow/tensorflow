@@ -23,9 +23,14 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
     ],
 )

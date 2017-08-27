@@ -45,6 +45,11 @@ bool IsEnter(const NodeDef& node) {
   return op == "Enter" || op == "RefEnter";
 }
 
+bool IsExit(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Exit" || op == "RefExit";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Identity" || op == "RefIdentity";

@@ -162,6 +162,41 @@ class TrainingTest(test.TestCase):
           batch_size=5,
           verbose=0)
 
+      # Invalid use cases
+      with self.assertRaises(ValueError):
+        model.train_on_batch({'input_a': input_a_np},
+                             [output_d_np, output_e_np])
+      with self.assertRaises(TypeError):
+        model.fit(
+            [input_a_np, input_b_np], [output_d_np, output_e_np],
+            epochs=1,
+            validation_data=([input_a_np, input_b_np], 0, 0),
+            verbose=0)
+      with self.assertRaises(ValueError):
+        model.train_on_batch([input_a_np], [output_d_np, output_e_np])
+      with self.assertRaises(TypeError):
+        model.train_on_batch(1, [output_d_np, output_e_np])
+      with self.assertRaises(ValueError):
+        model.train_on_batch(input_a_np, [output_d_np, output_e_np])
+      with self.assertRaises(ValueError):
+        bad_input = np.random.random((11, 3))
+        model.train_on_batch([bad_input, input_b_np],
+                             [output_d_np, output_e_np])
+      with self.assertRaises(ValueError):
+        bad_target = np.random.random((11, 4))
+        model.train_on_batch([input_a_np, input_b_np],
+                             [bad_target, output_e_np])
+
+      # Build single-input model
+      x = keras.layers.Input(shape=(3,), name='input_a')
+      y = keras.layers.Dense(4)(x)
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      # This will work
+      model.fit([input_a_np], output_d_np, epochs=1)
+      with self.assertRaises(ValueError):
+        model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
+
   def test_evaluate_predict_on_arrays(self):
     with self.test_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
@@ -239,6 +274,40 @@ class TrainingTest(test.TestCase):
           'input_b': input_b_np
       })
       self.assertEqual(len(out), 2)
+
+  def test_invalid_loss_or_metrics(self):
+    num_classes = 5
+    train_samples = 1000
+    test_samples = 1000
+    input_dim = 5
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(10, input_shape=(input_dim,)))
+      model.add(keras.layers.Activation('relu'))
+      model.add(keras.layers.Dense(num_classes))
+      model.add(keras.layers.Activation('softmax'))
+      model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+      np.random.seed(1337)
+      (x_train, y_train), (_, _) = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=test_samples,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      with self.assertRaises(ValueError):
+        model.fit(x_train, y_train)
+
+      with self.assertRaises(ValueError):
+        model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
+
+      with self.assertRaises(TypeError):
+        model.compile(loss='categorical_crossentropy',
+                      optimizer='rmsprop',
+                      metrics=set(0))
+
+      with self.assertRaises(RuntimeError):
+        model.compile(loss=None,
+                      optimizer='rmsprop')
 
 
 class LossWeightingTest(test.TestCase):
@@ -463,7 +532,7 @@ class LossWeightingTest(test.TestCase):
           temporal_x_test[test_ids], temporal_y_test[test_ids], verbose=0)
       self.assertLess(score, ref_score)
 
-  def test_class_weight_wrong_classes(self):
+  def test_class_weight_invalid_use_case(self):
     num_classes = 5
     train_samples = 1000
     test_samples = 1000
@@ -494,6 +563,44 @@ class LossWeightingTest(test.TestCase):
       with self.assertRaises(ValueError):
         model.fit(x_train, y_train,
                   epochs=0, verbose=0, class_weight=class_weight)
+
+      with self.assertRaises(ValueError):
+        model.compile(
+            loss='binary_crossentropy',
+            optimizer='rmsprop',
+            sample_weight_mode=[])
+
+      # Build multi-output model
+      x = keras.Input((3,))
+      y1 = keras.layers.Dense(4, name='1')(x)
+      y2 = keras.layers.Dense(4, name='2')(x)
+      model = keras.models.Model(x, [y1, y2])
+      model.compile(optimizer='rmsprop', loss='mse')
+      x_np = np.random.random((10, 3))
+      y_np = np.random.random((10, 4))
+      w_np = np.random.random((10,))
+      # This will work
+      model.fit(x_np, [y_np, y_np], epochs=1,
+                sample_weight={'1': w_np})
+      # These will not
+      with self.assertRaises(ValueError):
+        model.fit(x_np, [y_np, y_np], epochs=1,
+                  sample_weight=[w_np])
+      with self.assertRaises(TypeError):
+        model.fit(x_np, [y_np, y_np], epochs=1,
+                  sample_weight=w_np)
+      with self.assertRaises(ValueError):
+        bad_w_np = np.random.random((11,))
+        model.fit(x_np, [y_np, y_np], epochs=1,
+                  sample_weight={'1': bad_w_np})
+      with self.assertRaises(ValueError):
+        bad_w_np = np.random.random((10, 2))
+        model.fit(x_np, [y_np, y_np], epochs=1,
+                  sample_weight={'1': bad_w_np})
+      with self.assertRaises(ValueError):
+        bad_w_np = np.random.random((10, 2, 2))
+        model.fit(x_np, [y_np, y_np], epochs=1,
+                  sample_weight={'1': bad_w_np})
 
 
 class LossMaskingTest(test.TestCase):
@@ -664,8 +771,8 @@ class TestDynamicTrainability(test.TestCase):
 class TestGeneratorMethods(test.TestCase):
 
   def test_generator_methods(self):
-    arr_data = np.random.randint(0, 256, (50, 2))
-    arr_labels = np.random.randint(0, 2, 50)
+    arr_data = np.random.random((50, 2))
+    arr_labels = np.random.random((50,))
 
     def custom_generator():
       batch_size = 10
@@ -678,49 +785,200 @@ class TestGeneratorMethods(test.TestCase):
         y = arr_labels[start: end]
         yield x, y
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(1, input_shape=(2,)))
-    model.compile(loss='mse', optimizer='sgd')
+    with self.test_session():
+      x = keras.Input((2,))
+      y = keras.layers.Dense(1)(x)
+      fn_model = keras.models.Model(x, y)
+      fn_model.compile(loss='mse', optimizer='sgd')
 
-    model.fit_generator(custom_generator(),
-                        steps_per_epoch=5,
-                        epochs=1,
-                        verbose=1,
-                        max_queue_size=10,
-                        workers=4,
-                        use_multiprocessing=True)
-    model.fit_generator(custom_generator(),
-                        steps_per_epoch=5,
-                        epochs=1,
-                        verbose=1,
-                        max_queue_size=10,
-                        use_multiprocessing=False)
-    model.fit_generator(custom_generator(),
-                        steps_per_epoch=5,
-                        epochs=1,
-                        verbose=1,
-                        max_queue_size=10,
-                        use_multiprocessing=False,
-                        validation_data=custom_generator(),
-                        validation_steps=10)
-    model.predict_generator(custom_generator(),
-                            steps=5,
+      seq_model = keras.models.Sequential()
+      seq_model.add(keras.layers.Dense(1, input_shape=(2,)))
+      seq_model.compile(loss='mse', optimizer='sgd')
+
+      for model in [fn_model, seq_model]:
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            epochs=1,
+                            verbose=1,
                             max_queue_size=10,
-                            workers=2,
+                            workers=4,
                             use_multiprocessing=True)
-    model.predict_generator(custom_generator(),
-                            steps=5,
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            epochs=1,
+                            verbose=1,
                             max_queue_size=10,
                             use_multiprocessing=False)
-    model.evaluate_generator(custom_generator(),
-                             steps=5,
-                             max_queue_size=10,
-                             workers=2,
-                             use_multiprocessing=True)
-    model.evaluate_generator(custom_generator(),
-                             steps=5,
-                             max_queue_size=10,
-                             use_multiprocessing=False)
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            epochs=1,
+                            verbose=1,
+                            max_queue_size=10,
+                            use_multiprocessing=False,
+                            validation_data=custom_generator(),
+                            validation_steps=10)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                workers=2,
+                                use_multiprocessing=True)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                use_multiprocessing=False)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 workers=2,
+                                 use_multiprocessing=True)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 use_multiprocessing=False)
+
+        # Test legacy API
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            epochs=1,
+                            verbose=1,
+                            max_q_size=10,
+                            workers=4,
+                            pickle_safe=True)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_q_size=10,
+                                workers=2,
+                                pickle_safe=True)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_q_size=10,
+                                 workers=2,
+                                 pickle_safe=True)
+
+  def test_generator_methods_with_sample_weights(self):
+    arr_data = np.random.random((50, 2))
+    arr_labels = np.random.random((50,))
+    arr_sample_weights = np.random.random((50,))
+
+    def custom_generator():
+      batch_size = 10
+      n_samples = 50
+      while True:
+        batch_index = np.random.randint(0, n_samples - batch_size)
+        start = batch_index
+        end = start + batch_size
+        x = arr_data[start: end]
+        y = arr_labels[start: end]
+        w = arr_sample_weights[start: end]
+        yield x, y, w
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1, input_shape=(2,)))
+      model.compile(loss='mse', optimizer='sgd')
+
+      model.fit_generator(custom_generator(),
+                          steps_per_epoch=5,
+                          epochs=1,
+                          verbose=1,
+                          max_queue_size=10,
+                          use_multiprocessing=False)
+      model.fit_generator(custom_generator(),
+                          steps_per_epoch=5,
+                          epochs=1,
+                          verbose=1,
+                          max_queue_size=10,
+                          use_multiprocessing=False,
+                          validation_data=custom_generator(),
+                          validation_steps=10)
+      model.predict_generator(custom_generator(),
+                              steps=5,
+                              max_queue_size=10,
+                              use_multiprocessing=False)
+      model.evaluate_generator(custom_generator(),
+                               steps=5,
+                               max_queue_size=10,
+                               use_multiprocessing=False)
+
+  def test_generator_methods_invalid_use_case(self):
+
+    def custom_generator():
+      while 1:
+        yield 0
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1, input_shape=(2,)))
+      model.compile(loss='mse', optimizer='sgd')
+
+      with self.assertRaises(ValueError):
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            epochs=1,
+                            verbose=1,
+                            max_queue_size=10,
+                            use_multiprocessing=False)
+      with self.assertRaises(ValueError):
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            epochs=1,
+                            verbose=1,
+                            max_queue_size=10,
+                            use_multiprocessing=False,
+                            validation_data=custom_generator(),
+                            validation_steps=10)
+      with self.assertRaises(TypeError):
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                use_multiprocessing=False)
+      with self.assertRaises(ValueError):
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 use_multiprocessing=False)
+
+
+class TestTrainingUtils(test.TestCase):
+
+  def test_check_array_lengths(self):
+    keras.engine.training._check_array_lengths(None, None, None)
+    a_np = np.random.random((4, 3, 3))
+    keras.engine.training._check_array_lengths(a_np, a_np, a_np)
+    keras.engine.training._check_array_lengths(
+        [a_np, a_np], [a_np, a_np], [a_np, a_np])
+    keras.engine.training._check_array_lengths([None], [None], [None])
+
+    b_np = np.random.random((3, 4))
+    with self.assertRaises(ValueError):
+      keras.engine.training._check_array_lengths(a_np, None, None)
+    with self.assertRaises(ValueError):
+      keras.engine.training._check_array_lengths(a_np, a_np, None)
+    with self.assertRaises(ValueError):
+      keras.engine.training._check_array_lengths([a_np], [None], None)
+    with self.assertRaises(ValueError):
+      keras.engine.training._check_array_lengths([a_np], [b_np], None)
+    with self.assertRaises(ValueError):
+      keras.engine.training._check_array_lengths([a_np], None, [b_np])
+
+  def test_slice_arrays(self):
+    input_a = np.random.random((10, 3))
+    keras.engine.training._slice_arrays(None)
+    keras.engine.training._slice_arrays(input_a, 0)
+    keras.engine.training._slice_arrays(input_a, 0, 1)
+    keras.engine.training._slice_arrays(input_a, stop=2)
+    input_a = [None, [1, 1], None, [1, 1]]
+    keras.engine.training._slice_arrays(input_a, 0)
+    keras.engine.training._slice_arrays(input_a, 0, 1)
+    keras.engine.training._slice_arrays(input_a, stop=2)
+    input_a = [None]
+    keras.engine.training._slice_arrays(input_a, 0)
+    keras.engine.training._slice_arrays(input_a, 0, 1)
+    keras.engine.training._slice_arrays(input_a, stop=2)
+    input_a = None
+    keras.engine.training._slice_arrays(input_a, 0)
+    keras.engine.training._slice_arrays(input_a, 0, 1)
+    keras.engine.training._slice_arrays(input_a, stop=2)
 
 
 if __name__ == '__main__':

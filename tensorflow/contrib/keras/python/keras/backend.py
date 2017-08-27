@@ -653,7 +653,7 @@ def int_shape(x):
   """
   shape = x.get_shape()
   try:
-    return tuple([i.__int__() for i in shape])
+    return tuple(shape.as_list())
   except ValueError:
     return None
 
@@ -3116,40 +3116,6 @@ def _preprocess_conv3d_input(x, data_format):
   if data_format == 'channels_first':
     x = array_ops.transpose(x, (0, 2, 3, 4, 1))
   return x
-
-
-def _preprocess_conv2d_kernel(kernel, data_format):
-  """Transpose and cast the kernel before the conv2d.
-
-  Arguments:
-      kernel: kernel tensor.
-      data_format: string, one of 'channels_last', 'channels_first'.
-
-  Returns:
-      A tensor.
-  """
-  if dtype(kernel) == 'float64':
-    kernel = math_ops.cast(kernel, 'float32')
-  if data_format == 'channels_first':
-    kernel = array_ops.transpose(kernel, (2, 3, 1, 0))
-  return kernel
-
-
-def _preprocess_conv3d_kernel(kernel, data_format):
-  """Transpose and cast the kernel before the conv3d.
-
-  Arguments:
-      kernel: kernel tensor.
-      data_format: string, one of 'channels_last', 'channels_first'.
-
-  Returns:
-      A tensor.
-  """
-  if dtype(kernel) == 'float64':
-    kernel = math_ops.cast(kernel, 'float32')
-  if data_format == 'channels_first':
-    kernel = array_ops.transpose(kernel, (2, 3, 4, 1, 0))
-  return kernel
 
 
 def _preprocess_padding(padding):
