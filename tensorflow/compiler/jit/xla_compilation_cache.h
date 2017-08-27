@@ -46,7 +46,7 @@ struct OptionalTensor {
 // bound.
 class XlaCompilationCache : public ResourceBase {
  public:
-  explicit XlaCompilationCache(const XlaCompiler::Options& options);
+  XlaCompilationCache(xla::Client* client, DeviceType device_type);
   ~XlaCompilationCache() override;
 
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
@@ -61,19 +61,21 @@ class XlaCompilationCache : public ResourceBase {
   // xla::LocalExecutable and sets `executable to point to it. The resulting
   // executable pointer may be null if the computation has no non-constant
   // outputs.
-  Status Compile(const NameAttrList& function, int num_constant_args,
+  Status Compile(const XlaCompiler::Options& options,
+                 const NameAttrList& function, int num_constant_args,
                  const std::vector<OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
                  xla::LocalExecutable** executable);
 
-  xla::Client* client() const { return compiler_.client(); }
+  xla::Client* client() const { return client_; }
+  const DeviceType& device_type() const { return device_type_; }
 
   string DebugString() override;
 
  private:
-  XlaCompiler compiler_;
-  std::unique_ptr<FunctionLibraryRuntime> function_library_runtime_;
+  xla::Client* const client_;
+  const DeviceType device_type_;
 
   // Describes the types, shapes and any compile-time constant arguments
   // to a kernel. Key that uniquely identifies a compilation output.

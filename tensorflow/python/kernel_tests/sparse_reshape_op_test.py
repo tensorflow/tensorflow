@@ -50,6 +50,13 @@ class SparseReshapeTest(test.TestCase):
     shape = np.array([2, 3, 4])
     return sparse_tensor.SparseTensorValue(ind, val, shape)
 
+  def testStaticShapeInfoPreserved(self):
+    sp_input = sparse_tensor.SparseTensor.from_value(
+        self._SparseTensorValue_5x6())
+    self.assertAllEqual((5, 6), sp_input.get_shape())
+    sp_output = sparse_ops.sparse_reshape(sp_input, shape=(1, 5, 2, 3))
+    self.assertAllEqual((1, 5, 2, 3), sp_output.get_shape())
+
   def testSameShape(self):
     with self.test_session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6()
@@ -65,6 +72,18 @@ class SparseReshapeTest(test.TestCase):
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [5, 6])
+
+      output_val = sess.run(sp_output, {sp_input: input_val})
+      self.assertAllEqual(output_val.indices, input_val.indices)
+      self.assertAllEqual(output_val.values, input_val.values)
+      self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
+
+  def testWorksWellWithTfShape(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensorPlaceholder()
+      input_val = self._SparseTensorValue_5x6()
+      shape = array_ops.shape(sp_input)  # tf.shape generates int32 output
+      sp_output = sparse_ops.sparse_reshape(sp_input, shape)
 
       output_val = sess.run(sp_output, {sp_input: input_val})
       self.assertAllEqual(output_val.indices, input_val.indices)
@@ -179,6 +198,12 @@ class SparseReshapeTest(test.TestCase):
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1, -1])
       with self.assertRaisesOpError("only one output shape size may be -1"):
         sess.run(sp_output, {sp_input: input_val})
+
+  def testProvideStaticallyMismatchedSizes(self):
+    input_val = self._SparseTensorValue_5x6()
+    sp_input = sparse_tensor.SparseTensor.from_value(input_val)
+    with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
+      sparse_ops.sparse_reshape(sp_input, [4, 7])
 
   def testFeedMismatchedSizes(self):
     with self.test_session(use_gpu=False) as sess:

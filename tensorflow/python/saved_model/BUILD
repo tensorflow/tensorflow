@@ -27,6 +27,7 @@ py_library(
         ":signature_def_utils",
         ":tag_constants",
         ":utils",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -34,18 +35,21 @@ py_library(
     name = "constants",
     srcs = ["constants.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
     name = "signature_constants",
     srcs = ["signature_constants.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
     name = "tag_constants",
     srcs = ["tag_constants.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
@@ -79,6 +83,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
     ],
@@ -93,8 +98,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )
@@ -105,6 +111,7 @@ py_test(
     srcs = ["saved_model_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",
@@ -113,7 +120,6 @@ py_test(
         ":main_op",
         ":signature_def_utils",
         ":tag_constants",
-        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -139,6 +145,8 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -150,9 +158,11 @@ py_test(
     visibility = ["//visibility:private"],
     deps = [
         ":utils",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -167,6 +177,7 @@ py_library(
         ":signature_constants",
         ":utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -180,6 +191,7 @@ py_test(
         ":signature_constants",
         ":signature_def_utils",
         ":utils",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

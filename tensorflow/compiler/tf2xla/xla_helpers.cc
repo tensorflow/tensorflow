@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -29,28 +30,28 @@ xla::ComputationDataHandle XlaHelpers::MinValue(xla::ComputationBuilder* b,
                                                 DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::LiteralUtil::MinValue(type));
+  return b->ConstantLiteral(xla::Literal::MinValue(type));
 }
 
 xla::ComputationDataHandle XlaHelpers::MaxValue(xla::ComputationBuilder* b,
                                                 DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::LiteralUtil::MaxValue(type));
+  return b->ConstantLiteral(xla::Literal::MaxValue(type));
 }
 
 xla::ComputationDataHandle XlaHelpers::Zero(xla::ComputationBuilder* b,
                                             DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::LiteralUtil::Zero(type));
+  return b->ConstantLiteral(xla::Literal::Zero(type));
 }
 
 xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
                                            DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::LiteralUtil::One(type));
+  return b->ConstantLiteral(xla::Literal::One(type));
 }
 
 xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
@@ -60,28 +61,28 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   switch (type) {
     case xla::U8:
-      literal = *xla::LiteralUtil::CreateR0<uint8>(value);
+      literal = *xla::Literal::CreateR0<uint8>(value);
       break;
     case xla::U32:
-      literal = *xla::LiteralUtil::CreateR0<uint32>(value);
+      literal = *xla::Literal::CreateR0<uint32>(value);
       break;
     case xla::U64:
-      literal = *xla::LiteralUtil::CreateR0<uint64>(value);
+      literal = *xla::Literal::CreateR0<uint64>(value);
       break;
     case xla::S8:
-      literal = *xla::LiteralUtil::CreateR0<int8>(value);
+      literal = *xla::Literal::CreateR0<int8>(value);
       break;
     case xla::S32:
-      literal = *xla::LiteralUtil::CreateR0<int32>(value);
+      literal = *xla::Literal::CreateR0<int32>(value);
       break;
     case xla::S64:
-      literal = *xla::LiteralUtil::CreateR0<int64>(value);
+      literal = *xla::Literal::CreateR0<int64>(value);
       break;
     case xla::F32:
-      literal = *xla::LiteralUtil::CreateR0<float>(value);
+      literal = *xla::Literal::CreateR0<float>(value);
       break;
     case xla::F64:
-      literal = *xla::LiteralUtil::CreateR0<double>(value);
+      literal = *xla::Literal::CreateR0<double>(value);
       break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
@@ -89,7 +90,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      literal =
+          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value));
+      break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
     case xla::OPAQUE:
@@ -107,6 +110,9 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   switch (type) {
+    case xla::F16:
+      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
+      break;
     case xla::F32:
       return b->ConstantR0<float>(static_cast<float>(value));
       break;
@@ -197,6 +203,15 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
       one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
       builder->Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
+}
+
+xla::ComputationDataHandle XlaHelpers::PadWithZeros(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    int count) {
+  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
+  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
+  xs[0] = builder->Reshape(x, {1});
+  return builder->ConcatInDim(xs, 0);
 }
 
 }  // end namespace tensorflow

@@ -57,7 +57,7 @@ class LeakyReLU(Layer):
     return K.relu(inputs, alpha=self.alpha)
 
   def get_config(self):
-    config = {'alpha': self.alpha}
+    config = {'alpha': float(self.alpha)}
     base_config = super(LeakyReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -120,7 +120,7 @@ class PReLU(Layer):
         param_shape[i - 1] = 1
         self.param_broadcast[i - 1] = True
     self.alpha = self.add_weight(
-        param_shape,
+        shape=param_shape,
         name='alpha',
         initializer=self.alpha_initializer,
         regularizer=self.alpha_regularizer,

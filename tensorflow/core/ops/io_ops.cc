@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
 
@@ -62,6 +63,7 @@ REGISTER_OP("SaveV2")
     .Input("shape_and_slices: string")
     .Input("tensors: dtypes")
     .Attr("dtypes: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle s;
@@ -101,14 +103,44 @@ REGISTER_OP("RestoreV2")
     .Input("shape_and_slices: string")
     .Output("tensors: dtypes")
     .Attr("dtypes: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle shape0, shape1, shape2;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &shape0));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &shape1));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &shape2));
       TF_RETURN_IF_ERROR(c->Merge(shape1, shape2, &shape0));
-      c->set_output(0, c->UnknownShape());
-      return Status::OK();
+
+      // Attempt to infer output shapes from its shape_and_slice input.
+      const Tensor* shape_and_slices_tensor = c->input_tensor(2);
+      if (shape_and_slices_tensor) {
+        const auto& shape_and_slices_flat =
+            shape_and_slices_tensor->flat<string>();
+        if (shape_and_slices_flat.size() != c->num_outputs()) {
+          return errors::InvalidArgument(
+              "The number of shape_and_slice doesn't match tensor outputs.");
+        }
+        for (int i = 0; i < shape_and_slices_flat.size(); ++i) {
+          const string& shape_and_slice = shape_and_slices_flat(i);
+          if (shape_and_slice.empty()) {
+            c->set_output(i, c->UnknownShape());
+            continue;
+          }
+          TensorShape parsed_full_shape;
+          TensorSlice parsed_slice;
+          TensorShape parsed_slice_shape;
+          TF_RETURN_IF_ERROR(checkpoint::ParseShapeAndSlice(
+              shape_and_slice, &parsed_full_shape, &parsed_slice,
+              &parsed_slice_shape));
+          ShapeHandle shape_handle;
+          TF_RETURN_IF_ERROR(
+              c->MakeShapeFromTensorShape(parsed_slice_shape, &shape_handle));
+          c->set_output(i, shape_handle);
+        }
+        return Status::OK();
+      } else {
+        return UnknownShape(c);
+      }
     })
     .Doc(R"doc(
 Restores tensors from a V2 checkpoint.
@@ -141,6 +173,7 @@ REGISTER_OP("MergeV2Checkpoints")
     .Input("checkpoint_prefixes: string")
     .Input("destination_prefix: string")
     .Attr("delete_old_dirs: bool = true")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
@@ -169,6 +202,7 @@ REGISTER_OP("Save")
     .Input("tensor_names: string")
     .Input("data: T")
     .Attr("T: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle s;
@@ -204,6 +238,7 @@ REGISTER_OP("SaveSlices")
     .Input("shapes_and_slices: string")
     .Input("data: T")
     .Attr("T: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle s;
@@ -261,6 +296,7 @@ REGISTER_OP("Restore")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -305,14 +341,35 @@ REGISTER_OP("RestoreSlice")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      // TODO(mrry): Attempt to parse the shapes_and_slices values and use
-      // them to constrain the shape of the remaining inputs.
-      c->set_output(0, c->UnknownShape());
+
+      // Attempt to infer output shapes from its shape_and_slice input.
+      const Tensor* shape_and_slices_tensor = c->input_tensor(2);
+      if (shape_and_slices_tensor) {
+        const auto& shape_and_slice =
+            shape_and_slices_tensor->flat<string>()(0);
+        if (shape_and_slice.empty()) {
+          c->set_output(0, c->UnknownShape());
+        } else {
+          TensorShape parsed_full_shape;
+          TensorSlice parsed_slice;
+          TensorShape parsed_slice_shape;
+          TF_RETURN_IF_ERROR(checkpoint::ParseShapeAndSlice(
+              shape_and_slice, &parsed_full_shape, &parsed_slice,
+              &parsed_slice_shape));
+          ShapeHandle shape_handle;
+          TF_RETURN_IF_ERROR(
+              c->MakeShapeFromTensorShape(parsed_slice_shape, &shape_handle));
+          c->set_output(0, shape_handle);
+        }
+      } else {
+        c->set_output(0, c->UnknownShape());
+      }
       return Status::OK();
     })
     .Doc(R"doc(
@@ -440,6 +497,7 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("header_bytes: int = 0")
     .Attr("record_bytes: int")
     .Attr("footer_bytes: int = 0")
+    .Attr("hop_bytes: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
@@ -448,6 +506,11 @@ REGISTER_OP("FixedLengthRecordReader")
 A Reader that outputs fixed-length records from a file.
 
 reader_handle: The handle to reference the Reader.
+header_bytes: Number of bytes in the header, defaults to 0.
+record_bytes: Number of bytes in the record.
+footer_bytes: Number of bytes in the footer, defaults to 0.
+hop_bytes: Number of bytes to hop before each read. Default of 0 means using
+        record_bytes.
 container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
@@ -459,18 +522,27 @@ REGISTER_OP("FixedLengthRecordReaderV2")
     .Attr("header_bytes: int = 0")
     .Attr("record_bytes: int")
     .Attr("footer_bytes: int = 0")
+    .Attr("hop_bytes: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("encoding: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs fixed-length records from a file.
 
 reader_handle: The handle to reference the Reader.
+header_bytes: Number of bytes in the header, defaults to 0.
+record_bytes: Number of bytes in the record.
+footer_bytes: Number of bytes in the footer, defaults to 0.
+hop_bytes: Number of bytes to hop before each read. Default of 0 means using
+        record_bytes.
 container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
+encoding: The type of encoding for the file. Currently ZLIB and GZIP
+        are supported. Defaults to none.
 )doc");
 
 // TODO(cwhipkey): mark this deprecated in favor of V2.
@@ -501,6 +573,21 @@ REGISTER_OP("TFRecordReaderV2")
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.
 
+reader_handle: The handle to reference the Reader.
+container: If non-empty, this reader is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this reader is named in the given bucket
+             with this shared_name. Otherwise, the node name is used instead.
+)doc");
+
+REGISTER_OP("LMDBReader")
+    .Output("reader_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+A Reader that outputs the records from a LMDB file.
 reader_handle: The handle to reference the Reader.
 container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
@@ -803,7 +890,8 @@ REGISTER_OP("WriteFile")
       return Status::OK();
     })
     .Doc(R"doc(
-Writes contents to the file at input filename. Creates file if not existing.
+Writes contents to the file at input filename. Creates file and recursively
+creates directory if not existing.
 
 filename: scalar. The name of the file to which we write the contents.
 contents: scalar. The content to be written to the output file.

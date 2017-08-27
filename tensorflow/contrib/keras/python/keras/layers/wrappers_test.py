@@ -33,7 +33,6 @@ class TimeDistributedTest(test.TestCase):
       model.add(
           keras.layers.TimeDistributed(
               keras.layers.Dense(2), input_shape=(3, 4)))
-      model.add(keras.layers.Activation('relu'))
       model.compile(optimizer='rmsprop', loss='mse')
       model.fit(
           np.random.random((10, 3, 4)),
@@ -43,6 +42,19 @@ class TimeDistributedTest(test.TestCase):
 
       # test config
       model.get_config()
+
+  def test_timedistributed_static_batch_size(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.fit(
+          np.random.random((10, 3, 4)),
+          np.random.random((10, 3, 2)),
+          epochs=1,
+          batch_size=10)
 
   def test_timedistributed_conv2d(self):
     # test with Conv2D
@@ -77,31 +89,6 @@ class TimeDistributedTest(test.TestCase):
           epochs=1,
           batch_size=10)
 
-  def test_timedistributed_sequential(self):
-    # test wrapping Sequential model
-    with self.test_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(3, input_dim=2))
-      outer_model = keras.models.Sequential()
-      outer_model.add(keras.layers.TimeDistributed(model, input_shape=(3, 2)))
-      outer_model.compile(optimizer='rmsprop', loss='mse')
-      outer_model.fit(
-          np.random.random((10, 3, 2)),
-          np.random.random((10, 3, 3)),
-          epochs=1,
-          batch_size=10)
-
-      # test with functional API
-      x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(model)(x)
-      outer_model = keras.models.Model(x, y)
-      outer_model.compile(optimizer='rmsprop', loss='mse')
-      outer_model.fit(
-          np.random.random((10, 3, 2)),
-          np.random.random((10, 3, 3)),
-          epochs=1,
-          batch_size=10)
-
   def test_regularizers(self):
     with self.test_session():
       model = keras.models.Sequential()
@@ -113,6 +100,16 @@ class TimeDistributedTest(test.TestCase):
       model.compile(optimizer='rmsprop', loss='mse')
       self.assertEqual(len(model.losses), 1)
 
+  def test_TimeDistributed_learning_phase(self):
+    # test layers that need learning_phase to be set
+    np.random.seed(1234)
+    x = keras.layers.Input(shape=(3, 2))
+    y = keras.layers.TimeDistributed(
+        keras.layers.Dropout(.999))(x, training=True)
+    model = keras.models.Model(x, y)
+    y = model.predict(np.random.random((10, 3, 2)))
+    self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
+
 
 class BidirectionalTest(test.TestCase):
 
@@ -123,7 +120,7 @@ class BidirectionalTest(test.TestCase):
     timesteps = 2
     output_dim = 2
     with self.test_session():
-      for mode in ['sum', 'concat']:
+      for mode in ['sum', 'concat', 'ave', 'mul']:
         x = np.random.random((samples, timesteps, dim))
         target_dim = 2 * output_dim if mode == 'concat' else output_dim
         y = np.random.random((samples, target_dim))
@@ -136,10 +133,34 @@ class BidirectionalTest(test.TestCase):
         model.compile(loss='mse', optimizer='sgd')
         model.fit(x, y, epochs=1, batch_size=1)
 
+        # test compute output shape
+        ref_shape = model.layers[-1].output.get_shape()
+        shape = model.layers[-1]._compute_output_shape(
+            (None, timesteps, dim))
+        self.assertListEqual(shape.as_list(), ref_shape.as_list())
+
         # test config
         model.get_config()
         model = keras.models.model_from_json(model.to_json())
         model.summary()
+
+  def test_bidirectional_weight_loading(self):
+    rnn = keras.layers.SimpleRNN
+    samples = 2
+    dim = 2
+    timesteps = 2
+    output_dim = 2
+    with self.test_session():
+      x = np.random.random((samples, timesteps, dim))
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Bidirectional(
+              rnn(output_dim), input_shape=(timesteps, dim)))
+      y_ref = model.predict(x)
+      weights = model.layers[-1].get_weights()
+      model.layers[-1].set_weights(weights)
+      y = model.predict(x)
+      self.assertAllClose(y, y_ref)
 
   def test_bidirectional_stacked(self):
     # test stacked bidirectional layers

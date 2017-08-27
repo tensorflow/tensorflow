@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <array>
 
-#include <Python.h>
 #include "numpy/arrayobject.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include <Python.h>
 
 namespace tensorflow {
 namespace {
@@ -39,50 +40,6 @@ static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
 PyObject* GetPyTrampoline() {
   mutex_lock l(mu);
   return py_trampoline;
-}
-
-// Returns the corresponding numpy dtype in 'np' for tf data type
-// 'tf'.  Returns an error if the type is not supported by this
-// module.
-Status TfDTypeToNpDType(const DataType& tf, int* np) {
-  switch (tf) {
-    case DT_FLOAT:
-      *np = NPY_FLOAT32;
-      break;
-    case DT_DOUBLE:
-      *np = NPY_FLOAT64;
-      break;
-    case DT_INT32:
-      *np = NPY_INT32;
-      break;
-    case DT_UINT8:
-      *np = NPY_UINT8;
-      break;
-    case DT_INT8:
-      *np = NPY_INT8;
-      break;
-    case DT_INT16:
-      *np = NPY_INT16;
-      break;
-    case DT_INT64:
-      *np = NPY_INT64;
-      break;
-    case DT_BOOL:
-      *np = NPY_BOOL;
-      break;
-    case DT_COMPLEX64:
-      *np = NPY_COMPLEX64;
-      break;
-    case DT_COMPLEX128:
-      *np = NPY_COMPLEX128;
-      break;
-    case DT_STRING:
-      *np = NPY_OBJECT;
-      break;
-    default:
-      return errors::Unimplemented("Unsupported tf type ", DataTypeString(tf));
-  }
-  return Status::OK();
 }
 
 // A call to the registered python function.
@@ -122,6 +79,9 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
 // module.
 Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   switch (np) {
+    case NPY_FLOAT16:
+      *tf = DT_HALF;
+      break;
     case NPY_FLOAT32:
       *tf = DT_FLOAT;
       break;
@@ -305,7 +265,7 @@ class NumpyTensorBuffer : public TensorBuffer {
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
-  Tensor MakeTensor(DataType dtype, TensorShape shape) {
+  Tensor MakeTensor(DataType dtype, const TensorShape& shape) {
     CHECK_EQ(len_, shape.num_elements() * DataTypeSize(dtype));
     return Tensor(dtype, shape, this);
   }
@@ -382,17 +342,28 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   return Status::OK();
 }
 
-// Creates a numpy array in 'ret' and copies the content of tensor 't'
-// into 'ret'.
+// Creates a numpy array in 'ret' which either aliases the content of 't' or has
+// a copy.
 Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
   int typenum = -1;
-  TF_RETURN_IF_ERROR(TfDTypeToNpDType(t.dtype(), &typenum));
+  TF_RETURN_IF_ERROR(TF_DataType_to_PyArray_TYPE(
+      static_cast<TF_DataType>(t.dtype()), &typenum));
   PyArray_Descr* descr = PyArray_DescrFromType(typenum);
   CHECK(descr);
   std::vector<npy_intp> dims;
+  dims.reserve(t.dims());
   for (int i = 0; i < t.dims(); ++i) {
     dims.push_back(t.dim_size(i));
   }
+  Tensor* copy = new Tensor(t);
+  if (ArrayFromMemory(dims.size(), dims.data(),
+                      const_cast<char*>(copy->tensor_data().data()), t.dtype(),
+                      [copy]() { delete copy; }, ret)
+          .ok()) {
+    return Status::OK();
+  }
+  delete copy;
+
   PyObject* obj = PyArray_Empty(dims.size(), dims.data(), descr, 0);
   if (obj == nullptr) {
     return errors::Internal("Failed to allocate np array: ",

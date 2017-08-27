@@ -38,3 +38,8 @@ class ProblemType(object):
   CLASSIFICATION = 1
   LINEAR_REGRESSION = 2
   LOGISTIC_REGRESSION = 3
+
+
+# CollectionDef key for the input feature keys.
+# TODO(b/34388557): This is a stopgap; please follow the bug to learn of changes
+COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS = "input_feature_keys"

@@ -15,6 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 
 namespace tensorflow {
@@ -24,10 +26,8 @@ template <typename Device, typename T>
 void TransposeSimple(const Device& d, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
-  gtl::InlinedVector<int64, 8> in_strides(ndims);
-  ComputeStride(in.shape(), in_strides.data());
-  gtl::InlinedVector<int64, 8> out_strides(ndims);
-  ComputeStride(out->shape(), out_strides.data());
+  gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
+  gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const int64 nelem = in.NumElements();
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
@@ -43,20 +43,6 @@ void TransposeSimple(const Device& d, const Tensor& in,
     }
     q[o_idx] = p[i_idx];
   }
-}
-
-template <typename Device, typename T, int NDIMS>
-void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const gtl::ArraySlice<int32> perm, Tensor* out) {
-  Eigen::array<int, NDIMS> p;
-  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
-  auto x = typename TTypes<T, NDIMS>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
-      in.shape().AsEigenDSizes<NDIMS>());
-  auto y = typename TTypes<T, NDIMS>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
-      out->shape().AsEigenDSizes<NDIMS>());
-  y.device(d) = x.shuffle(p);
 }
 
 }  // end namespace internal
@@ -144,11 +130,73 @@ Status DoTranspose<CPUDevice>(const CPUDevice& d, const Tensor& in,
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
+template <typename Device, typename T>
+void TransposeSYCL(const Device& d, const Tensor& in,
+               const gtl::ArraySlice<int32> perm, Tensor* out) {
+  switch (in.dims()) {
+    case 1:
+      internal::TransposeUsingEigen<Device, T, 1>(d, in, perm, out);
+      break;
+    case 2:
+      internal::TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
+      break;
+    case 3:
+      internal::TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
+      break;
+    case 4:
+      internal::TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
+      break;
+    case 5:
+      internal::TransposeUsingEigen<Device, T, 5>(d, in, perm, out);
+      break;
+    case 6:
+      internal::TransposeUsingEigen<Device, T, 6>(d, in, perm, out);
+      break;
+    case 7:
+      internal::TransposeUsingEigen<Device, T, 7>(d, in, perm, out);
+      break;
+    case 8:
+      internal::TransposeUsingEigen<Device, T, 8>(d, in, perm, out);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
+      break;
+  }
+}
+
 template <typename T>
-struct internal::Transpose<SYCLDevice, T> {
+struct Transpose<SYCLDevice, T> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-    // Should add a specialized implementation for SYCLDevice here.
+    switch (in.dims()) {
+      case 1:
+        internal::TransposeUsingEigen<SYCLDevice, T, 1>(d, in, perm, out);
+        break;
+      case 2:
+        internal::TransposeUsingEigen<SYCLDevice, T, 2>(d, in, perm, out);
+        break;
+      case 3:
+        internal::TransposeUsingEigen<SYCLDevice, T, 3>(d, in, perm, out);
+        break;
+      case 4:
+        internal::TransposeUsingEigen<SYCLDevice, T, 4>(d, in, perm, out);
+        break;
+      case 5:
+        internal::TransposeUsingEigen<SYCLDevice, T, 5>(d, in, perm, out);
+        break;
+      case 6:
+        internal::TransposeUsingEigen<SYCLDevice, T, 6>(d, in, perm, out);
+        break;
+      case 7:
+        internal::TransposeUsingEigen<SYCLDevice, T, 7>(d, in, perm, out);
+        break;
+      case 8:
+        internal::TransposeUsingEigen<SYCLDevice, T, 8>(d, in, perm, out);
+        break;
+      default:
+        LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
+        break;
+    }
   }
 };
 
@@ -160,10 +208,36 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
   switch (in.dtype()) {
+    case DT_BOOL:
+    case DT_INT8:
+    case DT_QINT8:
+    case DT_QUINT8:
+    case DT_UINT8:
+      TransposeSYCL<SYCLDevice, uint8>(d, in, perm, out);
+      break;
+
+    case DT_BFLOAT16:
+    case DT_HALF:
+    case DT_INT16:
+    case DT_QINT16:
+    case DT_QUINT16:
+    case DT_UINT16:
+      TransposeSYCL<SYCLDevice, uint16>(d, in, perm, out);
+      break;
     case DT_FLOAT:
-    case DT_DOUBLE:
     case DT_INT32:
-      internal::Transpose<SYCLDevice, uint32>::run(d, in, perm, out);
+    case DT_QINT32:
+      TransposeSYCL<SYCLDevice, uint32>(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX64:
+    case DT_DOUBLE:
+    case DT_INT64:
+      TransposeSYCL<SYCLDevice, uint64>(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX128:
+      TransposeSYCL<SYCLDevice, complex128>(d, in, perm, out);
       break;
 
     default:

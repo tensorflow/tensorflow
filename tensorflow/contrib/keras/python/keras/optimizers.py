@@ -18,18 +18,49 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer as tf_optimizer_module
 
 
 def clip_norm(g, c, n):
+  """Clip a tensor by norm.
+
+  Arguments:
+    g: gradient tensor to clip.
+    c: clipping threshold.
+    n: norm of gradient tensor.
+
+  Returns:
+    Clipped gradient tensor.
+  """
   if c > 0:
-    g = K.switch(n >= c, g * c / n, g)
+    condition = n >= c
+    then_expression = lambda: math_ops.scalar_mul(c / n, g)
+    else_expression = lambda: g
+
+    # saving the shape to avoid converting sparse tensor to dense
+    if isinstance(g, ops.Tensor):
+      g_shape = copy.copy(g.get_shape())
+    elif isinstance(g, ops.IndexedSlices):
+      g_shape = copy.copy(g.dense_shape)
+    if condition.dtype != dtypes_module.bool:
+      condition = math_ops.cast(condition, 'bool')
+    g = control_flow_ops.cond(condition, then_expression, else_expression)
+    if isinstance(g, ops.Tensor):
+      g.set_shape(g_shape)
+    elif isinstance(g, ops.IndexedSlices):
+      g._dense_shape = g_shape  # pylint: disable=protected-access
   return g
 
 
@@ -596,8 +627,9 @@ class Nadam(Optimizer):
     # Due to the recommendations in [2], i.e. warming momentum schedule
     momentum_cache_t = self.beta_1 * (1. - 0.5 *
                                       (K.pow(0.96, t * self.schedule_decay)))
-    momentum_cache_t_1 = self.beta_1 * (
-        1. - 0.5 * (K.pow(0.96, (t + 1) * self.schedule_decay)))
+    momentum_cache_t_1 = self.beta_1 * (1. - 0.5 *
+                                        (K.pow(0.96,
+                                               (t + 1) * self.schedule_decay)))
     m_schedule_new = self.m_schedule * momentum_cache_t
     m_schedule_next = self.m_schedule * momentum_cache_t * momentum_cache_t_1
     self.updates.append((self.m_schedule, m_schedule_new))
@@ -615,8 +647,8 @@ class Nadam(Optimizer):
       m_t_prime = m_t / (1. - m_schedule_next)
       v_t = self.beta_2 * v + (1. - self.beta_2) * K.square(g)
       v_t_prime = v_t / (1. - K.pow(self.beta_2, t))
-      m_t_bar = (1. - momentum_cache_t
-                ) * g_prime + momentum_cache_t_1 * m_t_prime
+      m_t_bar = (
+          1. - momentum_cache_t) * g_prime + momentum_cache_t_1 * m_t_prime
 
       self.updates.append(K.update(m, m_t))
       self.updates.append(K.update(v, v_t))

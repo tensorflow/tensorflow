@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/memory_types.h"
 
+#include <utility>
+
 #include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -64,7 +67,7 @@ MemoryType MTypeFromDType(const DataType dtype) {
 }  // namespace
 
 Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
-                          DeviceType device_type, const NodeDef& ndef,
+                          const DeviceType& device_type, const NodeDef& ndef,
                           MemoryTypeVector* inp_mtypes,
                           MemoryTypeVector* out_mtypes) {
   // Look up the Op registered for this op name.

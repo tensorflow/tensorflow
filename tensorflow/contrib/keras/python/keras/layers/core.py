@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import types as python_types
 
 import numpy as np
@@ -34,7 +33,9 @@ from tensorflow.contrib.keras.python.keras.engine import Layer
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_dump
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_load
+from tensorflow.contrib.keras.python.keras.utils.generic_utils import has_arg
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import core as tf_core_layers
 
 
 class Masking(Layer):
@@ -84,7 +85,7 @@ class Masking(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class Dropout(Layer):
+class Dropout(tf_core_layers.Dropout, Layer):
   """Applies Dropout to the input.
 
   Dropout consists in randomly setting
@@ -103,24 +104,18 @@ class Dropout(Layer):
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
-    super(Dropout, self).__init__(**kwargs)
-    self.rate = min(1., max(0., rate))
-    self.noise_shape = noise_shape
-    self.seed = seed
     self.supports_masking = True
-
-  def _get_noise_shape(self, _):
-    return self.noise_shape
+    # Inheritance call order:
+    # 1) tf.layers.Dropout, 2) keras.layers.Layer, 3) tf.layers.Layer
+    super(Dropout, self).__init__(rate=rate, noise_shape=noise_shape, seed=seed, **kwargs)
 
   def call(self, inputs, training=None):
-    if 0. < self.rate < 1.:
-      noise_shape = self._get_noise_shape(inputs)
-
-      def dropped_inputs():
-        return K.dropout(inputs, self.rate, noise_shape, seed=self.seed)
-
-      return K.in_train_phase(dropped_inputs, inputs, training=training)
-    return inputs
+    if training is None:
+      training = K.learning_phase()
+    output = super(Dropout, self).call(inputs, training=training)
+    if training is K.learning_phase():
+      output._uses_learning_phase = True  # pylint: disable=protected-access
+    return output
 
   def get_config(self):
     config = {'rate': self.rate}
@@ -212,12 +207,9 @@ class SpatialDropout2D(Dropout):
   def _get_noise_shape(self, inputs):
     input_shape = K.shape(inputs)
     if self.data_format == 'channels_first':
-      noise_shape = (input_shape[0], input_shape[1], 1, 1)
+      return (input_shape[0], input_shape[1], 1, 1)
     elif self.data_format == 'channels_last':
-      noise_shape = (input_shape[0], 1, 1, input_shape[3])
-    else:
-      raise ValueError('Invalid data_format:', self.data_format)
-    return noise_shape
+      return (input_shape[0], 1, 1, input_shape[3])
 
 
 class SpatialDropout3D(Dropout):
@@ -267,12 +259,9 @@ class SpatialDropout3D(Dropout):
   def _get_noise_shape(self, inputs):
     input_shape = K.shape(inputs)
     if self.data_format == 'channels_first':
-      noise_shape = (input_shape[0], input_shape[1], 1, 1, 1)
+      return (input_shape[0], input_shape[1], 1, 1, 1)
     elif self.data_format == 'channels_last':
-      noise_shape = (input_shape[0], 1, 1, 1, input_shape[4])
-    else:
-      raise ValueError('Invalid data_format:', self.data_format)
-    return noise_shape
+      return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
 class Activation(Layer):
@@ -595,8 +584,7 @@ class Lambda(Layer):
 
   def call(self, inputs, mask=None):
     arguments = self.arguments
-    arg_spec = inspect.getargspec(self.function)
-    if 'mask' in arg_spec.args:
+    if has_arg(self.function, 'mask'):
       arguments['mask'] = mask
     return self.function(inputs, **arguments)
 
@@ -639,11 +627,21 @@ class Lambda(Layer):
     else:
       raise TypeError('Unknown function type:', function_type)
 
+    # If arguments were numpy array, they have been saved as
+    # list. We need to recover the ndarray
+    if 'arguments' in config:
+      for key in config['arguments']:
+        if isinstance(config['arguments'][key], dict):
+          arg_dict = config['arguments'][key]
+          if 'type' in arg_dict and arg_dict['type'] == 'ndarray':
+            # Overwrite the argument with its numpy translation
+            config['arguments'][key] = np.array(arg_dict['value'])
+
     config['function'] = function
     return cls(**config)
 
 
-class Dense(Layer):
+class Dense(tf_core_layers.Dense, Layer):
   """Just your regular densely-connected NN layer.
 
   `Dense` implements the operation:
@@ -712,80 +710,36 @@ class Dense(Layer):
                **kwargs):
     if 'input_shape' not in kwargs and 'input_dim' in kwargs:
       kwargs['input_shape'] = (kwargs.pop('input_dim'),)
-    super(Dense, self).__init__(**kwargs)
-    self.units = units
-    self.activation = activations.get(activation)
-    self.use_bias = use_bias
-    self.kernel_initializer = initializers.get(kernel_initializer)
-    self.bias_initializer = initializers.get(bias_initializer)
-    self.kernel_regularizer = regularizers.get(kernel_regularizer)
-    self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-    self.input_spec = InputSpec(min_ndim=2)
+
+    # Inheritance call order:
+    # 1) tf.layers.Dense, 2) keras.layers.Layer, 3) tf.layers.Layer
+    super(Dense, self).__init__(
+        units,
+        activation=activations.get(activation),
+        use_bias=use_bias,
+        kernel_initializer=initializers.get(kernel_initializer),
+        bias_initializer=initializers.get(bias_initializer),
+        kernel_regularizer=regularizers.get(kernel_regularizer),
+        bias_regularizer=regularizers.get(bias_regularizer),
+        activity_regularizer=regularizers.get(activity_regularizer),
+        kernel_constraint=constraints.get(kernel_constraint),
+        bias_constraint=constraints.get(bias_constraint),
+        **kwargs)
     self.supports_masking = True
-
-  def build(self, input_shape):
-    assert len(input_shape) >= 2
-    input_dim = input_shape[-1]
-
-    self.kernel = self.add_weight(
-        (input_dim, self.units),
-        initializer=self.kernel_initializer,
-        name='kernel',
-        regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint)
-    if self.use_bias:
-      self.bias = self.add_weight(
-          (self.units,),
-          initializer=self.bias_initializer,
-          name='bias',
-          regularizer=self.bias_regularizer,
-          constraint=self.bias_constraint)
-    else:
-      self.bias = None
-    self.input_spec = InputSpec(min_ndim=2, axes={-1: input_dim})
-    self.built = True
-
-  def call(self, inputs):
-    output = K.dot(inputs, self.kernel)
-    if self.use_bias:
-      output = K.bias_add(output, self.bias)
-    if self.activation is not None:
-      output = self.activation(output)
-    return output
-
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    assert input_shape and len(input_shape) >= 2
-    assert input_shape[-1]
-    output_shape = list(input_shape)
-    output_shape[-1] = self.units
-    return tensor_shape.TensorShape(output_shape)
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     }
     base_config = super(Dense, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

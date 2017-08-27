@@ -220,7 +220,7 @@ def LogisticClassifier(inputs):
 
 
 def BatchNormClassifier(inputs):
-  inputs = layers.batch_norm(inputs, decay=0.1)
+  inputs = layers.batch_norm(inputs, decay=0.1, fused=True)
   return layers.fully_connected(inputs, 1, activation_fn=math_ops.sigmoid)
 
 
@@ -267,6 +267,11 @@ class CreateTrainOpTest(test.TestCase):
     self._inputs = np.random.rand(16, 4).astype(np.float32)
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
 
+  def _addBesselsCorrection(self, sample_size, expected_var):
+    correction_factor = sample_size / (sample_size - 1)
+    expected_var *= correction_factor
+    return expected_var
+
   def testUseUpdateOps(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
@@ -275,6 +280,7 @@ class CreateTrainOpTest(test.TestCase):
 
       expected_mean = np.mean(self._inputs, axis=(0))
       expected_var = np.var(self._inputs, axis=(0))
+      expected_var = self._addBesselsCorrection(16, expected_var)
 
       tf_predictions = BatchNormClassifier(tf_inputs)
       loss_ops.log_loss(tf_predictions, tf_labels)
@@ -840,7 +846,7 @@ class TrainTest(test.TestCase):
         # Initialize the variables.
         sess.run(variables_lib.global_variables_initializer())
 
-        # Get the intial weights and biases values.
+        # Get the initial weights and biases values.
         weights_values, biases_values = sess.run([weights, biases])
         self.assertGreater(np.linalg.norm(weights_values), 0)
         self.assertAlmostEqual(np.linalg.norm(biases_values), 0)

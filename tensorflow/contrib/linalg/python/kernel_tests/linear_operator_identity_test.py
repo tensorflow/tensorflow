@@ -77,14 +77,14 @@ class LinearOperatorIdentityTest(
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
       operator.assert_self_adjoint().run()  # Should not fail
 
-  def test_float16_apply(self):
+  def test_float16_matmul(self):
     # float16 cannot be tested by base test class because tf.matrix_solve does
     # not work with float16.
     with self.test_session():
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows=2, dtype=dtypes.float16)
       x = rng.randn(2, 3).astype(np.float16)
-      y = operator.apply(x)
+      y = operator.matmul(x)
       self.assertAllClose(x, y.eval())
 
   def test_non_scalar_num_rows_raises_static(self):
@@ -147,7 +147,7 @@ class LinearOperatorIdentityTest(
     operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
     x = rng.randn(3, 3).astype(np.float32)
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
-      operator.apply(x)
+      operator.matmul(x)
 
   def test_wrong_matrix_dimensions_raises_dynamic(self):
     num_rows = array_ops.placeholder(dtypes.int32)
@@ -156,7 +156,7 @@ class LinearOperatorIdentityTest(
     with self.test_session():
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows, assert_proper_shapes=True)
-      y = operator.apply(x)
+      y = operator.matmul(x)
       with self.assertRaisesOpError("Incompatible.*dimensions"):
         y.eval(feed_dict={num_rows: 2, x: rng.rand(3, 3)})
 
@@ -168,11 +168,11 @@ class LinearOperatorIdentityTest(
       x = random_ops.random_normal(shape=(1, 2, 3, 4))
       operator = linalg_lib.LinearOperatorIdentity(num_rows=3, dtype=x.dtype)
 
-      operator_apply = operator.apply(x)
+      operator_matmul = operator.matmul(x)
       expected = x
 
-      self.assertAllEqual(operator_apply.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_apply, expected]))
+      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllClose(*sess.run([operator_matmul, expected]))
 
   def test_default_batch_shape_broadcasts_with_everything_dynamic(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -182,15 +182,15 @@ class LinearOperatorIdentityTest(
       x = array_ops.placeholder(dtypes.float32)
       operator = linalg_lib.LinearOperatorIdentity(num_rows=3, dtype=x.dtype)
 
-      operator_apply = operator.apply(x)
+      operator_matmul = operator.matmul(x)
       expected = x
 
       feed_dict = {x: rng.randn(1, 2, 3, 4)}
 
       self.assertAllClose(
-          *sess.run([operator_apply, expected], feed_dict=feed_dict))
+          *sess.run([operator_matmul, expected], feed_dict=feed_dict))
 
-  def test_broadcast_apply_static_shapes(self):
+  def test_broadcast_matmul_static_shapes(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
@@ -204,14 +204,14 @@ class LinearOperatorIdentityTest(
       # Batch matrix of zeros with the broadcast shape of x and operator.
       zeros = array_ops.zeros(shape=(2, 2, 3, 4), dtype=x.dtype)
 
-      # Expected result of apply and solve.
+      # Expected result of matmul and solve.
       expected = x + zeros
 
-      operator_apply = operator.apply(x)
-      self.assertAllEqual(operator_apply.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_apply, expected]))
+      operator_matmul = operator.matmul(x)
+      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllClose(*sess.run([operator_matmul, expected]))
 
-  def test_broadcast_apply_dynamic_shapes(self):
+  def test_broadcast_matmul_dynamic_shapes(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
@@ -229,12 +229,12 @@ class LinearOperatorIdentityTest(
       # Batch matrix of zeros with the broadcast shape of x and operator.
       zeros = array_ops.zeros(shape=(2, 2, 3, 4), dtype=x.dtype)
 
-      # Expected result of apply and solve.
+      # Expected result of matmul and solve.
       expected = x + zeros
 
-      operator_apply = operator.apply(x)
+      operator_matmul = operator.matmul(x)
       self.assertAllClose(
-          *sess.run([operator_apply, expected], feed_dict=feed_dict))
+          *sess.run([operator_matmul, expected], feed_dict=feed_dict))
 
   def test_is_x_flags(self):
     # The is_x flags are by default all True.
@@ -332,7 +332,7 @@ class LinearOperatorScaledIdentityTest(
       with self.assertRaisesOpError("not self-adjoint"):
         operator.assert_self_adjoint().run()
 
-  def test_float16_apply(self):
+  def test_float16_matmul(self):
     # float16 cannot be tested by base test class because tf.matrix_solve does
     # not work with float16.
     with self.test_session():
@@ -340,7 +340,7 @@ class LinearOperatorScaledIdentityTest(
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=multiplier)
       x = rng.randn(2, 3).astype(np.float16)
-      y = operator.apply(x)
+      y = operator.matmul(x)
       self.assertAllClose(multiplier[..., None, None] * x, y.eval())
 
   def test_non_scalar_num_rows_raises_static(self):
@@ -354,7 +354,7 @@ class LinearOperatorScaledIdentityTest(
         num_rows=2, multiplier=2.2)
     x = rng.randn(3, 3).astype(np.float32)
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
-      operator.apply(x)
+      operator.matmul(x)
 
   def test_wrong_matrix_dimensions_raises_dynamic(self):
     num_rows = array_ops.placeholder(dtypes.int32)
@@ -363,11 +363,11 @@ class LinearOperatorScaledIdentityTest(
     with self.test_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows, multiplier=[1., 2], assert_proper_shapes=True)
-      y = operator.apply(x)
+      y = operator.matmul(x)
       with self.assertRaisesOpError("Incompatible.*dimensions"):
         y.eval(feed_dict={num_rows: 2, x: rng.rand(3, 3)})
 
-  def test_broadcast_apply_and_solve(self):
+  def test_broadcast_matmul_and_solve(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
@@ -383,11 +383,11 @@ class LinearOperatorScaledIdentityTest(
       # Batch matrix of zeros with the broadcast shape of x and operator.
       zeros = array_ops.zeros(shape=(2, 2, 3, 4), dtype=x.dtype)
 
-      # Test apply
+      # Test matmul
       expected = x * 2.2 + zeros
-      operator_apply = operator.apply(x)
-      self.assertAllEqual(operator_apply.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_apply, expected]))
+      operator_matmul = operator.matmul(x)
+      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllClose(*sess.run([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2 + zeros
@@ -395,7 +395,7 @@ class LinearOperatorScaledIdentityTest(
       self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
       self.assertAllClose(*sess.run([operator_solve, expected]))
 
-  def test_broadcast_apply_and_solve_scalar_scale_multiplier(self):
+  def test_broadcast_matmul_and_solve_scalar_scale_multiplier(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
@@ -409,11 +409,11 @@ class LinearOperatorScaledIdentityTest(
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=3, multiplier=2.2)
 
-      # Test apply
+      # Test matmul
       expected = x * 2.2
-      operator_apply = operator.apply(x)
-      self.assertAllEqual(operator_apply.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_apply, expected]))
+      operator_matmul = operator.matmul(x)
+      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllClose(*sess.run([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2

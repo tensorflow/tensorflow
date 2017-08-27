@@ -23,6 +23,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -312,10 +313,13 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
-    A TensorProto. Depending on the type, it may contain data in the
+    A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with tensor_util.MakeNdarray(proto).
+    with `tensor_util.MakeNdarray(proto)`.
+
+    If `values` is a `TensorProto`, it is immediately returned; `dtype` and
+    `shape` are ignored.
 
   Raises:
     TypeError:  if unsupported types are provided.
@@ -343,6 +347,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
+  if isinstance(values, tensor_pb2.TensorProto):
+    return values
+
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
@@ -368,7 +375,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       np_dt = dtype.as_numpy_dtype
     else:
       np_dt = None
-    if np.prod(shape) == 0:
+    # If shape is None, numpy.prod returns None when dtype is not set, but raises
+    # exception when dtype is set to np.int64
+    if shape is not None and np.prod(shape, dtype=np.int64) == 0:
       nparray = np.empty(shape, dtype=np_dt)
     else:
       _AssertCompatible(values, dtype)
@@ -405,7 +414,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
 
   if dtype is not None and (not hasattr(dtype, "base_dtype") or
                             dtype.base_dtype != numpy_dtype.base_dtype):
-    raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
+    raise TypeError("Incompatible types: %s vs. %s. Value is %s"
+                    % (dtype, nparray.dtype, values))
 
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
@@ -414,7 +424,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     shape_size = nparray.size
   else:
     shape = [int(dim) for dim in shape]
-    shape_size = np.prod(shape)
+    shape_size = np.prod(shape, dtype=np.int64)
     is_same_size = shape_size == nparray.size
 
     if verify_shape:
@@ -491,7 +501,7 @@ def MakeNdarray(tensor):
 
   """
   shape = [d.size for d in tensor.tensor_shape.dim]
-  num_elements = np.prod(shape)
+  num_elements = np.prod(shape, dtype=np.int64)
   tensor_dtype = dtypes.as_dtype(tensor.dtype)
   dtype = tensor_dtype.as_numpy_dtype
 
@@ -593,7 +603,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def _ConstantValue(tensor):
+def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
@@ -666,16 +676,23 @@ def _ConstantValue(tensor):
     if not tensor.op.inputs:
       return None
     for x in tensor.op.inputs:
-      value = constant_value(x)
-      if value is None:
+      value = constant_value(x, partial)
+      if value is None and not partial:
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Fill":
+    fill_shape = tensor.shape
+    fill_value = constant_value(tensor.op.inputs[1])
+    if fill_shape.is_fully_defined() and fill_value is not None:
+      return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
+    else:
+      return None
   else:
     return None
 
 
-def constant_value(tensor):
+def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
@@ -692,6 +709,8 @@ def constant_value(tensor):
 
   Args:
     tensor: The Tensor to be evaluated.
+    partial: If True, the returned numpy array is allowed to have partially
+      evaluated values. Values that can't be evaluated will be None.
 
   Returns:
     A numpy ndarray containing the constant value of the given `tensor`,
@@ -700,7 +719,9 @@ def constant_value(tensor):
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  ret = _ConstantValue(tensor)
+  if isinstance(tensor, ops.EagerTensor):
+    return tensor.numpy()
+  ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
     # conservatively prevent it from being fed.
@@ -761,13 +782,46 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       # and concatenate it with `ret`.
       ret = ret.concatenate(constant_value_as_shape(concat_input))
     return ret
-  else:
-    ret = tensor_shape.unknown_shape(shape[0].value)
-    value = constant_value(tensor)
-    if value is not None:
-      ret = ret.merge_with(tensor_shape.TensorShape(
-          [d if d != -1 else None for d in value]))
-    return ret
+  elif tensor.op.type == "StridedSlice":
+    try:
+      begin = constant_value(tensor.op.inputs[1])
+      end = constant_value(tensor.op.inputs[2])
+      strides = constant_value(tensor.op.inputs[3])
+      if begin is not None and end is not None and strides is not None:
+        begin = begin[0]
+        end = end[0]
+        strides = strides[0]
+        begin_mask = tensor.op.get_attr("begin_mask")
+        if begin_mask == 1:
+          begin = None
+        end_mask = tensor.op.get_attr("end_mask")
+        if end_mask == 1:
+          end = None
+
+        ellipsis_mask = tensor.op.get_attr("ellipsis_mask")
+        new_axis_mask = tensor.op.get_attr("new_axis_mask")
+        shrink_axis_mask = tensor.op.get_attr("shrink_axis_mask")
+        valid_attributes = (not ellipsis_mask and not new_axis_mask and
+                            not shrink_axis_mask and
+                            (not begin_mask or (begin_mask == 1)) and
+                            (not end_mask or (end_mask == 1)))
+        if valid_attributes:  # additional inputs not supported
+          prev = constant_value_as_shape(tensor.op.inputs[0])
+          prev = prev[begin:end:strides]
+          ret = tensor_shape.TensorShape(prev)
+          return ret
+
+    except ValueError:  # Could come from get_attr or slicing prev.
+      pass
+    except TypeError:  # Could come from slicing prev.
+      pass
+
+  ret = tensor_shape.unknown_shape(shape[0].value)
+  value = constant_value(tensor)
+  if value is not None:
+    ret = ret.merge_with(tensor_shape.TensorShape(
+        [d if d >= 0 else None for d in value]))
+  return ret
 
 
 def is_tensor(x):  # pylint: disable=invalid-name

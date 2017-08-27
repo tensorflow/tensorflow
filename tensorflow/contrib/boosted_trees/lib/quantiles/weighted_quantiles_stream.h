@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <vector>
+#include <cmath>
 
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_buffer.h"
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_summary.h"
@@ -91,12 +92,11 @@ class WeightedQuantilesStream {
     // and push weighted quantile summary up the level chain.
     if (buffer_.IsFull()) {
       PushBuffer(buffer_);
-      buffer_.Clear();
     }
   }
 
   // Pushes full buffer while maintaining approximation error invariants.
-  void PushBuffer(const Buffer& buffer) {
+  void PushBuffer(Buffer& buffer) {
     // Validate state.
     QCHECK(!finalized_) << "Finalize() already called.";
 
@@ -124,7 +124,6 @@ class WeightedQuantilesStream {
 
     // Flush any remaining buffer elements.
     PushBuffer(buffer_);
-    buffer_.Clear();
 
     // Create final merged summary.
     local_summary_.Clear();

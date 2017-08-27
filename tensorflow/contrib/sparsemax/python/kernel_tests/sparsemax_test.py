@@ -188,7 +188,7 @@ class SparsemaxTest(test.TestCase):
     self.assertShapeEqual(z, tf_sparsemax_op)
 
   def _test_gradient_against_estimate(self, dtype, random, use_gpu):
-    """check sparsemax Rop, aginst estimated Rop"""
+    """check sparsemax Rop, against estimated Rop"""
     z = random.uniform(low=-3, high=3, size=(test_obs, 10)).astype(dtype)
 
     logits = array_ops.placeholder(dtype, name='z')
@@ -204,7 +204,7 @@ class SparsemaxTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def _test_gradient_against_numpy(self, dtype, random, use_gpu):
-    """check sparsemax Rop, aginst numpy Rop"""
+    """check sparsemax Rop, against numpy Rop"""
     z = random.uniform(low=-3, high=3, size=(test_obs, 10)).astype(dtype)
 
     logits = constant_op.constant(z, name='z')

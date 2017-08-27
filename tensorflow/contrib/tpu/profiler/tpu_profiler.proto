@@ -1,0 +1,43 @@
+syntax = "proto3";
+package tensorflow;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/contrib/tpu/profiler/op_profile.proto";
+
+// The TPUProfiler service retrieves performance information about
+// the programs running on connected TPUs over a period of time.
+service TPUProfiler {
+  // Starts a profiling session, blocks until it completes, and returns data.
+  rpc Profile(ProfileRequest) returns (ProfileResponse) {
+  }
+}
+
+message ProfileRequest {
+  // In future, the caller will be able to customize when profiling starts and
+  // stops. For now, it collects `duration_ms` milliseconds worth of data.
+  uint64 duration_ms = 1;
+
+  // The maximum number of events to return. By default (value 0), return all
+  // events.
+  uint64 max_events = 2;
+
+  // In future, the caller will indicate which TF session is being profiled, and
+  // only data relating to that program will be returned. For now, we assume
+  // all activity during the profiling period is relevant.
+}
+
+message ProfileResponse {
+  uint64 xprof_response_size = 1;  // Placeholder: return something meaningful.
+  // Graphs of programs executed on TPUs during the profiling period.
+  repeated GraphDef computation_graph = 2;
+
+  // Encoded Trace proto message that contains metadata about the trace captured
+  // during the profiling period. Describes the devices and resources that
+  // 'trace_events' refers to.
+  bytes encoded_trace = 3;
+
+  // Assembles a hierarchical performance profile based on HLOs in trace events.
+  // If the trace covers multiple programs, the longest-running one is analyzed.
+  // See op_profile.proto for the detailed semantics of the returned profile.
+  tpu.op_profile.Profile op_profile = 4;
+}

@@ -70,7 +70,7 @@ void FillRandomsWithSingles(PhiloxRandom gen,
 //   z_limit: the maximum z-test we would consider the test to pass;
 template <typename T>
 bool CheckSamplesMoments(const std::vector<T>& samples,
-                         std::function<double(int)> theoretical_moments,
+                         const std::function<double(int)>& theoretical_moments,
                          int max_moments, int stride, T z_limit) {
   const T* const samples_data = &samples[0];
   const int samples_size = samples.size();

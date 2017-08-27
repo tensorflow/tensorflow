@@ -113,6 +113,11 @@ func (p Output) Shape() Shape {
 }
 
 func (p Output) c() C.TF_Output {
+	if p.Op == nil {
+		// Attempt to provide a more useful panic message than "nil
+		// pointer dereference".
+		panic("nil-Operation. If the Output was created with a Scope object, see Scope.Err() for details.")
+	}
 	return C.TF_Output{oper: p.Op.c, index: C.int(p.Index)}
 }
 

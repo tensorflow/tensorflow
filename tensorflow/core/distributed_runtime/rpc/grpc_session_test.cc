@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -182,6 +181,33 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
     auto status = session->Create(graph_copy);
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
   }
+}
+
+TEST(GrpcSessionTest, FetchMultipleTimes) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  const std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+
+  const string node = node_names[2] + ":0";
+  TF_CHECK_OK(session->Run(inputs, {node, node}, {}, &outputs));
+  EXPECT_EQ(2, outputs.size());
+  for (int i = 0; i < outputs.size(); ++i) {
+    const Tensor& t = outputs[i];
+    ASSERT_TRUE(t.IsInitialized()) << i;
+    ASSERT_EQ(4.0, t.flat<float>()(0)) << i;
+  }
+  TF_CHECK_OK(session->Close());
 }
 
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
@@ -517,7 +543,7 @@ TEST(GrpcSessionTest, Error) {
     //
     // Subgraph for "b" sleeps at the node "b_delay". When the sleep
     // finishes, the subgraph "b" will continue execution till it
-    // notices that it is cancelled. Meanwhile, subgraph's executor
+    // notices that it is canceled. Meanwhile, subgraph's executor
     // and its related state (registered ops) should still be alive.
     auto b = test::graph::Constant(&g, Tensor());
     b->set_assigned_device_name(dev_b);
@@ -814,7 +840,7 @@ TEST(SessionTest, ExtendValidation) {
 // Tests that Create() with "operation_timeout_in_ms" set times out.
 TEST(SessionTest, CreateTimeoutWithSessionOptions) {
   // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   options.config.set_operation_timeout_in_ms(100);
   std::unique_ptr<Session> session(NewRemote(options));
 
@@ -832,7 +858,7 @@ TEST(SessionTest, CreateTimeoutWithSessionOptions) {
 
 // Tests that Create() with "timeout_in_ms" in RunOptions set times out.
 TEST(SessionTest, CreateTimeoutWithRunOptions) {
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   std::unique_ptr<Session> session(NewRemote(options));
 
   // Creates a long running op.

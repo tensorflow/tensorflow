@@ -34,7 +34,7 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -44,6 +44,7 @@ cc_library(
     hdrs = ["gen_proto_text_functions_lib.h"],
     linkopts = select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//tensorflow:darwin": [
             "-lm",
             "-lpthread",

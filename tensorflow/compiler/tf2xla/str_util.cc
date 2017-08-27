@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace str_util {
 
-void ReplaceAll(string* text, StringPiece from, StringPiece to) {
+static void ReplaceAll(string* text, StringPiece from, StringPiece to) {
   size_t pos = 0;
   while ((pos = text->find(from.data(), pos, from.size())) != string::npos) {
     text->replace(pos, from.size(), to.data(), to.size());

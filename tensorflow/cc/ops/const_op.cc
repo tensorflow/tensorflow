@@ -34,7 +34,9 @@ Output Const(const Scope& scope, const Input::Initializer& val) {
                      .Attr("dtype", val.tensor.dtype());
   scope.UpdateBuilder(&builder);
   scope.UpdateStatus(builder.Finalize(graph, &ret));
+  if (!scope.ok()) return Output();
 
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   if (!scope.ok()) return Output();
 
   return Output(ret);

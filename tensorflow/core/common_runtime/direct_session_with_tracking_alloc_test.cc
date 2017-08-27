@@ -154,11 +154,17 @@ static void TestHWAccelerator(bool enableHWTrace) {
   Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
   test::FillValues<float>(&x_tensor, {1, 1});
   Node* x = test::graph::Constant(&graph, x_tensor);
-  x->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+#ifdef TENSORFLOW_USE_SYCL
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
+#endif // TENSORFLOW_USE_SYCL
 
   // y = A * x
   Node* y = test::graph::Matmul(&graph, a, x, false, false);
-  y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+#ifdef TENSORFLOW_USE_SYCL
+y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
+#endif // TENSORFLOW_USE_SYCL
 
   Node* y_neg = test::graph::Unary(&graph, "Neg", y);
   y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
@@ -169,6 +175,9 @@ static void TestHWAccelerator(bool enableHWTrace) {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
+#ifdef TENSORFLOW_USE_SYCL
+  (*options.config.mutable_device_count())["SYCL"] = 1;
+#endif // TENSORFLOW_USE_SYCL
   options.config.set_allow_soft_placement(true);
   options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
@@ -287,5 +296,50 @@ TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
   }
 }
 
+TEST(DirectSessionWithTrackingAllocTest, TrackMemoryAllocation) {
+  Graph graph(OpRegistry::Global());
+
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a_tensor, {3, 2, -1, 0});
+  Node* a = test::graph::Constant(&graph, a_tensor);
+  a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
+  test::FillValues<float>(&x_tensor, {1, 1});
+  Node* x = test::graph::Constant(&graph, x_tensor);
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
+  // y = A * x
+  Node* y = test::graph::Matmul(&graph, a, x, false, false);
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  std::vector<string> output_names = {y->name() + ":0"};
+  std::vector<Tensor> outputs;
+  RunMetadata run_metadata;
+  Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
+                          &run_metadata);
+  TF_ASSERT_OK(s);
+
+  for (const auto& dev_stat : run_metadata.step_stats().dev_stats()) {
+    for (const auto& node_stat : dev_stat.node_stats()) {
+      if (node_stat.node_name() == y->name()) {
+        EXPECT_LT(0, node_stat.memory(0).total_bytes());
+        EXPECT_LT(0, node_stat.memory(0).live_bytes());
+        EXPECT_LT(0, node_stat.memory(0).peak_bytes());
+      }
+    }
+  }
+}
 }  // namespace
 }  // namespace tensorflow

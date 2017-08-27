@@ -23,12 +23,16 @@ import collections
 import os
 import time
 
+import six
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -56,7 +60,7 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
     if not isinstance(features, dict):
       features = {_SINGLE_FEATURE_DEFAULT_NAME: features}
     for name, tensor in features.items():
-      if not isinstance(name, str):
+      if not isinstance(name, six.string_types):
         raise ValueError('feature keys must be strings: {}.'.format(name))
       if not (isinstance(tensor, ops.Tensor)
               or isinstance(tensor, sparse_tensor.SparseTensor)):
@@ -68,7 +72,7 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
     if not isinstance(receiver_tensors, dict):
       receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
     for name, tensor in receiver_tensors.items():
-      if not isinstance(name, str):
+      if not isinstance(name, six.string_types):
         raise ValueError(
             'receiver_tensors keys must be strings: {}.'.format(name))
       if not isinstance(tensor, ops.Tensor):
@@ -83,10 +87,9 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
 
-  Creates an input_fn that expects a serialized tf.Example fed into a string
-  placeholder.  The function parses the tf.Example according to the provided
-  feature_spec, and returns all parsed Tensors as features.  This input_fn is
-  for use at serving time, so the labels return value is always None.
+  Creates a serving_input_receiver_fn that expects a serialized tf.Example fed
+  into a string placeholder.  The function parses the tf.Example according to
+  the provided feature_spec, and returns all parsed Tensors as features.
 
   Args:
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.
@@ -161,6 +164,13 @@ def build_all_signature_defs(receiver_tensors, export_outputs):
   return signature_def_map
 
 
+# When we create a timestamped directory, there is a small chance that the
+# directory already exists because another worker is also writing exports.
+# In this case we just wait one second to get a new timestamp and try again.
+# If this fails several times in a row, then something is seriously wrong.
+MAX_DIRECTORY_CREATION_ATTEMPTS = 10
+
+
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -174,11 +184,48 @@ def get_timestamped_export_dir(export_dir_base):
         graph and checkpoints.
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
-  """
-  export_timestamp = int(time.time())
 
-  export_dir = os.path.join(
-      compat.as_bytes(export_dir_base),
-      compat.as_bytes(str(export_timestamp)))
-  return export_dir
+  Raises:
+    RuntimeError: if repeated attempts fail to obtain a unique timestamped
+      directory name.
+  """
+  attempts = 0
+  while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
+    export_timestamp = int(time.time())
+
+    export_dir = os.path.join(
+        compat.as_bytes(export_dir_base),
+        compat.as_bytes(str(export_timestamp)))
+    if not gfile.Exists(export_dir):
+      # Collisions are still possible (though extremely unlikely): this
+      # directory is not actually created yet, but it will be almost
+      # instantly on return from this function.
+      return export_dir
+    time.sleep(1)
+    attempts += 1
+    logging.warn(
+        'Export directory {} already exists; retrying (attempt {}/{})'.format(
+            export_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+  raise RuntimeError('Failed to obtain a unique export directory name after '
+                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
+
+
+def get_temp_export_dir(timestamped_export_dir):
+  """Builds a directory name based on the argument but starting with 'temp-'.
+
+  This relies on the fact that TensorFlow Serving ignores subdirectories of
+  the base directory that can't be parsed as integers.
+
+  Args:
+    timestamped_export_dir: the name of the eventual export directory, e.g.
+      /foo/bar/<timestamp>
+
+  Returns:
+    A sister directory prefixed with 'temp-', e.g. /foo/bar/temp-<timestamp>.
+  """
+  (dirname, basename) = os.path.split(timestamped_export_dir)
+  temp_export_dir = os.path.join(
+      compat.as_bytes(dirname),
+      compat.as_bytes('temp-{}'.format(basename)))
+  return temp_export_dir
 

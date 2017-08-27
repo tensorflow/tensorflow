@@ -29,10 +29,9 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename Device, typename T>
-class MklAvgPoolingOp : public UnaryOp<T> {
+class MklAvgPoolingOp : public OpKernel {
  public:
-  explicit MklAvgPoolingOp(OpKernelConstruction* context)
-      : UnaryOp<T>(context) {
+  explicit MklAvgPoolingOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
@@ -78,6 +77,7 @@ class MklAvgPoolingOp : public UnaryOp<T> {
     Tensor mkl_tmp_input_buf_tensor_;
     mkl_context.MklCreateLayoutsAndPrimitives(context,
                                               &mkl_tmp_input_buf_tensor_);
+    OP_REQUIRES_OK(context, context->status());
 
     Tensor workspace_tensor;
     void* workspace_buf;
@@ -120,7 +120,7 @@ class MklAvgPoolingOp : public UnaryOp<T> {
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
 
-    AllocateOutputSetMklshape(context, 0, &output, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tensor_out_shape,
                               mkl_out_shape);
     mkl_context.pooling_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -138,9 +138,10 @@ class MklAvgPoolingOp : public UnaryOp<T> {
   typedef struct {
     MklPoolingOpParams params;
     MklShape input_shape;
-    dnnPrimitive_t prim_pooling_fwd, convert_input;
-    dnnLayout_t lt_user_input, lt_prim_input, lt_workspace;
-    void* input_buf;
+    dnnPrimitive_t prim_pooling_fwd = nullptr, convert_input = nullptr;
+    dnnLayout_t lt_user_input = nullptr, lt_prim_input = nullptr,
+                lt_workspace = nullptr;
+    void* input_buf = nullptr;
     void* pooling_res[dnnResourceNumber];
 
     void MklCreateLayoutsAndPrimitives(OpKernelContext* context,
@@ -243,6 +244,11 @@ class MklAvgPoolingGradOp : public OpKernel {
     pool_params.Init(context, ksize_, stride_, padding_, data_format_,
                      output_shape);
 
+    if (outbackprop_in_mkl_format == false)
+      mkl_context.params.in_dim = out_backprop.dims();
+    else
+      mkl_context.params.in_dim = mkl_context.out_backprop_shape.GetDimension();
+
     // Extract the parameters for the op from the pooling specs
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
@@ -250,6 +256,7 @@ class MklAvgPoolingGradOp : public OpKernel {
     Tensor outbackprop_buf_tensor;
     void* outbackprop_buf;
     mkl_context.MklCreateLayoutsAndPrimitives(context);
+    OP_REQUIRES_OK(context, context->status());
 
     // Check if outbackprop layout requires conversion.
     if (!dnnLayoutCompare_F32(mkl_context.lt_user_outbackprop,
@@ -304,7 +311,7 @@ class MklAvgPoolingGradOp : public OpKernel {
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
 
-    AllocateOutputSetMklshape(context, 0, &output, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tensor_out_shape,
                               mkl_out_shape);
 
     // Set output tensor.
@@ -323,10 +330,10 @@ class MklAvgPoolingGradOp : public OpKernel {
   typedef struct {
     MklPoolingOpParams params;
     MklShape out_backprop_shape;
-    dnnPrimitive_t prim_pooling_bwd, convert_outbackprop;
+    dnnPrimitive_t prim_pooling_bwd = nullptr, convert_outbackprop = nullptr;
     void* pooling_res[dnnResourceNumber];
-    dnnLayout_t lt_user_input, lt_user_outbackprop, lt_prim_outbackprop,
-        lt_workspace;
+    dnnLayout_t lt_user_input = nullptr, lt_user_outbackprop = nullptr,
+                lt_prim_outbackprop = nullptr, lt_workspace = nullptr;
 
     void MklCreateLayoutsAndPrimitives(OpKernelContext* context) {
       const Tensor& tensor_in_shape = MklGetInput(context, 0);
@@ -336,11 +343,10 @@ class MklAvgPoolingGradOp : public OpKernel {
       if (!outbackprop_in_mkl_format) {
         // For avgpooling, tensor_in_shape should have 1 dimension, and 4
         // elements.
-        OP_REQUIRES(
-            context,
-            tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-            errors::InvalidArgument("original input shape must be "
-                                    "1-dimensional and 4 elements"));
+        OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
+                                 tensor_in_shape.NumElements() == 4,
+                    errors::InvalidArgument("original input shape must be "
+                                            "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(context, out_backprop.dims() == 4,
@@ -348,11 +354,6 @@ class MklAvgPoolingGradOp : public OpKernel {
                                             "4-dimensional"));
       } else {
         // Input in MKL format.
-        OP_REQUIRES(
-            context, out_backprop.dims() == 2,
-            errors::InvalidArgument("out_backprop in MKL format must be "
-                                    "2-dimensional"));
-
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(context, out_backprop_shape.GetDimension() == 4,
                     errors::InvalidArgument("out_backprop must be "
@@ -412,16 +413,16 @@ class MklAvgPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("MklAvgPool")
+REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingOp<CPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("MklAvgPoolGrad")
+REGISTER_KERNEL_BUILDER(Name("_MklAvgPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow

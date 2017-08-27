@@ -19,16 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import inspect
 
 import six
 
 from tensorflow.contrib import framework as framework_lib
 from tensorflow.contrib import layers as layers_lib
 from tensorflow.contrib import lookup as lookup_lib
-# TODO(ptucker): Use tf.losses and tf.metrics.
-from tensorflow.contrib import losses as losses_lib
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -40,13 +36,18 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import losses as losses_lib
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 class Head(object):
@@ -161,10 +162,10 @@ class Head(object):
           ModeFnOps.loss to compute and apply gradients.
       logits: logits `Tensor` to be used by the head.
       logits_input: `Tensor` from which to build logits, often needed when you
-        don't want to compute the logits. Typicaly this is the activation of the
-        last hidden layer in a DNN. Some heads (like the ones responsible for
-        candidate sampling) intrinsically avoid computing full logits and only
-        accepts logits_input.
+        don't want to compute the logits. Typically this is the activation of
+        the last hidden layer in a DNN. Some heads (like the ones responsible
+        for candidate sampling) intrinsically avoid computing full logits and
+        only accepts logits_input.
       scope: Optional scope for `variable_scope`.
 
     Returns:
@@ -377,7 +378,12 @@ def multi_label_head(n_classes,
                      loss_fn=None):
   """Creates a Head for multi label classification.
 
-  The Head uses sigmoid cross entropy loss.
+  Multi-label classification handles the case where each example may have zero
+  or more associated labels, from a discrete set.  This is distinct from
+  `multi_class_head` which has exactly one label from a discrete set.
+
+  This head by default uses sigmoid cross entropy loss, which expects as input
+  a multi-hot tensor of shape `(batch_size, num_classes)`.
 
   Args:
     n_classes: Integer, number of classes, must be >= 2
@@ -420,6 +426,23 @@ def multi_label_head(n_classes,
       thresholds=thresholds,
       metric_class_ids=metric_class_ids,
       loss_fn=_wrap_custom_loss_fn(loss_fn) if loss_fn else None)
+
+
+def loss_only_head(loss_fn, head_name=None):
+  """Creates a Head that contains only loss terms.
+
+  Loss only head holds additional loss terms to be added to other heads and
+  usually represents additional regularization terms in the objective function.
+
+  Args:
+    loss_fn: a function that takes no argument and returns a list of
+        scalar tensors.
+    head_name: a name for the head.
+
+  Returns:
+    An instance of `Head` to hold the additional losses.
+  """
+  return _LossOnlyHead(loss_fn, head_name=head_name)
 
 
 def multi_head(heads, loss_weights=None):
@@ -612,6 +635,8 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
+    # Uses the deprecated API to set the tag explicitly.
+    # Without it, training and eval losses will show up in different graphs.
     logging_ops.scalar_summary(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
@@ -639,6 +664,7 @@ class _RegressionHead(_SingleHead):
                label_dimension,
                loss_fn,
                link_fn,
+               logits_dimension=None,
                label_name=None,
                weight_column_name=None,
                enable_centered_bias=False,
@@ -651,6 +677,10 @@ class _RegressionHead(_SingleHead):
         shape `[batch_size, label_dimension]`).
       loss_fn: Loss function, takes logits and labels and returns loss.
       link_fn: Link function, takes a logits tensor and returns the output.
+      logits_dimension: Number of logits per example. This is the
+        size of the last dimension of the logits `Tensor` (typically, this has
+        shape `[batch_size, label_dimension]`).
+        Default value: `label_dimension`.
       label_name: String, name of the key in label dict. Can be null if label
           is a tensor (single headed models).
       weight_column_name: A string defining feature column name representing
@@ -665,7 +695,8 @@ class _RegressionHead(_SingleHead):
     """
     super(_RegressionHead, self).__init__(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        logits_dimension=label_dimension,
+        logits_dimension=(logits_dimension if logits_dimension is not None
+                          else label_dimension),
         label_name=label_name,
         weight_column_name=weight_column_name,
         head_name=head_name)
@@ -734,7 +765,7 @@ class _RegressionHead(_SingleHead):
     with ops.name_scope("metrics", values=[eval_loss]):
       return {
           _summary_key(self.head_name, mkey.LOSS):
-              metrics_lib.streaming_mean(eval_loss)}
+              metrics_lib.mean(eval_loss)}
 
 
 def _log_loss_with_two_classes(labels, logits, weights=None):
@@ -871,11 +902,11 @@ class _BinaryLogisticHead(_SingleHead):
       logistic = predictions[prediction_key.PredictionKey.LOGISTIC]
 
       metrics = {_summary_key(self.head_name, mkey.LOSS):
-                 metrics_lib.streaming_mean(eval_loss)}
+                 metrics_lib.mean(eval_loss)}
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.streaming_accuracy(classes, labels, weights))
+          metrics_lib.accuracy(labels, classes, weights))
       metrics[_summary_key(self.head_name, mkey.PREDICTION_MEAN)] = (
           _predictions_streaming_mean(logistic, weights))
       metrics[_summary_key(self.head_name, mkey.LABEL_MEAN)] = (
@@ -917,12 +948,21 @@ def _softmax_cross_entropy_loss(labels, logits, weights=None):
     if not labels.dtype.is_integer:
       raise ValueError("Labels dtype should be integer "
                        "Instead got %s." % labels.dtype)
-    # TODO(ptucker): This will break for dynamic shapes.
+
     # sparse_softmax_cross_entropy_with_logits requires [batch_size] labels.
+    is_squeezed_labels = False
+    # TODO(ptucker): This will break for dynamic shapes.
     if len(labels.get_shape()) == 2:
       labels = array_ops.squeeze(labels, squeeze_dims=(1,))
+      is_squeezed_labels = True
+
     loss = nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits, name=name)
+
+    # Restore squeezed dimension, if necessary, so loss matches weights shape.
+    if is_squeezed_labels:
+      loss = array_ops.expand_dims(loss, axis=(1,))
+
     return _compute_weighted_loss(loss, weights)
 
 
@@ -1091,12 +1131,11 @@ class _MultiClassHead(_SingleHead):
       classes = predictions[prediction_key.PredictionKey.CLASSES]
 
       metrics = {_summary_key(self.head_name, mkey.LOSS):
-                 metrics_lib.streaming_mean(eval_loss)}
+                 metrics_lib.mean(eval_loss)}
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.streaming_accuracy(
-              classes, self._labels(labels), weights))
+          metrics_lib.accuracy(self._labels(labels), classes, weights))
 
       if not self._label_keys:
         # Classes are IDs. Add some metrics.
@@ -1123,7 +1162,7 @@ def _to_labels_tensor(labels, label_name):
   """Returns label as a tensor.
 
   Args:
-    labels: Label `Tensor` or `SparseTensor` or a dict containig labels.
+    labels: Label `Tensor` or `SparseTensor` or a dict containing labels.
     label_name: Label name if labels is a dict.
 
   Returns:
@@ -1177,7 +1216,8 @@ class _BinarySvmHead(_SingleHead):
       with ops.name_scope(None, "hinge_loss", (logits, labels)) as name:
         with ops.control_dependencies((_assert_labels_rank(labels),)):
           labels = array_ops.reshape(labels, shape=(-1, 1))
-        loss = losses_lib.hinge_loss(logits=logits, labels=labels, scope=name)
+        loss = losses_lib.hinge_loss(labels=labels, logits=logits, scope=name,
+                                     reduction=losses_lib.Reduction.NONE)
         return _compute_weighted_loss(loss, weights)
 
     super(_BinarySvmHead, self).__init__(
@@ -1248,13 +1288,13 @@ class _BinarySvmHead(_SingleHead):
     with ops.name_scope("metrics", values=(
         [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
       metrics = {_summary_key(self.head_name, mkey.LOSS):
-                 metrics_lib.streaming_mean(eval_loss)}
+                 metrics_lib.mean(eval_loss)}
 
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       classes = predictions[prediction_key.PredictionKey.CLASSES]
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.streaming_accuracy(classes, labels, weights))
+          metrics_lib.accuracy(labels, classes, weights))
       # TODO(sibyl-vie3Poto): add more metrics relevant for svms.
 
     return metrics
@@ -1355,11 +1395,11 @@ class _MultiLabelHead(_SingleHead):
       logits = predictions[prediction_key.PredictionKey.LOGITS]
 
       metrics = {_summary_key(self.head_name, mkey.LOSS):
-                 metrics_lib.streaming_mean(eval_loss)}
+                 metrics_lib.mean(eval_loss)}
       # TODO(b/29366811): This currently results in both an "accuracy" and an
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.streaming_accuracy(classes, labels, weights))
+          metrics_lib.accuracy(labels, classes, weights))
       metrics[_summary_key(self.head_name, mkey.AUC)] = _streaming_auc(
           probabilities, labels, weights)
       metrics[_summary_key(self.head_name, mkey.AUC_PR)] = _streaming_auc(
@@ -1386,6 +1426,80 @@ class _MultiLabelHead(_SingleHead):
                            curve="PR"))
 
     return metrics
+
+
+class _LossOnlyHead(Head):
+  """`Head` implementation for additional loss terms.
+
+  This class only holds loss terms unrelated to any other heads (labels),
+  e.g. regularization.
+
+  Common usage:
+  This is oftem combine with other heads in a multi head setup.
+    ```python
+    head = multi_head([
+        head1, head2, loss_only_head('regularizer', regularizer)])
+    ```
+  """
+
+  def __init__(self, loss_fn, head_name=None):
+    self._loss_fn = loss_fn
+    self.head_name = head_name or "loss_only_head"
+
+  @property
+  def logits_dimension(self):
+    return 0
+
+  def create_model_fn_ops(self,
+                          features,
+                          mode,
+                          labels=None,
+                          train_op_fn=None,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
+    """See `_Head.create_model_fn_ops`.
+
+    Args:
+      features: Not been used.
+      mode: Estimator's `ModeKeys`.
+      labels: Labels `Tensor`, or `dict` of same.
+      train_op_fn: Function that takes a scalar loss and returns an op to
+          optimize with the loss.
+      logits: Not been used.
+      logits_input: Not been used.
+      scope: Optional scope for variable_scope. If provided, will be passed to
+          all heads. Most users will want to set this to `None`, so each head
+          constructs a separate variable_scope according to its `head_name`.
+
+    Returns:
+      A `ModelFnOps` object.
+
+    Raises:
+      ValueError: if `mode` is not recognition.
+    """
+    _check_mode_valid(mode)
+    loss = None
+    train_op = None
+    if mode != model_fn.ModeKeys.INFER:
+      with variable_scope.variable_scope(scope, default_name=self.head_name):
+        loss = self._loss_fn()
+        if isinstance(loss, list):
+          loss = math_ops.add_n(loss)
+        logging_ops.scalar_summary(
+            _summary_key(self.head_name, mkey.LOSS), loss)
+        if mode == model_fn.ModeKeys.TRAIN:
+          if train_op_fn is None:
+            raise ValueError("train_op_fn can not be None in TRAIN mode")
+          with ops.name_scope(None, "train_op", (loss,)):
+            train_op = train_op_fn(loss)
+
+    return model_fn.ModelFnOps(
+        mode=mode,
+        loss=loss,
+        train_op=train_op,
+        predictions={},
+        eval_metric_ops={})
 
 
 class _MultiHead(Head):
@@ -1507,7 +1621,10 @@ class _MultiHead(Head):
       if isinstance(logits, dict):
         head_logits_pairs = []
         for head in self._heads:
-          head_logits_pairs.append((head, logits[head.head_name]))
+          if isinstance(head, _LossOnlyHead):
+            head_logits_pairs.append((head, None))
+          else:
+            head_logits_pairs.append((head, logits[head.head_name]))
       else:
         # Split logits for each head.
         head_logits_pairs = zip(self._heads, self._split_logits(logits))
@@ -1557,7 +1674,7 @@ class _MultiHead(Head):
     Args:
       all_model_fn_ops: list of ModelFnOps for the individual heads.
       train_op_fn: Function to create train op. See `create_model_fn_ops`
-          documentaion for more details.
+          documentation for more details.
 
     Returns:
       ModelFnOps that merges all heads for TRAIN.
@@ -1588,6 +1705,8 @@ class _MultiHead(Head):
     predictions = {}
     output_alternatives = {}
     for head, m in zip(self._heads, all_model_fn_ops):
+      if isinstance(head, _LossOnlyHead):
+        continue
       head_name = head.head_name
       output_alternatives[head_name] = m.output_alternatives[head_name]
       for k, v in m.predictions.items():
@@ -1628,12 +1747,27 @@ class _MultiHead(Head):
 
 
 def _weight_tensor(features, weight_column_name):
-  """Returns weights as 1d `Tensor`."""
+  """Returns weights as `Tensor` of rank 0, or at least 2."""
   if not weight_column_name:
     return None
-  with ops.name_scope(None, "weight_tensor",
-                      tuple(six.itervalues(features))):
-    return math_ops.to_float(features[weight_column_name])
+  if weight_column_name not in features:
+    raise ValueError("Weights {} missing from features.".format(
+        weight_column_name))
+  with ops.name_scope(None, "weight_tensor", tuple(six.itervalues(features))):
+    weight_tensor = math_ops.to_float(features[weight_column_name])
+    shape = weight_tensor.get_shape()
+    rank = shape.ndims
+    # We don't bother with expanding dims of non-staticly shaped tensors or
+    # scalars, and >1d is already in a good format.
+    if rank == 1:
+      logging.warning(
+          "Weights {} has shape {}, expanding to make it 2d.",
+          weight_column_name, shape)
+      return (
+          sparse_ops.sparse_reshape(weight_tensor, (-1, 1))
+          if isinstance(weight_tensor, sparse_tensor.SparseTensor) else
+          array_ops.reshape(weight_tensor, (-1, 1)))
+    return weight_tensor
 
 
 # TODO(zakaria): This function is needed for backward compatibility and should
@@ -1658,19 +1792,16 @@ def _compute_weighted_loss(loss_unweighted, weight, name="loss"):
     name: Optional name
 
   Returns:
-    A tuple of losses. First one for training and the second one for reproting.
+    A tuple of losses. First one for training and the second one for reporting.
   """
   with ops.name_scope(name, values=(loss_unweighted, weight)) as name_scope:
     if weight is None:
       loss = math_ops.reduce_mean(loss_unweighted, name=name_scope)
       return loss, loss
+    weight = weights_broadcast_ops.broadcast_weights(weight, loss_unweighted)
     with ops.name_scope(None, "weighted_loss",
                         (loss_unweighted, weight)) as name:
-      weighted_loss = math_ops.multiply(
-          array_ops.reshape(loss_unweighted, shape=(-1,)),
-          array_ops.reshape(weight, shape=(-1,)), name=name)
-    # TODO(ptucker): This might be wrong if weights are broadcast to loss shape.
-    # We should use tf.losses here.
+      weighted_loss = math_ops.multiply(loss_unweighted, weight, name=name)
     weighted_loss_mean = math_ops.reduce_mean(weighted_loss, name=name_scope)
     weighted_loss_normalized = math_ops.div(
         math_ops.reduce_sum(weighted_loss),
@@ -1699,9 +1830,10 @@ def _check_mode_valid(mode):
 
 def _get_arguments(func):
   """Returns a spec of given func."""
+  _, func = tf_decorator.unwrap(func)
   if hasattr(func, "__code__"):
     # Regular function.
-    return inspect.getargspec(func)
+    return tf_inspect.getargspec(func)
   elif hasattr(func, "__call__"):
     # Callable object.
     return _get_arguments(func.__call__)
@@ -1735,7 +1867,7 @@ def _centered_bias(logits_dimension, head_name=None):
   # Do not create a variable with variable_scope.get_variable, because that may
   # create a PartitionedVariable, which does not support indexing, so
   # summary.scalar will not work.
-  centered_bias = variables.Variable(
+  centered_bias = variable_scope.variable(
       name="centered_bias_weight",
       initial_value=array_ops.zeros(shape=(logits_dimension,)),
       trainable=True)
@@ -1804,22 +1936,29 @@ def _float_weights_or_none(weights):
 
 
 def _indicator_labels_streaming_mean(labels, weights=None, class_id=None):
-  labels = ops.convert_to_tensor(labels)
+  labels = math_ops.to_float(labels)
+  weights = _float_weights_or_none(weights)
+  if weights is not None:
+    weights = weights_broadcast_ops.broadcast_weights(weights, labels)
   if class_id is not None:
+    if weights is not None:
+      weights = weights[:, class_id]
     labels = labels[:, class_id]
-  return metrics_lib.streaming_mean(labels, weights=weights)
+  return metrics_lib.mean(labels, weights)
 
 
 def _predictions_streaming_mean(predictions,
                                 weights=None,
                                 class_id=None):
-  predictions = ops.convert_to_tensor(predictions)
+  predictions = math_ops.to_float(predictions)
+  weights = _float_weights_or_none(weights)
   if weights is not None:
-    weights = ops.convert_to_tensor(weights)
-
+    weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
   if class_id is not None:
+    if weights is not None:
+      weights = weights[:, class_id]
     predictions = predictions[:, class_id]
-  return metrics_lib.streaming_mean(predictions, weights=weights)
+  return metrics_lib.mean(predictions, weights)
 
 
 # TODO(ptucker): Add support for SparseTensor labels.
@@ -1832,7 +1971,7 @@ def _class_id_labels_to_indicator(labels, num_classes):
 
 
 def _class_predictions_streaming_mean(predictions, weights, class_id):
-  return metrics_lib.streaming_mean(
+  return metrics_lib.mean(
       array_ops.where(
           math_ops.equal(
               math_ops.to_int32(class_id), math_ops.to_int32(predictions)),
@@ -1842,7 +1981,7 @@ def _class_predictions_streaming_mean(predictions, weights, class_id):
 
 
 def _class_labels_streaming_mean(labels, weights, class_id):
-  return metrics_lib.streaming_mean(
+  return metrics_lib.mean(
       array_ops.where(
           math_ops.equal(
               math_ops.to_int32(class_id), math_ops.to_int32(labels)),
@@ -1852,16 +1991,20 @@ def _class_labels_streaming_mean(labels, weights, class_id):
 
 def _streaming_auc(predictions, labels, weights=None, class_id=None,
                    curve="ROC"):
-  predictions = ops.convert_to_tensor(predictions)
-  labels = ops.convert_to_tensor(labels)
+  # pylint: disable=missing-docstring
+  predictions = math_ops.to_float(predictions)
+  if labels.dtype.base_dtype != dtypes.bool:
+    logging.warning("Casting %s labels to bool.", labels.dtype)
+    labels = math_ops.cast(labels, dtypes.bool)
+  weights = _float_weights_or_none(weights)
+  if weights is not None:
+    weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
   if class_id is not None:
+    if weights is not None:
+      weights = weights[:, class_id]
     predictions = predictions[:, class_id]
     labels = labels[:, class_id]
-  return metrics_lib.streaming_auc(
-      predictions,
-      math_ops.cast(labels, dtypes.bool),
-      weights=_float_weights_or_none(weights),
-      curve=curve)
+  return metrics_lib.auc(labels, predictions, weights, curve=curve)
 
 
 def _assert_class_id(class_id, num_classes=None):
@@ -1878,21 +2021,18 @@ def _assert_class_id(class_id, num_classes=None):
 def _streaming_accuracy_at_threshold(predictions, labels, weights, threshold):
   threshold_predictions = math_ops.to_float(
       math_ops.greater_equal(predictions, threshold))
-  return metrics_lib.streaming_accuracy(
-      predictions=threshold_predictions, labels=labels, weights=weights)
+  return metrics_lib.accuracy(labels, threshold_predictions, weights)
 
 
 def _streaming_precision_at_threshold(predictions, labels, weights, threshold):
-  precision_tensor, update_op = metrics_lib.streaming_precision_at_thresholds(
-      predictions, labels=labels, thresholds=(threshold,),
-      weights=_float_weights_or_none(weights))
+  precision_tensor, update_op = metrics_lib.precision_at_thresholds(
+      labels, predictions, (threshold,),_float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 
 def _streaming_recall_at_threshold(predictions, labels, weights, threshold):
-  precision_tensor, update_op = metrics_lib.streaming_recall_at_thresholds(
-      predictions, labels=labels, thresholds=(threshold,),
-      weights=_float_weights_or_none(weights))
+  precision_tensor, update_op = metrics_lib.recall_at_thresholds(
+      labels, predictions, (threshold,),_float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 

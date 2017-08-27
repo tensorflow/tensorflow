@@ -22,6 +22,7 @@ import collections
 import math
 import os
 import random
+from tempfile import gettempdir
 import zipfile
 
 import numpy as np
@@ -33,18 +34,22 @@ import tensorflow as tf
 url = 'http://mattmahoney.net/dc/'
 
 
+# pylint: disable=redefined-outer-name
 def maybe_download(filename, expected_bytes):
   """Download a file if not present, and make sure it's the right size."""
-  if not os.path.exists(filename):
-    filename, _ = urllib.request.urlretrieve(url + filename, filename)
-  statinfo = os.stat(filename)
+  local_filename = os.path.join(gettempdir(), filename)
+  if not os.path.exists(local_filename):
+    local_filename, _ = urllib.request.urlretrieve(url + filename,
+                                                   local_filename)
+  statinfo = os.stat(local_filename)
   if statinfo.st_size == expected_bytes:
     print('Found and verified', filename)
   else:
     print(statinfo.st_size)
-    raise Exception(
-        'Failed to verify ' + filename + '. Can you get to it with a browser?')
-  return filename
+    raise Exception('Failed to verify ' + local_filename +
+                    '. Can you get to it with a browser?')
+  return local_filename
+
 
 filename = maybe_download('text8.zip', 31344016)
 
@@ -73,10 +78,8 @@ def build_dataset(words, n_words):
   data = list()
   unk_count = 0
   for word in words:
-    if word in dictionary:
-      index = dictionary[word]
-    else:
-      index = 0  # dictionary['UNK']
+    index = dictionary.get(word, 0)
+    if index == 0:  # dictionary['UNK']
       unk_count += 1
     data.append(index)
   count[0][1] = unk_count
@@ -91,7 +94,6 @@ print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
 
 data_index = 0
 
-
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
   global data_index
@@ -101,20 +103,24 @@ def generate_batch(batch_size, num_skips, skip_window):
   labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
   span = 2 * skip_window + 1  # [ skip_window target skip_window ]
   buffer = collections.deque(maxlen=span)
-  for _ in range(span):
-    buffer.append(data[data_index])
-    data_index = (data_index + 1) % len(data)
+  if data_index + span > len(data):
+    data_index = 0
+  buffer.extend(data[data_index:data_index + span])
+  data_index += span
   for i in range(batch_size // num_skips):
-    target = skip_window  # target label at the center of the buffer
-    targets_to_avoid = [skip_window]
+    context_words = [w for w in range(span) if w != skip_window]
+    random.shuffle(context_words)
+    words_to_use = collections.deque(context_words)
     for j in range(num_skips):
-      while target in targets_to_avoid:
-        target = random.randint(0, span - 1)
-      targets_to_avoid.append(target)
       batch[i * num_skips + j] = buffer[skip_window]
-      labels[i * num_skips + j, 0] = buffer[target]
-    buffer.append(data[data_index])
-    data_index = (data_index + 1) % len(data)
+      context_word = words_to_use.pop()
+      labels[i * num_skips + j, 0] = buffer[context_word]
+    if data_index == len(data):
+      buffer[:] = data[:span]
+      data_index = span
+    else:
+      buffer.append(data[data_index])
+      data_index += 1
   # Backtrack a little bit to avoid skipping words in the end of a batch
   data_index = (data_index + len(data) - span) % len(data)
   return batch, labels
@@ -229,7 +235,9 @@ with tf.Session(graph=graph) as session:
 # Step 6: Visualize the embeddings.
 
 
-def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
+# pylint: disable=missing-docstring
+# Function to draw visualization of distance between embeddings.
+def plot_with_labels(low_dim_embs, labels, filename):
   assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
   plt.figure(figsize=(18, 18))  # in inches
   for i, label in enumerate(labels):
@@ -249,11 +257,12 @@ try:
   from sklearn.manifold import TSNE
   import matplotlib.pyplot as plt
 
-  tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
+  tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
   plot_only = 500
   low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only, :])
   labels = [reverse_dictionary[i] for i in xrange(plot_only)]
-  plot_with_labels(low_dim_embs, labels)
+  plot_with_labels(low_dim_embs, labels, os.path.join(gettempdir(), 'tsne.png'))
 
-except ImportError:
+except ImportError as ex:
   print('Please install sklearn, matplotlib, and scipy to show embeddings.')
+  print(ex)

@@ -68,7 +68,7 @@ int GetXCR0EAX() {
 
 // Structure for basic CPUID info
 class CPUIDInfo {
-public:
+ public:
   CPUIDInfo()
       : have_adx_(0),
         have_aes_(0),
@@ -110,7 +110,7 @@ public:
 
   static void Initialize() {
     // Initialize cpuid struct
-    CHECK(cpuid == NULL) << __func__ << " ran more than once";
+    CHECK(cpuid == nullptr) << __func__ << " ran more than once";
     cpuid = new CPUIDInfo;
 
     uint32 eax, ebx, ecx, edx;

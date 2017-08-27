@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
@@ -126,7 +127,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   To use SyncReplicasOptimizer with an `Estimator`, you need to send
   sync_replicas_hook while calling the fit.
-  ```
+  ```python
   my_estimator = DNNClassifier(..., optimizer=opt)
   my_estimator.fit(..., hooks=[sync_replicas_hook])
   ```
@@ -239,12 +240,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     aggregated_grad = []
     var_list = []
 
-    self._local_step = variables.Variable(
-        initial_value=0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=global_step.dtype.base_dtype,
-        name="sync_rep_local_step")
+    # local_anchor op will be placed on this worker task by default.
+    local_anchor = control_flow_ops.no_op()
+    # Colocating local_step variable prevents it being placed on the PS.
+    with ops.colocate_with(local_anchor):
+      self._local_step = variable_scope.variable(
+          initial_value=0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=global_step.dtype.base_dtype,
+          name="sync_rep_local_step")
+
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(

@@ -18,15 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
-#include "external/llvm/include/llvm/IR/Operator.h"
-#include "external/llvm/include/llvm/Target/TargetOptions.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_util_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -137,6 +137,24 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
   return result_type;
 }
 
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder) {
+  string encoded_shape = shape.SerializeAsString();
+  if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
+    return InternalError("Encoded shape size exceeded int32 size limit.");
+  }
+  *shape_size = static_cast<int32>(encoded_shape.size());
+  return ir_builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+}
+
+StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                  int32 size_bytes) {
+  Shape shape;
+  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  return shape;
+}
+
 namespace {
 
 // Recursively construct a multidimensional LLVM constant which represents the
@@ -163,36 +181,36 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
     llvm::Constant* value;
     switch (shape.element_type()) {
       case PRED:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<bool>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<bool>(*multi_index));
         break;
       case U8:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint8>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint8>(*multi_index));
         break;
       case S32:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<int32>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<int32>(*multi_index));
         break;
       case U32:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint32>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint32>(*multi_index));
         break;
       case S64:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<int64>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<int64>(*multi_index));
         break;
       case U64:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint64>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint64>(*multi_index));
         break;
       case F32:
-        value = llvm::ConstantFP::get(
-            ir_element_type, LiteralUtil::Get<float>(literal, *multi_index));
+        value = llvm::ConstantFP::get(ir_element_type,
+                                      literal.Get<float>(*multi_index));
         break;
       case F64:
-        value = llvm::ConstantFP::get(
-            ir_element_type, LiteralUtil::Get<double>(literal, *multi_index));
+        value = llvm::ConstantFP::get(ir_element_type,
+                                      literal.Get<double>(*multi_index));
         break;
       default:
         LOG(FATAL) << "unsupported type " << shape.element_type();
@@ -357,31 +375,9 @@ void EmitLogging(const char* tag, llvm::Value* value,
 
 void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
                            bool is_pointer_to) {
-  legacy_flags::LlvmUtilFlags* flags = legacy_flags::GetLlvmUtilFlags();
-  if (!flags->xla_emit_tbaa) {
-    return;
-  }
-
-  llvm::MDBuilder metadata_builder(instruction->getContext());
-  llvm::MDNode* root = metadata_builder.createTBAARoot("XLA TBAA");
-  string type_name;
-  if (is_pointer_to) {
-    type_name += "pointer-to ";
-  }
-  // Scalars do not have layout which makes it permissible to omit an explicit
-  // layout.  To make sure that equivalent scalar shapes have the same TBAA,
-  // remove the (meaningless) explicit layout if one is present.
-  if (ShapeUtil::Rank(shape) == 0) {
-    LayoutUtil::ClearLayout(&shape);
-  } else {
-    CHECK(shape.has_layout());
-  }
-  type_name += shape.ShortDebugString();
-  llvm::MDNode* tbaa_node =
-      metadata_builder.createTBAANode(llvm_ir::AsStringRef(type_name), root);
-  instruction->setMetadata(llvm::LLVMContext::MD_tbaa,
-                           metadata_builder.createTBAAStructTagNode(
-                               tbaa_node, tbaa_node, /*Offset=*/0));
+  // TODO(b/62903316): TBAA metadata causes LLVM to miscompile generated code,
+  // most likely because the generated metadata is incorrect.  Disable TBAA
+  // metadata while we resolve this.
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -449,24 +445,71 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(const HloModuleConfig& config) {
+llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
   llvm::FastMathFlags flags;
-  if (!config.fast_math_disabled()) {
+  if (fast_math_enabled) {
     // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
     flags.setUnsafeAlgebra();
   }
   return flags;
 }
 
-void SetTargetOptions(const HloModuleConfig& config,
+void SetTargetOptions(bool fast_math_enabled,
                       llvm::TargetOptions* target_options) {
-  bool fast = !config.fast_math_disabled();
   // In LLVM backend flags, UnsafeFPMath does not explicitly imply
   // NoInfs, etc.
-  target_options->UnsafeFPMath = fast;
-  target_options->NoInfsFPMath = fast;
-  target_options->NoNaNsFPMath = fast;
-  target_options->NoSignedZerosFPMath = fast;
+  target_options->UnsafeFPMath = fast_math_enabled;
+  target_options->NoInfsFPMath = fast_math_enabled;
+  target_options->NoNaNsFPMath = fast_math_enabled;
+  target_options->NoSignedZerosFPMath = fast_math_enabled;
+}
+
+std::map<int, llvm::MDNode*> MergeMetadata(
+    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
+    const std::map<int, llvm::MDNode*>& b) {
+  // We should extend this as needed to deal with other kinds of metadata like
+  // !dereferenceable and !range.
+
+  std::map<int, llvm::MDNode*> result;
+  for (auto kind_md_pair : a) {
+    if (kind_md_pair.first == llvm::LLVMContext::MD_alias_scope) {
+      llvm::SmallVector<llvm::Metadata*, 8> union_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+        union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (!scope_set.count(llvm::cast<llvm::MDNode>(scope_b.get()))) {
+            union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b.get()));
+          }
+        }
+      }
+      result[llvm::LLVMContext::MD_alias_scope] =
+          llvm::MDNode::get(*context, union_of_scopes);
+    } else if (kind_md_pair.first == llvm::LLVMContext::MD_noalias) {
+      llvm::SmallVector<llvm::Metadata*, 8> intersection_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (scope_set.count(llvm::cast<llvm::MDNode>(scope_b))) {
+            intersection_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b));
+          }
+        }
+      }
+      if (!intersection_of_scopes.empty()) {
+        result[llvm::LLVMContext::MD_noalias] =
+            llvm::MDNode::get(*context, intersection_of_scopes);
+      }
+    }
+  }
+  return result;
 }
 
 }  // namespace llvm_ir

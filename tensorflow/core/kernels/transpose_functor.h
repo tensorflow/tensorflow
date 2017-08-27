@@ -38,18 +38,6 @@ namespace internal {
 typedef gtl::InlinedVector<int64, 8> TransposeDimsVec;
 typedef gtl::InlinedVector<int32, 8> TransposePermsVec;
 
-// Helper to compute 'strides' given a tensor 'shape'. I.e.,
-// strides[i] = prod(shape.dim_size[(i+1):])
-template <typename Index>
-void ComputeStride(const TensorShape& shape, Index* strides) {
-  const int ndims = shape.dims();
-  Index stride = 1;
-  for (int i = ndims - 1; i >= 0; --i) {
-    strides[i] = stride;
-    stride *= static_cast<Index>(shape.dim_size(i));
-  }
-}
-
 // Helper function that takes a tensor shape, a permutation, combines the
 // neighboring shapes if their indices in the permutation are consecutive.
 // The function outputs the combined shape and new permutation.
@@ -101,6 +89,27 @@ inline void ReduceTransposeDimensions(const TensorShape& shape,
   }
 }
 
+// If all non-singleton dimensions remain in ascending order, the shuffled
+// singletons can be transposed by a reshape, saving a memory allocation & copy.
+// |permutation| must be a permutation of {0, .., input_shape.dims() - 1}.
+// That is, for all i, 0 <= perm[i] < input_shape.dims().
+// In practice, this is checked in TransposeOp::Compute prior to calling this
+// function, and the function sits here to facilitate unit testing.
+inline bool NonSingletonDimensionsAlign(const TensorShape& input_shape,
+                                        const std::vector<int32>& permutation) {
+  int last_nonsingleton_perm_dim = -1;
+  for (int perm_dim : permutation) {
+    if (input_shape.dim_size(perm_dim) == 1) {
+      continue;
+    }
+    if (perm_dim < last_nonsingleton_perm_dim) {
+      return false;
+    }
+    last_nonsingleton_perm_dim = perm_dim;
+  }
+  return true;
+}
+
 // Device-specific naive implementation for transpose.
 template <typename Device, typename T>
 void TransposeSimple(const Device& d, const Tensor& in,
@@ -109,8 +118,25 @@ void TransposeSimple(const Device& d, const Tensor& in,
 // Uses Eigen to transpose.
 template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const gtl::ArraySlice<int32> perm, Tensor* out);
+                         const gtl::ArraySlice<int32> perm, Tensor* out) {
+  Eigen::array<int, NDIMS> p;
+  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
+  auto x = typename TTypes<T, NDIMS>::ConstTensor(
+      reinterpret_cast<const T*>(in.tensor_data().data()),
+      in.shape().AsEigenDSizes<NDIMS>());
+  auto y = typename TTypes<T, NDIMS>::Tensor(
+      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
+      out->shape().AsEigenDSizes<NDIMS>());
+  y.device(d) = x.shuffle(p);
+}
 
+
+#ifdef TENSORFLOW_USE_SYCL
+// For SYCL lets always go through Eigen
+template <typename Device, typename T>
+void TransposeSYCL(const Device& d, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, Tensor* out);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace internal
 
 template <typename Device, typename T>

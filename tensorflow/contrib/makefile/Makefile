@@ -73,7 +73,9 @@ HOST_INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
-  -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/nsync/public \
+-I$(MAKEFILE_DIR)/downloads/fft2d \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -83,6 +85,7 @@ endif
 HOST_INCLUDES += -I/usr/local/include
 
 HOST_LIBS := \
+$(HOST_NSYNC_LIB) \
 -lstdc++ \
 -lprotobuf \
 -lpthread \
@@ -153,6 +156,8 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/nsync/public \
+-I$(MAKEFILE_DIR)/downloads/fft2d \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -163,6 +168,7 @@ endif
 INCLUDES += -I/usr/local/include
 
 LIBS := \
+$(TARGET_NSYNC_LIB) \
 -lstdc++ \
 -lprotobuf \
 -lz \
@@ -202,7 +208,7 @@ ifeq ($(TARGET),LINUX)
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
-	CXXFLAGS += -D__ANDROID_TYPES_SLIM__
+	CXXFLAGS += -D__ANDROID_TYPES_SLIM__ -DRASPBERRY_PI
 	LDFLAGS := -Wl,--no-whole-archive
 	LIBS += -ldl -lpthread
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
@@ -233,6 +239,7 @@ ifeq ($(TARGET),ANDROID)
     $(error "NDK_ROOT is not defined.")
 	endif
 	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
+	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-gcc
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
@@ -240,7 +247,6 @@ ifeq ($(TARGET),ANDROID)
 -mfloat-abi=softfp \
 -mfpu=neon \
 -fPIE
-
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
@@ -249,11 +255,14 @@ ifeq ($(TARGET),ANDROID)
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/nsync/public \
+-I$(MAKEFILE_DIR)/downloads/fft2d \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 
 	LIBS := \
+$(TARGET_NSYNC_LIB) \
 -lgnustl_static \
 -lprotobuf \
 -llog \
@@ -279,6 +288,20 @@ ifeq ($(TARGET),ANDROID)
 		LIBS += -lhexagon_controller
 		LDFLAGS += -L$(HEXAGON_LIBS)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
+
+# CAVEAT: We should disable TENSORFLOW_DISABLE_META while running
+# quantized_matmul on Android because it crashes in
+# MultiThreadGemm in tensorflow/core/kernels/meta_support.cc
+# See http://b/33270149
+# TODO(satok): Remove once it's fixed
+		CXXFLAGS += -DTENSORFLOW_DISABLE_META
+
+# Declare __ANDROID_TYPES_FULL__ to enable required types for hvx
+		CXXFLAGS += -D__ANDROID_TYPES_FULL__
+	endif
+
+	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
+		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
 	endif
 
 endif  # ANDROID
@@ -293,7 +316,7 @@ ifeq ($(TARGET),IOS)
 	IPHONESIMULATOR_SYSROOT := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-path)
 	IOS_SDK_VERSION := $(shell xcrun --sdk iphoneos --show-sdk-version)
-	MIN_SDK_VERSION := 8.2
+	MIN_SDK_VERSION := 8.0
 # Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
 	IOS_ARCH := X86_64
 	ifeq ($(IOS_ARCH),ARMV7)
@@ -482,11 +505,13 @@ $(wildcard tensorflow/core/user_ops/*.cu.cc) \
 $(wildcard tensorflow/core/common_runtime/gpu/*) \
 $(wildcard tensorflow/core/common_runtime/gpu_device_factory.*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
+$(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*)
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
-TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_tracer.cc
+TF_CC_SRCS += tensorflow/core/platform/default/gpu_tracer.cc
+TF_CC_SRCS += tensorflow/contrib/makefile/downloads/fft2d/fftsg.c
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
@@ -496,8 +521,21 @@ tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
 
+ifdef HEXAGON_LIBS
+	TF_CC_SRCS += \
+tensorflow/cc/framework/scope.cc \
+tensorflow/cc/framework/ops.cc \
+tensorflow/cc/ops/const_op.cc \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
+tensorflow/core/kernels/hexagon/graph_transferer.cc \
+tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
+tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/hexagon/hexagon_remote_fused_graph_executor_build.cc
+endif
+
 # File names of the intermediate files target compilation generates.
-TF_CC_OBJS := $(addprefix $(OBJDIR), $(TF_CC_SRCS:.cc=.o))
+TF_CC_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_CC_SRCS))))
 PBT_GEN_FILES := $(addprefix $(PBTGENDIR), $(PBT_CC_SRCS))
 PBT_OBJS := $(addprefix $(OBJDIR), $(PBT_CC_SRCS:.cc=.o))
 PROTO_CC_SRCS := $(addprefix $(PROTOGENDIR), $(PROTO_SRCS:.proto=.pb.cc))
@@ -533,6 +571,14 @@ $(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)
 	@mkdir -p $(dir $@)
 	@mkdir -p $(dir $(DEPDIR)$*)
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
+	@mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
+
+# Matches on plain C files.
+$(OBJDIR)%.o: %.c
+	@mkdir -p $(dir $@)
+	@mkdir -p $(dir $(DEPDIR)$*)
+	$(CXX) $(patsubst --std=c++11,--std=c99, $(CXXFLAGS)) -x c $(DEPFLAGS) \
+$(INCLUDES) -c $< -o $@
 	@mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
 
 # Compiles C++ source files that have been generated by protoc.

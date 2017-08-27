@@ -57,7 +57,24 @@ def _MatrixDeterminantGrad(op, grad):
 @ops.RegisterGradient("Cholesky")
 def _CholeskyGrad(op, grad):
   """Gradient for Cholesky."""
-  return linalg_ops.cholesky_grad(op.outputs[0], grad)
+
+  # Gradient is l^{-H} @ ((l^{H} @ grad) * (tril(ones)-1/2*eye)) @ l^{-1}
+  l = op.outputs[0]
+  num_rows = array_ops.shape(l)[-1]
+  batch_shape = array_ops.shape(l)[:-2]
+  l_inverse = linalg_ops.matrix_triangular_solve(
+      l, linalg_ops.eye(num_rows, batch_shape=batch_shape, dtype=l.dtype))
+
+  middle = math_ops.matmul(l, grad, adjoint_a=True)
+  middle = array_ops.matrix_set_diag(middle,
+                                     0.5 * array_ops.matrix_diag_part(middle))
+  middle = array_ops.matrix_band_part(middle, -1, 0)
+
+  grad_a = math_ops.matmul(
+      math_ops.matmul(l_inverse, middle, adjoint_a=True), l_inverse)
+
+  grad_a += math_ops.conj(array_ops.matrix_transpose(grad_a))
+  return grad_a * 0.5
 
 
 @ops.RegisterGradient("MatrixSolve")
@@ -183,11 +200,12 @@ def _MatrixTriangularSolveGrad(op, grad):
 def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
   """Gradient for SelfAdjointEigV2."""
   e = op.outputs[0]
-  v = op.outputs[1]
+  compute_v = op.get_attr("compute_v")
   # a = op.inputs[0], which satisfies
   # a[...,:,:] * v[...,:,i] = e[...,i] * v[...,i]
   with ops.control_dependencies([grad_e.op, grad_v.op]):
-    if grad_v is not None:
+    if compute_v:
+      v = op.outputs[1]
       # Construct the matrix f(i,j) = (i != j ? 1 / (e_i - e_j) : 0).
       # Notice that because of the term involving f, the gradient becomes
       # infinite (or NaN in practice) when eigenvalues are not unique.
@@ -206,13 +224,14 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
               v,
               adjoint_b=True))
     else:
+      _, v = linalg_ops.self_adjoint_eig(op.inputs[0])
       grad_a = math_ops.matmul(
           v, math_ops.matmul(
               array_ops.matrix_diag(grad_e), v, adjoint_b=True))
     # The forward op only depends on the lower triangular part of a, so here we
     # symmetrize and take the lower triangle
     grad_a = array_ops.matrix_band_part(
-        grad_a + array_ops.matrix_transpose(grad_a), -1, 0)
+        grad_a + math_ops.conj(array_ops.matrix_transpose(grad_a)), -1, 0)
     grad_a = array_ops.matrix_set_diag(grad_a,
                                        0.5 * array_ops.matrix_diag_part(grad_a))
     return grad_a

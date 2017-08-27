@@ -37,7 +37,7 @@ constexpr int kNumThreads = 8;
 
 // Run a function in parallel using a ThreadPool, but skip the ThreadPool
 // on the iOS platform due to its problems with more than a few threads.
-void ForEach(int first, int last, std::function<void(int)> f) {
+void ForEach(int first, int last, const std::function<void(int)>& f) {
 #if TARGET_OS_IPHONE
   for (int i = first; i < last; i++) {
     f(i);

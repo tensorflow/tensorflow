@@ -15,16 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/tfcompile_util.h"
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-void ExpectErrorContains(Status status, StringPiece str) {
+void ExpectErrorContains(const Status& status, StringPiece str) {
   EXPECT_NE(Status::OK(), status);
   EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
       << "expected error: " << status.error_message() << " to contain: " << str;
@@ -178,6 +180,65 @@ TEST(ValidateConfig, ConflictingFetchName) {
   fetch->mutable_id()->set_node_name("baz");
   fetch->set_name("conflict_data");
   ExpectErrorContains(ValidateConfig(config), "conflicting fetch name");
+}
+
+static Config FetchesConfig(std::vector<string> fetches) {
+  Config config;
+  for (const auto& fetch_node_name : fetches) {
+    auto* fetch = config.add_fetch();
+    fetch->set_name(strings::StrCat("fetch_", fetch_node_name));
+    fetch->mutable_id()->set_node_name(fetch_node_name);
+  }
+  return config;
+}
+
+TEST(PruneGraphDefInto, Basic) {
+  GraphDef def;
+  auto* n = def.add_node();
+  n->set_name("a");
+  n->add_input("b:0");
+  n->add_input("^c");
+
+  GraphDef copy;
+  ExpectErrorContains(PruneGraphDefInto(FetchesConfig({"missing"}), def, &copy),
+                      "node missing needed");
+  ExpectErrorContains(PruneGraphDefInto(FetchesConfig({"a"}), def, &copy),
+                      "node b needed");
+
+  n = def.add_node();
+  n->set_name("b");
+  ExpectErrorContains(PruneGraphDefInto(FetchesConfig({"a"}), def, &copy),
+                      "node c needed");
+  n->add_input("d:1");
+
+  n = def.add_node();
+  n->set_name("c");
+  n->add_input("d:1");
+
+  n = def.add_node();
+  n->set_name("d");
+
+  // Graph is full, no pruning done.
+  // Graph right now has diamond from d:
+  //   d --> b --> a
+  //   d --> c --> a
+  TF_EXPECT_OK(PruneGraphDefInto(FetchesConfig({"a"}), def, &copy));
+  EXPECT_EQ(def.DebugString(), copy.DebugString());
+  GraphDef pruned_a = copy;
+
+  // Add some unrelated fields that use b and c, but are not needed for a.
+  n = def.add_node();
+  n->set_name("e");
+  n->add_input("^d");
+  n->add_input("b:2");
+  copy.Clear();
+  TF_EXPECT_OK(PruneGraphDefInto(FetchesConfig({"a"}), def, &copy));
+  EXPECT_EQ(pruned_a.DebugString(), copy.DebugString());
+
+  // Fetch "a" and "e" to get the original graph.
+  copy.Clear();
+  TF_EXPECT_OK(PruneGraphDefInto(FetchesConfig({"a", "e"}), def, &copy));
+  EXPECT_EQ(def.DebugString(), copy.DebugString());
 }
 
 }  // namespace

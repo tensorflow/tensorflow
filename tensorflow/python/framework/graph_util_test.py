@@ -24,6 +24,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -105,9 +106,9 @@ class DeviceFunctionsTest(test.TestCase):
       var_0 = variables.Variable(0)
       with ops.device(test_device_func_pin_variable_to_cpu):
         var_1 = variables.Variable(1)
-        with ops.device(lambda op: "/gpu:0"):
+        with ops.device(lambda op: "/device:GPU:0"):
           var_2 = variables.Variable(2)
-        with ops.device("/gpu:0"):  # Implicit merging device function.
+        with ops.device("/device:GPU:0"):  # Implicit merging device function.
           var_3 = variables.Variable(3)
 
     self.assertDeviceEqual(var_0.device, None)
@@ -186,6 +187,36 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertEqual("n2", sub_graph.node[1].name)
     self.assertEqual("n3", sub_graph.node[2].name)
     self.assertEqual("n5", sub_graph.node[3].name)
+
+  def testConvertVariablesToConstsWithFunctions(self):
+    @function.Defun(dtypes.float32)
+    def plus_one(x):
+      return x + 1.0
+
+    with ops.Graph().as_default():
+      variable_node = variables.Variable(1.0, name="variable_node")
+      _ = variables.Variable(1.0, name="unused_variable_node")
+      defun_node = plus_one(variable_node)
+      output_node = math_ops_lib.multiply(
+          defun_node, 2.0, name="output_node")
+
+      with session.Session() as sess:
+        init = variables.initialize_variables([variable_node])
+        sess.run(init)
+        output = sess.run(output_node)
+        self.assertNear(4.0, output, 0.00001)
+        variable_graph_def = sess.graph.as_graph_def()
+
+        # First get the constant_graph_def when variable_names_whitelist is set,
+        # note that if variable_names_whitelist is not set an error will be
+        # thrown because unused_variable_node is not initialized.
+        constant_graph_def = graph_util.convert_variables_to_constants(
+            sess,
+            variable_graph_def, ["output_node"],
+            variable_names_whitelist=set(["variable_node"]))
+
+        self.assertEqual(variable_graph_def.library,
+                         constant_graph_def.library)
 
   def testConvertVariablesToConsts(self):
     with ops.Graph().as_default():

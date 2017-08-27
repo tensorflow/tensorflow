@@ -8,7 +8,7 @@ your TensorFlow graph, plot quantitative metrics about the execution of your
 graph, and show additional data like images that pass through it. When
 TensorBoard is fully configured, it looks like this:
 
-![MNIST TensorBoard](../images/mnist_tensorboard.png "MNIST TensorBoard")
+![MNIST TensorBoard](https://www.tensorflow.org/images/mnist_tensorboard.png "MNIST TensorBoard")
 
 <div class="video-wrapper">
   <iframe class="devsite-embedded-youtube-video" data-video-id="eBbEDRsCmv4"
@@ -17,7 +17,7 @@ TensorBoard is fully configured, it looks like this:
 </div>
 
 This tutorial is intended to get you started with simple TensorBoard usage.
-There are other resources available as well! The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md)
+There are other resources available as well! The [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard)
 has a lot more information on TensorBoard usage, including tips & tricks, and
 debugging information.
 
@@ -216,5 +216,4 @@ corner. Each tab represents a set of serialized data that can be visualized.
 For in depth information on how to use the *graph* tab to visualize your graph,
 see @{$graph_viz$TensorBoard: Graph Visualization}.
 
-For more usage information on TensorBoard in general, see the [TensorBoard
-README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md).
+For more usage information on TensorBoard in general, see the [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard).

@@ -99,9 +99,9 @@ def _TensorArrayReadGrad(op, grad):
   flow = op.inputs[2]
   dtype = op.get_attr("dtype")
   grad_source = _GetGradSource(grad)
-  g = tensor_array_ops.TensorArray(
-      dtype=dtype, handle=handle, flow=flow).grad(
-          source=grad_source, flow=flow)
+  g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
+                                    colocate_with_first_write_call=False)
+       .grad(source=grad_source, flow=flow))
   w_g = g.write(index, grad)
   return [None, None, w_g.flow]
 
@@ -125,9 +125,9 @@ def _TensorArrayWriteGrad(op, flow):
   index = op.inputs[1]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
-  g = tensor_array_ops.TensorArray(
-      dtype=dtype, handle=handle, flow=flow).grad(
-          source=grad_source, flow=flow)
+  g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
+                                    colocate_with_first_write_call=False)
+       .grad(source=grad_source, flow=flow))
   grad = g.read(index)
   return [None, None, grad, flow]
 
@@ -156,9 +156,9 @@ def _TensorArrayGatherGrad(op, grad):
   flow = op.inputs[2]
   dtype = op.get_attr("dtype")
   grad_source = _GetGradSource(grad)
-  g = tensor_array_ops.TensorArray(
-      dtype=dtype, handle=handle, flow=flow).grad(
-          source=grad_source, flow=flow)
+  g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
+                                    colocate_with_first_write_call=False)
+       .grad(source=grad_source, flow=flow))
   u_g = g.scatter(indices, grad)
   return [None, None, u_g.flow]
 
@@ -180,9 +180,9 @@ def _TensorArrayScatterGrad(op, flow):
   indices = op.inputs[1]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
-  g = tensor_array_ops.TensorArray(
-      dtype=dtype, handle=handle, flow=flow).grad(
-          source=grad_source, flow=flow)
+  g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
+                                    colocate_with_first_write_call=False)
+       .grad(source=grad_source, flow=flow))
   grad = g.gather(indices)
   return [None, None, grad, flow]
 
@@ -211,9 +211,9 @@ def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
   lengths = op.outputs[1]
   dtype = op.get_attr("dtype")
   grad_source = _GetGradSource(grad)
-  g = tensor_array_ops.TensorArray(
-      dtype=dtype, handle=handle, flow=flow).grad(
-          source=grad_source, flow=flow)
+  g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
+                                    colocate_with_first_write_call=False)
+       .grad(source=grad_source, flow=flow))
   u_g = g.split(grad, lengths=lengths)
   # handle, flow_in
   return [None, u_g.flow]
@@ -235,9 +235,9 @@ def _TensorArraySplitGrad(op, flow):
   handle = op.inputs[0]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
-  g = tensor_array_ops.TensorArray(
-      dtype=dtype, handle=handle, flow=flow).grad(
-          source=grad_source, flow=flow)
+  g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
+                                    colocate_with_first_write_call=False)
+       .grad(source=grad_source, flow=flow))
   grad = g.concat()
   # handle, value, lengths, flow_in
   return [None, grad, None, flow]

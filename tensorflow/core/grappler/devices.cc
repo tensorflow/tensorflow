@@ -53,6 +53,22 @@ int GetNumAvailableGPUs() {
   return num_eligible_gpus;
 }
 
+int64 AvailableGPUMemory(int gpu_id) {
+#if GOOGLE_CUDA
+  // Look up the device, to see its attributes.
+  perftools::gputools::Platform* gpu_platform = GPUMachineManager();
+  CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount());
+  perftools::gputools::StreamExecutor* se =
+      gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
+  int64 total_memory, available_memory;
+  CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
+
+  return available_memory;
+#else
+  return 0;
+#endif
+}
+
 int GetNumAvailableLogicalCPUCores() { return port::NumSchedulableCPUs(); }
 
 }  // end namespace grappler

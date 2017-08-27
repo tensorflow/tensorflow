@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.contrib.keras.python import keras
 from tensorflow.contrib.keras.python.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.training.adam import AdamOptimizer
 
 
 def _get_model(input_dim, num_hidden, output_dim):
@@ -41,7 +42,7 @@ def _test_optimizer(optimizer, target=0.75):
                                                       input_shape=(10,),
                                                       num_classes=2)
   y_train = keras.utils.to_categorical(y_train)
-  model = _get_model(x_train.shape[1], 10, y_train.shape[1])
+  model = _get_model(x_train.shape[1], 20, y_train.shape[1])
   model.compile(loss='categorical_crossentropy',
                 optimizer=optimizer,
                 metrics=['accuracy'])
@@ -102,6 +103,29 @@ class KerasOptimizersTest(test.TestCase):
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipvalue=0.5))
+
+  def test_tfoptimizer(self):
+    optimizer = keras.optimizers.TFOptimizer(AdamOptimizer)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(
+        2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
+    # This is possible
+    model.compile(loss='mean_squared_error', optimizer=optimizer)
+    # TF optimizers do not support weights constraints
+    with self.assertRaises(ValueError):
+      model.fit(np.random.random((5, 3)),
+                np.random.random((5, 2)),
+                epochs=1,
+                batch_size=5,
+                verbose=0)
+    # not supported
+    with self.assertRaises(NotImplementedError):
+      _ = optimizer.weights
+    with self.assertRaises(NotImplementedError):
+      optimizer.get_config()
+    with self.assertRaises(NotImplementedError):
+      optimizer.from_config(None)
+
 
 if __name__ == '__main__':
   test.main()

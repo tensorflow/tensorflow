@@ -23,11 +23,12 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 static ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
-  auto h_dtype = c->input_handle_dtype(input);
-  if (h_dtype == DT_INVALID) {
-    return c->input(input);
+  auto* handle_data = c->input_handle_shapes_and_types(input);
+  if (handle_data != nullptr && !handle_data->empty() &&
+      (*handle_data)[0].dtype != DT_INVALID) {
+    return (*handle_data)[0].shape;
   }
-  return c->input_handle_shape(input);
+  return c->input(input);
 }
 
 // Handle the gradient and, if <sparse>, indices inputs.
@@ -902,7 +903,7 @@ REGISTER_OP("ResourceApplyFtrl")
 Update '*var' according to the Ftrl-proximal scheme.
 
 accum_new = accum + grad * grad
-linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+linear += grad - (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
 quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
 var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
 accum = accum_new
@@ -960,6 +961,178 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   contention.
 )doc");
 
+REGISTER_OP("ApplyFtrlV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("linear: Ref(T)")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, false /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the Ftrl-proximal scheme.
+
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regulariation. Must be a scalar.
+l2: online L2 regulariation. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+out: Same as "var".
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("SparseApplyFtrlV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("linear: Ref(T)")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, true /* sparse */);
+    })
+    .Doc(R"doc(
+Update relevant entries in '*var' according to the Ftrl-proximal scheme.
+
+That is for rows we have grad for, we update var, accum and linear as follows:
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+indices: A vector of indices into the first dimension of var and accum.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regularization. Must be a scalar.
+l2: onine L2 regularization. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+out: Same as "var".
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("ResourceApplyFtrlV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("linear: resource")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, false /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the Ftrl-proximal scheme.
+
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regulariation. Must be a scalar.
+l2: onine L2 regularization. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("ResourceSparseApplyFtrlV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("linear: resource")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyFtrlShapeFn(c, true /* sparse */);
+    })
+    .Doc(R"doc(
+Update relevant entries in '*var' according to the Ftrl-proximal scheme.
+
+That is for rows we have grad for, we update var, accum and linear as follows:
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+linear: Should be from a Variable().
+grad: The gradient.
+indices: A vector of indices into the first dimension of var and accum.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regularization. Must be a scalar.
+l2: onine L2 regularization. Must be a scalar.
+l2: L2 shrinkage regulariation. Must be a scalar.
+lr_power: Scaling factor. Must be a scalar.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
 static Status ApplyMomentumShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
@@ -1004,7 +1177,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1043,7 +1216,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1075,7 +1248,7 @@ momentum: Momentum. Must be a scalar.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1112,7 +1285,7 @@ momentum: Momentum. Must be a scalar.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1150,6 +1323,7 @@ REGISTER_OP("ApplyAdam")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     })
@@ -1175,6 +1349,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, uses the nesterov update.
 )doc");
 
 REGISTER_OP("ResourceApplyAdam")
@@ -1190,6 +1365,7 @@ REGISTER_OP("ResourceApplyAdam")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     })
@@ -1214,6 +1390,7 @@ grad: The gradient.
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, uses the nesterov update.
 )doc");
 
 static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {

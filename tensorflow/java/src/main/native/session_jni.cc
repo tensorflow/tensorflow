@@ -211,6 +211,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   }
 
   if (!throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
     return nullptr;
   }
   jlong* t = env->GetLongArrayElements(output_tensor_handles, nullptr);
@@ -226,5 +227,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
     memcpy(elems, run_metadata->data, run_metadata->length);
     env->ReleaseByteArrayElements(ret, elems, JNI_COMMIT);
   }
+  TF_DeleteStatus(status);
   return ret;
 }

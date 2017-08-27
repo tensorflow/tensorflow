@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -92,6 +93,7 @@ class ShapeUtil {
  public:
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
+  // Precondition: !IsTuple(shape)
   static int64 ElementsIn(const Shape& shape);
 
   // Returns true if 'shape' has zero elements.
@@ -123,7 +125,7 @@ class ShapeUtil {
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
-  static StatusOr<Shape> ParseShapeString(const string& s);
+  static StatusOr<Shape> ParseShapeString(tensorflow::StringPiece s);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
@@ -143,7 +145,8 @@ class ShapeUtil {
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
   // Returns the rank (number of dimensions) of the given shape.
-  static int64 Rank(const Shape& shape) { return shape.dimensions_size(); }
+  // Precondition: !IsTuple(shape)
+  static int64 Rank(const Shape& shape);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
@@ -254,13 +257,20 @@ class ShapeUtil {
   static bool ElementIsSigned(const Shape& shape);
 
   // Returns whether the shape is a tuple.
-  static bool IsTuple(const Shape& shape);
+  static bool IsTuple(const Shape& shape) {
+    return shape.element_type() == TUPLE;
+  }
+
+  // Returns whether the shape is an opaque value (i.e. an 'existential' typed
+  // value that is passed to CustomCall operations).
+  static bool IsOpaque(const Shape& shape) {
+    return shape.element_type() == OPAQUE;
+  }
 
   // Returns whether the shape is an array.
-  static bool IsArray(const Shape& shape);
-
-  // Returns whether the shape is an opaque.
-  static bool IsOpaque(const Shape& shape);
+  static bool IsArray(const Shape& shape) {
+    return !IsTuple(shape) && !IsOpaque(shape);
+  }
 
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
@@ -294,18 +304,31 @@ class ShapeUtil {
   static const Shape& GetSubshape(const Shape& shape, const ShapeIndex& index);
   static Shape* GetMutableSubshape(Shape* shape, const ShapeIndex& index);
 
-  // Calls the given visitor function for each subshape of the given shape.
-  // Returns early if an error status is returned. Subshapes are visited in DFS
-  // pre-order starting with the entire shape (index {}).
-  using VisitorFunction = std::function<Status(const Shape& /*subshape*/,
-                                               const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshape(const Shape& shape, VisitorFunction func);
+  // Returns whether the given index in the given shape is a leaf element of the
+  // shape.
+  static bool IsLeafIndex(const Shape& shape, const ShapeIndex& index);
 
-  // Mutating variant of ForEachSubshape.
+  // Calls the given visitor function for each subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  using VisitorFunction = std::function<void(const Shape& /*subshape*/,
+                                             const ShapeIndex& /*index*/)>;
+  static void ForEachSubshape(const Shape& shape, const VisitorFunction& func);
   using MutatingVisitorFunction =
+      std::function<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
+  static void ForEachMutableSubshape(Shape* shape,
+                                     const MutatingVisitorFunction& func);
+
+  // Variants of ForEach(Mutable)Subshape which propagate Status from the
+  // visitor function.
+  using StatusVisitorFunction = std::function<Status(
+      const Shape& /*subshape*/, const ShapeIndex& /*index*/)>;
+  static Status ForEachSubshapeWithStatus(const Shape& shape,
+                                          const StatusVisitorFunction& func);
+  using MutatingStatusVisitorFunction =
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachMutableSubshape(Shape* shape,
-                                       MutatingVisitorFunction func);
+  static Status ForEachMutableSubshapeWithStatus(
+      Shape* shape, const MutatingStatusVisitorFunction& func);
 
   // Removes all degenerate dimensions (size one) from the given shape. The
   // stripped minor_to_major preserves the relative ordering of non-degenerate
@@ -377,6 +400,15 @@ class ShapeUtil {
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
+  // Find a physical layout for 'output_shape' such that
+  // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns
+  // true (where 'output_shape_with_layout' is 'output_shape' with the found
+  // layout). The layout of 'input_shape' is kept fixed. Returns
+  // 'output_shape_with_layout' if such a layout can be found, and an error
+  // otherwise.
+  static tensorflow::gtl::optional<Shape> AlignLayouts(
+      const Shape& input_shape, const Shape& output_shape);
+
   // Returns a shape with the given dimension deleted.
   // For example:
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
@@ -389,6 +421,46 @@ class ShapeUtil {
   // • `FilterDimensions(is_even_number, T[m, n, k]) = T[m, k]`
   static Shape FilterDimensions(const std::function<bool(int64)>& p,
                                 Shape shape);
+
+  // Iterates through all the shape indexes, in minor to major order, starting
+  // from the base indexes, incrementing by the incr steps, up to count
+  // (index[i] < base[i] + count[i]), and calls the visitor_function with the
+  // current index.
+  // The visitor_function visitor function should return true if it wants to
+  // continue, or false otherwise.
+  //
+  // visitor_function must be a callable of type bool(const std::vector<int64>&)
+  // or compatible.
+  template <typename FnType>
+  static void ForEachIndex(const Shape& shape,
+                           tensorflow::gtl::ArraySlice<int64> base,
+                           tensorflow::gtl::ArraySlice<int64> count,
+                           tensorflow::gtl::ArraySlice<int64> incr,
+                           const FnType& visitor_function) {
+    if (ShapeUtil::HasZeroElements(shape)) {
+      return;
+    }
+    CHECK_EQ(Rank(shape), base.size());
+    CHECK_EQ(incr.size(), base.size());
+    CHECK_EQ(count.size(), base.size());
+    const Layout& layout = shape.layout();
+    const int64 rank = layout.minor_to_major_size();
+    // Allows handling R0 arrays, such that the visitor function will be called
+    // once with the proper empty indexes.
+    int64 n = -1;
+    std::vector<int64> indexes(base.begin(), base.end());
+    while (n < rank && visitor_function(indexes)) {
+      // Increments dimensions in minor to major order.
+      for (n = 0; n < rank; ++n) {
+        int64 dim = layout.minor_to_major(n);
+        indexes[dim] += incr[dim];
+        if (indexes[dim] < base[dim] + count[dim]) {
+          break;
+        }
+        indexes[dim] = base[dim];
+      }
+    }
+  }
 
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper

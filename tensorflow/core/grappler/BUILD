@@ -14,19 +14,14 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-filegroup(
-    name = "android_srcs",
-    srcs = [
-        "devices.cc",
-        "devices.h",
-        "grappler_item.h",
-        "utils.cc",
-        "utils.h",
-        "//tensorflow/core/grappler/clusters:android_srcs",
-        "//tensorflow/core/grappler/inputs:android_srcs",
-        "//tensorflow/core/grappler/optimizers:android_srcs",
+cc_library(
+    name = "op_types",
+    srcs = ["op_types.cc"],
+    hdrs = ["op_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
@@ -43,6 +38,7 @@ cc_library(
 
 cc_test(
     name = "utils_test",
+    size = "small",
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
@@ -73,6 +69,7 @@ cc_library(
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -88,7 +85,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grappler_item",
+        ":op_types",
         ":utils",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -98,10 +99,28 @@ cc_library(
 
 cc_test(
     name = "grappler_item_test",
+    size = "small",
     srcs = ["grappler_item_test.cc"],
     deps = [
         ":grappler_item",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_test(
+    name = "grappler_item_builder_test",
+    size = "small",
+    srcs = ["grappler_item_builder_test.cc"],
+    deps = [
         ":grappler_item_builder",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:grad_testutil",
+        "//tensorflow/cc:gradients",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

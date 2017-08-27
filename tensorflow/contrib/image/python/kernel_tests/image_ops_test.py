@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
@@ -110,6 +111,139 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [0, 1, 0, 1],
                              [0, 1, 1, 1]])
 
+  def test_bilinear(self):
+    with self.test_session():
+      image = constant_op.constant(
+          [[0, 0, 0, 0, 0],
+           [0, 1, 1, 1, 0],
+           [0, 1, 0, 1, 0],
+           [0, 1, 1, 1, 0],
+           [0, 0, 0, 0, 0]],
+          dtypes.float32)
+      # The following result matches:
+      # >>> scipy.ndimage.rotate(image, 45, order=1, reshape=False)
+      # which uses spline interpolation of order 1, equivalent to bilinear
+      # interpolation.
+      self.assertAllClose(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="BILINEAR").eval(),
+          [[0.000, 0.000, 0.343, 0.000, 0.000],
+           [0.000, 0.586, 0.914, 0.586, 0.000],
+           [0.343, 0.914, 0.000, 0.914, 0.343],
+           [0.000, 0.586, 0.914, 0.586, 0.000],
+           [0.000, 0.000, 0.343, 0.000, 0.000]],
+          atol=0.001)
+      self.assertAllClose(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="NEAREST").eval(),
+          [[0, 0, 1, 0, 0],
+           [0, 1, 1, 1, 0],
+           [1, 1, 0, 1, 1],
+           [0, 1, 1, 1, 0],
+           [0, 0, 1, 0, 0]])
+
+  def test_bilinear_uint8(self):
+    with self.test_session():
+      image = constant_op.constant(
+          np.asarray(
+              [[0.0, 0.0, 0.0, 0.0, 0.0],
+               [0.0, 255, 255, 255, 0.0],
+               [0.0, 255, 0.0, 255, 0.0],
+               [0.0, 255, 255, 255, 0.0],
+               [0.0, 0.0, 0.0, 0.0, 0.0]],
+              np.uint8),
+          dtypes.uint8)
+      # == np.rint((expected image above) * 255)
+      self.assertAllEqual(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="BILINEAR").eval(),
+          [[0.0, 0.0, 87., 0.0, 0.0],
+           [0.0, 149, 233, 149, 0.0],
+           [87., 233, 0.0, 233, 87.],
+           [0.0, 149, 233, 149, 0.0],
+           [0.0, 0.0, 87., 0.0, 0.0]])
+
+  def _test_grad(self, shape_to_test):
+    with self.test_session():
+      test_image_shape = shape_to_test
+      test_image = np.random.randn(*test_image_shape)
+      test_image_tensor = constant_op.constant(
+          test_image, shape=test_image_shape)
+      test_transform = image_ops.angles_to_projective_transforms(
+          np.pi / 2, 4, 4)
+
+      output_shape = test_image_shape
+      output = image_ops.transform(test_image_tensor, test_transform)
+      left_err = gradient_checker.compute_gradient_error(
+          test_image_tensor,
+          test_image_shape,
+          output,
+          output_shape,
+          x_init_value=test_image)
+      self.assertLess(left_err, 1e-10)
+
+  def test_grad(self):
+    self._test_grad([16, 16])
+    self._test_grad([4, 12, 12])
+    self._test_grad([3, 4, 12, 12])
+
+
+class BipartiteMatchTest(test_util.TensorFlowTestCase):
+
+  def _BipartiteMatchTest(self, distance_mat, distance_mat_shape,
+                          num_valid_rows,
+                          expected_row_to_col_match,
+                          expected_col_to_row_match):
+    distance_mat_np = np.array(distance_mat, dtype=np.float32).reshape(
+        distance_mat_shape)
+    expected_row_to_col_match_np = np.array(expected_row_to_col_match,
+                                            dtype=np.int32)
+    expected_col_to_row_match_np = np.array(expected_col_to_row_match,
+                                            dtype=np.int32)
+
+    with self.test_session():
+      distance_mat_tf = constant_op.constant(distance_mat_np,
+                                             shape=distance_mat_shape)
+      location_to_prior, prior_to_location = image_ops.bipartite_match(
+          distance_mat_tf, num_valid_rows)
+      location_to_prior_np = location_to_prior.eval()
+      prior_to_location_np = prior_to_location.eval()
+      self.assertAllEqual(location_to_prior_np, expected_row_to_col_match_np)
+      self.assertAllEqual(prior_to_location_np, expected_col_to_row_match_np)
+
+  def testBipartiteMatch(self):
+    distance_mat = [0.5, 0.8, 0.1,
+                    0.3, 0.2, 0.15]
+    num_valid_rows = 2
+    expected_row_to_col_match = [2, 1]
+    expected_col_to_row_match = [-1, 1, 0]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
+    # The case of num_valid_rows less than num-of-rows-in-distance-mat.
+    num_valid_rows = 1
+    expected_row_to_col_match = [2, -1]
+    expected_col_to_row_match = [-1, -1, 0]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
+    # The case of num_valid_rows being 0.
+    num_valid_rows = 0
+    expected_row_to_col_match = [-1, -1]
+    expected_col_to_row_match = [-1, -1, -1]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
+    # The case of num_valid_rows less being -1.
+    num_valid_rows = -1
+    # The expected results are the same as num_valid_rows being 2.
+    expected_row_to_col_match = [2, 1]
+    expected_col_to_row_match = [-1, 1, 0]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
 
 if __name__ == "__main__":
   googletest.main()
+

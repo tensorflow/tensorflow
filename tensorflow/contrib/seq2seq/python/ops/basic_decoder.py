@@ -21,13 +21,12 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as layers_base
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.util import nest
 
 
@@ -52,21 +51,20 @@ class BasicDecoder(decoder.Decoder):
       cell: An `RNNCell` instance.
       helper: A `Helper` instance.
       initial_state: A (possibly nested tuple of...) tensors and TensorArrays.
+        The initial state of the RNNCell.
       output_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
-        `tf.layers.Dense`.  Optional layer to apply to the RNN output prior
+        `tf.layers.Dense`. Optional layer to apply to the RNN output prior
         to storing the result or sampling.
 
     Raises:
-      TypeError: if `cell` is not an instance of `RNNCell`, `helper`
-        is not an instance of `Helper`, or `output_layer` is not an instance
-        of `tf.layers.Layer`.
+      TypeError: if `cell`, `helper` or `output_layer` have an incorrect type.
     """
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if not isinstance(helper, helper_py.Helper):
       raise TypeError("helper must be a Helper, received: %s" % type(helper))
     if (output_layer is not None
-        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell
@@ -101,17 +99,17 @@ class BasicDecoder(decoder.Decoder):
     # Return the cell output and the id
     return BasicDecoderOutput(
         rnn_output=self._rnn_output_size(),
-        sample_id=tensor_shape.TensorShape([]))
+        sample_id=self._helper.sample_ids_shape)
 
   @property
   def output_dtype(self):
     # Assume the dtype of the cell is the output_size structure
     # containing the input_state's first component's dtype.
-    # Return that structure and int32 (the id)
+    # Return that structure and the sample_ids_dtype from the helper.
     dtype = nest.flatten(self._initial_state)[0].dtype
     return BasicDecoderOutput(
         nest.map_structure(lambda _: dtype, self._rnn_output_size()),
-        dtypes.int32)
+        self._helper.sample_ids_dtype)
 
   def initialize(self, name=None):
     """Initialize the decoder.

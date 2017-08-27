@@ -22,6 +22,9 @@ load(
     "if_mkl",)
 
 
+def full_path(relative_paths):
+  return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
   return [
@@ -41,104 +44,139 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
   ])
 
 
+# Sanitize a dependency so that it works correctly from code that includes
+# TensorFlow as a submodule.
+def clean_dep(dep):
+  return str(Label(dep))
+
+
 def if_android_x86(a):
   return select({
-      str(Label("//tensorflow:android_x86")): a,
-      str(Label("//tensorflow:android_x86_64")): a,
+      clean_dep("//tensorflow:android_x86"): a,
+      clean_dep("//tensorflow:android_x86_64"): a,
       "//conditions:default": [],
   })
 
 
 def if_android_arm(a):
   return select({
-      str(Label("//tensorflow:android_arm")): a,
+      clean_dep("//tensorflow:android_arm"): a,
       "//conditions:default": [],
   })
 
 
 def if_android_arm64(a):
   return select({
-      str(Label("//tensorflow:android_arm64")): a,
+      clean_dep("//tensorflow:android_arm64"): a,
+      "//conditions:default": [],
+  })
+
+
+def if_android_mips(a):
+  return select({
+      clean_dep("//tensorflow:android_mips"): a,
       "//conditions:default": [],
   })
 
 
 def if_not_android(a):
   return select({
-      str(Label("//tensorflow:android")): [],
+      clean_dep("//tensorflow:android"): [],
+      "//conditions:default": a,
+  })
+
+
+def if_not_android_mips_and_mips64(a):
+  return select({
+      clean_dep("//tensorflow:android_mips"): [],
+      clean_dep("//tensorflow:android_mips64"): [],
       "//conditions:default": a,
   })
 
 
 def if_android(a):
   return select({
-      str(Label("//tensorflow:android")): a,
+      clean_dep("//tensorflow:android"): a,
       "//conditions:default": [],
   })
 
 
 def if_ios(a):
   return select({
-      str(Label("//tensorflow:ios")): a,
+      clean_dep("//tensorflow:ios"): a,
       "//conditions:default": [],
   })
 
 
 def if_mobile(a):
   return select({
-      str(Label("//tensorflow:android")): a,
-      str(Label("//tensorflow:ios")): a,
+      clean_dep("//tensorflow:android"): a,
+      clean_dep("//tensorflow:ios"): a,
       "//conditions:default": [],
   })
 
 
 def if_not_mobile(a):
   return select({
-      str(Label("//tensorflow:android")): [],
-      str(Label("//tensorflow:ios")): [],
+      clean_dep("//tensorflow:android"): [],
+      clean_dep("//tensorflow:ios"): [],
       "//conditions:default": a,
   })
 
 
 def if_not_windows(a):
   return select({
-      str(Label("//tensorflow:windows")): [],
+      clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": a,
   })
 
 
-def if_x86(a):
+def if_linux_x86_64(a):
   return select({
-      str(Label("//tensorflow:linux_x86_64")): a,
-      str(Label("//tensorflow:windows")): a,
+      clean_dep("//tensorflow:linux_x86_64"): a,
       "//conditions:default": [],
   })
 
+def if_darwin(a):
+  return select({
+      clean_dep("//tensorflow:darwin"): a,
+      "//conditions:default": [],
+  })
+
+WIN_COPTS = [
+    "/DLANG_CXX11",
+    "/D__VERSION__=\\\"MSVC\\\"",
+    "/DPLATFORM_WINDOWS",
+    "/DTF_COMPILE_LIBRARY",
+    "/DEIGEN_HAS_C99_MATH",
+    "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+    "/DEIGEN_AVOID_STL_ARRAY",
+    "/Iexternal/gemmlowp",
+    "/wd4018", # -Wno-sign-compare
+    "/U_HAS_EXCEPTIONS", "/D_HAS_EXCEPTIONS=1", "/EHsc", # -fno-exceptions
+    "/DNOGDI",
+]
 
 # LINT.IfChange
 def tf_copts():
-  return ([
+  return (if_not_windows([
       "-DEIGEN_AVOID_STL_ARRAY",
       "-Iexternal/gemmlowp",
       "-Wno-sign-compare",
       "-fno-exceptions",
-  ] + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_android_arm(
-      ["-mfpu=neon"]) + if_x86(["-msse3"]) + select({
-          "//tensorflow:android": [
+      "-ftemplate-depth=900",
+  ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
+      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
+          clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",
               "-O2",
           ],
-          "//tensorflow:darwin": [],
-          "//tensorflow:windows": [
-              "/DLANG_CXX11",
-              "/D__VERSION__=\\\"MSVC\\\"",
-              "/DPLATFORM_WINDOWS",
-              "/DTF_COMPILE_LIBRARY",
-              "/DEIGEN_HAS_C99_MATH",
-              "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-          ],
-          "//tensorflow:ios": ["-std=c++11"],
+          clean_dep("//tensorflow:darwin"): [],
+          clean_dep("//tensorflow:windows"): WIN_COPTS,
+          clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
+          clean_dep("//tensorflow:ios"): ["-std=c++11"],
           "//conditions:default": ["-pthread"]
       }))
 
@@ -148,7 +186,7 @@ def tf_opts_nortti_if_android():
       "-fno-rtti",
       "-DGOOGLE_PROTOBUF_NO_RTTI",
       "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-  ]) + if_android_x86(["-msse4.1"])
+  ])
 
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
@@ -166,7 +204,7 @@ def tf_gen_op_libs(op_lib_names, deps=None):
         name=n + "_op_lib",
         copts=tf_copts(),
         srcs=["ops/" + n + ".cc"],
-        deps=deps + ["//tensorflow/core:framework"],
+        deps=deps + [clean_dep("//tensorflow/core:framework")],
         visibility=["//visibility:public"],
         alwayslink=1,
         linkstatic=1,)
@@ -175,7 +213,7 @@ def tf_gen_op_libs(op_lib_names, deps=None):
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
-                         op_gen="//tensorflow/cc:cc_op_gen_main",
+                         op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                          deps=None,
                          override_file=None,
                          include_internal_ops=0):
@@ -235,23 +273,23 @@ def tf_gen_op_wrapper_cc(name,
 #            hdrs = [ "ops/array_ops_internal.h",
 #                     "ops/math_ops_internal.h" ],
 #            deps = [ ... ])
-# TODO(josh11b): Cleaner approach for hidden ops.
+# TODO(joshl): Cleaner approach for hidden ops.
 def tf_gen_op_wrappers_cc(name,
                           op_lib_names=[],
                           other_srcs=[],
                           other_hdrs=[],
                           pkg="",
                           deps=[
-                              str(Label("//tensorflow/cc:ops")),
-                              str(Label("//tensorflow/cc:scope")),
-                              str(Label("//tensorflow/cc:const_op")),
+                              clean_dep("//tensorflow/cc:ops"),
+                              clean_dep("//tensorflow/cc:scope"),
+                              clean_dep("//tensorflow/cc:const_op"),
                           ],
-                          op_gen=str(Label("//tensorflow/cc:cc_op_gen_main")),
+                          op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                           override_file=None,
                           include_internal_ops=0,
                           visibility=None):
-  subsrcs = other_srcs
-  subhdrs = other_hdrs
+  subsrcs = other_srcs[:]
+  subhdrs = other_hdrs[:]
   internalsrcs = []
   internalhdrs = []
   for n in op_lib_names:
@@ -272,12 +310,12 @@ def tf_gen_op_wrappers_cc(name,
       srcs=subsrcs,
       hdrs=subhdrs,
       deps=deps + if_not_android([
-          "//tensorflow/core:core_cpu",
-          "//tensorflow/core:framework",
-          "//tensorflow/core:lib",
-          "//tensorflow/core:protos_all_cc",
+          clean_dep("//tensorflow/core:core_cpu"),
+          clean_dep("//tensorflow/core:framework"),
+          clean_dep("//tensorflow/core:lib"),
+          clean_dep("//tensorflow/core:protos_all_cc"),
       ]) + if_android([
-          "//tensorflow/core:android_tensorflow_lib",
+          clean_dep("//tensorflow/core:android_tensorflow_lib"),
       ]),
       copts=tf_copts(),
       alwayslink=1,
@@ -287,19 +325,38 @@ def tf_gen_op_wrappers_cc(name,
       srcs=internalsrcs,
       hdrs=internalhdrs,
       deps=deps + if_not_android([
-          "//tensorflow/core:core_cpu",
-          "//tensorflow/core:framework",
-          "//tensorflow/core:lib",
-          "//tensorflow/core:protos_all_cc",
+          clean_dep("//tensorflow/core:core_cpu"),
+          clean_dep("//tensorflow/core:framework"),
+          clean_dep("//tensorflow/core:lib"),
+          clean_dep("//tensorflow/core:protos_all_cc"),
       ]) + if_android([
-          "//tensorflow/core:android_tensorflow_lib",
+          clean_dep("//tensorflow/core:android_tensorflow_lib"),
       ]),
       copts=tf_copts(),
       alwayslink=1,
-      visibility=["//tensorflow:internal"])
+      visibility=[clean_dep("//tensorflow:internal")])
 
 
-# Invoke this rule in .../tensorflow/python to build the wrapper library.
+# Generates a Python library target wrapping the ops registered in "deps".
+#
+# Args:
+#   name: used as the name of the generated target and as a name component of
+#     the intermediate files.
+#   out: name of the python file created by this rule. If None, then
+#     "ops/gen_{name}.py" is used.
+#   hidden: Optional list of ops names to make private in the Python module.
+#     It is invalid to specify both "hidden" and "op_whitelist".
+#   visibility: passed to py_library.
+#   deps: list of dependencies for the generated target.
+#   require_shape_functions: leave this as False.
+#   hidden_file: optional file that contains a list of op names to make private
+#     in the generated Python module. Each op name should be on a line by
+#     itself. Lines that start with characters that are invalid op name
+#     starting characters are treated as comments and ignored.
+#   generated_target_name: name of the generated target (overrides the
+#     "name" arg)
+#   op_whitelist: if not empty, only op names in this list will be wrapped. It
+#     is invalid to specify both "hidden" and "op_whitelist".
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
@@ -307,7 +364,11 @@ def tf_gen_op_wrapper_py(name,
                          deps=[],
                          require_shape_functions=False,
                          hidden_file=None,
-                         generated_target_name=None):
+                         generated_target_name=None,
+                         op_whitelist=[]):
+  if (hidden or hidden_file) and op_whitelist:
+    fail('Cannot pass specify both hidden and op_whitelist.')
+
   # Construct a cc_binary containing the specified ops.
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
@@ -318,24 +379,26 @@ def tf_gen_op_wrapper_py(name,
       copts=tf_copts(),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=([
-          "//tensorflow/core:framework",
-          "//tensorflow/python:python_op_gen_main"
+          clean_dep("//tensorflow/core:framework"),
+          clean_dep("//tensorflow/python:python_op_gen_main")
       ] + deps),
-      visibility=["//tensorflow:internal"],)
+      visibility=[clean_dep("//tensorflow:internal")],)
 
   # Invoke the previous cc_binary to generate a python file.
   if not out:
     out = "ops/gen_" + name + ".py"
 
   if hidden:
-    # `hidden` is a list of op names to be hidden in the generated module.
-    native.genrule(
-        name=name + "_pygenrule",
-        outs=[out],
-        tools=[tool_name],
-        cmd=("$(location " + tool_name + ") " + ",".join(hidden) + " " +
-             ("1" if require_shape_functions else "0") + " > $@"))
-  elif hidden_file:
+    op_list_arg = ",".join(hidden)
+    op_list_is_whitelist = False
+  elif op_whitelist:
+    op_list_arg = ",".join(op_whitelist)
+    op_list_is_whitelist = True
+  else:
+    op_list_arg = "''"
+    op_list_is_whitelist = False
+
+  if hidden_file:
     # `hidden_file` is file containing a list of op names to be hidden in the
     # generated module.
     native.genrule(
@@ -346,13 +409,13 @@ def tf_gen_op_wrapper_py(name,
         cmd=("$(location " + tool_name + ") @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
   else:
-    # No ops should be hidden in the generated module.
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
         tools=[tool_name],
-        cmd=("$(location " + tool_name + ") " +
-             ("1" if require_shape_functions else "0") + " > $@"))
+        cmd=("$(location " + tool_name + ") " + op_list_arg + " " +
+             ("1" if require_shape_functions else "0") + " " +
+             ("1" if op_list_is_whitelist else "0") + " > $@"))
 
   # Make a py_library out of the generated python file.
   if not generated_target_name:
@@ -363,7 +426,7 @@ def tf_gen_op_wrapper_py(name,
       srcs_version="PY2AND3",
       visibility=visibility,
       deps=[
-          "//tensorflow/python:framework_for_generated_wrappers_v2",
+          clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
       ],)
 
 
@@ -439,7 +502,7 @@ def tf_cuda_cc_test(name,
       name=name,
       srcs=srcs,
       suffix="_gpu",
-      deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
+      deps=deps + if_cuda([clean_dep("//tensorflow/core:gpu_runtime")]),
       linkstatic=if_cuda(1, 0),
       tags=tags + tf_cuda_tests_tags(),
       data=data,
@@ -447,6 +510,29 @@ def tf_cuda_cc_test(name,
       linkopts=linkopts,
       args=args)
 
+def tf_cuda_only_cc_test(name,
+                    srcs=[],
+                    deps=[],
+                    tags=[],
+                    data=[],
+                    size="medium",
+                    linkstatic=0,
+                    args=[],
+                    linkopts=[]):
+  native.cc_test(
+    name="%s%s" % (name, "_gpu"),
+    srcs=srcs,
+    size=size,
+    args=args,
+    copts= _cuda_copts() + tf_copts(),
+    data=data,
+    deps=deps + if_cuda([
+        clean_dep("//tensorflow/core:cuda"),
+        clean_dep("//tensorflow/core:gpu_lib"),
+    ]),
+    linkopts=["-lpthread", "-lm"] + linkopts,
+    linkstatic=linkstatic,
+    tags=tags)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
@@ -547,8 +633,8 @@ def tf_gpu_kernel_library(srcs,
       hdrs=hdrs,
       copts=copts,
       deps=deps + if_cuda([
-          "//tensorflow/core:cuda",
-          "//tensorflow/core:gpu_lib",
+          clean_dep("//tensorflow/core:cuda"),
+          clean_dep("//tensorflow/core:gpu_lib"),
       ]),
       alwayslink=1,
       **kwargs)
@@ -579,7 +665,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
 
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
-          "//tensorflow/core:cuda",
+          clean_dep("//tensorflow/core:cuda"),
           "@local_config_cuda//cuda:cuda_headers"
       ]),
       copts=copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
@@ -634,7 +720,7 @@ def tf_kernel_library(name,
     hdrs = hdrs + native.glob(
         [prefix + "*.h"], exclude=[prefix + "*test*", prefix + "*.cu.h"])
 
-  cuda_deps = [str(Label("//tensorflow/core:gpu_lib"))]
+  cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
   if gpu_srcs:
     for gpu_src in gpu_srcs:
       if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
@@ -684,13 +770,13 @@ def _py_wrap_cc_impl(ctx):
     fail("Exactly one SWIG source file label must be specified.", "srcs")
   module_name = ctx.attr.module_name
   src = ctx.files.srcs[0]
-  inputs = set([src])
+  inputs = depset([src])
   inputs += ctx.files.swig_includes
   for dep in ctx.attr.deps:
     inputs += dep.cc.transitive_headers
   inputs += ctx.files._swiglib
   inputs += ctx.files.toolchain_deps
-  swig_include_dirs = set(_get_repository_roots(ctx, inputs))
+  swig_include_dirs = depset(_get_repository_roots(ctx, inputs))
   swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
   args = [
       "-c++", "-python", "-module", module_name, "-o", ctx.outputs.cc_out.path,
@@ -707,7 +793,7 @@ def _py_wrap_cc_impl(ctx):
       outputs=outputs,
       mnemonic="PythonSwig",
       progress_message="SWIGing " + src.path)
-  return struct(files=set(outputs))
+  return struct(files=depset(outputs))
 
 
 _py_wrap_cc = rule(
@@ -780,7 +866,7 @@ def _get_repository_roots(ctx, files):
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
-  outputs = set()
+  outputs = depset()
   for dep in ctx.attr.deps:
     outputs += dep.cc.transitive_headers
   return struct(files=outputs)
@@ -802,16 +888,36 @@ def transitive_hdrs(name, deps=[], **kwargs):
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
-def cc_header_only_library(name, deps=[], **kwargs):
+def cc_header_only_library(name, deps=[], includes=[], **kwargs):
   _transitive_hdrs(name=name + "_gather", deps=deps)
-  native.cc_library(name=name, hdrs=[":" + name + "_gather"], **kwargs)
+
+  # We could generalize the following, but rather than complicate things
+  # here, we'll do the minimal use case for now, and hope bazel comes up
+  # with a better solution before too long.  We'd expect it to compute
+  # the right include path by itself, but it doesn't, possibly because
+  # _transitive_hdrs lost some information about the include path.
+  if "@nsync//:nsync_headers" in deps:
+    # Buiding tensorflow from @org_tensorflow finds this two up.
+    nsynch = "../../external/nsync/public"
+    # Building tensorflow from elsewhere finds it four up.
+    # Note that native.repository_name() is not yet available in TF's Kokoro.
+    if REPOSITORY_NAME != "@":
+      nsynch = "../../" + nsynch
+    includes = includes[:]
+    includes.append(nsynch)
+
+  native.cc_library(name=name,
+                    hdrs=[":" + name + "_gather"],
+                    includes=includes,
+                    **kwargs)
 
 
 def tf_custom_op_library_additional_deps():
   return [
-      "@protobuf//:protobuf_headers",
-      str(Label("//third_party/eigen3")),
-      str(Label("//tensorflow/core:framework_headers_lib")),
+      "@protobuf_archive//:protobuf_headers",
+      "@nsync//:nsync_headers",
+      clean_dep("//third_party/eigen3"),
+      clean_dep("//tensorflow/core:framework_headers_lib"),
   ]
 
 
@@ -820,10 +926,10 @@ def tf_custom_op_library_additional_deps():
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
-  alldeps = set()
+  alldeps = depset()
   if hasattr(ctx.rule.attr, "deps"):
     for dep in ctx.rule.attr.deps:
-      alldeps = alldeps | set([dep.label])
+      alldeps = alldeps | depset([dep.label])
       if hasattr(dep, "tf_collected_deps"):
         alldeps = alldeps | dep.tf_collected_deps
   return struct(tf_collected_deps=alldeps)
@@ -871,7 +977,7 @@ check_deps = rule(
 # implementations of custom ops and kernels.
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   cuda_deps = [
-      str(Label("//tensorflow/core:stream_executor_headers_lib")),
+      clean_dep("//tensorflow/core:stream_executor_headers_lib"),
       "@local_config_cuda//cuda:cudart_static",
   ]
   deps = deps + tf_custom_op_library_additional_deps()
@@ -888,8 +994,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       name=name + "_check_deps",
       deps=deps + if_cuda(cuda_deps),
       disallowed_deps=[
-          "//tensorflow/core:framework",
-          "//tensorflow/core:lib"
+          clean_dep("//tensorflow/core:framework"),
+          clean_dep("//tensorflow/core:lib")
       ])
 
   native.cc_binary(
@@ -903,7 +1009,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
           "//conditions:default": [
               "-lm",
           ],
-          "//tensorflow:darwin": [],
+          clean_dep("//tensorflow:darwin"): [],
       }),)
 
 
@@ -956,30 +1062,32 @@ def tf_py_wrap_cc(name,
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          str(Label("//tensorflow:tf_exported_symbols.lds"))
+          clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
-      str(Label("//tensorflow:windows")): [],
+      clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          "//tensorflow:tf_version_script.lds"
+          clean_dep("//tensorflow:tf_version_script.lds")
       ]
   })
   extra_deps += select({
       "@local_config_cuda//cuda:darwin": [
-          "//tensorflow:tf_exported_symbols.lds"
+          clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
-      "//tensorflow:windows": [],
+      clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
-          "//tensorflow:tf_version_script.lds"
+          clean_dep("//tensorflow:tf_version_script.lds")
       ]
   })
 
   native.cc_binary(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
-      copts=(copts + [
+      copts=(copts + if_not_windows([
           "-Wno-self-assign", "-Wno-sign-compare", "-Wno-write-strings"
-      ] + tf_extension_copts()),
+      ]) + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
       linkshared=1,
@@ -994,7 +1102,7 @@ def tf_py_wrap_cc(name,
       srcs=[":" + name + ".py"],
       srcs_version="PY2AND3",
       data=select({
-          "//tensorflow:windows": [":" + cc_library_pyd_name],
+          clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
           "//conditions:default": [":" + cc_library_name],
       }))
 
@@ -1003,7 +1111,7 @@ def py_test(deps=[], **kwargs):
   native.py_test(
       deps=select({
           "//conditions:default": deps,
-          "//tensorflow:no_tensorflow_py_deps": []
+          clean_dep("//tensorflow:no_tensorflow_py_deps"): []
       }),
       **kwargs)
 
@@ -1020,7 +1128,7 @@ def tf_py_test(name,
                flaky=0,
                xla_enabled=False):
   if xla_enabled:
-    additional_deps += tf_additional_xla_deps_py()
+    additional_deps = additional_deps + tf_additional_xla_deps_py()
   native.py_test(
       name=name,
       size=size,
@@ -1028,15 +1136,15 @@ def tf_py_test(name,
       main=main,
       args=args,
       tags=tags,
-      visibility=[str(Label("//tensorflow:internal"))],
+      visibility=[clean_dep("//tensorflow:internal")],
       shard_count=shard_count,
       data=data,
       deps=select({
           "//conditions:default": [
-              "//tensorflow/python:extra_py_tests_deps",
-              "//tensorflow/python:gradient_checker",
+              clean_dep("//tensorflow/python:extra_py_tests_deps"),
+              clean_dep("//tensorflow/python:gradient_checker"),
           ] + additional_deps,
-          "//tensorflow:no_tensorflow_py_deps": []
+          clean_dep("//tensorflow:no_tensorflow_py_deps"): []
       }),
       flaky=flaky,
       srcs_version="PY2AND3")
@@ -1153,13 +1261,13 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
   out_srcs = [p.replace(".proto", ".pb_text.cc") for p in srcs]
   native.genrule(
       name=name,
-      srcs=srcs + ["//tensorflow/tools/proto_text:placeholder.txt"],
+      srcs=srcs + [clean_dep("//tensorflow/tools/proto_text:placeholder.txt")],
       outs=out_hdrs + out_srcs,
       cmd=
       "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) "
       + "$(@D) " + srcs_relative_dir + " $(SRCS)",
       tools=[
-          "//tensorflow/tools/proto_text:gen_proto_text_functions"
+          clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions")
       ],)
   return struct(hdrs=out_hdrs, srcs=out_srcs)
 
@@ -1173,15 +1281,15 @@ def tf_version_info_genrule():
   native.genrule(
       name="version_info_gen",
       srcs=[
-          "//tensorflow/tools/git:gen/spec.json",
-          "//tensorflow/tools/git:gen/head",
-          "//tensorflow/tools/git:gen/branch_ref",
+          clean_dep("//tensorflow/tools/git:gen/spec.json"),
+          clean_dep("//tensorflow/tools/git:gen/head"),
+          clean_dep("//tensorflow/tools/git:gen/branch_ref"),
       ],
       outs=["util/version_info.cc"],
       cmd=
       "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
       local=1,
-      tools=["//tensorflow/tools/git:gen_git_source.py"],)
+      tools=[clean_dep("//tensorflow/tools/git:gen_git_source.py")],)
 
 
 def cc_library_with_android_deps(deps,

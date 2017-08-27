@@ -87,7 +87,7 @@ class IndicesRowIterator
     return tmp;
   }
 
-  difference_type operator-(const IndicesRowIterator& other) {
+  difference_type operator-(const IndicesRowIterator& other) const {
     return row_idx_ - other.row_idx_;
   }
 

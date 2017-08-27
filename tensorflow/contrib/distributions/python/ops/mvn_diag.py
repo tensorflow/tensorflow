@@ -146,8 +146,8 @@ class MultivariateNormalDiag(
     The `batch_shape` is the broadcast shape between `loc` and `scale`
     arguments.
 
-    The `event_shape` is given by the last dimension of `loc` or the last
-    dimension of the matrix implied by `scale`.
+    The `event_shape` is given by last dimension of the matrix implied by
+    `scale`. The last dimension of `loc` (if provided) must broadcast with this.
 
     Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix is:
 
@@ -197,11 +197,14 @@ class MultivariateNormalDiag(
     with ops.name_scope(name):
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
+        # No need to validate_args while making diag_scale.  The returned
+        # LinearOperatorDiag has an assert_non_singular method that is called by
+        # the Bijector.
         scale = distribution_util.make_diag_scale(
             loc=loc,
             scale_diag=scale_diag,
             scale_identity_multiplier=scale_identity_multiplier,
-            validate_args=validate_args,
+            validate_args=False,
             assert_positive=False)
     super(MultivariateNormalDiag, self).__init__(
         loc=loc,

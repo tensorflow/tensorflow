@@ -23,12 +23,17 @@ limitations under the License.
 // bazel-bin/tensorflow/tools/graph_transforms/summarize_graph \
 // --in_graph=my_graph.pb
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/file_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -36,10 +41,15 @@ namespace graph_transforms {
 namespace {
 
 void PrintNodeInfo(const NodeDef* node) {
-  TensorShape shape;
+  string shape_description = "None";
   if (node->attr().count("shape")) {
     TensorShapeProto shape_proto = node->attr().at("shape").shape();
-    shape = TensorShape(shape_proto);
+    Status shape_status = PartialTensorShape::IsValidShape(shape_proto);
+    if (shape_status.ok()) {
+      shape_description = PartialTensorShape(shape_proto).DebugString();
+    } else {
+      shape_description = shape_status.error_message();
+    }
   }
   DataType dtype = DT_INVALID;
   if (node->attr().count("dtype")) {
@@ -47,11 +57,11 @@ void PrintNodeInfo(const NodeDef* node) {
   }
   std::cout << "(name=" << node->name();
   std::cout << ", type=" << DataTypeString(dtype) << "(" << dtype << ")";
-  std::cout << ", shape=" << shape.DebugString() << ") ";
+  std::cout << ", shape=" << shape_description << ") ";
 }
 
-void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
-                         const std::vector<const NodeDef*> variables,
+void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
+                         const std::vector<const NodeDef*>& variables,
                          const std::vector<const NodeDef*> outputs,
                          const string& graph_path) {
   std::vector<const NodeDef*> all_inputs(placeholders);
@@ -68,18 +78,28 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
     }
     input_layer_types.push_back(DataTypeString(dtype));
     std::vector<int64> sizes;
-    TensorShape shape;
+    PartialTensorShape shape;
     if (node->attr().count("shape")) {
       TensorShapeProto shape_proto = node->attr().at("shape").shape();
-      shape = TensorShape(shape_proto);
+      if (PartialTensorShape::IsValid(shape_proto)) {
+        shape = PartialTensorShape(shape_proto);
+      }
     }
-    for (int i = 0; i < shape.dims(); ++i) {
-      sizes.push_back(shape.dim_size(i));
+    string sizes_string;
+    if (shape.dims() == -1) {
+      // Unknown shapes can have -1 for dims, so leave these blank.
+      sizes_string = "";
+    } else {
+      sizes.reserve(shape.dims());
+      for (int i = 0; i < shape.dims(); ++i) {
+        sizes.push_back(shape.dim_size(i));
+      }
+      sizes_string = str_util::Join(sizes, ",");
     }
-    string sizes_string = str_util::Join(sizes, ",");
     input_layer_shapes.push_back(sizes_string);
   }
   std::vector<string> output_layers;
+  output_layers.reserve(outputs.size());
   for (const NodeDef* node : outputs) {
     output_layers.push_back(node->name());
   }
@@ -94,7 +114,6 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
   std::cout << "bazel run tensorflow/tools/benchmark:benchmark_model --";
   std::cout << " --graph=" << graph_path;
   std::cout << " --show_flops";
-  std::cout << " --logtostderr";
   std::cout << " --input_layer=" << input_layer_value;
   std::cout << " --input_layer_type=" << input_layer_type_value;
   std::cout << " --input_layer_shape=" << input_layer_shape_value;
@@ -102,7 +121,28 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
   std::cout << std::endl;
 }
 
-Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
+Status PrintStructure(const GraphDef& graph) {
+  GraphDef sorted_graph;
+  TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
+  for (const NodeDef& node : sorted_graph.node()) {
+    std::cout << node.name() << " (" << node.op() << "): ["
+              << str_util::Join(node.input(), ", ") << "]";
+    if (node.op() == "Const") {
+      Tensor tensor;
+      if (node.attr().count("value") &&
+          tensor.FromProto(node.attr().at("value").tensor())) {
+        std::cout << ", value=" << tensor.DebugString();
+      } else {
+        LOG(WARNING) << "Decoding Tensor failed for node" << node.name();
+      }
+    }
+    std::cout << std::endl;
+  }
+  return Status::OK();
+}
+
+Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
+                      bool print_structure) {
   std::vector<const NodeDef*> placeholders;
   std::vector<const NodeDef*> variables;
   for (const NodeDef& node : graph.node()) {
@@ -137,9 +177,11 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
   std::map<string, std::vector<const NodeDef*>> output_map;
   MapNodesToOutputs(graph, &output_map);
   std::vector<const NodeDef*> outputs;
+  std::unordered_set<string> unlikely_output_types = {"Const", "Assign", "NoOp",
+                                                      "Placeholder"};
   for (const NodeDef& node : graph.node()) {
-    if ((output_map.count(node.name()) == 0) && (node.op() != "Const") &&
-        (node.op() != "Assign") && (node.op() != "NoOp")) {
+    if ((output_map.count(node.name()) == 0) &&
+        (unlikely_output_types.count(node.op()) == 0)) {
       outputs.push_back(&node);
     }
   }
@@ -165,7 +207,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
         ++control_edge_count;
       }
     }
-    if (node.device() != "") {
+    if (!node.device().empty()) {
       ++device_counts[node.device()];
     }
     if ((node.op() == "Const") || (node.op() == "Variable") ||
@@ -213,6 +255,11 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
   for (const NodeDef& node : graph.node()) {
     ++op_counts[node.op()];
   }
+  for (const FunctionDef& function : graph.library().function()) {
+    for (const NodeDef& node : function.node_def()) {
+      ++op_counts[node.op()];
+    }
+  }
   std::vector<std::pair<string, int>> op_counts_vec(op_counts.begin(),
                                                     op_counts.end());
   std::sort(op_counts_vec.begin(), op_counts_vec.end(),
@@ -233,13 +280,20 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
 
   PrintBenchmarkUsage(placeholders, variables, outputs, graph_path);
 
+  if (print_structure) {
+    TF_RETURN_IF_ERROR(PrintStructure(graph));
+  }
+
   return Status::OK();
 }
 
 int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   string in_graph = "";
+  bool print_structure = false;
   std::vector<Flag> flag_list = {
       Flag("in_graph", &in_graph, "input graph file name"),
+      Flag("print_structure", &print_structure,
+           "whether to print the network connections of the graph"),
   };
   string usage = Flags::Usage(argv[0], flag_list);
 
@@ -269,7 +323,8 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
     return -1;
   }
 
-  Status summarize_result = SummarizeGraph(graph_def, in_graph);
+  Status summarize_result =
+      SummarizeGraph(graph_def, in_graph, print_structure);
   if (!summarize_result.ok()) {
     LOG(ERROR) << summarize_result.error_message() << "\n" << usage;
     return -1;

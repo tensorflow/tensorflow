@@ -22,7 +22,9 @@ from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.estimator.export import export_output as export_output_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -196,6 +198,33 @@ class ExportOutputTest(test.TestCase):
     expected_signature_def.method_name = (
         signature_constants.CLASSIFY_METHOD_NAME)
     self.assertEqual(actual_signature_def, expected_signature_def)
+
+  def test_predict_output_constructor(self):
+    """Tests that no errors are raised when input is expected."""
+    outputs = {
+        "output0": constant_op.constant([0]),
+        u"output1": constant_op.constant([1]),
+    }
+    export_output_lib.PredictOutput(outputs)
+
+  def test_predict_output_outputs_invalid(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Prediction outputs must be given as a dict of string to Tensor"):
+      export_output_lib.PredictOutput(constant_op.constant([0]))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Prediction output key must be a string"):
+      export_output_lib.PredictOutput({1: constant_op.constant([0])})
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Prediction output value must be a Tensor"):
+      export_output_lib.PredictOutput({
+          "prediction1": sparse_tensor.SparseTensor(
+              indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+      })
 
 
 if __name__ == "__main__":

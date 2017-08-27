@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <sys/stat.h>
 #include <deque>
+#include <utility>
 #include <vector>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
+#include "tensorflow/core/platform/windows/windows_file_system.h"
 #define PATH_MAX MAX_PATH
 #else
 #include <unistd.h>
@@ -29,7 +32,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -95,7 +101,7 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
 
 Status Env::RegisterFileSystem(const string& scheme,
                                FileSystemRegistry::Factory factory) {
-  return file_system_registry_->Register(scheme, factory);
+  return file_system_registry_->Register(scheme, std::move(factory));
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
@@ -261,8 +267,11 @@ string Env::GetExecutablePath() {
   _NSGetExecutablePath(unresolved_path, &buffer_size);
   CHECK(realpath(unresolved_path, exe_path));
 #elif defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
+  HMODULE hModule = GetModuleHandleW(NULL);
+  WCHAR wc_file_path[MAX_PATH] = {0};
+  GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
+  string file_path = WindowsFileSystem::WideCharToUtf8(wc_file_path);
+  std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
   CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
 #endif
@@ -270,6 +279,39 @@ string Env::GetExecutablePath() {
   exe_path[sizeof(exe_path) - 1] = 0;
 
   return exe_path;
+}
+
+bool Env::LocalTempFilename(string* filename) {
+  std::vector<string> dirs;
+  GetLocalTempDirectories(&dirs);
+
+  // Try each directory, as they might be full, have inappropriate
+  // permissions or have different problems at times.
+  for (const string& dir : dirs) {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    int32 tid = static_cast<int32>(tid64);
+    int32 pid = static_cast<int32>(getpid());
+#elif defined(PLATFORM_WINDOWS)
+    int32 tid = static_cast<int32>(GetCurrentThreadId());
+    int32 pid = static_cast<int32>(GetCurrentProcessId());
+#else
+    int32 tid = static_cast<int32>(pthread_self());
+    int32 pid = static_cast<int32>(getpid());
+#endif
+    uint64 now_microsec = NowMicros();
+
+    *filename = io::JoinPath(
+        dir, strings::Printf("tempfile-%s-%x-%d-%llx", port::Hostname().c_str(),
+                             tid, pid, now_microsec));
+    if (FileExists(*filename).ok()) {
+      filename->clear();
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 Thread::~Thread() {}

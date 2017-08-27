@@ -489,7 +489,7 @@ public final class Tensor implements AutoCloseable {
     // assumes a fully-known shape
     int n = 1;
     for (int i = 0; i < shape.length; i++) {
-      n *= shape[i];
+      n *= (int) shape[i];
     }
     return n;
   }
@@ -508,9 +508,8 @@ public final class Tensor implements AutoCloseable {
         return 1;
       case STRING:
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
-      default:
-        throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
     }
+    throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
   }
 
   private static DataType dataTypeOf(Object o) {

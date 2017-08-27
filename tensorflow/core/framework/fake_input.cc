@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/fake_input.h"
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
