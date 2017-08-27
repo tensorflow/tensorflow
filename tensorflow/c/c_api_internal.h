@@ -146,6 +146,8 @@ class TensorCApi {
   }
 };
 
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 
 Status MessageToBuffer(const tensorflow::protobuf::Message& in, TF_Buffer* out);
