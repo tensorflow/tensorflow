@@ -18,9 +18,9 @@ namespace poplarplugin {
 
 static port::StatusOr<double>
 DoubleValueOfScalarLiteral(const xla::Literal& lit) {
-  if (lit.shape().dimensions_size() != 0) {
+  if (ShapeUtil::ElementsIn(lit.shape()) != 1) {
     return port::Status(port::error::FAILED_PRECONDITION,
-                        "Literal rank != 0");
+                        "Literal element count != 1");
   }
 
   std::unique_ptr<Literal> double_lit;
