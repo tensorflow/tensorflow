@@ -66,12 +66,15 @@ class InstructionFusion : public HloPassInterface {
   virtual HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
                                                 const HloInstruction* consumer);
 
+  // Fuses producer into consumer.
+  virtual HloInstruction* Fuse(HloInstruction* producer,
+                               HloInstruction* consumer);
+
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
+  HloModule* module_;
 
  private:
-  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
-
   // The set of producers whose consumers we cannot fuse into.
   using DoNotFuseSet = std::unordered_set<HloInstruction*>;
 

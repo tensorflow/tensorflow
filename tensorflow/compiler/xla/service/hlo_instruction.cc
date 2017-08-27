@@ -532,6 +532,8 @@ void HloInstruction::MergeFusionInstruction(
     HloInstruction* instruction_to_merge) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK_EQ(instruction_to_merge->opcode(), HloOpcode::kFusion);
+  CHECK(std::find(operands().begin(), operands().end(), instruction_to_merge) !=
+        operands().end());
   // Clone the instruction from which to merge fused instructions.
   std::unique_ptr<HloInstruction> clone = instruction_to_merge->Clone();
   // Replace uses of fused parameters with the corresponding operand of the
@@ -563,6 +565,11 @@ void HloInstruction::MergeFusionInstruction(
   }
   CHECK_EQ(0, clone->user_count());
   clone->DetachFromOperands();
+
+  if (GetModule()) {
+    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+        clone->fused_instructions_computation()));
+  }
 }
 
 void HloInstruction::MergeFusionInstructionIntoMultiOutput(
@@ -2131,6 +2138,7 @@ using DFSStack =
 // cycle was detected, and true otherwise.
 inline bool PushDFSChild(DfsHloVisitor* visitor, DFSStack* dfs_stack,
                          HloInstruction* child) {
+  CHECK(child != nullptr);
   const int id = child->unique_id();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
@@ -2193,7 +2201,6 @@ static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
     visitor->SetVisitState(current_id, DfsHloVisitor::kVisiting);
 
     const size_t old_dfs_stack_size = dfs_stack.size();
-
     for (HloInstruction* child : current_node->operands()) {
       if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
         return FailedPrecondition(
