@@ -10,7 +10,9 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 filegroup(
     name = "test_data",
@@ -113,18 +115,19 @@ tf_py_test(
     tags = ["manual"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "ffmpeg_ops_py",
     srcs = [
         "__init__.py",
         "ffmpeg_ops.py",
     ],
-    data = [":ffmpeg.so"],
+    dso = [":ffmpeg.so"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_not_windows([
         ":decode_audio_op_py",
         ":encode_audio_op_py",
+    ]) + [
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
