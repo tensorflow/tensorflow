@@ -5,8 +5,8 @@ This folder contains examples of how to build applications for iOS devices using
 ## Running the Samples using CocoaPod
  - You'll need Xcode 7.3 or later.
 
- - There are currently three examples: simple, benchmark, and camera. For now,
-   you can download the sample code by cloning the main tensorflow repository 
+ - There are currently four examples: simple, benchmark, camera, and caption. For now,
+   you can download the sample code by cloning the main tensorflow repository
    (we are planning to make the samples available as a separate repository
    later).
 
@@ -25,6 +25,10 @@ cp ~/graphs/inception5h/* tensorflow/examples/ios/camera/data/
 cp ~/graphs/inception5h/* tensorflow/examples/ios/simple/data/
 ```
 
+ - If you are working with the caption example, instead download [Im2txt](https://drive.google.com/file/d/0BxVM8aKmfu9GM0RUQ0lzZm5TNUk/view).
+   Then extract the label and graph files into the data folders inside the
+   caption example.
+
  - Change directory to one of the samples, download the TensorFlow-experimental
    pod, and open the Xcode workspace. Observe: installing the pod can take a
    long time since it is big (~450MB). For example, if you want to run the
@@ -40,16 +44,18 @@ open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
    below indicating that the example Grace Hopper image in directory data has
    been analyzed, with a military uniform recognized.
 
- - Run the other samples using the same process. The camera example requires a
-   real device connected. Once you build and run that, you should get a live
-   camera view that you can point at objects to get real-time recognition
-   results.
+ - Run the other samples using the same process. The camera and camption
+   examples require a real device connected. Once you build and run that, you
+   should get a live camera view that you can point at objects to get real-time
+   recognition results (tap to generate a caption in the caption example).
+
+
 
 ### Troubleshooting
 
  - Make sure you use the TensorFlow-experimental pod (and not TensorFlow).
-  
- - The TensorFlow-experimental pod is current about ~450MB. The reason it is 
+
+ - The TensorFlow-experimental pod is current about ~450MB. The reason it is
    so big is because we are bundling multiple platforms, and the pod includes
    all TensorFlow functionality (e.g. operations). The final app size after
    build is substantially smaller though (~25MB). Working with the complete
@@ -91,7 +97,7 @@ target 'YourProjectName'
    open up the Xcode project in the `camera` subfolder. Once you build and run
    that, you should get a live camera view that you can point at objects to get
    real-time recognition results.
-   
+
 ### Troubleshooting
 
 If you're hitting problems, here's a checklist of common things to investigate:
