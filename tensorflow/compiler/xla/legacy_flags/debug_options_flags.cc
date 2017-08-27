@@ -29,7 +29,6 @@ DebugOptions* flag_values;
 std::vector<tensorflow::Flag>* flag_objects;
 std::once_flag flags_init;
 
-namespace {
 void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_hlo_graph_path("/tmp/");
   flags->set_xla_enable_fast_math(true);
@@ -41,7 +40,6 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   flags->set_xla_eliminate_hlo_implicit_broadcast(true);
 }
-}  // namespace
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.

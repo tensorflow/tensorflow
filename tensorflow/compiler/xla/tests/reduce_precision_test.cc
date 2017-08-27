@@ -322,5 +322,51 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedAfterFusion) {
   ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
 }
 
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedFusionContains) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // These two operations should be fused by any reasonable backend.
+  auto abs = builder.Abs(a);
+  auto neg = builder.Neg(abs);
+
+  // Add a pass suffixing fusion nodes containing kCos operations.  This
+  // should have no effect.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::FUSION_BY_CONTENT, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kCos; });
+
+  ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
+}
+
+XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedFusionContains) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a = builder.Parameter(0, a_literal->shape(), "a");
+
+  // These two operations should be fused by any reasonable backend.
+  auto abs = builder.Abs(a);
+  auto neg = builder.Neg(abs);
+
+  // Add a pass suffixing fusion nodes containing kAbs operations.  This
+  // should see the kAbs operation within the above fusion node.
+  auto reduce_precision_pass = execution_options_.mutable_debug_options()
+                                   ->add_hlo_reduce_precision_options();
+  *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
+      HloReducePrecisionOptions::FUSION_BY_CONTENT, 5, 10,
+      [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+}
+
 }  // namespace
 }  // namespace xla

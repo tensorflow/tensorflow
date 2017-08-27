@@ -34,8 +34,8 @@ class LogitFnTest(test.TestCase):
       else:
         return features['f2']
     features = {
-        'f1': constant_op.constant([2., 3.]),
-        'f2': constant_op.constant([4., 5.])
+        'f1': constant_op.constant([[2., 3.]]),
+        'f2': constant_op.constant([[4., 5.]])
     }
     logit_fn_result = logit_fns.call_logit_fn(
         dummy_logit_fn, features, model_fn.ModeKeys.EVAL, 'fake_params',
@@ -51,10 +51,14 @@ class LogitFnTest(test.TestCase):
           'tensor2': features['f2'] * params['input_multiplier']
       }
     features = {
-        'f1': constant_op.constant([2., 3.]),
-        'f2': constant_op.constant([4., 5.])
+        'f1': constant_op.constant([[2., 3.]]),
+        'f2': constant_op.constant([[4., 5.]])
     }
     params = {'learning_rate': 0.001, 'input_multiplier': 2.0}
     with self.assertRaisesRegexp(ValueError, 'model_fn should return a Tensor'):
       logit_fns.call_logit_fn(invalid_logit_fn, features, 'fake_mode', params,
                               'fake_config')
+
+
+if __name__ == '__main__':
+  test.main()

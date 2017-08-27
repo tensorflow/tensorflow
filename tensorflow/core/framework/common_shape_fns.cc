@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
