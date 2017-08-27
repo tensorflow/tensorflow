@@ -151,9 +151,10 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t) {
-  return new TFE_TensorHandle(
-      tensorflow::TensorCApi::MakeTensor(t->dtype, t->shape, t->buffer),
-      nullptr);
+  tensorflow::Tensor tensor;
+  // TODO: Add status argument and check on it.
+  tensorflow::TF_TensorToTensor(t, &tensor);
+  return new TFE_TensorHandle(tensor, nullptr);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) { delete h; }
