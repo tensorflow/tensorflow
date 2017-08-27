@@ -64,6 +64,7 @@ py_library(
         ":initializers_ns",
         ":io_ops",
         ":lib",
+        ":linalg_ns",
         ":math_ops",
         ":nn",
         ":platform",
@@ -241,6 +242,20 @@ cc_library(
         "//tensorflow/core:script_ops_op_lib",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
+    ],
+)
+
+cc_library(
+    name = "ndarray_tensor",
+    srcs = ["lib/core/ndarray_tensor.cc"],
+    hdrs = ["lib/core/ndarray_tensor.h"],
+    deps = [
+        ":ndarray_tensor_bridge",
+        ":numpy_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -1616,6 +1631,18 @@ py_library(
 )
 
 py_library(
+    name = "linalg_ns",
+    srcs = ["ops/linalg_ns.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":linalg_ops",
+        ":math_ops",
+        ":special_math_ops",
+    ],
+)
+
+py_library(
     name = "linalg_grad",
     srcs = ["ops/linalg_grad.py"],
     srcs_version = "PY2AND3",
@@ -2198,6 +2225,7 @@ py_library(
         ":resource_variable_ops",
         ":tensor_shape",
         ":variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
@@ -2806,6 +2834,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":test_ops_kernels",

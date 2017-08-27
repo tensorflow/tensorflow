@@ -39,9 +39,11 @@ struct VariantValue {
 REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(VariantValue, "TEST VariantValue",
                                       VariantValue::ShapeFn);
 
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantValue, "TEST VariantValue");
+
 }  // namespace
 
-TEST(VariantOpRegistryTest, TestBasic) {
+TEST(VariantOpShapeRegistryTest, TestBasic) {
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetShapeFn("YOU SHALL NOT PASS"),
             nullptr);
 
@@ -52,21 +54,50 @@ TEST(VariantOpRegistryTest, TestBasic) {
 
   VariantValue vv_early_exit{true /* early_exit */};
   Variant v = vv_early_exit;
-  Status s0 = (*shape_fn)(&v, &shape);
+  Status s0 = (*shape_fn)(v, &shape);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit!"));
 
   VariantValue vv_ok{false /* early_exit */};
   v = vv_ok;
-  TF_EXPECT_OK((*shape_fn)(&v, &shape));
+  TF_EXPECT_OK((*shape_fn)(v, &shape));
   EXPECT_EQ(shape, TensorShape({-0xdeadbeef}));
 }
 
-TEST(OpRegistrationTest, TestDuplicate) {
+TEST(VariantOpShapeRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantShapeFn f;
   registry.RegisterShapeFn("fjfjfj", f);
   EXPECT_DEATH(registry.RegisterShapeFn("fjfjfj", f),
+               "fjfjfj already registered");
+}
+
+TEST(VariantOpDecodeRegistryTest, TestBasic) {
+  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetDecodeFn("YOU SHALL NOT PASS"),
+            nullptr);
+
+  auto* decode_fn =
+      UnaryVariantOpRegistry::Global()->GetDecodeFn("TEST VariantValue");
+  EXPECT_NE(decode_fn, nullptr);
+
+  VariantValue vv{true /* early_exit */};
+  Variant v = vv;
+  VariantTensorData data;
+  v.Encode(&data);
+  VariantTensorDataProto proto;
+  data.ToProto(&proto);
+  Variant encoded = proto;
+  EXPECT_TRUE((*decode_fn)(&encoded));
+  VariantValue* decoded = encoded.get<VariantValue>();
+  EXPECT_NE(decoded, nullptr);
+  EXPECT_EQ(decoded->early_exit, true);
+}
+
+TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
+  UnaryVariantOpRegistry registry;
+  UnaryVariantOpRegistry::VariantDecodeFn f;
+  registry.RegisterDecodeFn("fjfjfj", f);
+  EXPECT_DEATH(registry.RegisterDecodeFn("fjfjfj", f),
                "fjfjfj already registered");
 }
 

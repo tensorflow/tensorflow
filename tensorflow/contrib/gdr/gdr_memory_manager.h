@@ -16,13 +16,8 @@ limitations under the License.
 #ifndef GDR_MEMORY_MANAGER_H_
 #define GDR_MEMORY_MANAGER_H_
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-
-namespace google {
-namespace protobuf {
-class Any;
-}
-}
 
 namespace tensorflow {
 

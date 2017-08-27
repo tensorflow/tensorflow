@@ -211,9 +211,12 @@ class BatchNormalization(base.Layer):
         self._gamma_const = array_ops.constant(1.0, shape=(param_dim,))
 
     # Disable variable partitioning when creating the moving mean and variance
-    partitioner = self._scope.partitioner
     try:
-      self._scope.set_partitioner(None)
+      if self._scope:
+        partitioner = self._scope.partitioner
+        self._scope.set_partitioner(None)
+      else:
+        partitioner = None
       self.moving_mean = self.add_variable(
           name='moving_mean',
           shape=(param_dim,),
@@ -251,7 +254,8 @@ class BatchNormalization(base.Layer):
             self.renorm_stddev_weight = _renorm_variable(
                 'renorm_stddev_weight', ())
     finally:
-      self._scope.set_partitioner(partitioner)
+      if partitioner:
+        self._scope.set_partitioner(partitioner)
     self.built = True
 
   def _fused_batch_norm(self, inputs, training):

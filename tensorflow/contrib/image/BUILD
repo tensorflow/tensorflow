@@ -119,6 +119,19 @@ tf_gen_op_wrapper_py(
     deps = [":single_image_random_dot_stereograms_ops_op_lib"],
 )
 
+cc_library(
+    name = "image_ops_cc",
+    srcs = [
+        "ops/image_ops.cc",
+    ],
+    deps = [
+        ":image_ops_kernels",
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
 py_library(
     name = "single_image_random_dot_stereograms_py",
     srcs = glob(["python/ops/single*.py"]) + ["__init__.py"],

@@ -22,7 +22,6 @@ from __future__ import print_function
 import copy
 import json
 import os
-import re
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -734,17 +733,6 @@ class Network(tf_base_layers.Network, Layer):
           state_updates += layer.updates
     return state_updates
 
-  @property
-  def constraints(self):
-    cons = {}
-    for layer in self.layers:
-      for key, value in layer.constraints.items():
-        if key in cons and cons[key] != value:
-          raise ValueError('Received multiple constraints '
-                           'for one weight tensor: ' + str(key))
-        cons[key] = value
-    return cons
-
   def get_weights(self):
     """Retrieves the weights of the model.
 
@@ -1210,39 +1198,6 @@ def _to_list(x):
   if isinstance(x, list):
     return x
   return [x]
-
-
-def _object_list_uid(object_list):
-  object_list = _to_list(object_list)
-  return ', '.join([str(abs(id(x))) for x in object_list])
-
-
-def _to_snake_case(name):
-  intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
-  insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
-  # If the class is private the name starts with "_" which is not secure
-  # for creating scopes. We prefix the name with "private" in this case.
-  if insecure[0] != '_':
-    return insecure
-  return 'private' + insecure
-
-
-def _collect_input_shape(input_tensors):
-  """Collects the output shape(s) of a list of Keras tensors.
-
-  Arguments:
-      input_tensors: list of input tensors (or single input tensor).
-
-  Returns:
-      List of shape tuples (or single tuple), one tuple per input.
-  """
-  input_tensors = _to_list(input_tensors)
-  shapes = []
-  for x in input_tensors:
-    shapes.append(K.int_shape(x))
-  if len(shapes) == 1:
-    return shapes[0]
-  return shapes
 
 
 def save_weights_to_hdf5_group(f, layers):

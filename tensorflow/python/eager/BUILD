@@ -12,8 +12,8 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:lib",
+        "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:numpy_lib",
-        "//tensorflow/python:py_func_lib",
         "//util/python:python_headers",
     ],
 )

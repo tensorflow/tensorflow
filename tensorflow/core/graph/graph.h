@@ -516,10 +516,12 @@ class Graph {
     node->assigned_device_name_index_ = InternDeviceName(device_name);
   }
 
+  // Returns OK if `node` is non-null and belongs to this graph
+  Status IsValidNode(const Node* node) const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
-  Status IsValidNode(Node* node) const;
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.
