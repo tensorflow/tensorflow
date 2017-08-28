@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from six import string_types
 from tensorflow.python.estimator.inputs.queues import feeding_functions
 
 # Key name to pack the target into dict of `features`. See
@@ -101,15 +102,31 @@ def numpy_input_fn(x,
     # Make a shadow copy and also ensure the order of iteration is consistent.
     ordered_dict_x = collections.OrderedDict(
         sorted(x.items(), key=lambda t: t[0]))
+    feature_keys = ordered_dict_x.keys()
 
-    unique_target_key = _get_unique_target_key(ordered_dict_x)
-    if y is not None:
-      ordered_dict_x[unique_target_key] = y
+    if y is None:
+      target_keys = None
+    elif isinstance(y, dict):
+      ordered_dict_y = collections.OrderedDict(
+        sorted(y.items(), key=lambda t: t[0]))
+      target_keys = ordered_dict_y.keys()
+      ordered_dict_x.update(ordered_dict_y)
+    else:
+      target_keys = _get_unique_target_key(ordered_dict_x)
+      ordered_dict_x[target_keys] = y
 
     if len(set(v.shape[0] for v in ordered_dict_x.values())) != 1:
       shape_dict_of_x = {k: ordered_dict_x[k].shape
-                         for k in ordered_dict_x.keys()}
-      shape_of_y = None if y is None else y.shape
+                         for k in feature_keys}
+
+      if target_keys is None:
+        shape_of_y = None
+      elif isinstance(target_keys, string_types):
+        shape_of_y = y.shape
+      else:
+        shape_of_y = {k: ordered_dict_x[k].shape
+                      for k in target_keys}
+
       raise ValueError('Length of tensors in x and y is mismatched. All '
                        'elements in x and y must have the same length.\n'
                        'Shapes in x: {}\n'
@@ -123,17 +140,21 @@ def numpy_input_fn(x,
         enqueue_size=batch_size,
         num_epochs=num_epochs)
 
-    features = (queue.dequeue_many(batch_size) if num_epochs is None
+    batch = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
 
-    # Remove the first `Tensor` in `features`, which is the row number.
-    if len(features) > 0:
-      features.pop(0)
+    # Remove the first `Tensor` in `batch`, which is the row number.
+    if len(batch) > 0:
+      batch.pop(0)
 
-    features = dict(zip(ordered_dict_x.keys(), features))
-    if y is not None:
-      target = features.pop(unique_target_key)
+    features = dict(zip(feature_keys, batch[:len(feature_keys)]))
+    if target_keys is None:
+      return features
+    elif isinstance(target_keys, string_types):
+      target = batch[-1]
       return features, target
-    return features
+    else:
+      target = dict(zip(target_keys, batch[-len(target_keys):]))
+      return features, target
 
   return input_fn
