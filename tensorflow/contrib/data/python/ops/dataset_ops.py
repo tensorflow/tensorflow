@@ -2151,7 +2151,7 @@ class InterleaveDataset(Dataset):
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
 
-      if nest.is_sequence(nested_args):
+      if _should_unpack_args(nested_args):
         dataset = map_func(*nested_args)
       else:
         dataset = map_func(nested_args)
