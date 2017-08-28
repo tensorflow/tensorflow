@@ -118,7 +118,7 @@ function(AddPythonTests)
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
-    set_tests_properties(${_AT_TARGET} PROPERTIES TIMEOUT "30")
+    set_tests_properties(${sourcefile} PROPERTIES TIMEOUT "30")
   endforeach()
 endfunction(AddPythonTests)
 
