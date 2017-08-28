@@ -30,18 +30,18 @@ tf.merge_summary -> tf.summary.merge
 
 tf.merge_all_summaries -> tf.summary.merge_all
 
-We think this is a cleaner API and will improve long-term discoverability and
-clarity of the TensorFlow API. However, we also took the opportunity to make an
+We think this API is cleaner and will improve long-term discoverability and
+clarity of the TensorFlow API. We however, also took the opportunity to make an
 important change to how summary "tags" work. The "tag" of a summary is the
 string that is associated with the output data, i.e. the key for organizing the
 generated protobufs.
 
-Previously, the tag was allowed to be any unique string, and had no relation
+Previously, the tag was allowed to be any unique string; it had no relation
 to the summary op generating it, and no relation to the TensorFlow name system.
-This made it very difficult to write re-usable code that would add summary
-ops to the graph. If you had a function that would add summary ops, you would
-need to manually pass in a name scope to that function to create deduplicated
-tags, otherwise your program would fail with a runtime error due to tag
+This behavior greatly complicates the reusability of the code that would add 
+summary ops to the graph. If you had a function to add summary ops, you would
+need to pass in a namescope, manually, to that function to create deduplicated
+tags. Otherwise your program would fail with a runtime error due to tag
 collision.
 
 The new summary APIs under tf.summary throw away the "tag" as an independent
