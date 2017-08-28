@@ -276,7 +276,8 @@ def enable_c_api(fn):
 
 
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
-                                 use_gpu=False, force_gpu=False):
+                                 use_gpu=False, force_gpu=False,
+                                 reset_test=False):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -286,6 +287,7 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
       session.
     use_gpu: If True, attempt to run as many ops as possible on GPU.
     force_gpu: If True, pin all ops to `/device:GPU:0`.
+    reset_test: If True, tearDown and SetUp the test case again.
 
   Returns:
     Returns a decorator that will run the decorated test function
@@ -301,6 +303,10 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
       with context.graph_mode():
         with self.test_session(graph, config, use_gpu, force_gpu):
           f(self)
+
+      if reset_test:
+        self.tearDown()
+        self.setUp()
 
       def run_eager_mode():
         if force_gpu:

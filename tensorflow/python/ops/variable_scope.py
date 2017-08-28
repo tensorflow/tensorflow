@@ -978,7 +978,7 @@ class VariableScope(object):
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
-    if context.in_eager_mode():
+    if partitioner and context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "in Eager mode.")
     self._partitioner = partitioner
