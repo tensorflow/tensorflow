@@ -1085,6 +1085,12 @@ tf_kernel_library(
     ],
 )
 
+# Unlike gather_functor library, this does not include the CUDA code and deps.
+cc_library(
+    name = "gather_functor_hdr",
+    hdrs = ["gather_functor.h"],
+)
+
 tf_kernel_library(
     name = "dense_update_functor",
     srcs = ["dense_update_functor.cc"],
