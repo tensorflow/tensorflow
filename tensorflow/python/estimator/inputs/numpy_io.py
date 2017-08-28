@@ -100,9 +100,9 @@ def numpy_input_fn(x,
       raise TypeError('x must be dict; got {}'.format(type(x).__name__))
 
     # Make a shadow copy and also ensure the order of iteration is consistent.
-    ordered_dict_x = collections.OrderedDict(
+    ordered_dict_data = collections.OrderedDict(
         sorted(x.items(), key=lambda t: t[0]))
-    feature_keys = ordered_dict_x.keys()
+    feature_keys = ordered_dict_data.keys()
 
     if y is None:
       target_keys = None
@@ -110,13 +110,13 @@ def numpy_input_fn(x,
       ordered_dict_y = collections.OrderedDict(
         sorted(y.items(), key=lambda t: t[0]))
       target_keys = ordered_dict_y.keys()
-      ordered_dict_x.update(ordered_dict_y)
+      ordered_dict_data.update(ordered_dict_y)
     else:
-      target_keys = _get_unique_target_key(ordered_dict_x)
-      ordered_dict_x[target_keys] = y
+      target_keys = _get_unique_target_key(ordered_dict_data)
+      ordered_dict_data[target_keys] = y
 
-    if len(set(v.shape[0] for v in ordered_dict_x.values())) != 1:
-      shape_dict_of_x = {k: ordered_dict_x[k].shape
+    if len(set(v.shape[0] for v in ordered_dict_data.values())) != 1:
+      shape_dict_of_x = {k: ordered_dict_data[k].shape
                          for k in feature_keys}
 
       if target_keys is None:
@@ -124,7 +124,7 @@ def numpy_input_fn(x,
       elif isinstance(target_keys, string_types):
         shape_of_y = y.shape
       else:
-        shape_of_y = {k: ordered_dict_x[k].shape
+        shape_of_y = {k: ordered_dict_data[k].shape
                       for k in target_keys}
 
       raise ValueError('Length of tensors in x and y is mismatched. All '
@@ -133,7 +133,7 @@ def numpy_input_fn(x,
                        'Shape for y: {}\n'.format(shape_dict_of_x, shape_of_y))
 
     queue = feeding_functions._enqueue_data(  # pylint: disable=protected-access
-        ordered_dict_x,
+        ordered_dict_data,
         queue_capacity,
         shuffle=shuffle,
         num_threads=num_threads,
