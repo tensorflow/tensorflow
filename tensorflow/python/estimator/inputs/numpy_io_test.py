@@ -312,7 +312,7 @@ class NumpyIoTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
-  def testNumpyInputFnDuplicateKeysInXandY(self):
+  def testNumpyInputFnWithDuplicateKeysInXandY(self):
     a = np.arange(4) * 1.0
     b = np.arange(32, 36)
     x = {'a': a, 'b': b}
