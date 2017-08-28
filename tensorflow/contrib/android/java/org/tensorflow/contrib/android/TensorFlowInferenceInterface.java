@@ -448,7 +448,7 @@ public class TensorFlowInferenceInterface {
     }
 
     // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
     int numBytesRead;
     byte[] buf = new byte[16384];
     while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
