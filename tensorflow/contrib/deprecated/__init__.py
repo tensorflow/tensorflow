@@ -18,17 +18,14 @@ For TensorFlow 1.0, we have reorganized the TensorFlow summary ops into a
 submodule, and made some semantic tweaks. The first thing to note is that we
 moved the APIs around as follows:
 
+```python
 tf.scalar_summary -> tf.summary.scalar
-
 tf.histogram_summary -> tf.summary.histogram
-
 tf.audio_summary -> tf.summary.audio
-
 tf.image_summary -> tf.summary.image
-
 tf.merge_summary -> tf.summary.merge
-
 tf.merge_all_summaries -> tf.summary.merge_all
+```
 
 We think this API is cleaner and will improve long-term discoverability and
 clarity of the TensorFlow API. We however, also took the opportunity to make an
@@ -46,7 +43,7 @@ collision.
 
 The new summary APIs under tf.summary throw away the "tag" as an independent
 concept; instead, the first argument is the node name. So summary tags now 
-automatically inherit the surrounding TF name scope, and automatically
+automatically inherit the surrounding TF namescope, and automatically
 are deduplicated if there is a conflict. Now however, the only allowed
 characters are alphanumerics, underscores, and forward slashes. To make
 migration easier, the new APIs automatically convert illegal characters to
@@ -67,7 +64,7 @@ def add_activation_summaries(v):
 ```
 
 Now, so long as the add_activation_summaries function is called from within the
-right name scope, the behavior is the same.
+right namescope, the behavior is the same.
 
 Because this change does modify the behavior and could break tests, we can't
 automatically migrate usage to the new APIs. That is why we are making the old
@@ -82,9 +79,9 @@ to the new summary ops:
   tf.summary.scalar requires a single scalar name and scalar value. In most
   cases, you can create tf.summary.scalars in a loop to get the same behavior
 
-As before, TensorBoard groups charts by the top-level name scope. This may
+As before, TensorBoard groups charts by the top-level namescope. This may
 be inconvenient, since in the new summary ops the summary will inherit that
-name scope without user control. We plan to add more grouping mechanisms to
+namescope without user control. We plan to add more grouping mechanisms to
 TensorBoard, so it will be possible to specify the TensorBoard group for
 each summary via the summary API.
 
