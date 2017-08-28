@@ -1017,7 +1017,7 @@ class Dataset(object):
     d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
     d = d.repeat(FLAGS.num_epochs)
     d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.map(parser_fn, num_threads=FLAGS.num_map_threads)
+    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
     ```
 
     Important caveats:
@@ -1037,7 +1037,7 @@ class Dataset(object):
        d = d.repeat()
        d = d.interleave(tf.contrib.data.TFRecordDataset,
                         cycle_length=FLAGS.num_readers, block_length=1)
-       d = d.map(parser_fn, num_threads=FLAGS.num_map_threads)
+       d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
        ```
 
     Args:
@@ -1205,28 +1205,35 @@ class Dataset(object):
     """
     return GroupByWindowDataset(self, key_func, reduce_func, window_size)
 
-  def map(self, map_func, num_threads=None, output_buffer_size=None):
+  def map(self,
+          map_func,
+          num_threads=None,
+          output_buffer_size=None,
+          num_parallel_calls=None):
     """Maps `map_func` across this datset.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having
         shapes and types defined by `self.output_shapes` and
        `self.output_types`) to another nested structure of tensors.
-      num_threads: (Optional.) A `tf.int32` scalar `tf.Tensor`, representing
-        the number of threads to use for processing elements in parallel. If
-        not specified, elements will be processed sequentially without
-        buffering.
+      num_threads: (Optional.) Deprecated, use `num_parallel_calls` instead.
       output_buffer_size: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the maximum number of processed elements that will be
-        buffered when processing in parallel.
+        buffered.
+      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+        representing the number elements to process in parallel. If not
+        specified, elements will be processed sequentially.
 
     Returns:
       A `Dataset`.
     """
-    if num_threads is None:
+    if num_threads is None and num_parallel_calls is None:
       ret = MapDataset(self, map_func)
     else:
-      ret = ParallelMapDataset(self, map_func, num_threads)
+      if num_threads is None:
+        ret = ParallelMapDataset(self, map_func, num_parallel_calls)
+      else:
+        ret = ParallelMapDataset(self, map_func, num_threads)
     if output_buffer_size is not None:
       ret = ret.prefetch(output_buffer_size)
     return ret
@@ -1255,8 +1262,8 @@ class Dataset(object):
     # each file.
     filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ..."]
     dataset = (Dataset.from_tensor_slices(filenames)
-               .interleave(
-                   lambda x: TextLineDataset(x).map(parse_fn, num_threads=1),
+               .interleave(lambda x:
+                   TextLineDataset(x).map(parse_fn, num_parallel_calls=1),
                    cycle_length=4, block_length=16))
     ```
 

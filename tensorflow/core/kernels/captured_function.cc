@@ -105,8 +105,7 @@ Status CapturedFunction::Create(
 
 Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
                              gtl::ArraySlice<Tensor> args,
-                             std::vector<Tensor>* rets, const string& prefix) {
-  port::Tracing::TraceMe activity(prefix, "::Run");
+                             std::vector<Tensor>* rets) {
   Notification n;
   Status s;
   auto done_callback = [&n, &s](Status func_status) {
@@ -128,17 +127,15 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
 
 void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
                                 gtl::ArraySlice<Tensor> args,
-                                std::vector<Tensor>* rets, const string& prefix,
+                                std::vector<Tensor>* rets,
                                 FunctionLibraryRuntime::DoneCallback done) {
-  auto activity = new port::Tracing::TraceMe(prefix, "::RunAsync");
   auto c_mgr = new CancellationManager;
   f_opts.cancellation_manager = c_mgr;
   FunctionLibraryRuntime::DoneCallback wrapped_done = std::bind(
-      [activity, c_mgr](FunctionLibraryRuntime::DoneCallback done,
-                        // Begin unbound arguments.
-                        Status s) {
+      [c_mgr](FunctionLibraryRuntime::DoneCallback done,
+              // Begin unbound arguments.
+              Status s) {
         delete c_mgr;
-        delete activity;
         done(s);
       },
       std::move(done), std::placeholders::_1);
