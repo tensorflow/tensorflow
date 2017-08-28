@@ -594,6 +594,8 @@ class TensorFlowTestCase(googletest.TestCase):
       config.graph_options.optimizer_options.opt_level = -1
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:
