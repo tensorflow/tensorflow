@@ -2001,6 +2001,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       if (mkl_op_registry::IsMklOp(
               mkl_op_registry::GetMklOpName(parent->src()->type_string()), T)) {
         incoming_mkl_edge = true;
+        break;
       } else {
         VLOG(1) << "Non-MKL parent is: " << parent->src()->type_string();
       }

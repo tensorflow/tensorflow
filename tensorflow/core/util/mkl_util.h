@@ -759,7 +759,7 @@ inline string GetMklOpName(const string& name) {
 //
 // @input: name of the op
 // @input: T datatype to be used for checking op
-// @return: true if opname is registered as Mkl op
+// @return: true if opname is registered as Mkl op; false otherwise
 static inline bool IsMklOp(const std::string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
   bool result =
@@ -775,7 +775,7 @@ static inline bool IsMklOp(const std::string& op_name, DataType T) {
 //
 // @input: name of the op
 // @input: T datatype to be used for checking op
-// @return: true if opname is registered as element-wise Mkl op
+// @return: true if opname is registered as element-wise Mkl op; false otherwise
 static inline bool IsMklElementWiseOp(const std::string& op_name, DataType T) {
   if (!IsMklOp(op_name, T)) {
     return false;
