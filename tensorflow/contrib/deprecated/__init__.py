@@ -94,14 +94,14 @@ from __future__ import division
 from __future__ import print_function
 
 
-# pylint: disable=unused-import,line-too-long
+# pylint: disable=unused-import
 from tensorflow.python.ops.logging_ops import audio_summary
 from tensorflow.python.ops.logging_ops import histogram_summary
 from tensorflow.python.ops.logging_ops import image_summary
 from tensorflow.python.ops.logging_ops import merge_all_summaries
 from tensorflow.python.ops.logging_ops import merge_summary
 from tensorflow.python.ops.logging_ops import scalar_summary
-# pylint: enable=unused-import,line-too-long
+# pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = ['audio_summary', 'histogram_summary',
