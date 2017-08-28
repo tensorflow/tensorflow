@@ -312,6 +312,22 @@ class NumpyIoTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testNumpyInputFnDuplicateKeysInXandY(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = {'y1': np.arange(-32, -28),
+         'a': a,
+         'y2': np.arange(32, 28, -1),
+         'b': b}
+
+    with self.test_session():
+      with self.assertRaisesRegexp(
+              ValueError, '2 duplicate keys are found in both x and y'):
+        failing_input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
+        failing_input_fn()
+
 
 if __name__ == '__main__':
   test.main()
