@@ -52,18 +52,45 @@ const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
 }
 
 void NodeMap::AddNode(const string& name, NodeDef* node) {
-  nodes_.insert(std::make_pair(name, node));
+  auto ret = nodes_.insert(std::make_pair(name, node));
+  CHECK(ret.second) << "Pair (" << name << "," << node
+                    << ") is not inserted because a same key already exists.";
 }
 
-void NodeMap::AddOutput(const string& node, const string& output) {
-  outputs_[node].insert(nodes_[output]);
+void NodeMap::AddOutput(const string& node_name, const string& output_name) {
+  auto output_node = nodes_[output_name];
+  CHECK(output_node) << "Output node " << output_name
+                     << " is missing in NodeMap.";
+  outputs_[node_name].insert(output_node);
 }
 
-void NodeMap::UpdateOutput(const string& node, const string& old_output,
-                           const string& new_output) {
-  std::set<NodeDef*>& outputs = outputs_[node];
-  outputs.erase(nodes_[old_output]);
-  outputs.insert(nodes_[new_output]);
+void NodeMap::RemoveOutput(const string& node_name, const string& output_name) {
+  outputs_[node_name].erase(nodes_[output_name]);
+}
+
+void NodeMap::UpdateInput(const string& node_name, const string& old_input_name,
+                          const string& new_input_name) {
+  RemoveOutput(old_input_name, node_name);
+  AddOutput(new_input_name, node_name);
+}
+
+void NodeMap::RemoveInputs(const string& node_name) {
+  auto node = nodes_[node_name];
+  for (const auto& input : node->input()) {
+    RemoveOutput(NodeName(input), node->name());
+  }
+}
+
+void NodeMap::RemoveOutputs(const string& node_name) {
+  outputs_.erase(node_name);
+}
+
+void NodeMap::UpdateOutput(const string& node_name,
+                           const string& old_output_name,
+                           const string& new_output_name) {
+  std::set<NodeDef*>& outputs = outputs_[node_name];
+  outputs.erase(nodes_[old_output_name]);
+  outputs.insert(nodes_[new_output_name]);
 }
 
 bool IsSameInput(const string& name1, const string& name2) {

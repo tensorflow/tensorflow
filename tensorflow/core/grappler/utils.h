@@ -36,9 +36,14 @@ class NodeMap {
   // This method doesn't record the outputs of the added node; the outputs need
   // to be explicitly added by the AddOutput method.
   void AddNode(const string& name, NodeDef* node);
-  void AddOutput(const string& node, const string& output);
-  void UpdateOutput(const string& node, const string& old_output,
-                    const string& new_output);
+  void UpdateInput(const string& node_name, const string& old_input_name,
+                   const string& new_input_name);
+  void AddOutput(const string& node_name, const string& output_name);
+  void RemoveInputs(const string& node_name);
+  void RemoveOutput(const string& node_name, const string& output_name);
+  void RemoveOutputs(const string& node_name);
+  void UpdateOutput(const string& node_name, const string& old_output_name,
+                    const string& new_output_name);
 
  private:
   GraphDef* graph_;
