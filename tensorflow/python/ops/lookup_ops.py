@@ -36,7 +36,6 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
-from tensorflow.python.util.deprecation import deprecated
 
 
 def tables_initializer(name="init_all_tables"):
