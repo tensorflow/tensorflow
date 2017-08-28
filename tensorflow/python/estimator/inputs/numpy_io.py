@@ -88,6 +88,7 @@ def numpy_input_fn(x,
   Raises:
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
       values in `x` have same shape).
+    ValueError: if duplicate keys are in both `x` and `y` when `y` is a dict.
     TypeError: `x` is not a dict or `shuffle` is not bool.
   """
 
@@ -111,6 +112,12 @@ def numpy_input_fn(x,
       ordered_dict_y = collections.OrderedDict(
         sorted(y.items(), key=lambda t: t[0]))
       target_keys = ordered_dict_y.keys()
+
+      duplicate_keys = set(feature_keys).intersection(set(target_keys))
+      if len(duplicate_keys):
+        raise ValueError('{} duplicate keys are found in both x and y: '
+                         '{}'.format(len(duplicate_keys), duplicate_keys))
+
       ordered_dict_data.update(ordered_dict_y)
     else:
       target_keys = _get_unique_target_key(ordered_dict_data)
