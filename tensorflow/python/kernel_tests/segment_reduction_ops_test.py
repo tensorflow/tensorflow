@@ -646,56 +646,59 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
           s.eval()
 
-def type_to_str(t):
-  if t == np.float32:
-    return "fp32"
-  if t == np.float64:
-    return "fp64"
-
 class SegmentReductionOpBenchmark(test.Benchmark):
+  outer_dim_options = [2**x for x in range(9, 14, 2)]
+  ratio_options = [2**x for x in range(1, 6, 2)]
+  inner_dim_options = [2**x for x in range(9, 14, 2)]
+  #randomly generated sizes with less alignments
+  inner_dim_options += [1120, 1215, 1856, 1302, 1329, 1531, 1313, 1672, 1851, 1584]
+  dtype_options = [np.float32, np.float64]
+  options = (outer_dim_options,
+                        ratio_options, inner_dim_options, dtype_options)
+  op_functors = [lambda vc, vs, seg_ids:
+                  ("sorted", math_ops.segment_sum(vc, vs)),
+                  lambda vc, vs, seg_ids:
+                  ("unsorted", math_ops.unsorted_segment_sum(vc, vs, seg_ids[-1]+1))]
+  repeat = 10
 
-  def benchmarkSegmentSumGPU(self):
-    repeat = 10
-    outer_dim_options = [2**x for x in range(7, 14, 2)]
-    ratio_options = [2**x for x in range(1, 6, 2)]
-    inner_dim_options = [2**x for x in range(7, 14, 2)]
-    dtype_options = [np.float32, np.float64]
+  def _npTypeToStr(self, t):
+    if t == np.float32:
+      return "fp32"
+    if t == np.float64:
+      return "fp64"
 
-    for outer_dim, ratio, inner_dim, dtype in \
-      itertools.product(outer_dim_options,
-                        ratio_options, inner_dim_options, dtype_options):
-      output_outer_dim = int(outer_dim/ratio)
-
-      const = np.random.randint(5, size=(outer_dim, inner_dim))
-      seg_ids = np.sort(np.random.randint(
+  def _runGraph(self, op_functor, outer_dim, ratio, inner_dim, dtype):
+    output_outer_dim = int(outer_dim/ratio)
+    const = np.random.randint(5, size=(outer_dim, inner_dim))
+    seg_ids = np.sort(np.random.randint(
           output_outer_dim, size=outer_dim))
-
-      op_functors = [lambda vc, vs:
-                     ("sorted", math_ops.segment_sum(vc, vs)),
-                     lambda vc, vs, _seg_ids=seg_ids:
-                     ("unsorted", math_ops.unsorted_segment_sum(vc, vs, _seg_ids[-1]+1))]
-
-      t = []
-      for op_functor in op_functors:
-        with ops.Graph().as_default():
-          vs = variables.Variable(seg_ids.astype(np.int32))
-          with ops.device("/gpu:0"):
-            vc = variables.Variable(const.astype(dtype))
-          with session.Session() as sess:
-            variables.global_variables_initializer().run()
-            name, op = op_functor(vc, vs)
-            r = self.run_op_benchmark(sess, op, min_iters=repeat,
+    vs = variables.Variable(seg_ids.astype(np.int32))
+    with ops.device("/gpu:0"):
+      vc = variables.Variable(const.astype(dtype))
+    name, op = op_functor(vc, vs, seg_ids)
+    with session.Session() as sess:
+      variables.global_variables_initializer().run()
+      r = self.run_op_benchmark(sess, op, min_iters=self.repeat,
                                       name="_".join(map(str,
                                                         [name,
                                                          outer_dim,
                                                          ratio,
                                                          inner_dim,
-                                                         type_to_str(dtype)])))
-            t.append(r["wall_time"])
+                                                         self._npTypeToStr(dtype)])))
+    return name, r["wall_time"]
+
+  def benchmarkSegmentSumGPUHelper(self):
+    for outer_dim, ratio, inner_dim, dtype in itertools.product(*self.options):
+      output_outer_dim = int(outer_dim/ratio)
+      t = []
+      for op_functor in self.op_functors:
+        with ops.Graph().as_default():
+          name, time = self._runGraph(op_functor, outer_dim, ratio, inner_dim, dtype)
+          t.append(time)
 
       # print out the speed up factor for each test
-      print("{:d}\t{:d}\t{:d}\t{:f}".format(
-          outer_dim, output_outer_dim, inner_dim, t[1]/t[0]))
+      print("__bench__ {} {:d}\t{:d}\t{:d}\t{:f}".format(
+          self._npTypeToStr(dtype), outer_dim, output_outer_dim, inner_dim, t[1]/t[0]))
 
 if __name__ == "__main__":
   test.main()
