@@ -52,8 +52,9 @@ def numpy_input_fn(x,
                    num_threads=1):
   """Returns input function that would feed dict of numpy arrays into the model.
 
-  This returns a function outputting `features` and `target` based on the dict
-  of numpy arrays. The dict `features` has the same keys as the `x`.
+  This returns a function outputting `features` and `targets` based on the dict
+  of numpy arrays. The dict `features` has the same keys as the `x`. The dict
+  `targets` has the same keys as the `y` if `y` is a dict.
 
   Example:
 
@@ -70,7 +71,7 @@ def numpy_input_fn(x,
 
   Args:
     x: dict of numpy array object.
-    y: numpy array object. `None` if absent.
+    y: numpy array object or dict of numpy array object. `None` if absent.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
       run forever.
@@ -82,7 +83,7 @@ def numpy_input_fn(x,
       such as in prediction and evaluation mode, `num_threads` should be 1.
 
   Returns:
-    Function, that has signature of ()->(dict of `features`, `target`)
+    Function, that has signature of ()->(dict of `features`, `targets`)
 
   Raises:
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
@@ -130,7 +131,7 @@ def numpy_input_fn(x,
       raise ValueError('Length of tensors in x and y is mismatched. All '
                        'elements in x and y must have the same length.\n'
                        'Shapes in x: {}\n'
-                       'Shape for y: {}\n'.format(shape_dict_of_x, shape_of_y))
+                       'Shape in y: {}\n'.format(shape_dict_of_x, shape_of_y))
 
     queue = feeding_functions._enqueue_data(  # pylint: disable=protected-access
         ordered_dict_data,
