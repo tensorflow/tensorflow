@@ -41,6 +41,7 @@ cc_library(
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -1008,6 +1009,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_query",
+        ":hlo_verifier",
         ":shape_inference",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1604,6 +1606,8 @@ cc_library(
     hdrs = ["hlo_verifier.h"],
     deps = [
         ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",
     ],
 )

@@ -537,10 +537,8 @@ void HloInstruction::MergeFusionInstruction(
   // Clone the instruction from which to merge fused instructions.
   std::unique_ptr<HloInstruction> clone = instruction_to_merge->Clone();
   // Replace uses of fused parameters with the corresponding operand of the
-  // fusion.
-  // Add all non-parameter fused instructions to 'unfused_instructions' to be
-  // merged into 'this'.
-  // This is done in reverse post order.
+  // fusion.  Add all non-parameter fused instructions to 'unfused_instructions'
+  // to be merged into 'this'.  This is done in reverse post order.
   std::vector<HloInstruction*> unfused_instructions;
   auto fused_instructions =
       clone->fused_instructions_computation()->MakeInstructionPostOrder();
@@ -565,11 +563,8 @@ void HloInstruction::MergeFusionInstruction(
   }
   CHECK_EQ(0, clone->user_count());
   clone->DetachFromOperands();
-
-  if (GetModule()) {
-    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
-        clone->fused_instructions_computation()));
-  }
+  TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
+      clone->fused_instructions_computation()));
 }
 
 void HloInstruction::MergeFusionInstructionIntoMultiOutput(
@@ -649,9 +644,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     HloInstruction* instruction_to_fuse, bool add_output) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(instruction_to_fuse->IsFusable());
-  if (GetModule()) {
-    XLA_VLOG_LINES(3, GetModule()->ToString());
-  }
+  VLOG(3) << "CloneAndFuseInternal:\n" << instruction_to_fuse->ToString();
   HloInstruction* clone = nullptr;
   if (called_computations_.empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
@@ -814,6 +807,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       called_computations_.push_back(computation);
     }
   }
+  VLOG(2) << "New clone:\n" << clone->ToString();
   return clone;
 }
 
@@ -955,6 +949,12 @@ void HloInstruction::CheckFusionInstruction() const {
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) {
+  VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
+  VLOG(3) << "  new operands:";
+  for (const HloInstruction* new_operand : new_operands) {
+    VLOG(3) << "    " << new_operand->name();
+  }
+
   // Explicitly call the factory for the instruction type. This is more robust
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
@@ -1561,6 +1561,7 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
 }
 
 void HloInstruction::DetachFromOperands() {
+  VLOG(3) << "DetachFromOperands:\n  " << ToString();
   CHECK_EQ(0, user_count());
   // An instruction may be repeated as an operand. To avoid calling RemoveUser
   // twice on the same operand, keep a set of already detached operands.

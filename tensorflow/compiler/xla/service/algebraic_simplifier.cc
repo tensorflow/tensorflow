@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -239,9 +240,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction) {
-    VLOG(4) << "Replacing instruction:";
-    VLOG(4) << "  old: " << old_instruction->ToString();
-    VLOG(4) << "  new: " << new_instruction->ToString();
+    VLOG(3) << "Replacing instruction:";
+    VLOG(3) << "  old: " << old_instruction->ToString();
+    VLOG(3) << "  new: " << new_instruction->ToString();
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         old_instruction, std::move(new_instruction)));
     changed_ = true;
@@ -253,9 +254,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Returns the Status representing the result of the replace operation.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction) {
-    VLOG(4) << "Replacing instruction:";
-    VLOG(4) << "  old: " << old_instruction->ToString();
-    VLOG(4) << "  new: " << new_instruction->ToString();
+    VLOG(3) << "Replacing instruction:";
+    VLOG(3) << "  old: " << old_instruction->ToString();
+    VLOG(3) << "  new: " << new_instruction->ToString();
     TF_RETURN_IF_ERROR(
         computation_->ReplaceInstruction(old_instruction, new_instruction));
     changed_ = true;
@@ -514,11 +515,19 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide &&
       rhs->opcode() == HloOpcode::kDivide) {
+    TF_ASSIGN_OR_RETURN(
+        const Shape a_times_d_shape,
+        ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply,
+                                           lhs->operand(0), rhs->operand(1)));
     auto a_times_d = computation_->AddInstruction(HloInstruction::CreateBinary(
-        divide->shape(), HloOpcode::kMultiply, lhs->mutable_operand(0),
+        a_times_d_shape, HloOpcode::kMultiply, lhs->mutable_operand(0),
         rhs->mutable_operand(1)));
+    TF_ASSIGN_OR_RETURN(
+        const Shape b_times_c_shape,
+        ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply,
+                                           lhs->operand(1), rhs->operand(0)));
     auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        divide->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1),
+        b_times_c_shape, HloOpcode::kMultiply, lhs->mutable_operand(1),
         rhs->mutable_operand(0)));
     return ReplaceWithNewInstruction(
         divide, HloInstruction::CreateBinary(
@@ -527,8 +536,11 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
 
   // (A / B) / C => A / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide) {
+    TF_ASSIGN_OR_RETURN(const Shape b_times_c_shape,
+                        ShapeInference::InferBinaryOpShape(
+                            HloOpcode::kMultiply, lhs->operand(1), rhs));
     auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        divide->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
+        b_times_c_shape, HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -537,8 +549,11 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
 
   // A / (B / C) => (A*C) / B
   if (rhs->opcode() == HloOpcode::kDivide) {
+    TF_ASSIGN_OR_RETURN(const Shape a_times_c_shape,
+                        ShapeInference::InferBinaryOpShape(
+                            HloOpcode::kMultiply, lhs, rhs->operand(1)));
     auto a_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        divide->shape(), HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
+        a_times_c_shape, HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -1617,6 +1632,10 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   }
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
+
+  HloVerifier verifier;
+  TF_DCHECK_OK(verifier.Run(module).status());
+
   return changed;
 }
 

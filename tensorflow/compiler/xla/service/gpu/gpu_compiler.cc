@@ -131,6 +131,8 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+      pass.AddInvariantChecker<HloVerifier>();
+
       // TODO(b/62764704): Do not rewrite on GPU, use cuDNN's BatchNorm APIs
       // instead.
       pass.AddPass<BatchNormRewriter>(
@@ -158,12 +160,14 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   }
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
+    fusion.AddInvariantChecker<HloVerifier>();
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
+    reduce_pipeline.AddInvariantChecker<HloVerifier>();
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         HloReducePrecisionOptions::AFTER_OP_FUSION);
