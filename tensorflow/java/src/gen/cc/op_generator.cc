@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
-namespace op_gen {
+namespace {
 
 string CamelCase(const string& str, char delimiter, bool upper) {
   string result;
@@ -39,7 +39,7 @@ string CamelCase(const string& str, char delimiter, bool upper) {
   return result;
 }
 
-}  // namespace op_gen
+}  // namespace
 
 OpGenerator::OpGenerator()
   : env(Env::Default()) {
@@ -53,7 +53,7 @@ Status OpGenerator::Run(const OpList& ops, const string& lib_name,
       base_package + '.' + str_util::StringReplace(lib_name, "_", "", true);
   const string package_path =
       output_dir + '/' + str_util::StringReplace(package, ".", "/", true);
-  const string group = op_gen::CamelCase(lib_name, '_', false);
+  const string group = CamelCase(lib_name, '_', false);
 
   if (!env->FileExists(package_path).ok()) {
     TF_CHECK_OK(env->RecursivelyCreateDir(package_path));
