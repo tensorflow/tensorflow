@@ -352,7 +352,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
       with self.test_session(use_gpu=True):
         tf_x, np_x = self._input(shape, dtype=dtypes_lib.float64)
         s = math_ops.unsorted_segment_max(data=tf_x, segment_ids=indices,
-                                    num_segments=num_segments)
+                                          num_segments=num_segments)
         jacob_t, jacob_n = gradient_checker.compute_gradient(
             tf_x,
             shape,
@@ -654,11 +654,11 @@ class SegmentReductionOpBenchmark(test.Benchmark):
   inner_dim_options += [1120, 1215, 1856, 1302, 1329, 1531, 1313, 1672, 1851, 1584]
   dtype_options = [np.float32, np.float64]
   options = (outer_dim_options,
-                        ratio_options, inner_dim_options, dtype_options)
+             ratio_options, inner_dim_options, dtype_options)
   op_functors = [lambda vc, vs, seg_ids:
-                  ("sorted", math_ops.segment_sum(vc, vs)),
-                  lambda vc, vs, seg_ids:
-                  ("unsorted", math_ops.unsorted_segment_sum(vc, vs, seg_ids[-1]+1))]
+                 ("sorted", math_ops.segment_sum(vc, vs)),
+                 lambda vc, vs, seg_ids:
+                 ("unsorted", math_ops.unsorted_segment_sum(vc, vs, seg_ids[-1]+1))]
   repeat = 10
 
   def _npTypeToStr(self, t):
@@ -671,7 +671,7 @@ class SegmentReductionOpBenchmark(test.Benchmark):
     output_outer_dim = int(outer_dim/ratio)
     const = np.random.randint(5, size=(outer_dim, inner_dim))
     seg_ids = np.sort(np.random.randint(
-          output_outer_dim, size=outer_dim))
+        output_outer_dim, size=outer_dim))
     vs = variables.Variable(seg_ids.astype(np.int32))
     with ops.device("/gpu:0"):
       vc = variables.Variable(const.astype(dtype))
@@ -679,26 +679,31 @@ class SegmentReductionOpBenchmark(test.Benchmark):
     with session.Session() as sess:
       variables.global_variables_initializer().run()
       r = self.run_op_benchmark(sess, op, min_iters=self.repeat,
-                                      name="_".join(map(str,
-                                                        [name,
-                                                         outer_dim,
-                                                         ratio,
-                                                         inner_dim,
-                                                         self._npTypeToStr(dtype)])))
+                                name="_".join(map(str,
+                                                  [name,
+                                                   outer_dim,
+                                                   ratio,
+                                                   inner_dim,
+                                                   self._npTypeToStr(dtype)])))
     return name, r["wall_time"]
 
-  def benchmarkSegmentSumGPUHelper(self):
+  def benchmarkSegmentSumGPU(self):
+    if not test.is_gpu_available(cuda_only=True):
+      return
     for outer_dim, ratio, inner_dim, dtype in itertools.product(*self.options):
       output_outer_dim = int(outer_dim/ratio)
-      t = []
-      for op_functor in self.op_functors:
-        with ops.Graph().as_default():
-          name, time = self._runGraph(op_functor, outer_dim, ratio, inner_dim, dtype)
-          t.append(time)
+      op_functor = self.op_functors[0]
+      with ops.Graph().as_default():
+        self._runGraph(op_functor, outer_dim, ratio, inner_dim, dtype)
 
-      # print out the speed up factor for each test
-      print("__bench__ {} {:d}\t{:d}\t{:d}\t{:f}".format(
-          self._npTypeToStr(dtype), outer_dim, output_outer_dim, inner_dim, t[1]/t[0]))
+  def benchmarkUnsortedSegmentSumGPU(self):
+    if not test.is_gpu_available(cuda_only=True):
+      return
+    for outer_dim, ratio, inner_dim, dtype in itertools.product(*self.options):
+      output_outer_dim = int(outer_dim/ratio)
+      op_functor = self.op_functors[1]
+      with ops.Graph().as_default():
+        self._runGraph(op_functor, outer_dim, ratio, inner_dim, dtype)
 
 if __name__ == "__main__":
   test.main()
