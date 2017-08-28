@@ -139,5 +139,23 @@ TEST_F(NNGradTest, BiasAddGradHelper) {
   RunTest({x,bias}, {shape, bias_shape}, {y}, {shape});
 }
 
+TEST_F(NNGradTest, Conv2DGrad) {
+  TensorShape shape({1, 2, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  Tensor filter = test::AsTensor<float>({0.5f}, {1, 1, 1, 1});
+  const std::vector<int> strides{1, 1, 1, 1};
+  auto y = Conv2D(scope_, x, filter, strides, "SAME");
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(NNGradTest, MaxPoolGradHelper) {
+  TensorShape shape({1, 2, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  const std::vector<int> ksize{1, 2, 2, 1};
+  const std::vector<int> strides{1, 1, 1, 1};
+  auto y = MaxPool(scope_, x, ksize, strides, "SAME");
+  RunTest(x, shape, y, shape);
+}
+  
 }  // namespace
 }  // namespace tensorflow
