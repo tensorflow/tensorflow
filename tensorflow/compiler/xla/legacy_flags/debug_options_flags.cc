@@ -35,6 +35,7 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_llvm_enable_alias_scope_metadata(true);
   flags->set_xla_llvm_enable_noalias_metadata(true);
   flags->set_xla_llvm_enable_invariant_load_metadata(true);
+  flags->set_xla_llvm_disable_expensive_passes(false);
   flags->set_xla_backend_optimization_level(3);
   flags->set_xla_cpu_multi_thread_eigen(true);
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
@@ -157,6 +158,13 @@ void AllocateFlags() {
            "In LLVM-based backends, enable the emission of "
            "!invariant.load metadata in "
            "the generated IR."),
+       tensorflow::Flag(
+           "xla_llvm_disable_expensive_passes",
+           bool_setter_for(
+               &DebugOptions::set_xla_llvm_disable_expensive_passes),
+           flag_values->xla_llvm_disable_expensive_passes(),
+           "In LLVM-based backends, disable a custom set of "
+           "expensive optimization passes."),
        tensorflow::Flag(
            "xla_backend_optimization_level",
            int32_setter_for(&DebugOptions::set_xla_backend_optimization_level),

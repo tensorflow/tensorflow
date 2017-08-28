@@ -147,6 +147,9 @@ message DebugOptions {
   // the generated IR.
   bool xla_llvm_enable_invariant_load_metadata = 72;
 
+  // If true, a set of expensive LLVM optimization passes will not be run.
+  bool xla_llvm_disable_expensive_passes = 73;
+
   // Options for inserting reduce-precision operations for numerical
   // experimentation.  This is a repeated field, as we may want to have
   // multiple passes with different parameters.
