@@ -347,14 +347,7 @@ TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
   tensorflow::Tensor t;
   auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
   if (cppstatus.ok()) {
-    TF_Status* status = TF_NewStatus();
-    TFE_TensorHandle* tensor = TFE_NewTensorHandle(t, status);
-    if (TF_GetCode(status) != TF_OK) {
-      TF_DeleteStatus(status);
-      return nullptr;
-    }
-    TF_DeleteStatus(status);
-    return tensor;
+    return TFE_NewTensorHandle(t);
   } else {
     tensorflow::mutex_lock l(exception_class_mutex);
     auto msg = tensorflow::strings::StrCat(
