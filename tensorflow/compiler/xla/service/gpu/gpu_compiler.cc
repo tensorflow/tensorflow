@@ -127,7 +127,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddInvariantChecker<HloVerifier>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
-        HloReducePrecisionOptions::BEFORE_OP_FUSION);
+        ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -170,10 +170,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     reduce_pipeline.AddInvariantChecker<HloVerifier>();
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
-        HloReducePrecisionOptions::AFTER_OP_FUSION);
-    ReducePrecisionInsertion::AddPasses(
-        &reduce_pipeline, hlo_module->config().debug_options(),
-        HloReducePrecisionOptions::FUSION_BY_CONTENT);
+        ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
     StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
     TF_RETURN_IF_ERROR(reduce_result.status());
 

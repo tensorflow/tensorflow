@@ -257,7 +257,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::BEFORE_OP_FUSION);
+      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
@@ -292,10 +292,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::AFTER_OP_FUSION);
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::FUSION_BY_CONTENT);
+      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());
