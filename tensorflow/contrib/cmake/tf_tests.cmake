@@ -14,6 +14,9 @@
 # ==============================================================================
 enable_testing()
 
+# Kill each test after 600 seconds.
+set(CTEST_TEST_TIMEOUT 30)
+
 #
 # get a temp path for test data
 #
