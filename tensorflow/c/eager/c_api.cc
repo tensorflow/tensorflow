@@ -535,7 +535,14 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 }  // extern "C"
 
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
-  return new TFE_TensorHandle(t, nullptr);
+  TF_Status* status = TF_NewStatus();
+  TFE_TensorHandle* tensor = TFE_NewTensorHandle(t, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_DeleteStatus(status);
+    return nullptr;
+  }
+  TF_DeleteStatus(status);
+  return tensor;
 }
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
