@@ -267,6 +267,25 @@ public class TensorFlowInferenceInterface {
     addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
   }
 
+  /**
+   * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
+   * bytes, not a Java {@code String} (which is a sequence of characters).
+   */
+  public void feedString(String inputName, byte[] src) {
+    addFeed(inputName, Tensor.create(src));
+  }
+
+  /**
+   * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
+   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
+   * characters).
+   */
+  public void feedString(String inputName, byte[][] src) {
+    addFeed(inputName, Tensor.create(src));
+  }
+
   // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
 
   /**
