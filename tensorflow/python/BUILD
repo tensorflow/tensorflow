@@ -1632,7 +1632,10 @@ py_library(
 
 py_library(
     name = "linalg_ns",
-    srcs = ["ops/linalg_ns.py"],
+    srcs = [
+        "ops/linalg_impl.py",
+        "ops/linalg_ns.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
