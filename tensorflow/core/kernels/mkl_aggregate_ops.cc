@@ -39,8 +39,6 @@ class MklAddNOp : public OpKernel {
   explicit MklAddNOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
-    if (!ctx->ValidateInputsAreSameShape(this)) return;
-
     const int num = ctx->num_inputs();
     OP_REQUIRES(ctx, num / 2 == 2,
                 errors::InvalidArgument("Only additions of two arguments "
