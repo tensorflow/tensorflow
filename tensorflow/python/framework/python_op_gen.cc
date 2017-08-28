@@ -719,24 +719,14 @@ string GetPythonOp(const OpDef& op_def, const string& function_name) {
 }
 
 string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    const string& source_file_name, bool require_shapes) {
+                    bool require_shapes) {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
   strings::StrAppend(&result, R"("""Python wrappers around TensorFlow ops.
 
 This file is MACHINE GENERATED! Do not edit.
-)");
- 
-  // Mention the original source file so someone tracing back through generated
-  // Python code will know where to look next.
-  if (!source_file_name.empty()) {
-    strings::StrAppend(&result, "Original C++ source file: ");
-    strings::StrAppend(&result, source_file_name);
-    strings::StrAppend(&result, "\n");
-  }
- 
-  strings::StrAppend(&result, R"("""
+"""
 
 import collections as _collections
 
@@ -810,17 +800,15 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 }
 
 void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    const string& source_file_name,
                     bool require_shapes) {
-  printf("%s", GetPythonOps(ops, hidden_ops, source_file_name, 
-                            require_shapes).c_str());
+  printf("%s", GetPythonOps(ops, hidden_ops, require_shapes).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   string op_list_str(op_list_buf, op_list_len);
   OpList ops;
   ops.ParseFromString(op_list_str);
-  return GetPythonOps(ops, {}, "", false);
+  return GetPythonOps(ops, {}, false);
 }
 
 }  // namespace tensorflow

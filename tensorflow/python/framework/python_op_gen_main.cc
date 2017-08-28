@@ -118,9 +118,9 @@ void PrintAllPythonOps(const std::vector<string>& op_list,
         *pruned_ops.mutable_op()->Add() = op_def;
       }
     }
-    PrintEagerPythonOps(pruned_ops, {}, require_shapes);
+    PrintEagerPythonOps(pruned_ops, {}, require_shapes, source_file_name);
   } else {
-    PrintEagerPythonOps(ops, op_list, require_shapes);
+    PrintEagerPythonOps(ops, op_list, require_shapes, source_file_name);
   }
 }
 
