@@ -54,6 +54,7 @@ underscores.
 
 Just as an example, consider the following "before" and "after" code snippets:
 
+```python
 # Before
 def add_activation_summaries(v, scope):
   tf.scalar_summary("%s/fraction_of_zero" % scope, tf.nn.fraction_of_zero(v))
@@ -63,6 +64,7 @@ def add_activation_summaries(v, scope):
 def add_activation_summaries(v):
   tf.summary.scalar("fraction_of_zero", tf.nn.fraction_of_zero(v))
   tf.summary.histogram("activations", v)
+```
 
 Now, so long as the add_activation_summaries function is called from within the
 right name scope, the behavior is the same.
