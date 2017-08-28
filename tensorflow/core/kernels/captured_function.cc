@@ -59,8 +59,24 @@ Status CapturedFunction::Create(
     } else if (!s.ok()) {                                                      \
       return s;                                                                \
     }                                                                          \
-    TF_RETURN_IF_ERROR(device->resource_manager()->Create(                     \
-        input_handle.container(), input_handle.name(), resource));             \
+    ResourceType* already_created_resource;                                    \
+    /* Look up the resource in the this function's resource manager, in case   \
+     * it has already been created. */                                         \
+    s = device->resource_manager()->Lookup(input_handle.container(),           \
+                                           input_handle.name(),                \
+                                           &already_created_resource);         \
+    if (s.ok()) {                                                              \
+      CHECK_EQ(resource, already_created_resource);                            \
+      resource->Unref();                                                       \
+      already_created_resource->Unref();                                       \
+    } else {                                                                   \
+      if (errors::IsNotFound(s)) {                                             \
+        TF_RETURN_IF_ERROR(device->resource_manager()->Create(                 \
+            input_handle.container(), input_handle.name(), resource));         \
+      } else {                                                                 \
+        return s;                                                              \
+      }                                                                        \
+    }                                                                          \
     continue;                                                                  \
   }
 
