@@ -138,7 +138,7 @@ def numpy_input_fn(x,
       raise ValueError('Length of tensors in x and y is mismatched. All '
                        'elements in x and y must have the same length.\n'
                        'Shapes in x: {}\n'
-                       'Shape in y: {}\n'.format(shape_dict_of_x, shape_of_y))
+                       'Shapes in y: {}\n'.format(shape_dict_of_x, shape_of_y))
 
     queue = feeding_functions._enqueue_data(  # pylint: disable=protected-access
         ordered_dict_data,
