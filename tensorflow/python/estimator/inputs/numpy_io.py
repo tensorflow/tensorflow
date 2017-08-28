@@ -104,14 +104,15 @@ def numpy_input_fn(x,
     # Make a shadow copy and also ensure the order of iteration is consistent.
     ordered_dict_data = collections.OrderedDict(
         sorted(x.items(), key=lambda t: t[0]))
-    feature_keys = ordered_dict_data.keys()
+    # Deep copy keys which is a view in python 3
+    feature_keys = list(ordered_dict_data.keys())
 
     if y is None:
       target_keys = None
     elif isinstance(y, dict):
       ordered_dict_y = collections.OrderedDict(
         sorted(y.items(), key=lambda t: t[0]))
-      target_keys = ordered_dict_y.keys()
+      target_keys = list(ordered_dict_y.keys())
 
       duplicate_keys = set(feature_keys).intersection(set(target_keys))
       if len(duplicate_keys):
