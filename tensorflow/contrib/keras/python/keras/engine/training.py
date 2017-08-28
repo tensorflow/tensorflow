@@ -668,8 +668,7 @@ class Model(Container):
               'Output "' + name + '" missing from loss dictionary. '
               'We assume this was done on purpose, '
               'and we will not be expecting '
-              'any data to be passed to "' + name + '" during training.',
-              stacklevel=2)
+              'any data to be passed to "' + name + '" during training.')
         loss_functions.append(losses.get(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):

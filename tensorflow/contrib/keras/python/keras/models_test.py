@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import tempfile
 
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
 from tensorflow.python.platform import test
+from tensorflow.python.training import training as training_module
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -147,6 +149,23 @@ class TestModelSaving(test.TestCase):
       model = keras.models.load_model(fname)
       os.remove(fname)
 
+  def test_saving_with_tf_optimizer(self):
+    if h5py is None:
+      return  # Skip test if models cannot be saved.
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse',
+                    optimizer=training_module.AdadeltaOptimizer(0.1),
+                    metrics=['acc'])
+
+      _, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
+      os.remove(fname)
+
   def test_saving_right_after_compilation(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
@@ -189,6 +208,16 @@ class TestSequential(test.TestCase):
   """Most Sequential model API tests are covered in `training_test.py`.
   """
 
+  def test_basic_methods(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_dim=2))
+    model.add(keras.layers.Dropout(0.3, name='dp'))
+    model.add(keras.layers.Dense(2, kernel_regularizer='l2',
+                                 kernel_constraint='max_norm'))
+    model.build()
+    self.assertEqual(model.state_updates, model.model.state_updates)
+    self.assertEqual(model.get_layer(name='dp').name, 'dp')
+
   def test_sequential_pop(self):
     num_hidden = 5
     input_dim = 3
@@ -208,6 +237,83 @@ class TestSequential(test.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       y = np.random.random((batch_size, num_hidden))
       model.fit(x, y, epochs=1)
+
+      # Test popping single-layer model
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
+      model.pop()
+      self.assertEqual(len(model.layers), 0)
+      self.assertEqual(len(model.outputs), 0)
+
+      # Invalid use case
+      model = keras.models.Sequential()
+      with self.assertRaises(TypeError):
+        model.pop()
+
+  def test_sequential_weight_loading(self):
+    if h5py is None:
+      return
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    num_hidden = 5
+    input_dim = 3
+    batch_size = 5
+    num_classes = 2
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
+      model.add(keras.layers.Dense(num_classes))
+
+      x = np.random.random((batch_size, input_dim))
+      ref_y = model.predict(x)
+
+      model.save_weights(h5_path)
+
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
+      model.add(keras.layers.Dense(num_classes))
+      model.load_weights(h5_path)
+      y = model.predict(x)
+
+      self.assertAllClose(y, ref_y)
+
+  def test_invalid_use_cases(self):
+    with self.test_session():
+      # Added objects must be layer instances
+      with self.assertRaises(TypeError):
+        model = keras.models.Sequential()
+        model.add(None)
+
+      # Added layers must have an inputs shape
+      with self.assertRaises(ValueError):
+        model = keras.models.Sequential()
+        model.add(keras.layers.Dense(1))
+
+      # Added layers cannot have multiple outputs
+      class MyLayer(keras.layers.Layer):
+
+        def call(self, inputs):
+          return [3 * inputs, 2 * inputs]
+
+        def _compute_output_shape(self, input_shape):
+          return [input_shape, input_shape]
+
+      with self.assertRaises(ValueError):
+        model = keras.models.Sequential()
+        model.add(MyLayer(input_shape=(3,)))
+      with self.assertRaises(TypeError):
+        model = keras.models.Sequential()
+        model.add(keras.layers.Dense(1, input_dim=1))
+        model.add(MyLayer())
+
+      # Building empty model
+      model = keras.models.Sequential()
+      with self.assertRaises(TypeError):
+        model.build()
 
 
 if __name__ == '__main__':

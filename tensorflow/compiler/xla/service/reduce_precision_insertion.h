@@ -30,19 +30,21 @@ namespace xla {
 // purposes of experimenting with the effects of reduced-precision storage of
 // intermediate values.
 class ReducePrecisionInsertion : public HloPassInterface {
-  using OpcodeFilterFunction = std::function<bool(HloOpcode)>;
+  using InstructionFilterFunction = std::function<bool(const HloInstruction*)>;
 
  public:
   // The exponent_bits and mantissa_bits arguments specify the parameters of
   // the instructions to insert.  The instructions will be inserted after each
-  // instruction with an opcode for which the should_reduce_output_precision
+  // instruction with an opcode for which the instruction_filter_function
   // function returns true and the output type is F32.
   explicit ReducePrecisionInsertion(
       const int exponent_bits, const int mantissa_bits,
-      const OpcodeFilterFunction& should_reduce_output_precision)
+      const HloReducePrecisionOptions::PassTiming pass_timing,
+      const InstructionFilterFunction& instruction_filter_function)
       : exponent_bits_(exponent_bits),
         mantissa_bits_(mantissa_bits),
-        should_reduce_output_precision_(should_reduce_output_precision) {}
+        pass_timing_(pass_timing),
+        instruction_filter_function_(instruction_filter_function) {}
 
   // Version of the constructor that takes an HloReducePrecisionOptions proto
   // rather than explicitly-enumerated parameters, for convenience when
@@ -51,7 +53,8 @@ class ReducePrecisionInsertion : public HloPassInterface {
       const HloReducePrecisionOptions& reduce_precision_options)
       : exponent_bits_(reduce_precision_options.exponent_bits()),
         mantissa_bits_(reduce_precision_options.mantissa_bits()),
-        should_reduce_output_precision_(
+        pass_timing_(reduce_precision_options.pass_timing()),
+        instruction_filter_function_(
             make_filter_function(reduce_precision_options)) {}
 
   ~ReducePrecisionInsertion() override{};
@@ -65,13 +68,14 @@ class ReducePrecisionInsertion : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
   // Convert between the (inconvenient) xla.proto HloReducePrecisionOptions
-  // representation and OpcodeFilterFunction functions.
-  static OpcodeFilterFunction make_filter_function(
+  // representation and InstructionFilterFunction functions.
+  static InstructionFilterFunction make_filter_function(
       const HloReducePrecisionOptions& reduce_precision_options);
   static HloReducePrecisionOptions make_options_proto(
       const HloReducePrecisionOptions::PassTiming pass_timing,
       const int exponent_bits, const int mantissa_bits,
-      const OpcodeFilterFunction& should_reduce_output_precision);
+      const std::function<bool(HloOpcode)>& opcode_filter_function,
+      const std::vector<string>& opname_substring_list = {});
 
   // Add ReducePrecisionInsertion passes to an HloPassPipeline based on the list
   // of HloReducePrecisionOptions in a DebugOptions proto.  Returns true if any
@@ -81,13 +85,22 @@ class ReducePrecisionInsertion : public HloPassInterface {
       const HloReducePrecisionOptions::PassTiming pass_timing);
 
  private:
+  // Select the instructions that should be suffixed with reduce-precision
+  // operators.
+  std::vector<HloInstruction*> instructions_to_suffix(
+      const HloComputation* computation);
+
   // Parameters for the precision reduction to be added.
   const int exponent_bits_;
   const int mantissa_bits_;
 
+  // Pass "timing" parameter.  This also controls aspects of how the pass
+  // selects locations to insert instructions.
+  const HloReducePrecisionOptions::PassTiming pass_timing_;
+
   // Function to determine (from the opcode) whether a given instruction should
   // have a reduce-precision instruction inserted in its output stream.
-  const OpcodeFilterFunction should_reduce_output_precision_;
+  const InstructionFilterFunction instruction_filter_function_;
 };
 
 }  // namespace xla

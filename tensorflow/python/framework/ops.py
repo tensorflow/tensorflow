@@ -2352,8 +2352,8 @@ class OpStats(object):
 
   def __iadd__(self, other):
     if other.statistic_type != self.statistic_type:
-      raise ValueError("Can't add an OpStat of type %s to one of %s.",
-                       self.statistic_type, other.statistic_type)
+      raise ValueError("Can't add an OpStat of type %s to one of %s." %
+                       (self.statistic_type, other.statistic_type))
     if self.value is None:
       self.value = other.value
     elif other.value is not None:
@@ -4923,22 +4923,21 @@ def name_scope(name, default_name=None, values=None):
     ValueError: if neither `name` nor `default_name` is provided
       but `values` are.
   """
-  n = default_name if name is None else name
+  name = default_name if name is None else name
   if context.in_eager_mode():
-    if n is None:
-      raise ValueError(
-          "At least one of name (%s) and default_name (%s) should be provided" %
-          (name, default_name))
     ctx = context.context()
     old_name = ctx.scope_name
-    scope_name = "%s%s/" % (old_name, n) if old_name else "%s/" % n
+    if name is None:
+      scope_name = ""
+    else:
+      scope_name = "%s%s/" % (old_name, name) if old_name else "%s/" % name
     ctx.scope_name = scope_name
     try:
       yield scope_name
     finally:
       ctx.scope_name = old_name
   else:
-    if n is None and values is not None:
+    if name is None and values is not None:
       # We only raise an error if values is not None (provided) because
       # currently tf.name_scope(None) (values=None then) is sometimes used as an
       # idiom to reset to top scope.
@@ -4948,7 +4947,7 @@ def name_scope(name, default_name=None, values=None):
     if values is None:
       values = []
     g = _get_graph_from_inputs(values)
-    with g.as_default(), g.name_scope(n) as scope:
+    with g.as_default(), g.name_scope(name) as scope:
       yield scope
 
 
