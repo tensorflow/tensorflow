@@ -249,7 +249,7 @@ here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/input_fn/bos
 
 ### Importing the Housing Data
 
-To start, set up your imports (including `pandas` and `tensorflow`) and @{$monitors#enabling-logging-with-tensorflow$set logging verbosity} to
+To start, set up your imports (including `pandas` and `tensorflow`) and set logging verbosity to
 `INFO` for more detailed log output:
 
 ```python
