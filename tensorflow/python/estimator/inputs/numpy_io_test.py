@@ -285,6 +285,33 @@ class NumpyIoTest(test.TestCase):
             num_epochs=1)
         failing_input_fn()
 
+  def testNumpyInputFnWhenLabelIsDictionary(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = {'y1': np.arange(-32, -28), 'y2': np.arange(32, 28, -1)}
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+        x, y, batch_size=2, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1]['y1'], [-32, -31])
+      self.assertAllEqual(res[1]['y2'], [32, 31])
+
+      session.run([features, target])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
 
 if __name__ == '__main__':
   test.main()
