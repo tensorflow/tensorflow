@@ -1,6 +1,6 @@
-##Options
+## Options
 
-###Overview
+### Overview
 
 For all tfprof views, the profiles are processed with the following procedures
 
@@ -35,7 +35,7 @@ For all tfprof views, the profiles are processed with the following procedures
 4) Finally, the filtered data structure is output in a format depending
    on the `-output` option.
 
-####Option Semantics In Different View
+#### Option Semantics In Different View
 options usually have the same semantics in different views. However, some
 can vary. For example `-max_depth` in scope view means the depth of
 name scope <b>tree</b>. In op view, it means the length of operation <b>list</b>.
@@ -68,7 +68,7 @@ output_bytes: The memory output by the operation. It's not necessarily requested
               by the current operation. For example, it can be a tensor
               forwarded from input to output, with in-place mutation.
 
-###Docs
+### Docs
 
 `-max_depth`: Show nodes that are at most this number of hops from starting node in the data structure.
 
