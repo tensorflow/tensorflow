@@ -14,9 +14,6 @@
 # ==============================================================================
 enable_testing()
 
-# Kill each test after 600 seconds.
-set(CTEST_TEST_TIMEOUT 30)
-
 #
 # get a temp path for test data
 #
@@ -85,6 +82,7 @@ function(AddTest)
   set_tests_properties(${_AT_TARGET}
     PROPERTIES ENVIRONMENT "TEST_TMPDIR=${tempdir};TEST_SRCDIR=${testdir}"
   )
+  set_tests_properties(${_AT_TARGET} PROPERTIES TIMEOUT "30")
 
   foreach(datafile ${_AT_DATA})
     file(RELATIVE_PATH datafile_rel ${tensorflow_source_dir} ${datafile})
@@ -120,6 +118,7 @@ function(AddPythonTests)
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
+    set_tests_properties(${_AT_TARGET} PROPERTIES TIMEOUT "30")
   endforeach()
 endfunction(AddPythonTests)
 
