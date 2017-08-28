@@ -23,6 +23,7 @@ import android.util.Log;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
@@ -447,15 +448,13 @@ public class TensorFlowInferenceInterface {
     }
 
     // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
-    byte[] graphDef = new byte[is.available()];
-    final int numBytesRead = is.read(graphDef);
-    if (numBytesRead != graphDef.length) {
-      throw new IOException(
-          "read error: read only "
-              + numBytesRead
-              + " of the graph, expected to read "
-              + graphDef.length);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    int numBytesRead;
+    byte[] buf = new byte[16384];
+    while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
+      baos.write(buf, 0, numBytesRead);
     }
+    byte[] graphDef = baos.toByteArray();
 
     if (VERSION.SDK_INT >= 18) {
       Trace.endSection(); // readGraphDef.
