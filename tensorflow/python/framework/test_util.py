@@ -322,12 +322,10 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
           with context.device("/device:CPU:0"):
             f(self)
 
+      eager_graph = graph or ops.Graph()
       with context.eager_mode():
-        if graph is None:
+        with eager_graph.as_default():
           run_eager_mode()
-        else:
-          with graph.as_default():
-            run_eager_mode()
 
     return decorated
   return decorator

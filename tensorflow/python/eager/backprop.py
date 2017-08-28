@@ -176,6 +176,8 @@ def _aggregate_grads(gradients):
   """Aggregate gradients of the same tensor."""
   grad_lists = dict()
   for t, g in gradients:
+    if g is None:
+      continue
     if id(t) not in grad_lists:
       grad_lists[id(t)] = [(t, g)]
     else:

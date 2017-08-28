@@ -302,14 +302,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
     x = resource_variable_ops.var_handle_op(
         dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5")
-    if context.in_graph_mode():
-      with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
-        x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
-        self.evaluate(x_read)
-    else:
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "Attempted to read a nonexistent variable."):
-        _ = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
+    with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
+      x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
+      self.evaluate(x_read)
 
   @test_util.run_in_graph_and_eager_modes()
   def testSharedNameWithNamescope(self):
@@ -373,7 +368,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(dtypes.int32, v.dtype)
       self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
-      self.assertAllEqual(init.device, v.device)
+      self.assertEqual(context.get_default_context().device_name, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
       self.assertEqual(constraint, v.constraint)
       self.assertAllEqual(init.numpy(), v.read_value().numpy())
