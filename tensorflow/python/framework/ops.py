@@ -372,6 +372,12 @@ class Tensor(_TensorLike):
     else:
       return None
 
+  def _shape_tuple(self):
+    shape = self._shape_as_list()
+    if shape is None:
+      return None
+    return tuple(shape)
+
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -1011,12 +1017,20 @@ def internal_convert_to_tensor(value,
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
+  # Fast path for removing unnecessary convert-to-tensors.
+  if (isinstance(ag_core.getval(value), Tensor)
+      and (dtype is None or dtype == value.dtype)
+      and context.in_eager_mode()):
+    return value
   error_prefix = "" if name is None else "%s: " % name
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
   for _, funcs_at_priority in sorted(_tensor_conversion_func_registry.items()):
     for base_type, conversion_func in funcs_at_priority:
-      if isinstance(value, base_type):
+      # Note we check the type of the object unwrapped from an autograd node, if
+      # tracing gradients, to ensure the same behavior happens with and without
+      # tracing.
+      if isinstance(ag_core.getval(value), base_type):
         # If dtype is None but preferred_dtype is not None, we try to
         # cast to preferred_dtype first.
         ret = None
