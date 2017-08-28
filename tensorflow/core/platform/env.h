@@ -381,6 +381,10 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data);
 
+/// A utility routine: copy contents of `oldpath` to `newpath`
+Status CopyFile(Env* env, const string& oldpath, const string& newpath,
+                bool overwrite);
+
 /// Write binary representation of "proto" to the named file.
 Status WriteBinaryProto(Env* env, const string& fname,
                         const ::tensorflow::protobuf::MessageLite& proto);

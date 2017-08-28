@@ -40,6 +40,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr size_t kCopyFileBufferSize = 1024 * 1024;
+
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
   Status Register(const string& scheme, Factory factory) override;
@@ -359,6 +361,57 @@ Status WriteStringToFile(Env* env, const string& fname,
     s = file->Close();
   }
   return s;
+}
+
+Status CopyFile(Env* env, const string& oldpath, const string& newpath,
+                bool overwrite) {
+  // If overwrite is false and the newpath file exists then it's an error.
+  if (!overwrite && env->FileExists(newpath).ok()) {
+    return errors::AlreadyExists("file already exists");
+  }
+  uint64 file_size;
+  Status s = env->GetFileSize(oldpath, &file_size);
+  if (!s.ok()) {
+    return s;
+  }
+  std::unique_ptr<RandomAccessFile> oldfile;
+  s = env->NewRandomAccessFile(oldpath, &oldfile);
+  if (!s.ok()) {
+    return s;
+  }
+  std::unique_ptr<WritableFile> newfile;
+  s = env->NewWritableFile(newpath, &newfile);
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint64 offset = 0;
+  while (offset < file_size) {
+    char scratch[kCopyFileBufferSize];
+    StringPiece result;
+    size_t chunk = offset + sizeof(scratch) < file_size ? sizeof(scratch)
+                                                        : file_size - offset;
+    s = oldfile->Read(offset, chunk, &result, scratch);
+    if (!s.ok()) {
+      return s;
+    }
+
+    s = newfile->Append(result);
+    if (!s.ok()) {
+      return s;
+    }
+
+    offset += chunk;
+  }
+  s = env->GetFileSize(oldpath, &file_size);
+  if (!s.ok()) {
+    return s;
+  }
+  if (offset != file_size) {
+    return errors::Aborted("File ", oldpath, " changed while reading: ",
+                           file_size, " vs. ", offset);
+  }
+  return newfile->Close();
 }
 
 // A ZeroCopyInputStream on a RandomAccessFile.
