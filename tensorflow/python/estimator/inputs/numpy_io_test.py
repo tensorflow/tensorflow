@@ -294,20 +294,22 @@ class NumpyIoTest(test.TestCase):
     with self.test_session() as session:
       input_fn = numpy_io.numpy_input_fn(
         x, y, batch_size=2, shuffle=False, num_epochs=1)
-      features, target = input_fn()
+      features_tensor, targets_tensor = input_fn()
 
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
-      res = session.run([features, target])
-      self.assertAllEqual(res[0]['a'], [0, 1])
-      self.assertAllEqual(res[0]['b'], [32, 33])
-      self.assertAllEqual(res[1]['y1'], [-32, -31])
-      self.assertAllEqual(res[1]['y2'], [32, 31])
+      features, targets = session.run([features_tensor, targets_tensor])
+      self.assertEqual(len(features), 2)
+      self.assertAllEqual(features['a'], [0, 1])
+      self.assertAllEqual(features['b'], [32, 33])
+      self.assertEqual(len(targets), 2)
+      self.assertAllEqual(targets['y1'], [-32, -31])
+      self.assertAllEqual(targets['y2'], [32, 31])
 
-      session.run([features, target])
+      session.run([features_tensor, targets_tensor])
       with self.assertRaises(errors.OutOfRangeError):
-        session.run([features, target])
+        session.run([features_tensor, targets_tensor])
 
       coord.request_stop()
       coord.join(threads)
