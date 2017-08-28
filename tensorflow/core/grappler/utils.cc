@@ -27,7 +27,9 @@ namespace grappler {
 NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {
     auto node = graph_->mutable_node(i);
-    nodes_.insert(std::make_pair(node->name(), node));
+    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
+    // Check that the graph doesn't contain multiple nodes with the same name.
+    CHECK(rslt.second);
     for (const auto& input : node->input()) {
       outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
