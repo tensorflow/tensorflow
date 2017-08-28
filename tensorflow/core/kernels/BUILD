@@ -1282,7 +1282,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "roll_op_test",
     size = "small",
     srcs = ["roll_op_test.cc"],

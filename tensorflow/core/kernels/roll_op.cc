@@ -308,7 +308,7 @@ REGISTER_CPU(bfloat16);
 
 // Register the GPU kernels.
 #ifdef GOOGLE_CUDA
-#define REGISTER_GPU(T)                                          \
+#define REGISTER_GPU(type)                                       \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
