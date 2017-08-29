@@ -71,7 +71,7 @@ Use that package at your own risk.
 
 ## Installing with native pip
 
-If one of the following versions of Python is not installed on your machine,
+If neither of the following versions of Python is installed on your machine,
 install it now:
 
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
