@@ -23,7 +23,81 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+void InplaceFinder::RouteFinder(HloInstruction* inst) {
+  switch (inst->opcode()) {
+    case HloOpcode::kParameter:
+    {
+      break;
+    }
+    case HloOpcode::kAdd:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kMultiply:
+    {
+      // Operation must be part of an TF core update
+      const OpMetadata& md(inst->metadata());
+      const std::string& tf_op(md.op_type());
+      if (!(tf_op == "AssignAddVariableOp" ||
+            tf_op == "AssignSubVariableOp" ||
+            tf_op == "ResourceApplyGradientDescent" ||
+            tf_op == "ResourceApplyMomentum" ||
+            tf_op == "ResourceApplyAdagrad" ||
+            tf_op == "ResourceApplyRMSProp")) {
+        return;
+      }
+      if (inst->operand(0) != current_route.back()) {
+        return;
+      }
+      // TODO Verify that operand(0).shape() == inst.shape()
+      break;
+    }
+    case HloOpcode::kTuple:
+    {
+      // TODO Push which tuple onto the tuple stack
+      break;
+    }
+    case HloOpcode::kGetTupleElement:
+    {
+      // TODO Verify we are extracting the right tuple, and pop stack
+      break;
+    }
+    default:
+      return;
+  }
+  current_route.push_back(inst);
+
+  if (inst->user_count() == 0) {
+    routes.insert(std::make_pair(current_route[0], current_route));
+  } else {
+    for (auto& user : inst->users()) {
+      RouteFinder(user);
+    }
+  }
+
+  current_route.pop_back();
+}
+
 Status InplaceFinder::FindInplaceInstructions(HloModule* module) {
+  HloComputation* comp = module->entry_computation();
+
+  // For each input
+  const auto& params = comp->parameter_instructions();
+  for (auto& p : params) {
+    current_route.clear();
+    RouteFinder(p);
+  }
+
+  // For each route in map
+  for (auto& r : routes) {
+    if (routes.count(r.first) == 1) {
+      for (auto& inst : r.second) {
+        inplace_instructions.insert(inst);
+      }
+    }
+  }
+
+  routes.clear();
+  current_route.clear();
+
   return Status::OK();
 }
 

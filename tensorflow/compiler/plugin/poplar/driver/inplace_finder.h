@@ -26,6 +26,7 @@ class HloInstruction;
 namespace poplarplugin {
 
 using InplaceInstructions = std::set<const HloInstruction*>;
+using InplaceRoute = std::vector<HloInstruction*>;
 
 /**
  * This class finds all instructions that explicitly add tensors to the
@@ -42,6 +43,13 @@ public:
   Status FindInplaceInstructions(HloModule* module);
 
   InplaceInstructions inplace_instructions;
+
+private:
+  void RouteFinder(HloInstruction* inst);
+
+  std::multimap<HloInstruction*, InplaceRoute> routes;
+
+  InplaceRoute current_route;
 };
 
 }

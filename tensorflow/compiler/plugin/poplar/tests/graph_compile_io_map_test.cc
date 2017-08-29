@@ -49,10 +49,9 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   auto add = builder.AddInstruction(
           HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
   builder.AddInstruction(
-        HloInstruction::CreateTuple({add}));
+          HloInstruction::CreateTuple({add}));
 
   auto computation = builder.Build();
-
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
@@ -60,8 +59,8 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   PoplarCompiler compiler;
 
   std::unique_ptr<Executable> executable =
-    compiler.Compile(std::move(hlo_module),
-                     nullptr).ConsumeValueOrDie();
+          compiler.Compile(std::move(hlo_module),
+                           nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(0, GetMap(e).size());
@@ -80,13 +79,12 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   builder.AddInstruction(
           HloInstruction::CreateTuple({add}));
 
-  OpMetadata metadata;
-  metadata.set_op_name("grad%1");
-  metadata.set_op_type("ResourceApplyGradientDescent");
-  add->set_metadata(metadata);
+  OpMetadata metadata1;
+  metadata1.set_op_name("grad%1");
+  metadata1.set_op_type("ResourceApplyGradientDescent");
+  add->set_metadata(metadata1);
 
   auto computation = builder.Build();
-
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
@@ -115,13 +113,12 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   builder.AddInstruction(
           HloInstruction::CreateTuple({add}));
 
-  OpMetadata metadata;
-  metadata.set_op_name("grad%1");
-  metadata.set_op_type("ResourceApplyGradientDescent");
-  add->set_metadata(metadata);
+  OpMetadata metadata1;
+  metadata1.set_op_name("grad%1");
+  metadata1.set_op_type("ResourceApplyGradientDescent");
+  add->set_metadata(metadata1);
 
   auto computation = builder.Build();
-
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
@@ -170,7 +167,6 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 
   auto computation = builder.Build();
 
-
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
@@ -181,7 +177,8 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  ASSERT_EQ(1, GetMap(e).size());
+  ASSERT_EQ(2, GetMap(e).size());
+  EXPECT_EQ(0, GetMap(e).at(0));
   EXPECT_EQ(2, GetMap(e).at(3));
 }
 
@@ -207,16 +204,6 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
           HloInstruction::CreateTuple({tup1, tup2}));
   builder.AddInstruction(
           HloInstruction::CreateGetTupleElement(tup3->shape(), tup3, 1));
-
-  OpMetadata metadata1;
-  metadata1.set_op_name("grad%1");
-  metadata1.set_op_type("ResourceApplyGradientDescent");
-  add1->set_metadata(metadata1);
-
-  OpMetadata metadata2;
-  metadata2.set_op_name("grad%2");
-  metadata2.set_op_type("ResourceApplyGradientDescent");
-  add2->set_metadata(metadata2);
 
   auto computation = builder.Build();
 

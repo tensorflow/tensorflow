@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -99,45 +100,6 @@ LookupBinaryInPlaceFn(HloOpcode opcode) {
                                    HloOpcodeString(opcode)));
 }
 
-
-static bool
-IsInPlaceUpdate(const HloInstruction *inst) {
-  const HloOpcode opcode(inst->opcode());
-
-  if (!(opcode == HloOpcode::kAdd ||
-        opcode == HloOpcode::kMultiply ||
-        opcode == HloOpcode::kSubtract)) {
-    return false;
-  }
-
-  // Operation must be part of an TF core update
-  const OpMetadata& md(inst->metadata());
-  const std::string& tf_op(md.op_type());
-  if (!(tf_op == "AssignAddVariableOp" ||
-        tf_op == "AssignSubVariableOp" ||
-        tf_op == "ResourceApplyGradientDescent" ||
-        tf_op == "ResourceApplyMomentum" ||
-        tf_op == "ResourceApplyAdagrad" ||
-        tf_op == "ResourceApplyRMSProp")) {
-    return false;
-  }
-
-  // Operation must have a Parameter as an input
-  //   const HloInstruction* op0(inst->operand(0));
-  if (inst->operand(0)->opcode() != HloOpcode::kParameter) return false;
-
-  // Operation must be the root or have the root as an output
-  const HloInstruction* root(inst->parent()->root_instruction());
-  if (inst == root) return true;
-
-  const std::vector<HloInstruction*>& users(inst->users());
-  if (users.size() != 1) return false;
-  if (users[0] == root) return true;
-
-  return false;
-
-}
-
 port::StatusOr<poplar::program::Program>
 CreateUnaryElementwiseOp(poplar::Graph &graph,
                          CompilerResources& res,
@@ -176,7 +138,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
-  if (IsInPlaceUpdate(inst) &&
+  if (res.inplace_instructions.count(inst) == 1 &&
       (in0.shape() == in1.shape()) &&
       in0.isParallelWriteable()) {
 
