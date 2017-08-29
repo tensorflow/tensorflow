@@ -844,12 +844,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   graph_ = item.graph;
   node_map_.reset(new NodeMap(&graph_));
-  for (const auto& node : item.fetch) {
-    nodes_to_preserve_.insert(NodeName(node));
-  }
-  for (const auto& node : item.feed) {
-    nodes_to_preserve_.insert(NodeName(node.first));
-  }
+  nodes_to_preserve_ = item.NodesToPreserve();
   device_.reset(new DeviceSimple());
   *output = GraphDef();
 
