@@ -161,7 +161,6 @@ TEST_F(IdentifyFramesTest, MultipleEnterNodes) {
   *graph.add_node() = CreateNode("5", {});
   *graph.add_node() = CreateNode("4", "Enter", frame, {"5"});
   *graph.add_node() = CreateNode("3", {"4", "2"});
-  *graph.add_node() = CreateNode("4", {"5"});
   *graph.add_node() = CreateNode("6", "Merge", {"3", "8"});
   *graph.add_node() = CreateNode("7", "Switch", {"6"});
   *graph.add_node() = CreateNode("8", "NextIteration", {"7"});
