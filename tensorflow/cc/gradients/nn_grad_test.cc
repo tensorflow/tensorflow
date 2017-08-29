@@ -156,6 +156,15 @@ TEST_F(NNGradTest, MaxPoolGradHelper) {
   auto y = MaxPool(scope_, x, ksize, strides, "SAME");
   RunTest(x, shape, y, shape);
 }
+
+TEST_F(NNGradTest, MaxPoolGradV2Helper) {
+  TensorShape shape({1, 2, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  Tensor ksize = test::AsTensor<int>({1, 2, 2, 1}, {4});
+  Tensor strides = test::AsTensor<int>({1, 1, 1, 1}, {4});
+  auto y = MaxPoolV2(scope_, x, ksize, strides, "SAME");
+  RunTest(x, shape, y, shape);
+}
   
 }  // namespace
 }  // namespace tensorflow
