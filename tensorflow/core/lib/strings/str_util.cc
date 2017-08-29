@@ -249,14 +249,14 @@ string Uppercase(StringPiece s) {
 }
 
 string ArgDefCase(StringPiece s) {
-  const int n = s.size();
+  const size_t n = s.size();
 
   // Compute the size of resulting string.
   // Number of extra underscores we will need to add.
-  int extra_us = 0;
+  size_t extra_us = 0;
   // Number of non-alpha chars in the beginning to skip.
-  int to_skip = 0;
-  for (int i = 0; i < n; ++i) {
+  size_t to_skip = 0;
+  for (size_t i = 0; i < n; ++i) {
     // If we are skipping and current letter is non-alpha, skip it as well
     if (i == to_skip && !isalpha(s[i])) {
       ++to_skip;
@@ -277,7 +277,7 @@ string ArgDefCase(StringPiece s) {
   string result(n + extra_us - to_skip, '_');
   // i - index into s
   // j - index into result
-  for (int i = to_skip, j = 0; i < n; ++i, ++j) {
+  for (size_t i = to_skip, j = 0; i < n; ++i, ++j) {
     DCHECK_LT(j, result.size());
     char c = s[i];
     // If c is not alphanumeric, we don't need to do anything
