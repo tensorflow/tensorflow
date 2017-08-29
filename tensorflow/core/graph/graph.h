@@ -261,10 +261,10 @@ class Node {
 // that a single `OutputTensor` can correspond to multiple `Edge`s if the output
 // is consumed by multiple destination nodes.
 struct OutputTensor {
-  Node* node;
+  const Node* node;
   int index;
 
-  OutputTensor(Node* n, int i) : node(n), index(i) {}
+  OutputTensor(const Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
 };
 
