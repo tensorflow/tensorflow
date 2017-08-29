@@ -499,6 +499,25 @@ keras_backend.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
 model.fit(...)  # This will break into the TFDBG CLI.
 ```
 
+## Debugging tf-slim with TFDBG
+
+TFDBG currently supports only training with
+[tf-slim](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/slim).
+To debug the training process, provide `LocalCLIDebugWrapperSession` to the
+`session_wrapper` argument of `slim.learning.train()`. For example:
+
+``` python
+import tensorflow as tf
+from tensorflow.python import debug as tf_debug
+
+# ... Code that creates the graph and the train_op ...
+tf.contrib.slim.learning_train(
+    train_op,
+    logdir,
+    number_of_steps=10,
+    session_wrapper=tf_debug.LocalCLIDebugWrapperSession)
+```
+
 ## Offline Debugging of Remotely-Running Sessions
 
 Often, your model is running on a remote machine or a process that you don't
