@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -67,7 +68,7 @@ void AllocateFlags() {
     };
   };
 
-  // Returns a lambda that is a custom "sub-parser" for xla_disable_hlo_passes.
+  // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
     std::vector<string> disabled_passes =
         tensorflow::str_util::Split(comma_separated_values, ',');
@@ -77,31 +78,23 @@ void AllocateFlags() {
     return true;
   };
 
-  // Returns a lambda that is a custom "sub-parser" for
-  // xla_backend_extra_options.
+  // Custom "sub-parser" lambda for xla_backend_extra_options.
   auto setter_for_xla_backend_extra_options =
       [](string comma_separated_values) {
-        std::vector<string> extra_options_parts =
-            tensorflow::str_util::Split(comma_separated_values, ',');
         auto* extra_options_map =
             flag_values->mutable_xla_backend_extra_options();
-
-        // The flag contains a comma-separated list of options; some options
-        // have arguments following "=", some don't.
-        for (const auto& part : extra_options_parts) {
-          size_t eq_pos = part.find_first_of('=');
-          if (eq_pos == string::npos) {
-            (*extra_options_map)[part] = "";
-          } else {
-            string value = "";
-            if (eq_pos + 1 < part.size()) {
-              value = part.substr(eq_pos + 1);
-            }
-            (*extra_options_map)[part.substr(0, eq_pos)] = value;
-          }
-        }
-
+        impl::parse_xla_backend_extra_options(extra_options_map,
+                                              comma_separated_values);
         return true;
+      };
+
+  // Custom "sub-parser" lambda for xla_reduce_precision.
+  auto setter_for_xla_reduce_precision =
+      [](string reduce_precision_option_value) {
+        HloReducePrecisionOptions* option_proto =
+            flag_values->add_hlo_reduce_precision_options();
+        return impl::parse_xla_reduce_precision_option(
+            option_proto, reduce_precision_option_value);
       };
 
   flag_objects = new std::vector<tensorflow::Flag>(
@@ -250,7 +243,20 @@ void AllocateFlags() {
                         setter_for_xla_backend_extra_options, "",
                         "Extra options to pass to a backend; "
                         "comma-separated list of 'key=val' strings (=val "
-                        "may be omitted); no whitespace around commas.")});
+                        "may be omitted); no whitespace around commas."),
+       tensorflow::Flag("xla_reduce_precision", setter_for_xla_reduce_precision,
+                        "",
+                        "Directions for adding reduce-precision operations. "
+                        "Format is 'LOCATION=E,M:OPS;NAMES' where LOCATION is "
+                        "the class of locations in which to insert the "
+                        "operations (e.g., 'OP_OUTPUTS'), E and M are the "
+                        "exponent and matissa bit counts respectively, and "
+                        "OPS and NAMES are comma-separated (no spaces) lists "
+                        "of the operation types and names to which to attach "
+                        "the reduce-precision operations.  The NAMES string "
+                        "and its preceding ';' may be omitted.  This option "
+                        "may be repeated to define multiple sets of added "
+                        "reduce-precision operations.")});
   ParseFlagsFromEnv(*flag_objects);
 }
 
