@@ -71,7 +71,7 @@ namespace {
   __global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V)
   {
     CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-      V[i] = V[i]>=0 ? (Scalar)1 : (Scalar)0;
+      V[i] = V[i]>=0 ? Scalar(1) : Scalar(-1);
     }
   }
 }
@@ -156,7 +156,7 @@ class SvdOpGpu : public AsyncOpKernel {
         CudaLaunchConfig cfg = GetCudaLaunchConfig(m, d);
         ComputeValueOfVKernel <<<cfg.block_count, 
                               cfg.thread_per_block, 0, d.stream()>>>
-            (cfg, m, input_copy.flat<Scalar>().data(), outputU, outputS, outputVT);
+            (cfg, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(), outputU, outputS, outputVT);
       }
       // For the second part, see below
     }

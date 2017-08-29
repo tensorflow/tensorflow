@@ -188,7 +188,7 @@ if __name__ == "__main__":
   for use_gpu in False, True:
     for dtype in np.float32, np.float64, np.complex64, np.complex128:
       for rows in 1, 2, 5, 10, 32, 100:
-        for cols in 2, 5, 10, 32, 100:
+        for cols in 1, 2, 5, 10, 32, 100:
           for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
             shape = batch_dims + (rows, cols)
             for use_static_shape in True, False:
