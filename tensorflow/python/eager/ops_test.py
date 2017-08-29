@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import tensor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
@@ -294,6 +295,19 @@ class TargetTest(test_util.TensorFlowTestCase):
         scalar_shape, minval=tensor.Tensor(5.), maxval=tensor.Tensor(6.))
     self.assertLess(x.numpy(), 6)
     self.assertGreaterEqual(x.numpy(), 5)
+
+  def testArgsToMatchingEagerDefault(self):
+    # Uses default
+    t, r = execute.args_to_matching_eager([[3, 4]], dtypes.int32)
+    self.assertEquals(t, dtypes.int32)
+    self.assertEquals(r[0].dtype, dtypes.int32)
+    t, r = execute.args_to_matching_eager([[3, 4]], dtypes.int64)
+    self.assertEquals(t, dtypes.int64)
+    self.assertEquals(r[0].dtype, dtypes.int64)
+    # Doesn't use default
+    t, r = execute.args_to_matching_eager([['string', 'arg']], dtypes.int32)
+    self.assertEquals(t, dtypes.string)
+    self.assertEquals(r[0].dtype, dtypes.string)
 
 
 if __name__ == '__main__':
