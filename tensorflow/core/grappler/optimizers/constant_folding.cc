@@ -94,10 +94,6 @@ class DeviceSimple : public DeviceBase {
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
-string AsControlDependency(const NodeDef& node) {
-  return strings::StrCat("^", node.name());
-}
-
 }  // namespace
 
 ConstantFolding::ConstantFolding() {

@@ -177,5 +177,13 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
   return notified;
 }
 
+string AsControlDependency(const NodeDef& node) {
+  return strings::StrCat("^", node.name());
+}
+
+string AsControlDependency(const string& node) {
+  return strings::StrCat("^", node);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

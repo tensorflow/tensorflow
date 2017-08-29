@@ -85,6 +85,14 @@ string AddPrefixToNodeName(const string& name, const string& prefix);
 bool ExecuteWithTimeout(std::function<void()> fn, int64 timeout_in_ms,
                         thread::ThreadPool* thread_pool);
 
+// Returns the node name prefixed with conventional symbol '^'
+// for control dependency, given a NodeDef.
+string AsControlDependency(const NodeDef& node);
+//
+// Returns the node name prefixed with conventional symbol '^'
+// for control dependency, given a node name
+string AsControlDependency(const string& node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 
