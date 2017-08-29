@@ -117,7 +117,6 @@ cc_test(
     srcs = ["grappler_item_builder_test.cc"],
     deps = [
         ":grappler_item_builder",
-        "//google/protobuf:any",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:grad_testutil",
