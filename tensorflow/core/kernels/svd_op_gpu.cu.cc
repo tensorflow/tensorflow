@@ -27,12 +27,12 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -51,37 +51,39 @@ static const char kErrMsg[] =
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
-  // This kernel computes the reduction
-  // V' = sum_i (M_i * U_i,1 * S_i).
-  // The result is stored in V[batch] and has the same sign as the
-  // real value of V (which should be computed)  
-  template<class Scalar>
-  __global__ void ComputeValueOfVKernel(CudaLaunchConfig config,
-      int64 m, const Scalar* M, const Scalar* U, const Scalar* S, Scalar* V)
-  {
-    CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-      Scalar v = M[i] * U[m*i] * S[0];
-      CudaAtomicAdd(V, v);
+// This kernel computes the reduction
+// V' = sum_i (M_i * U_i,1 * S_i).
+// The result is stored in V[batch] and has the same sign as the
+// real value of V (which should be computed)
+template <class Scalar>
+__global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
+                                      int64 ldu, const Scalar* M,
+                                      const Scalar* U, const Scalar* S,
+                                      Scalar* V) {
+  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
+    CUDA_AXIS_KERNEL_LOOP(i, config.virtual_thread_count, y) {
+      Scalar v = M[i + m * batch] * U[ldu * (i + m * batch)] * S[batch];
+      CudaAtomicAdd(V + batch, v);
     }
   }
+}
 
-  // Extracts the sign of V
-  // V[i] = V[i]>=0 ? 1 : 0
-  template<class Scalar>
-  __global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V)
-  {
-    CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-      V[i] = V[i]>=0 ? Scalar(1) : Scalar(-1);
-    }
+// Extracts the sign of V
+// V[i] = V[i]>=0 ? 1 : 0
+template <class Scalar>
+__global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V) {
+  CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
+    V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
+}
 }
 
 // Scalar: The input scalar type (can be complex)
 template <class Scalar>
 class SvdOpGpu : public AsyncOpKernel {
  public:
-  using SScalar = typename Eigen::NumTraits<Scalar>::Real;
- 
+  using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
+
   explicit SvdOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
@@ -89,35 +91,29 @@ class SvdOpGpu : public AsyncOpKernel {
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
               int64 p, int64 batch_size, Scalar* input_ptr,
-              SScalar* outputS_ptr, Scalar* outputU_ptr, Scalar* outputVT_ptr,
-              int* dev_info_ptr, CudaSolver& solver) {
-
+              RealScalar* outputS_ptr, Scalar* outputU_ptr,
+              Scalar* outputVT_ptr, int* dev_info_ptr, CudaSolver& solver) {
+    // Save the input matrix
     // Needed for the n=1 fix, see below, since SVD destroys the input
     Tensor input_copy;
-    if (compute_uv_ && n==1) {
+    if (compute_uv_ && n == 1) {
       OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_temp(DataTypeToEnum<Scalar>::v(), TensorShape({m}), &input_copy),
-        done);
+          context,
+          context->allocate_temp(DataTypeToEnum<Scalar>::v(),
+                                 TensorShape({batch_size, m}), &input_copy),
+          done);
+      const GPUDevice& d = context->eigen_device<GPUDevice>();
+      d.memcpy(input_copy.flat<Scalar>().data(), input_ptr,
+               batch_size * m * sizeof(Scalar));
     }
 
     for (int64 batch = 0; batch < batch_size; ++batch) {
-      int lda = m;
-      int ldu = m;
-      int ldvt = n;
       Scalar* input = input_ptr + batch * m * n;
-      SScalar* outputS = outputS_ptr + batch * p;
+      RealScalar* outputS = outputS_ptr + batch * p;
       Scalar* outputU = NULL;
       Scalar* outputVT = NULL;
-      signed char jobu = 'N';
-      signed char jobvt = 'N';
-
-      // Save input matrix for n=1 fix
-      if (compute_uv_ && n==1) {
-        const GPUDevice& d = context->eigen_device<GPUDevice>();
-        d.memcpy(input_copy.flat<Scalar>().data(), input,
-               m * sizeof(Scalar));
-      }
+      char jobu = 'N';
+      char jobvt = 'N';
 
       if (compute_uv_) {
         if (full_matrices_) {
@@ -134,40 +130,37 @@ class SvdOpGpu : public AsyncOpKernel {
       }
 
       OP_REQUIRES_OK_ASYNC(
-          context, solver.Gesvd(jobu, jobvt, m, n, input, lda, outputS, outputU,
-                                ldu, outputVT, ldvt, dev_info_ptr + batch),
+          context, solver.Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU,
+                                m, outputVT, n, dev_info_ptr + batch),
           done);
-
-      // This is a bug in cuSolver:
-      // If n is one, then outputVT only contains zeros instead of ones.
-      // Hence, I need to fill outputVT manually
-      // The question is: +1 or -1?
-      // -> Compute U*S and compare sign against M
-      // But because S is zero except for the first entry, the multiplication simplifies a lot
-      // However, what happens if M contains zeros? At these indices, it is impossible
-      // to determine the value of V
-      // -> Compute V for all rows in M to cope for zeros.
-      // 1. V' = sum_i (M_i * U_i,1 * S_i)
-      // 2. V = {1, V'>=0, -1, V'<0}
-      // TODO: what is with complex values?
-      if (compute_uv_ && n==1) {
-        const GPUDevice& d = context->eigen_device<GPUDevice>();
-        d.memset(outputVT, 0, sizeof(Scalar));
-        CudaLaunchConfig cfg = GetCudaLaunchConfig(m, d);
-        ComputeValueOfVKernel <<<cfg.block_count, 
-                              cfg.thread_per_block, 0, d.stream()>>>
-            (cfg, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(), outputU, outputS, outputVT);
-      }
-      // For the second part, see below
     }
 
-    // Second part of the n=1 fix: clamp V to -1 or +1
-    if (compute_uv_ && n==1) {
+    // This is a bug in cuSolver:
+    // If n is one, then outputVT only contains zeros instead of ones.
+    // Hence, I need to fill outputVT manually
+    // The question is: +1 or -1?
+    // -> Compute U*S and compare sign against M
+    // But because S is zero except for the first entry, the multiplication
+    // simplifies a lot.
+    // However, what happens if M contains zeros? At these indices, it is
+    // impossible to determine the value of V.
+    // -> Compute V for all rows in M to cope for zeros.
+    // 1. V' = sum_i (M_i * U_i,1 * S_i)
+    // 2. V = {1, V'>=0, -1, V'<0}
+    // TODO: what is with complex values?
+    if (compute_uv_ && n == 1) {
+      // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
-      CudaLaunchConfig cfg = GetCudaLaunchConfig(batch_size, d);
-      ExtractSignOfVKernel <<<cfg.block_count, 
-                         cfg.thread_per_block, 0, d.stream()>>>
-          (cfg, outputVT_ptr);
+      d.memset(outputVT_ptr, 0, batch_size * sizeof(Scalar));
+      Cuda2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
+      ComputeValueOfVKernel<<<cfg2D.block_count, cfg2D.thread_per_block, 0,
+                              d.stream()>>>(
+          cfg2D, m, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(),
+          outputU_ptr, outputS_ptr, outputVT_ptr);
+      // 2. clamp V to -1 or +1
+      CudaLaunchConfig cfg1D = GetCudaLaunchConfig(batch_size, d);
+      ExtractSignOfVKernel<<<cfg1D.block_count, cfg1D.thread_per_block, 0,
+                             d.stream()>>>(cfg1D, outputVT_ptr);
     }
   }
 
@@ -190,6 +183,8 @@ class SvdOpGpu : public AsyncOpKernel {
   }
 
   // The SVD if m >= n
+  // TODO: can the two cases (MgeqN and MlessN) be simplified,
+  //   common boilerplate be reduced, or even combined in one method?
   void PerformSVD_MgeqN(OpKernelContext* context, DoneCallback done, int64 m,
                         int64 n, int64 p, const gtl::ArraySlice<int32>& perm,
                         const Tensor& M, Tensor* S, Tensor* U, Tensor* V) {
@@ -206,10 +201,8 @@ class SvdOpGpu : public AsyncOpKernel {
         context, context->allocate_temp(M.dtype(), input_shape, &input_copy),
         done);
     auto device = context->eigen_device<GPUDevice>();
-    OP_REQUIRES_OK_ASYNC(
-        context, 
-        DoTranspose(device, M, perm, &input_copy),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, M, perm, &input_copy),
+                         done);
 
     // I need to transpose U at the end
     // Not V, because cuSolver work column-major
@@ -229,12 +222,12 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // get the pointers to the data
     Scalar* input_ptr;
-    SScalar* outputS_ptr;
+    RealScalar* outputS_ptr;
     Scalar* outputU_ptr = NULL;
     Scalar* outputV_ptr = NULL;
     auto input_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
     input_ptr = input_reshaped.data();
-    outputS_ptr = S->template flat_inner_dims<SScalar, 2>().data();
+    outputS_ptr = S->template flat_inner_dims<RealScalar, 2>().data();
     if (compute_uv_) {
       outputU_ptr = u_copy.template flat_inner_dims<Scalar, 3>().data();
       outputV_ptr = V->template flat_inner_dims<Scalar, 3>().data();
@@ -250,10 +243,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // Transpose U
     if (compute_uv_) {
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          DoTranspose(device, u_copy, perm, U),
-          done);
+      OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, u_copy, perm, U), done);
     }
 
     // now check if the SVD operation succeeded or not
@@ -302,12 +292,12 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // get the pointers to the data
     Scalar* input_ptr;
-    SScalar* outputS_ptr;
+    RealScalar* outputS_ptr;
     Scalar* outputU_ptr = NULL;
     Scalar* outputV_ptr = NULL;
     auto input_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
     input_ptr = input_reshaped.data();
-    outputS_ptr = S->template flat_inner_dims<SScalar, 2>().data();
+    outputS_ptr = S->template flat_inner_dims<RealScalar, 2>().data();
     if (compute_uv_) {
       // Note that U and V are flipped
       outputU_ptr = v_copy.template flat_inner_dims<Scalar, 3>().data();
@@ -326,10 +316,7 @@ class SvdOpGpu : public AsyncOpKernel {
     // Transpose V
     if (compute_uv_) {
       auto device = context->eigen_device<GPUDevice>();
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          DoTranspose(device, v_copy, perm, V),
-          done);
+      OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, v_copy, perm, V), done);
     }
 
     // now check if the SVD operation succeeded or not
