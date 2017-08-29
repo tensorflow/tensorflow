@@ -33,7 +33,7 @@ public final class Graph implements AutoCloseable {
   }
 
   /** Create a Graph from an existing handle (takes ownership). */
-  Graph(long nativeHandle) {
+  public Graph(long nativeHandle) {
     this.nativeHandle = nativeHandle;
   }
 
