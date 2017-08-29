@@ -272,7 +272,7 @@ class TargetTest(test_util.TensorFlowTestCase):
 
   def testInvalidInputDataType(self):
     # Fill requires the first input to be an int32 tensor.
-    with self.assertRaisesRegexp(ValueError, 'int64'):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, 'int64'):
       array_ops.fill(tensor.Tensor([2], dtype=dtypes.int64), tensor.Tensor(1))
 
   def testOutputOnHostMemory(self):
