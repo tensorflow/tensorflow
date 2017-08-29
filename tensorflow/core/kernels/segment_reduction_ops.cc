@@ -197,6 +197,19 @@ class SegmentReductionOp : public OpKernel {
 
 #ifdef GOOGLE_CUDA
 //  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
+//  TODO: This implementation of SegmentSumGPUOp is sometimes slower than
+//  its unsorted counterpart (mostly when problem size is small).
+//  This is due to the following two main reasons and a cost-effective way
+//  to resolve these problems is desirable.
+//  1. Sorted segment sum requires a memory transfer from device to host in
+//     order to know the size of the output dimension whereas unsorted segment
+//     sum receives the size of the output dimension as an input parameter.
+//  2. Sorted segment sum is essentially a tiled version of unsorted segment
+//     sum and therefore such optimization comes at an inherent cost. However
+//     such cost may not be justified when the problem size is small. When to
+//     use the tiled version or the untiled version depends on many factors
+//     including data alignments, ratio of calculation to memory traffic and
+//     obviously, the problem sizes.
 template <class T, class Index>
 class SegmentSumGPUOp : public AsyncOpKernel {
  public:
