@@ -47,65 +47,24 @@ class MklAddNOp : public OpKernel {
 
     MklAddNOpContext mkl_context;
     const Tensor& input0 = MklGetInput(ctx, 0);
-
     GetMklShape(ctx, 0, &(mkl_context.input1_shape));
     bool input1_in_mkl_format = mkl_context.input1_shape.IsMklTensor();
 
     const Tensor& input1 = MklGetInput(ctx, 1);
-
     GetMklShape(ctx, 1, &(mkl_context.input2_shape));
     bool input2_in_mkl_format = mkl_context.input2_shape.IsMklTensor();
 
     mkl_context.in_dims = input1_in_mkl_format
-                              ? mkl_context.input1_shape.GetDimension()
-                              : input0.dims();
-
+        ? mkl_context.input1_shape.GetDimension()
+        : input0.dims();
     mkl_context.in_dims = input2_in_mkl_format
-                              ? mkl_context.input2_shape.GetDimension()
-                              : input1.dims();
-
+        ? mkl_context.input2_shape.GetDimension()
+        : input1.dims();
     // Generate size, stride for input if input is in MKL format.
-    if (input1_in_mkl_format) {
-      mkl_context.in1_sizes = new size_t[mkl_context.in_dims];
-      mkl_context.in1_strides = new size_t[mkl_context.in_dims];
-      for (int i = 0; i < mkl_context.in_dims; i++) {
-        mkl_context.in1_sizes[i] = mkl_context.input1_shape.GetSizes()[i];
-        mkl_context.in1_strides[i] = mkl_context.input1_shape.GetStrides()[i];
-      }
-    } else {
-      mkl_context.in1_sizes = new size_t[mkl_context.in_dims];
-      mkl_context.in1_strides = new size_t[mkl_context.in_dims];
-      for (int i = 0; i < mkl_context.in_dims; i++) {
-        mkl_context.in1_sizes[i] =
-            input0.dim_size((mkl_context.in_dims - 1) - i);
-      }
-      mkl_context.in1_strides[0] = 1;
-      for (int i = 1; i < mkl_context.in_dims; i++) {
-        mkl_context.in1_strides[i] =
-            mkl_context.in1_strides[i - 1] * mkl_context.in1_sizes[i - 1];
-      }
-    }
-
-    if (input2_in_mkl_format) {
-      mkl_context.in2_sizes = new size_t[mkl_context.in_dims];
-      mkl_context.in2_strides = new size_t[mkl_context.in_dims];
-      for (int i = 0; i < mkl_context.in_dims; i++) {
-        mkl_context.in2_sizes[i] = mkl_context.input2_shape.GetSizes()[i];
-        mkl_context.in2_strides[i] = mkl_context.input2_shape.GetStrides()[i];
-      }
-    } else {
-      mkl_context.in2_sizes = new size_t[mkl_context.in_dims];
-      mkl_context.in2_strides = new size_t[mkl_context.in_dims];
-      for (int i = 0; i < mkl_context.in_dims; i++) {
-        mkl_context.in2_sizes[i] =
-            input1.dim_size((mkl_context.in_dims - 1) - i);
-      }
-      mkl_context.in2_strides[0] = 1;
-      for (int i = 1; i < mkl_context.in_dims; i++) {
-        mkl_context.in2_strides[i] =
-            mkl_context.in2_strides[i - 1] * mkl_context.in2_sizes[i - 1];
-      }
-    }
+    ExtractMklOpParams(&mkl_context.in1_sizes,
+     &mkl_context.in1_strides, input0, &mkl_context.input1_shape);
+    ExtractMklOpParams(&mkl_context.in2_sizes,
+     &mkl_context.in2_strides, input1, &mkl_context.input2_shape);
 
     std::vector<float> coeff(2, 1.0);
     mkl_context.MklCreateInputLayouts(ctx);
@@ -125,11 +84,11 @@ class MklAddNOp : public OpKernel {
      mkl_context.output_shape.SetTfLayout(
         mkl_context.in_dims, mkl_context.in1_sizes, mkl_context.in1_strides);
      if (input1_in_mkl_format == true) {
-     mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
-     mkl_context.input1_shape.GetTfToMklDimMap());
+      mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
+      mkl_context.input1_shape.GetTfToMklDimMap());
      } else {
-     mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
-     mkl_context.input2_shape.GetTfToMklDimMap());
+      mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
+      mkl_context.input2_shape.GetTfToMklDimMap());
      }
      tf_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                         mkl_context.output_shape.GetMklLayout())) /
@@ -144,7 +103,6 @@ class MklAddNOp : public OpKernel {
                                 mkl_context.output_shape);
     }
 
-
     mkl_context.Eltwise_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
 
@@ -154,6 +112,36 @@ class MklAddNOp : public OpKernel {
 
     mkl_context.MklCleanup();
   }
+
+  void ExtractMklOpParams(size_t** out_sizes, size_t** out_strides,
+    const Tensor& input, const MklShape* input_shape) {
+    bool input_in_mkl_format = input_shape->IsMklTensor();
+    int in_dims = input_in_mkl_format
+                              ? input_shape->GetDimension()
+                              : input.dims();
+    size_t* in_sizes = new size_t[in_dims];
+    size_t* in_strides = new size_t[in_dims];
+
+    if (input_in_mkl_format) {
+      for (int i = 0; i < in_dims; i++) {
+        in_sizes[i] = input_shape->GetSizes()[i];
+        in_strides[i] = input_shape->GetStrides()[i];
+      }
+    } else {
+      for (int i = 0; i < in_dims; i++) {
+        in_sizes[i] =
+            input.dim_size((in_dims - 1) - i);
+      }
+      in_strides[0] = 1;
+      for (int i = 1; i < in_dims; i++) {
+        in_strides[i] =
+            in_strides[i - 1] * in_sizes[i - 1];
+      }
+    }
+    *out_sizes = in_sizes;
+    *out_strides = in_strides;
+  }
+
 
  private:
   typedef struct {
