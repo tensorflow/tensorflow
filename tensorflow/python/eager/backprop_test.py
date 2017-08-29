@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
+from tensorflow.python.eager import tensor_node
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -73,6 +74,10 @@ class BackpropTest(test.TestCase):
           tf_grad.values, tf_grad.indices, tf_grad.dense_shape[0])
 
       self.assertAllClose(grad.numpy(), tf_dense_grad.eval())
+
+  def testTensoVspaceNoneMutAdd(self):
+    t = tensor.Tensor(1.0)
+    self.assertEqual(tensor_node.TensorVSpace(t).mut_add(t, None).numpy(), 1.0)
 
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(

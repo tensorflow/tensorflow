@@ -300,6 +300,10 @@ class TensorVSpace(ag_core.VSpace):
       x = _indexed_slices_to_tensor(x)
     if isinstance(y, ops.IndexedSlices):
       y = _indexed_slices_to_tensor(y)
+    if x is None:
+      return y
+    if y is None:
+      return x
     return math_ops.add(x, y)
 
 
