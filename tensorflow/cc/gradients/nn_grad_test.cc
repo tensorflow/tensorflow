@@ -36,7 +36,7 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
                                       &max_error));
-    EXPECT_LT(max_error, 1e-4);
+    EXPECT_LT(max_error, 2e-4);
   }
 
   void RunTest(const Output& x, const Tensor& x_init_value, const Output& y,
@@ -44,7 +44,7 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK(
         ComputeGradientError(scope_, x, x_init_value, y, y_shape, &max_error));
-    EXPECT_LT(max_error, 1e-4);
+    EXPECT_LT(max_error, 2e-4);
   }
 
   void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
@@ -53,7 +53,7 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK(
         ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
-    EXPECT_LT(max_error, 1e-4);
+    EXPECT_LT(max_error, 2e-4);
   }
 
   Scope scope_;
