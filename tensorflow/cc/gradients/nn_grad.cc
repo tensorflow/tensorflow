@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -160,14 +161,43 @@ Status MaxPoolGradHelper(const Scope& scope, const Operation& op,
   GetNodeAttr(attrs, "ksize", &ksize);
   GetNodeAttr(attrs, "padding", &padding);
   GetNodeAttr(attrs, "strides", &strides);
+  internal::MaxPoolGrad::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
   auto dx = internal::MaxPoolGrad(scope, op.input(0),
                                   op.output(0),
                                   grad_inputs[0],
-                                  ksize, strides, padding);
+                                  ksize, strides,
+                                  padding, grad_attrs);
   grad_outputs->push_back(dx);
   return scope.status();
 }
 REGISTER_GRADIENT_OP("MaxPool", MaxPoolGradHelper);
+
+Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  string data_format;
+  string padding;
+  auto attrs = op.output(0).node()->attrs();
+  GetNodeAttr(attrs, "data_format", &data_format);
+  GetNodeAttr(attrs, "padding", &padding);
+  MaxPoolGradV2::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
+  auto dx = MaxPoolGradV2(scope, op.input(0),
+                          op.output(0),
+                          grad_inputs[0],
+                          op.input(1),
+                          op.input(2),
+                          padding,
+                          grad_attrs);
+  grad_outputs->push_back(dx);
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
+
+
   
 }  // anonymous namespace
 }  // namespace ops
