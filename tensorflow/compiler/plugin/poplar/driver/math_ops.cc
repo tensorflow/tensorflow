@@ -122,7 +122,20 @@ IsInPlaceUpdate(const HloInstruction *inst) {
     return false;
   }
 
-  return true;
+  // Operation must have a Parameter as an input
+  //   const HloInstruction* op0(inst->operand(0));
+  if (inst->operand(0)->opcode() != HloOpcode::kParameter) return false;
+
+  // Operation must be the root or have the root as an output
+  const HloInstruction* root(inst->parent()->root_instruction());
+  if (inst == root) return true;
+
+  const std::vector<HloInstruction*>& users(inst->users());
+  if (users.size() != 1) return false;
+  if (users[0] == root) return true;
+
+  return false;
+
 }
 
 port::StatusOr<poplar::program::Program>
