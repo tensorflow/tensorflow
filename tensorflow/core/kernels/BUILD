@@ -1837,16 +1837,22 @@ tf_kernel_library(
     deps = IMAGE_DEPS,
 )
 
+cc_library(
+    name = "adjust_hsv_gpu_lib",
+    hdrs = ["adjust_hsv_gpu.cu.h"],
+    deps = ["//tensorflow/core:framework"],
+)
+
 tf_kernel_library(
     name = "adjust_hue_op",
     prefix = "adjust_hue_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":adjust_hsv_gpu_lib"],
 )
 
 tf_kernel_library(
     name = "adjust_saturation_op",
     prefix = "adjust_saturation_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":adjust_hsv_gpu_lib"],
 )
 
 tf_kernel_library(

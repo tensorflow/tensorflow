@@ -386,11 +386,11 @@ class AdjustHueBenchmark(test.Benchmark):
           sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
-    tag = "%s" % (cpu_count) if cpu_count is not None else "_all"
-    print("benchmarkAdjustHue_299_299_3_cpu%s step_time: %.2f us" %
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkAdjustHue_299_299_3_%s step_time: %.2f us" %
           (tag, step_time * 1e6))
     self.report_benchmark(
-        name="benchmarkAdjustHue_299_299_3_cpu%s" % (tag),
+        name="benchmarkAdjustHue_299_299_3_%s" % (tag),
         iters=benchmark_rounds,
         wall_time=step_time)
 
@@ -432,11 +432,11 @@ class AdjustSaturationBenchmark(test.Benchmark):
           sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
-    tag = "%s" % (cpu_count) if cpu_count is not None else "_all"
-    print("benchmarkAdjustSaturation_599_599_3_cpu%s step_time: %.2f us" %
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkAdjustSaturation_299_299_3_%s step_time: %.2f us" %
           (tag, step_time * 1e6))
     self.report_benchmark(
-        name="benchmarkAdjustSaturation_599_599_3_cpu%s" % (tag),
+        name="benchmarkAdjustSaturation_299_299_3_%s" % (tag),
         iters=benchmark_rounds,
         wall_time=step_time)
 
@@ -704,7 +704,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
         "gb_same",
         "rgb_same",
     ]
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for x_shape in x_shapes:
         for test_style in test_styles:
           x_np = np.random.rand(*x_shape) * 255.
