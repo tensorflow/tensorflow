@@ -82,6 +82,7 @@ function(AddTest)
   set_tests_properties(${_AT_TARGET}
     PROPERTIES ENVIRONMENT "TEST_TMPDIR=${tempdir};TEST_SRCDIR=${testdir}"
   )
+  set_tests_properties(${_AT_TARGET} PROPERTIES TIMEOUT "600")
 
   foreach(datafile ${_AT_DATA})
     file(RELATIVE_PATH datafile_rel ${tensorflow_source_dir} ${datafile})
@@ -117,6 +118,7 @@ function(AddPythonTests)
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
+    set_tests_properties(${sourcefile} PROPERTIES TIMEOUT "600")
   endforeach()
 endfunction(AddPythonTests)
 
