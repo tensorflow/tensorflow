@@ -31,7 +31,8 @@ from tensorflow.python.ops.nn_grad import _BroadcastMul
 def ctc_loss(labels, inputs, sequence_length,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True,
-             ignore_longer_outputs_than_inputs=False, time_major=True):
+             ignore_longer_outputs_than_inputs=False, time_major=True,
+             name=None):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
   This op implements the CTC loss as presented in the article:
@@ -149,7 +150,8 @@ def ctc_loss(labels, inputs, sequence_length,
       sequence_length,
       preprocess_collapse_repeated=preprocess_collapse_repeated,
       ctc_merge_repeated=ctc_merge_repeated,
-      ignore_longer_outputs_than_inputs=ignore_longer_outputs_than_inputs)
+      ignore_longer_outputs_than_inputs=ignore_longer_outputs_than_inputs,
+      name=name)
 
   return loss
 
