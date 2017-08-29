@@ -120,6 +120,14 @@ ShuffleConvolutionWeights(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
+poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t) {
+  return t.reshape({t.dim(1), t.dim(2), t.dim(3), t.dim(4)});
+}
+
+poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t) {
+  return t.reshape({1, t.dim(0), t.dim(1), t.dim(2), t.dim(3)});
+}
+
 port::StatusOr <poplar::program::Program>
 CreateConv2D(poplar::Graph &graph,
              CompilerResources& res,
@@ -165,9 +173,12 @@ CreateConv2D(poplar::Graph &graph,
 
   if (!is_identity_shuffle(shuffle)) {
     kernel = kernel.dimShuffle(shuffle);
+    kernel = AddGroupsDimensionToWeights(kernel);
     poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
     prog.add(poplar::program::Copy(kernel, conv_kernel));
     kernel = conv_kernel;
+  } else {
+    kernel = AddGroupsDimensionToWeights(kernel);
   }
 
   // TODO If the weight input and output channels are reversed, then we can use

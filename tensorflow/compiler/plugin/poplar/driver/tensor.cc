@@ -170,6 +170,7 @@ AddConvolutionWeights(poplar::Graph& graph,
 
   poplar::Tensor out = popconv::createWeights(graph, params, inst->name(),
                                               opts);
+  out = RemoveGroupsDimensionFromWeights(out);
   return ShuffleConvolutionWeights(target, out);
 }
 
