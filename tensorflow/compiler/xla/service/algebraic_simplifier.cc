@@ -121,6 +121,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleAdd(HloInstruction* add, HloInstruction* lhs,
                    HloInstruction* rhs) override;
 
+  Status HandleBitcast(HloInstruction* bitcast) override;
+
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
   Status HandleConcatenate(
@@ -337,6 +339,20 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add,
     return Status::OK();
   }
 
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
+  // If a bitcast feeds a bitcast, make it a single bitcast.
+  if (bitcast->operand(0)->opcode() == HloOpcode::kBitcast) {
+    return ReplaceWithNewInstruction(
+        bitcast, HloInstruction::CreateUnary(
+                     bitcast->shape(), HloOpcode::kBitcast,
+                     bitcast->mutable_operand(0)->mutable_operand(0)));
+  }
+  // All bitcasts can be eliminated (assuming layout constraints are
+  // satisified).
+  ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
   return Status::OK();
 }
 
