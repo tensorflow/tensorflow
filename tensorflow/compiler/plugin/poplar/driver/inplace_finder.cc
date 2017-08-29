@@ -47,17 +47,22 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
       if (inst->operand(0) != current_route.back()) {
         return;
       }
-      // TODO Verify that operand(0).shape() == inst.shape()
+      if (!ShapeUtil::Equal(inst->operand(0)->shape(), inst->shape())) {
+        return;
+      }
       break;
     }
     case HloOpcode::kTuple:
     {
-      // TODO Push which tuple onto the tuple stack
+      tuple_stack.push_back(inst->operand_index(current_route.back()));
       break;
     }
     case HloOpcode::kGetTupleElement:
     {
-      // TODO Verify we are extracting the right tuple, and pop stack
+      if (inst->tuple_index() != tuple_stack.back()) {
+        return;
+      }
+      tuple_stack.pop_back();
       break;
     }
     default:

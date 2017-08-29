@@ -49,6 +49,8 @@ private:
 
   std::multimap<HloInstruction*, InplaceRoute> routes;
 
+  std::vector<int64> tuple_stack;
+
   InplaceRoute current_route;
 };
 
