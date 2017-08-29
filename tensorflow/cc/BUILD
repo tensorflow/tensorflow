@@ -276,6 +276,7 @@ cc_library(
         ":cc_ops",
         ":cc_ops_internal",
         ":grad_op_registry",
+        ":gradients",
     ],
     alwayslink = 1,
 )

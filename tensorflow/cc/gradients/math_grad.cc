@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -47,6 +48,81 @@ Output ConjugateHelper(const Scope& scope, const Output& out) {
 }
 
 // TODO(andydavis) Add control dependencies to gradient functions (as needed).
+
+Output toInt32(const Scope& scope,
+               const Input& x){
+  return Cast(scope, x, DT_INT32);
+}
+
+Output SafeShapeDiv(const Scope& scope,
+                    const Input& x,
+                    const Input& y) {
+  return FloorDiv(scope, x,
+                  Maximum(scope, y,
+                          OnesLike(scope, y)));
+}
+
+Output ReducedShape(const Scope& scope,
+                    const Shape& input_shape,
+                    const Input& axes) {
+  auto input_shape_i = toInt32(scope, input_shape);
+  auto axes_i = toInt32(scope, axes);
+  auto input_rank = Size(scope, input_shape_i);
+  auto axes_2 = Mod(scope,
+                    Add(scope, axes_i, input_rank),
+                    input_rank);
+  auto axes_shape = Shape(scope, axes_2);
+  std::initializer_list<Input> ds1{Range(scope, 0, input_rank, 1),
+      axes_2};
+  std::initializer_list<Input> ds2{input_shape_i, Fill(scope, axes_shape, 1)};
+  return DynamicStitch(scope, ds1, ds2);
+}
+
+Output ReductionDims(const Scope& scope,
+                     const Input& x) {
+  return Range(scope, 0, Rank(scope, x), 1);
+}
+
+Output ReduceProd(const Scope& scope,
+                  const Input& x) {
+  return Prod(scope, x, ReductionDims(scope, x));
+}
+
+Output SumGradHelper(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs){
+  auto input_shape = Shape(scope, op.input(0));
+  auto output_shape_kept_dims = ReducedShape(scope, input_shape, op.input(1));
+  auto tile_scaling = SafeShapeDiv(scope, input_shape, output_shape_kept_dims);
+  auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
+  return Tile(scope, grad, tile_scaling);
+}
+
+Status SumGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto grad = SumGradHelper(scope, op, grad_inputs);
+  grad_outputs->push_back(grad);
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sum", SumGrad);
+
+Status MeanGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto sum_grad = SumGradHelper(scope, op, grad_inputs);
+  auto input_shape = Shape(scope, op.input(0));
+  auto output_shape = Shape(scope, op.output(0));
+  auto factor = SafeShapeDiv(scope,
+                             ReduceProd(scope, input_shape),
+                             ReduceProd(scope, output_shape));
+  auto grad = RealDiv(scope, sum_grad,
+                      Cast(scope, factor, sum_grad.type()));
+  grad_outputs->push_back(grad);
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Mean", MeanGrad);
 
 Status AbsGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
