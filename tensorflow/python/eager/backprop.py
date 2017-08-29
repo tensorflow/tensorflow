@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import threading
 
+from autograd import container_types
 from autograd import convenience_wrappers
 from autograd import core as ag_core
 
@@ -150,7 +151,7 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   def grad_fn(*outputs):
     """Generated gradient function."""
     tensors = inputs + result_copies + list(outputs)
-    tensors = [ag_core.getval(x) for x in tensors]
+    tensors = container_types.make_sequence(tape.EagerList, *tensors)
     result = _magic_gradient_function(op_name, attrs, len(inputs),
                                       num_outputs, *(tensors))
     if _tracing:

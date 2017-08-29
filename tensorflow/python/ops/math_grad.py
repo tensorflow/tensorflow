@@ -750,6 +750,12 @@ def _FloorDivGrad(_, unused_grad):
   return None, None
 
 
+@ops.RegisterGradient("FloorMod")
+def _FloorModGrad(_, unused_grad):
+  """The gradient for the FloorMod operator."""
+  return None, None
+
+
 @ops.RegisterGradient("TruncateDiv")
 def _TruncateDivGrad(_, unused_grad):
   return None, None

@@ -160,6 +160,19 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(second, [0])(f)[0]
     self.assertAllEqual([[0.0]], grad.numpy())
 
+  def testGradGrad(self):
+
+    def sq(x):
+      return x * x
+
+    def grad(x):
+      value = backprop.gradients_function(sq, [0])(x)[0]
+      return value
+
+    gradgrad = backprop.gradients_function(grad, [0])
+
+    self.assertAllEqual(gradgrad(tensor.Tensor(3.0))[0].numpy(), 2.0)
+
   def testGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
