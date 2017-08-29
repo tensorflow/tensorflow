@@ -937,6 +937,24 @@ class NaryGradTest : public ::testing::Test {
   Scope scope_;
 };
 
+TEST_F(NaryGradTest, Sum) {
+  TensorShape x1_shape({1, 2, 3});
+  TensorShape y_shape({1, 3});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  Tensor x2 = test::AsTensor<int32>({1}, {1});
+  auto y = Sum(scope_, x1, x2);
+  RunTest({x1}, {x1_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Mean) {
+  TensorShape x1_shape({1, 2, 3});
+  TensorShape y_shape({1, 3});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  Tensor x2 = test::AsTensor<int32>({1}, {1});
+  auto y = Mean(scope_, x1, x2);
+  RunTest({x1}, {x1_shape}, {y}, {y_shape});
+}
+
 TEST_F(NaryGradTest, AddN) {
   TensorShape shape({3, 2, 5});
   std::vector<Output> xs;
