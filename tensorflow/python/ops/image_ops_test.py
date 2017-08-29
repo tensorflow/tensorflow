@@ -2455,6 +2455,26 @@ class JpegTest(test_util.TensorFlowTestCase):
         self.assertEqual(image.get_shape().as_list(),
                          [None, None, channels or None])
 
+  def testExtractJpegShape(self):
+    # Read a real jpeg and verify shape.
+    path = ("tensorflow/core/lib/jpeg/testdata/"
+            "jpeg_merge_test1.jpg")
+    with self.test_session(use_gpu=True) as sess:
+      jpeg = io_ops.read_file(path)
+      # Extract shape without decoding.
+      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
+      self.assertEqual(image_shape.tolist(), [256, 128, 3])
+
+  def testExtractJpegShapeforCmyk(self):
+    # Read a cmyk jpeg image, and verify its shape.
+    path = ("tensorflow/core/lib/jpeg/testdata/"
+            "jpeg_merge_test1_cmyk.jpg")
+    with self.test_session(use_gpu=True) as sess:
+      jpeg = io_ops.read_file(path)
+      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
+      # Cmyk jpeg image has 4 channels.
+      self.assertEqual(image_shape.tolist(), [256, 128, 4])
+
 
 class PngTest(test_util.TensorFlowTestCase):
 

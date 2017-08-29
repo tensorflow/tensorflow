@@ -1807,6 +1807,7 @@ cc_library(
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
         ":encode_png_op",
+        ":extract_jpeg_shape_op",
         ":non_max_suppression_op",
         ":random_crop_op",
         ":resize_area_op",
@@ -1900,6 +1901,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "encode_png_op",
     prefix = "encode_png_op",
+    deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "extract_jpeg_shape_op",
+    prefix = "extract_jpeg_shape_op",
     deps = IMAGE_DEPS,
 )
 
@@ -4651,6 +4658,7 @@ filegroup(
             "decode_image_op.*",
             "encode_png_op.*",
             "encode_jpeg_op.*",
+            "extract_jpeg_shape_op.*",
             "decode_jpeg_op.*",
             "decode_gif_op.*",
             "identity_reader_op.*",
