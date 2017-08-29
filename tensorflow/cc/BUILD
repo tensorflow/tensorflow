@@ -228,6 +228,26 @@ tf_cc_test(
     ],
 )
 
+cc_library_with_android_deps(
+    name = "while_loop",
+    srcs = ["ops/while_loop.cc"],
+    hdrs = ["ops/while_loop.h"],
+    android_deps = [
+        "//tensorflow/core:android_tensorflow_lib",
+    ],
+    common_deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":ops",
+        ":scope",
+        ":scope_internal",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
 cc_library(
     name = "grad_op_registry",
     srcs = ["framework/grad_op_registry.cc"],

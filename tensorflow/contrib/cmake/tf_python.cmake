@@ -819,6 +819,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_profiler>
         $<TARGET_OBJECTS:tf_cc>
         $<TARGET_OBJECTS:tf_cc_ops>
+        $<TARGET_OBJECTS:tf_cc_while_loop>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_grappler>
@@ -868,6 +869,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_profiler>
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_ops>
+    $<TARGET_OBJECTS:tf_cc_while_loop>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_grappler>
