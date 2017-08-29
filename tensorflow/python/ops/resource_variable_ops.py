@@ -255,8 +255,9 @@ class ResourceVariable(variables.Variable):
                                      context.get_default_context().device_name)
           else:
             initial_value = initial_value()
-            initial_value = ops.convert_to_tensor(
-                initial_value, name="initial_value", dtype=dtype)
+            with ops.name_scope("Initializer"):
+              initial_value = ops.convert_to_tensor(
+                  initial_value, name="initial_value", dtype=dtype)
             self._handle = gen_resource_variable_ops.var_handle_op(
                 shape=initial_value.get_shape(),
                 dtype=initial_value.dtype.base_dtype,

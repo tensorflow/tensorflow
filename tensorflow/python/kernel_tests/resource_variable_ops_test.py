@@ -53,7 +53,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
-  def testReadVariableDtypeMismatch(self):
+  def testReadVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
@@ -62,7 +62,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                    "Expected float got int32."):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
-  def testAssignVariableDtypeMismatch(self):
+  def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")

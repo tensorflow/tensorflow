@@ -277,7 +277,7 @@ def enable_c_api(fn):
 
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
                                  use_gpu=False, force_gpu=False,
-                                 reset_test=False):
+                                 reset_test=True):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -305,6 +305,8 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
           f(self)
 
       if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
         self.tearDown()
         self.setUp()
 
