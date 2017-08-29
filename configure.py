@@ -686,11 +686,11 @@ def set_tf_cunn_version(environ_cp):
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
                                            cudnn_path_from_ldconfig)
-      if cudnn_path_from_ldconfig != None:
+      if cudnn_path_from_ldconfig:
         cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
-      if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
-        cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
-        break
+        if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
+          cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
+          break
 
     # Reset and Retry
     print(
