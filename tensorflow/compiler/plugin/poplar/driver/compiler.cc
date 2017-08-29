@@ -276,9 +276,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   VLOG(2) << "Running tensor allocation tracker";
 
-  AllocationFinder finder;
-  TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
-  resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
+  {
+    AllocationFinder finder;
+    TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
+    resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
+  }
+
+  {
+    InplaceFinder finder;
+    TF_RETURN_IF_ERROR(finder.FindInplaceInstructions(hlo_module.get()));
+    resources.inplace_instructions = std::move(finder.inplace_instructions);
+  }
+
 
   for (const auto comp : hlo_module->MakeComputationPostOrder()) {
     if (call_finder.targets.count(comp) > 0) {

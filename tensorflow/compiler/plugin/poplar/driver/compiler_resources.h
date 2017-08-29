@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <popconv/Convolution.hpp>
@@ -35,6 +36,8 @@ struct CompilerResources {
   ComputationMap computation_map;
 
   TensorAllocationMap tensor_allocation_map;
+
+  InplaceInstructions inplace_instructions;
 
   popconv::PlanningCache convolution_cache;
 

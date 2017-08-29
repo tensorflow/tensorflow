@@ -19,12 +19,14 @@ cc_library(
         "driver/allocation_finder.cc",
         "driver/fuse_ops.cc",
         "driver/hlo_matcher.cc",
+        "driver/inplace_finder.cc",
         "driver/outliner.cc",
     ],
     hdrs = [
         "driver/allocation_finder.h",
         "driver/fuse_ops.h",
         "driver/hlo_matcher.h",
+        "driver/inplace_finder.h",
         "driver/outliner.h",
     ],
     deps = [
