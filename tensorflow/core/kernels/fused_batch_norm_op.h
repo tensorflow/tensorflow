@@ -53,20 +53,20 @@ template <typename Device, typename T>
 struct FusedBatchNormFreezeGrad {
   void operator()(const Device& d, const Tensor& y_backprop_input,
                   const Tensor& x_input, const Tensor& scale_input,
-                  const Tensor& mean_input, const Tensor& variance_input,
+                  const Tensor& pop_mean_input, const Tensor& pop_variance_input,
                   T epsilon, Tensor* x_backprop_output,
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
                   typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2) {
     typename TTypes<T, 4>::ConstTensor y_backprop(y_backprop_input.tensor<T, 4>());
     typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
     typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
-    typename TTypes<T>::ConstVec mean(mean_input.vec<T>());
-    typename TTypes<T>::ConstVec var(variance_input.vec<T>());
+    typename TTypes<T>::ConstVec pop_mean(pop_mean_input.vec<T>());
+    typename TTypes<T>::ConstVec pop_var(pop_variance_input.vec<T>());
     typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
     typename TTypes<T>::Vec scale_backprop(scale_backprop_output->vec<T>());
     typename TTypes<T>::Vec offset_backprop(offset_backprop_output->vec<T>());
 
-    const int depth = mean.dimension(0);
+    const int depth = pop_mean.dimension(0);
     const int rest_size = input.size() / depth;
 
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
@@ -83,17 +83,17 @@ struct FusedBatchNormFreezeGrad {
 #endif
 
     // offset_backprop  = sum(y_backprop)
-    // scale_backprop = y_backprop * ((x - mean) * rsqrt(var + epsilon))
-    // x_backprop = y_backprop * (scale * rsqrt(var + epsilon))
+    // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
+    // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
     offset_backprop.device(d) = y_backprop.reshape(rest_by_depth).sum(reduction_axis);
 
-    // scratch1 = rsqrt(var + epsilon)
-    scratch1.device(d) = (var + var.constant(epsilon)).rsqrt();
+    // scratch1 = rsqrt(pop_var + epsilon)
+    scratch1.device(d) = (pop_var + pop_var.constant(epsilon)).rsqrt();
 
     // scratch2 = sum(y_backprop * (x - mean))
     scratch2.device(d) = (y_backprop.reshape(rest_by_depth) *
                           (input.reshape(rest_by_depth) -
-                           mean.reshape(one_by_depth).broadcast(rest_by_one)))
+                           pop_mean.reshape(one_by_depth).broadcast(rest_by_one)))
                            .sum(reduction_axis);
 
     x_backprop.reshape(rest_by_depth).device(d) =
