@@ -25,6 +25,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.eager import tensor_node
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -270,6 +271,15 @@ class BackpropTest(test.TestCase):
   def testMakeAttrTypeList(self):
     self.assertEqual([dtypes.float32],
                      backprop.make_attr([pywrap_tensorflow.TF_ATTR_TYPE], [1]))
+
+  def testMulType(self):
+
+    def mul(x):
+      return math_ops._mul_dispatch(x, x)  # pylint: disable=protected-access
+
+    self.assertAllEqual(
+        backprop.gradients_function(mul)(constant_op.constant(3.0))[0].numpy(),
+        6.0)
 
   def testMakeAttrShape(self):
     for s in ([], None, [1, 2, 3], [None, None], [1, None, 3]):
