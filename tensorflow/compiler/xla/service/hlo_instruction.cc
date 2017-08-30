@@ -649,16 +649,14 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   if (called_computations_.empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
     CHECK(!add_output);
-    auto builder = HloComputation::Builder("fused_computation", true);
+    auto builder = HloComputation::Builder("fused_computation", this);
     builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
     called_computations_.push_back(
         CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
     clone = fused_expression_root();
-    clone->parent_fusion_instruction_ = this;
   } else {
     clone = fused_instructions_computation()->AddInstruction(
         instruction_to_fuse->Clone(/*suffix=*/""));
-    clone->parent_fusion_instruction_ = this;
     // When add_output is false, instruction_to_fuse is necessarily an operand
     // of the fusion instruction. After fusion this will no longer be the case.
     // Remove the operand from the operand list and remove its corresponding
@@ -727,12 +725,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // to avoid a double %%.
       string param_name =
           StrCat(operand->name().substr(1), ".param_", param_no);
-      std::unique_ptr<HloInstruction> param_instruction =
-          CreateParameter(param_no, operand->shape(), param_name);
-
-      param_instruction->parent_fusion_instruction_ = this;
       fused_param = fused_instructions_computation()->AddParameter(
-          std::move(param_instruction));
+          CreateParameter(param_no, operand->shape(), param_name));
       AppendOperand(operand);
     }
     TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
@@ -762,7 +756,6 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
         HloInstruction::CreateTuple(tuple_elements));
     fused_instructions_computation()->set_root_instruction(new_root);
     shape_ = new_root->shape();
-    new_root->parent_fusion_instruction_ = this;
     if (fused_root->opcode() == HloOpcode::kTuple) {
       TF_CHECK_OK(
           fused_instructions_computation()->RemoveInstruction(fused_root));
@@ -839,24 +832,17 @@ bool HloInstruction::HasSideEffect() const {
 void HloInstruction::CheckFusionInstruction() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
 
-  const std::list<std::unique_ptr<HloInstruction>>& fused_instructions_ =
-      fused_instructions_computation()->instructions();
-  // All instructions owned by this fusion instruction must be fused, and the
-  // parent fusion instruction of the fused instructions must be 'this'.
-  for (auto& instruction : fused_instructions_) {
-    CHECK(instruction->IsFused());
-    CHECK_EQ(this, instruction->fusion_instruction());
-    CHECK_EQ(fused_instructions_computation(), instruction->parent())
-        << instruction->ToString();
-  }
+  // The parent fusion instruction of the fusion computation must be 'this'.
+  HloComputation* fused_computation = fused_instructions_computation();
+  CHECK_EQ(this, fused_computation->FusionInstruction());
 
   // Fused root instruction and fused parameters must all be owned by the fusion
-  // instruction.
+  // computation.
   bool root_owned = false;
   const std::vector<HloInstruction*>& fused_parameters_ = fused_parameters();
   const HloInstruction* fused_root_ = fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters_.size(), false);
-  for (auto& instruction : fused_instructions_) {
+  for (auto& instruction : fused_computation->instructions()) {
     if (fused_root_ == instruction.get()) {
       CHECK(!root_owned);
       root_owned = true;
@@ -877,14 +863,13 @@ void HloInstruction::CheckFusionInstruction() const {
   // Fused root must have no users.
   CHECK_EQ(0, fused_root_->user_count());
 
-  // All uses of fused instructions must be in the fusion instruction, and every
+  // All uses of fused instructions must be in the fusion computation, and every
   // non-root instruction must have at least one use.
-  for (auto& instruction : fused_instructions_) {
+  for (auto& instruction : fused_instructions_computation()->instructions()) {
     if (instruction.get() != fused_root_) {
       CHECK_GT(instruction->user_count(), 0);
       for (auto& user : instruction->users()) {
-        CHECK(user->IsFused());
-        CHECK_EQ(this, user->fusion_instruction());
+        CHECK_EQ(fused_computation, user->parent());
       }
     }
   }
@@ -1173,15 +1158,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
   std::list<std::unique_ptr<HloInstruction>> new_fused_instructions;
   // Create the list of fused parameters by mapping through the cloned,
   // fused instructions.
-  std::vector<HloInstruction*> new_fused_parameters;
-  const std::vector<HloInstruction*>& fused_parameters_ =
-      fused_instructions_computation()->parameter_instructions();
-
-  for (HloInstruction* old_fused_parameter : fused_parameters_) {
+  for (HloInstruction* old_fused_parameter :
+       fused_instructions_computation()->parameter_instructions()) {
     new_fused_instructions.push_back(old_fused_parameter->Clone());
     HloInstruction* new_fusion_parameter = new_fused_instructions.back().get();
-    new_fusion_parameter->parent_fusion_instruction_ = new_instruction.get();
-    new_fused_parameters.push_back(new_fusion_parameter);
     InsertOrDie(&old_to_new, old_fused_parameter, new_fusion_parameter);
   }
   for (auto old_fused_instruction :
@@ -1202,12 +1182,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
             old_fused_instruction->shape(), new_operands));
     HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
     new_fused_instruction->set_parent(parent());
-    new_fused_instruction->parent_fusion_instruction_ = new_instruction.get();
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
   }
   new_instruction->fusion_kind_ = fusion_kind_;
   auto computation_builder = HloComputation::Builder(
-      fused_instructions_computation()->name() + ".clone", true);
+      fused_instructions_computation()->name() + ".clone",
+      new_instruction.get());
   // We iterated the fusion instructions in reverse post order which means
   // that we must reverse our new list of fusion instructions.
   for (auto new_fused_instruction_iter = new_fused_instructions.rbegin();
@@ -1912,9 +1892,7 @@ string HloInstruction::TracingTag() const {
   return literal_->u8s_string();
 }
 
-bool HloInstruction::IsFused() const {
-  return parent_fusion_instruction_ != nullptr;
-}
+bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
 bool HloInstruction::IsFusable() const {
   // Instructions which are traced should not be fused.
@@ -1947,11 +1925,6 @@ HloComputation* HloInstruction::fused_instructions_computation() const {
   auto* fused_instructions_computation = called_computations_.front();
   CHECK(fused_instructions_computation->IsFusionComputation());
   return fused_instructions_computation;
-}
-
-HloInstruction* HloInstruction::fusion_instruction() const {
-  CHECK(IsFused());
-  return parent_fusion_instruction_;
 }
 
 HloInstruction* HloInstruction::fused_expression_root() const {

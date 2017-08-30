@@ -603,25 +603,20 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  // Returns the computation for this fused instruction.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  HloComputation* fused_instructions_computation() const;
+
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusable() const;
-
-  // Returns the fusion instruction that contains this instruction.
-  //
-  // Note: only valid if this instruction is fused into a fusion instruction.
-  HloInstruction* fusion_instruction() const;
 
   // Returns the root instruction of the fused expression contained within this
   // fusion instruction.
   //
   // Precondition: opcode() == HloOpcode::kFusion
   HloInstruction* fused_expression_root() const;
-
-  // Returns the computation for this fused instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  HloComputation* fused_instructions_computation() const;
 
   // Returns the list of fused instructions inside this fusioninstruction.
   //
@@ -898,14 +893,6 @@ class HloInstruction {
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
 
-  // Sets the parent fusion instruction for this instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  void SetParentFusion(HloInstruction* fusion_instruction) {
-    CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
-    parent_fusion_instruction_ = fusion_instruction;
-  }
-
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;
 
@@ -1048,10 +1035,6 @@ class HloInstruction {
   // The padding configuration that describes the edge padding and interior
   // padding of this pad instruction. Only set for pad instructions.
   std::unique_ptr<PaddingConfig> padding_config_;
-
-  // If this instruction is fused into a fusion instruction, this field points
-  // to the fusion instruction.
-  HloInstruction* parent_fusion_instruction_ = nullptr;
 
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
