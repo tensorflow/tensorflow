@@ -143,7 +143,7 @@ def _MatrixSolveLsGrad(op, grad):
     l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
     # pylint: disable=protected-access
     chol = linalg_ops._RegularizedGramianCholesky(
-        a, l2_regularizer=l2_regularizer, fist_kind=False)
+        a, l2_regularizer=l2_regularizer, first_kind=False)
     # pylint: enable=protected-access
     grad_b = linalg_ops.cholesky_solve(chol, math_ops.matmul(a, grad))
     # Temporary tmp = (A * A^T + lambda * I)^{-1} * B.
