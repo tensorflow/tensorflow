@@ -604,6 +604,13 @@ def _maybe_modify_numpy_dtype_determination(np_array):
   return np_array
 
 
+def _has_string(value):
+  if isinstance(value, compat.bytes_or_text_types): return True
+  if isinstance(value, collections.Sequence) and value:
+    return _has_string(value[0])
+  return False
+
+
 # TODO(agarwal): rename to TensorHandle.
 class EagerTensor(Tensor):
   """A TensorFlow Eager Tensor."""
@@ -625,6 +632,8 @@ class EagerTensor(Tensor):
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
     self._id = uid()
     if not isinstance(value, np.ndarray):
+      if dtype is None and _has_string(value):
+        dtype = dtypes.string
       npt = None if dtype is None else dtype.as_numpy_dtype
       try:
         value = np.array(value, dtype=npt)
