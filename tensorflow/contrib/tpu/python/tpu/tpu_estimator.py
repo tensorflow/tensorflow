@@ -980,18 +980,20 @@ class TPUEstimator(estimator_lib.Estimator):
 
   Example (MNIST):
   ```
+  # The metric Fn which runs on CPU.
+  def metric_fn(labels, logits):
+    predictions = tf.argmax(logits, 1)
+    return {
+      'accuracy': tf.metrics.precision(
+          labels=labels, predictions=predictions),
+    }
+
+  # Your model Fn which runs on TPU.
   def model_fn(features, labels, mode, config, params):
     ...
     logits = ...
 
     if mode = tf.estimator.ModeKeys.EVAL:
-      def metric_fn(labels, logits):
-        predictions = tf.argmax(logits, 1)
-        return {
-          'precision': tf.metrics.precision(
-              labels=labels, predictions=predictions),
-        }
-
       return tpu_estimator.TPUEstimatorSpec(
           mode=mode,
           loss=loss,
