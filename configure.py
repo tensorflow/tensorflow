@@ -143,7 +143,7 @@ def run_shell(cmd, allow_non_zero=False):
 
 def cygpath(path):
   """Convert path from posix to windows."""
-  return run_shell(['cygpath', '-m', path])
+  return os.path.abspath(path).replace('\\', '/')
 
 
 def get_python_path(environ_cp, python_bin_path):
@@ -196,7 +196,7 @@ def setup_python(environ_cp, bazel_version):
     environ_cp['PYTHON_BIN_PATH'] = ''
 
   # Convert python path to Windows style before checking lib and version
-  if is_cygwin():
+  if is_windows() or is_cygwin():
     python_bin_path = cygpath(python_bin_path)
 
   # Get PYTHON_LIB_PATH
@@ -219,7 +219,7 @@ def setup_python(environ_cp, bazel_version):
   python_major_version = get_python_major_version(python_bin_path)
 
   # Convert python path to Windows style before writing into bazel.rc
-  if is_cygwin():
+  if is_windows() or is_cygwin():
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -600,7 +600,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Find out where the CUDA toolkit is installed
     default_cuda_path = _DEFAULT_CUDA_PATH
-    if is_cygwin():
+    if is_windows() or is_cygwin():
       default_cuda_path = cygpath(
           environ_cp.get('CUDA_PATH', _DEFAULT_CUDA_PATH_WIN))
     elif is_linux():
@@ -660,7 +660,7 @@ def set_tf_cunn_version(environ_cp):
     # unusable. Going through one more level of expansion to handle that.
     cudnn_install_path = os.path.realpath(
         os.path.expanduser(cudnn_install_path))
-    if is_cygwin():
+    if is_windows() or is_cygwin():
       cudnn_install_path = cygpath(cudnn_install_path)
 
     if is_windows():
