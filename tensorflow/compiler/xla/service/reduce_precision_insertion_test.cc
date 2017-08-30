@@ -425,6 +425,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInHeadOfFusionNode) {
   EXPECT_EQ(computation->root_instruction(), z);
   HloInstruction* y_fused = z->fused_expression_root();
   EXPECT_EQ(y_fused->opcode(), HloOpcode::kCos);
+  z->CheckFusionInstruction();
 
   // This should see that the fusion computation contains a kCos operation,
   // and insert a new reduce-precision node at its input.
@@ -449,6 +450,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInHeadOfFusionNode) {
   EXPECT_EQ(computation->root_instruction(), z);
   EXPECT_THAT(z->fused_expression_root(), y_fused);
   EXPECT_THAT(y_fused->operand(0), op::ReducePrecision(op::Parameter()));
+  z->CheckFusionInstruction();
 }
 
 TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInTailOfFusionNode) {
@@ -466,6 +468,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInTailOfFusionNode) {
       shape, HloInstruction::FusionKind::kLoop, y));
   EXPECT_IS_OK(computation->ReplaceUsesOfInstruction(y, z));
   EXPECT_IS_OK(computation->RemoveInstruction(y));
+  z->CheckFusionInstruction();
 
   // Confirm expected graph before adding reduce-precision ops.
   EXPECT_THAT(x->users(), UnorderedElementsAre(z));
@@ -495,6 +498,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInTailOfFusionNode) {
   EXPECT_THAT(x->users(), UnorderedElementsAre(z));
   EXPECT_EQ(computation->root_instruction(), z);
   EXPECT_THAT(z->fused_expression_root(), op::ReducePrecision(y_fused));
+  z->CheckFusionInstruction();
 }
 
 TEST_F(ReducePrecisionInsertionTest, MakeFilterFunctionNoSubstrings) {

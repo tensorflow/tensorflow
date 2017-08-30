@@ -166,6 +166,10 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
 void HloComputation::Reparent(HloInstruction* instruction) {
   instruction->set_parent(this);
+  if (is_fusion_computation_ && instruction != root_instruction_) {
+    CHECK(root_instruction_->fusion_instruction() != nullptr);
+    instruction->SetParentFusion(root_instruction_->fusion_instruction());
+  }
 }
 
 bool HloComputation::IsRemovable(const HloInstruction* instruction) {

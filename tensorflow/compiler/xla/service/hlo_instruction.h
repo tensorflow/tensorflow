@@ -906,6 +906,9 @@ class HloInstruction {
     parent_fusion_instruction_ = fusion_instruction;
   }
 
+  // CHECKs various invariants of a fusion instruction.
+  void CheckFusionInstruction() const;
+
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu
   // backend to partition HLOs into parallel tasks.
@@ -975,9 +978,6 @@ class HloInstruction {
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
-
-  // CHECKs various invariants of a fusion instruction.
-  void CheckFusionInstruction() const;
 
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.
