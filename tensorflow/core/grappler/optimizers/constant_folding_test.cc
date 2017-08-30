@@ -235,6 +235,43 @@ TEST_F(ConstantFoldingTest, ControlDependenciesEmptyFetch) {
   EXPECT_EQ(2, found);
 }
 
+TEST_F(ConstantFoldingTest, ControlDependenciesDeduplicate) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output dflt = ops::Const(scope.WithOpName("dflt"), 3.14f, {1});
+  Output p1 = ops::PlaceholderWithDefault(scope.WithOpName("p1"), dflt, {1});
+  Output p2 = ops::PlaceholderWithDefault(scope.WithOpName("p2"), dflt, {1});
+  Output c =
+      ops::Const(scope.WithOpName("c").WithControlDependencies(p1), 10, {3});
+  Output i1 = ops::Identity(scope.WithOpName("i1")
+                                .WithControlDependencies(p2)
+                                .WithControlDependencies(p1),
+                            {c});
+  Output i2 = ops::Identity(scope.WithOpName("i2"), {i1});
+
+  GrapplerItem item;
+  item.fetch.push_back("i2");
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i1", "i2"};
+  EXPECT_EQ(output.node_size(), expected_nodes.size());
+  int i = 0;
+  for (const auto& node : output.node()) {
+    EXPECT_EQ(expected_nodes[i], output.node(i).name());
+    i++;
+    if (node.name() == "i1") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("^p1", node.input(0));
+      EXPECT_EQ("^p2", node.input(1));
+    }
+  }
+}
+
 TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   // Add a DynamicPartition node to the graph

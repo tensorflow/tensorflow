@@ -568,12 +568,16 @@ Status ConstantFolding::FoldNode(NodeDef* node) {
 
     // Forward control dependencies.
     for (const auto& input : node->input()) {
-      if (IsControlInput(input)) {
+      if (IsControlInput(input) &&
+          std::find(const_node->input().begin(), const_node->input().end(),
+                    input) == const_node->input().end()) {
         *const_node->add_input() = input;
       } else {
         NodeDef* input_node = node_map_->GetNode(input);
         for (const auto& fanin_of_input : input_node->input()) {
-          if (IsControlInput(fanin_of_input)) {
+          if (IsControlInput(fanin_of_input) &&
+              std::find(const_node->input().begin(), const_node->input().end(),
+                        fanin_of_input) == const_node->input().end()) {
             *const_node->add_input() = fanin_of_input;
           }
         }
