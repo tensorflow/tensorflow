@@ -829,6 +829,13 @@ TEST_F(OpTest, Abs) {
   });
 }
 
+TEST_F(OpTest, Acosh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Acosh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Add) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
@@ -878,6 +885,20 @@ TEST_F(OpTest, Any) {
                                              .RandomInput(DT_BOOL, data_dims)
                                              .Input(indices)
                                              .Attr("keep_dims", keep_dims));
+  });
+}
+
+TEST_F(OpTest, Asinh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Asinh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Atanh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Atanh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -1372,6 +1393,20 @@ TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
   });
 }
 
+TEST_F(OpTest, Cos) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Cos").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Cosh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Cosh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
@@ -1459,11 +1494,11 @@ TEST_F(OpTest, DynamicStitch) {
     } while (size == 0);
 
     // Shuffle the range of indices that cover the output.
-    // TODO(phawkins): The documentation for DynamicStitch doesn't require that
-    // the indices cover all positions of the output. The XLA implementation
-    // does so require. However, the native TF implementation leaves undefined
-    // values if we don't cover everything, so we can't really test that case
-    // anyway.
+    // TODO(phawkins): The documentation for DynamicStitch doesn't require
+    // that the indices cover all positions of the output. The XLA
+    // implementation does so require. However, the native TF implementation
+    // leaves undefined values if we don't cover everything, so we can't
+    // really test that case anyway.
     std::vector<int32> indices(size);
     std::iota(indices.begin(), indices.end(), 0);
     std::shuffle(indices.begin(), indices.end(), generator());
@@ -1537,6 +1572,13 @@ TEST_F(OpTest, Exp) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Exp").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Expm1) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Expm1").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -1672,6 +1714,13 @@ TEST_F(OpTest, Log) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Log").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Log1p) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Log1p").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -2272,6 +2321,20 @@ TEST_F(OpTest, Sign) {
   });
 }
 
+TEST_F(OpTest, Sin) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Sin").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Sinh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Sinh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Size) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
@@ -2662,6 +2725,13 @@ TEST_F(OpTest, StridedSliceGrad) {
             .Attr("ellipsis_mask", ellipsis_mask)
             .Attr("new_axis_mask", new_axis_mask)
             .Attr("shrink_axis_mask", shrink_axis_mask));
+  });
+}
+
+TEST_F(OpTest, Tan) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Tan").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
