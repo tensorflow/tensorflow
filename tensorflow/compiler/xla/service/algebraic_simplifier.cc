@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -1648,10 +1647,6 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   }
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
-
-  HloVerifier verifier;
-  TF_DCHECK_OK(verifier.Run(module).status());
-
   return changed;
 }
 

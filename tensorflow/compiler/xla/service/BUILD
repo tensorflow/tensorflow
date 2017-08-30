@@ -1009,7 +1009,6 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_query",
-        ":hlo_verifier",
         ":shape_inference",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

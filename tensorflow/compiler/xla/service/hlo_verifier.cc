@@ -28,6 +28,10 @@ namespace {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
+  explicit ShapeVerifier(
+      const std::function<int64(const Shape&)>& shape_size_fn)
+      : shape_size_fn_(shape_size_fn) {}
+
   Status HandleElementwiseUnary(HloInstruction* hlo,
                                 HloOpcode opcode) override {
     return CheckUnaryShape(hlo);
@@ -121,6 +125,9 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
+    // Bitcasts can be any shape, as long as the size matches the operand size.
+    TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
+                 shape_size_fn_(bitcast->operand(0)->shape()));
     return tensorflow::Status::OK();
   }
 
@@ -270,13 +277,16 @@ class ShapeVerifier : public DfsHloVisitor {
                             instruction->opcode(), instruction->operands()));
     return CheckShape(instruction, expected);
   }
+
+  // Returns the size of a Shape in bytes.
+  const std::function<int64(const Shape&)> shape_size_fn_;
 };
 
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
-  ShapeVerifier shape_verifier;
+  ShapeVerifier shape_verifier(shape_size_fn_);
 
   for (auto& computation : module->computations()) {
     for (const auto& instruction : computation->instructions()) {

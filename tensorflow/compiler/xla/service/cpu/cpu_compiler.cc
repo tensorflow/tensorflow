@@ -253,7 +253,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 Status CpuCompiler::RunHloPasses(HloModule* module) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>();
+  pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
