@@ -3541,7 +3541,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [0.0])
-      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [0.5])
       _enqueue_vector(sess, weights_queue, [0.0])
       weights = weights_queue.dequeue()
 
@@ -3551,7 +3551,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       variables.local_variables_initializer().run()
       for _ in range(6):
         sess.run(update_op)
-      desired_output = np.mean([2.0 / 2.0, 1.0 / 2.0])
+      desired_output = np.mean([2.0 / 2.0, 0.5 / 1.5])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
   def testMultipleUpdatesWithMissingClass(self):
