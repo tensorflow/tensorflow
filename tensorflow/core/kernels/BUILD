@@ -5568,6 +5568,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 

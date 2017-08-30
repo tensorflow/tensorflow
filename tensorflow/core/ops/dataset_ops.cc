@@ -499,6 +499,24 @@ This operation may be executed multiple times. Each execution will reset the
 iterator in `iterator` to the first element of `dataset`.
 )doc");
 
+REGISTER_OP("SaveIterator")
+    .Input("iterator: resource")
+    .Input("path: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Saves the state of the `iterator` at `path`.
+
+This state can be restored using "RestoreIterator".
+)doc");
+
+REGISTER_OP("RestoreIterator")
+    .Input("iterator: resource")
+    .Input("path: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Restores the state of the `iterator` from the checkpoint saved at `path` using "SaveIterator".
+)doc");
+
 REGISTER_OP("OneShotIterator")
     .Output("handle: resource")
     .Attr("dataset_factory: func")
