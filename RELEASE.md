@@ -9,6 +9,9 @@
   for LSTMs and stacked LSTMs.  This bug fix follows recommendations from
   published literature, but is a behavioral change.  State dropout behavior
   may be customized via the new `dropout_state_filter_visitor` argument.
+* Removed `tf.contrib.training.python_input`.  The same behavior, in a more
+  flexible and reproducible package, is available via the new
+  `tf.contrib.data.Dataset.from_generator` method!
 
 # Release 1.3.0
 
