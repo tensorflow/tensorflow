@@ -409,10 +409,12 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 y_backprop: A 4D Tensor for the gradient with respect to y.
 x: A 4D Tensor for input data.
 scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
+reserve_space_1: A 1D Tensor for the computed batch mean when is_training is True,
+                 or the population mean when is_training is False, to be reused
                  in the gradient computation.
 reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be used in the gradient computation.
+                 in the cuDNN case) when is_training is True, or the population
+                 variance when is_training is False, to be reused in the gradient computation.
 x_backprop: A 4D Tensor for the gradient with respect to x.
 scale_backprop: A 1D Tensor for the gradient with respect to scale.
 offset_backprop: A 1D Tensor for the gradient with respect to offset.
