@@ -32,13 +32,11 @@ class ShapeVerifier : public DfsHloVisitor {
       const std::function<int64(const Shape&)>& shape_size_fn)
       : shape_size_fn_(shape_size_fn) {}
 
-  Status HandleElementwiseUnary(HloInstruction* hlo,
-                                HloOpcode opcode) override {
+  Status HandleElementwiseUnary(HloInstruction* hlo) override {
     return CheckUnaryShape(hlo);
   }
 
-  Status HandleElementwiseBinary(HloInstruction* hlo,
-                                 HloOpcode opcode) override {
+  Status HandleElementwiseBinary(HloInstruction* hlo) override {
     return CheckBinaryShape(hlo);
   }
 
