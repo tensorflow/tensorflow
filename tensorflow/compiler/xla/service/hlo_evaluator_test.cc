@@ -1207,6 +1207,70 @@ TEST_F(HloEvaluatorTest, ReduceWindowAdd) {
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
+TEST_F(HloEvaluatorTest, ReduceWindowAdd6D) {
+  HloComputation::Builder b(TestName());
+
+  // arg: f32[4,4,4,4,4,4] full of ones. Using small dims to limit run-time.
+  std::vector<int64> input_dims(6, 4);
+  std::unique_ptr<Literal> arg_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+  HloModule module(TestName());
+  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+
+  Window window;
+
+  WindowDimension trivial_dim;
+  trivial_dim.set_size(1);
+  trivial_dim.set_stride(1);
+  trivial_dim.set_padding_low(0);
+  trivial_dim.set_padding_high(0);
+  trivial_dim.set_window_dilation(1);
+  trivial_dim.set_base_dilation(1);
+
+  WindowDimension active_dim;
+  active_dim.set_size(2);
+  active_dim.set_stride(1);
+  active_dim.set_padding_low(0);
+  active_dim.set_padding_high(0);
+  active_dim.set_window_dilation(1);
+  active_dim.set_base_dilation(1);
+
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 3, 3, 4, 4});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, arg_instruction, init_value, window, add_func));
+
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  std::vector<int64> output_dims = {4, 3, 3, 3, 4, 4};
+  std::unique_ptr<Literal> result_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 8.0f);
+  LiteralTestUtil::ExpectEqual(*result_literal, *result);
+}
+
 TEST_F(HloEvaluatorTest, StridedSlice) {
   HloComputation::Builder b(TestName());
 

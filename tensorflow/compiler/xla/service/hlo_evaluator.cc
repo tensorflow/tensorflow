@@ -912,9 +912,9 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(
         ShapeUtil::Compatible(reduce_window->shape(), inferred_return_shape))
         << "return shape is set to: "
-        << ShapeUtil::HumanString(reduce_window->shape())
+        << ShapeUtil::HumanStringWithLayout(reduce_window->shape())
         << "but is inferred to be: "
-        << ShapeUtil::HumanString(inferred_return_shape);
+        << ShapeUtil::HumanStringWithLayout(inferred_return_shape);
 
     const Literal& operand_literal =
         parent_->GetEvaluatedLiteralFor(reduce_window->operand(0));
