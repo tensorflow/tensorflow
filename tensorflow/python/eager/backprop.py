@@ -146,17 +146,17 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   # It is imperative we make a copy of results here as otherwise we create a
   # dependency cycle in the captured function and this can delay garbage
   # collecting of the tensors arbitrarily.
-  result_copies = results[:]
+  results_size = len(results) if isinstance(results, (list, tuple)) else 1
 
-  def grad_fn(*outputs):
+  def grad_fn(*orig_outputs):
     """Generated gradient function."""
-    tensors = inputs + result_copies + list(outputs)
+    tensors = inputs + list(orig_outputs)
     tensors = container_types.make_sequence(tape.EagerList, *tensors)
     result = _magic_gradient_function(op_name, attrs, len(inputs),
                                       num_outputs, *(tensors))
     if _tracing:
       print("Gradient for", (name if name else op_name), "inputs", inputs,
-            "output_grads", outputs)
+            "output_grads", orig_outputs[results_size:], "gradients", result)
     return result
 
   results = tape.record_operation(results, inputs, [], grad_fn)

@@ -232,9 +232,10 @@ def record_operation(o, i, s, b):
 def _record_operation_vjp(g, ans, vs, gvs, output_tensors, input_tensors,
                           side_outputs, backward_function):
   """Gradient for _record_operation."""
-  del ans, vs, gvs, output_tensors, input_tensors
+  del vs, gvs, input_tensors, output_tensors
   backward_args = tuple(g) + tuple(side_outputs)
-  backward_args = container_types.make_sequence(EagerList, *backward_args)
+  backward_args = container_types.make_sequence(
+      EagerList, *(tuple(ans) + backward_args))
   tensors = nest.flatten(backward_function(*backward_args))
   return container_types.make_sequence(EagerList, *tensors)
 
