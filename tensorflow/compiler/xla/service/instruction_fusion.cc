@@ -111,19 +111,11 @@ namespace xla {
   return false;
 }
 
-namespace {
-// Returns true if fusing producer into consumer would cause producer to be
-// duplicated. This is the case if producer has uses other than consumer.
-bool FusionWouldDuplicate(const HloInstruction& producer,
-                          const HloInstruction& consumer) {
-  return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
-}
-
 // An "effectively unary" operation is one that has one "large"
 // input with the others being negligible in terms of memory usage.
 // We use "has a smaller true rank than the output" as a heuristic
 // for "negligible" memory usage.
-bool EffectivelyUnary(HloInstruction* hlo) {
+bool InstructionFusion::EffectivelyUnary(HloInstruction* hlo) {
   int64 output_rank = 0;
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
@@ -145,7 +137,6 @@ bool EffectivelyUnary(HloInstruction* hlo) {
                                 output_rank;
                        }) <= 1;
 }
-}  // namespace
 
 bool InstructionFusion::CanFuseOnAllPaths(
     const HloReachabilityMap& reachability_map, HloInstruction* producer,
@@ -243,7 +234,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     DoNotFuseSet do_not_fuse;
     auto reachability = computation->ComputeReachability();
 
-    auto cheap_to_duplicate = [](HloInstruction* producer) {
+    auto cheap_to_duplicate = [this](HloInstruction* producer) {
       if (producer->opcode() == HloOpcode::kBroadcast) {
         return true;
       }
