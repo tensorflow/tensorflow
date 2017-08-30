@@ -2,9 +2,9 @@
 #   Sqlite3 library. Provides utilities for interacting
 #   with sqlite3 databases.
 
-licenses(["notice"])  # BSD/MIT-like license
+licenses(["unencumbered"])  # Public Domain
 
-exports_files(["LICENSE"])
+# exports_files(["LICENSE"])
 
 cc_library(
     name = "sqlite",
