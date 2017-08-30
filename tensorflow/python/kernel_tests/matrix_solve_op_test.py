@@ -22,7 +22,9 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import variables
@@ -44,18 +46,25 @@ class MatrixSolveOpTest(test.TestCase):
         else:
           a = x.astype(np_type)
           b = y.astype(np_type)
-        a_np = np.conj(np.transpose(a)) if adjoint else a
+          a_np = np.conj(np.transpose(a)) if adjoint else a
         if batch_dims is not None:
           a = np.tile(a, batch_dims + [1, 1])
           a_np = np.tile(a_np, batch_dims + [1, 1])
           b = np.tile(b, batch_dims + [1, 1])
         np_ans = np.linalg.solve(a_np, b)
-        with self.test_session(use_gpu=True):
-          tf_ans = linalg_ops.matrix_solve(a, b, adjoint=adjoint)
-          out = tf_ans.eval()
-          self.assertEqual(tf_ans.get_shape(), out.shape)
-          self.assertEqual(np_ans.shape, out.shape)
-          self.assertAllClose(np_ans, out, atol=tol, rtol=tol)
+        for use_placeholder in False, True:
+          with self.test_session(use_gpu=True) as sess:
+            if use_placeholder:
+              a_ph = array_ops.placeholder(dtypes.as_dtype(np_type))
+              b_ph = array_ops.placeholder(dtypes.as_dtype(np_type))
+              tf_ans = linalg_ops.matrix_solve(a_ph, b_ph, adjoint=adjoint)
+              out = sess.run(tf_ans, {a_ph: a, b_ph: b})
+            else:
+              tf_ans = linalg_ops.matrix_solve(a, b, adjoint=adjoint)
+              out = tf_ans.eval()
+              self.assertEqual(tf_ans.get_shape(), out.shape)
+            self.assertEqual(np_ans.shape, out.shape)
+            self.assertAllClose(np_ans, out, atol=tol, rtol=tol)
 
   def _generateMatrix(self, m, n):
     matrix = (np.random.normal(-5, 5,

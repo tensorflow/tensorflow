@@ -522,9 +522,11 @@ tf_py_test(
     srcs = ["matrix_solve_ls_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -534,6 +536,7 @@ tf_py_test(
     srcs = ["matrix_solve_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
