@@ -22094,6 +22094,19 @@ op {
   is_stateful: true
 }
 op {
+  name: "RestoreIterator"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  summary: "Restores the state of the `iterator` from the checkpoint saved at `path` using \"SaveIterator\"."
+  is_stateful: true
+}
+op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"
@@ -22651,6 +22664,20 @@ op {
   }
   summary: "Saves the input tensors to disk."
   description: "The size of `tensor_names` must match the number of tensors in `data`. `data[i]`\nis written to `filename` with name `tensor_names[i]`.\n\nSee also `SaveSlices`."
+  is_stateful: true
+}
+op {
+  name: "SaveIterator"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  summary: "Saves the state of the `iterator` at `path`."
+  description: "This state can be restored using \"RestoreIterator\"."
   is_stateful: true
 }
 op {
