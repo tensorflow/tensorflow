@@ -368,10 +368,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
     OP_REQUIRES(
-        context, out_shape.num_elements() <= 2147483647,
-        errors::InvalidArgument("total number of outputs should be within the "
-                                "range of int which is used in the GPU kernel",
-                                in_depth, " vs ", filter.dim_size(2)));
+        context,
+        (!std::is_same<Device, GPUDevice>::value ||
+         FastBoundsCheck(out_shape.num_elements(),
+                         std::numeric_limits<int32>::max())),
+        errors::InvalidArgument("Output elements too large for GPU kernel"));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));

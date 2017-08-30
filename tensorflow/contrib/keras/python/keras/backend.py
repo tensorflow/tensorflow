@@ -266,7 +266,7 @@ def get_uid(prefix=''):
   graph = ops.get_default_graph()
   if graph not in tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS:
     tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS[graph] = collections.defaultdict(
-      int)
+        int)
   layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS[graph]
   layer_name_uids[prefix] += 1
   return layer_name_uids[prefix]
@@ -490,13 +490,15 @@ def to_dense(tensor):
 name_scope = ops.name_scope
 
 
-def variable(value, dtype=None, name=None):
+def variable(value, dtype=None, name=None, constraint=None):
   """Instantiates a variable and returns it.
 
   Arguments:
       value: Numpy array, initial value of the tensor.
       dtype: Tensor type.
       name: Optional name string for the tensor.
+      constraint: Optional projection function to be
+          applied to the variable after an optimizer update.
 
   Returns:
       A variable instance (with Keras metadata included).
@@ -523,10 +525,18 @@ def variable(value, dtype=None, name=None):
         sparse_coo.col, 1)), 1)
     v = sparse_tensor.SparseTensor(
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
+    v._keras_shape = sparse_coo.shape
     v._uses_learning_phase = False
     return v
   v = variables_module.Variable(
-      value, dtype=_convert_string_dtype(dtype), name=name)
+      value,
+      dtype=_convert_string_dtype(dtype),
+      name=name,
+      constraint=constraint)
+  if isinstance(value, np.ndarray):
+    v._keras_shape = value.shape
+  elif hasattr(value, 'get_shape'):
+    v._keras_shape = int_shape(value)
   v._uses_learning_phase = False
   return v
 
@@ -560,6 +570,57 @@ def constant(value, dtype=None, shape=None, name=None):
   if dtype is None:
     dtype = floatx()
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
+
+
+def is_keras_tensor(x):
+  """Returns whether `x` is a Keras tensor.
+
+  A "Keras tensor" is a tensor that was returned by a Keras layer,
+  (`Layer` class) or by `Input`.
+
+  Arguments:
+      x: A candidate tensor.
+
+  Returns:
+      A boolean: Whether the argument is a Keras tensor.
+
+  Raises:
+      ValueError: In case `x` is not a symbolic tensor.
+
+  Examples:
+  ```python
+      >>> from keras import backend as K
+      >>> from keras.layers import Input, Dense
+      >>> np_var = numpy.array([1, 2])
+      >>> K.is_keras_tensor(np_var) # A numpy array is not a symbolic tensor.
+      ValueError
+      >>> k_var = tf.placeholder('float32', shape=(1,1))
+      >>> K.is_keras_tensor(k_var) # A variable indirectly created outside of
+      keras is not a Keras tensor.
+      False
+      >>> keras_var = K.variable(np_var)
+      >>> K.is_keras_tensor(keras_var)  # A variable created with the keras
+      backend is not a Keras tensor.
+      False
+      >>> keras_placeholder = K.placeholder(shape=(2, 4, 5))
+      >>> K.is_keras_tensor(keras_placeholder)  # A placeholder is not a Keras
+      tensor.
+      False
+      >>> keras_input = Input([10])
+      >>> K.is_keras_tensor(keras_input) # An Input is a Keras tensor.
+      True
+      >>> keras_layer_output = Dense(10)(keras_input)
+      >>> K.is_keras_tensor(keras_layer_output) # Any Keras layer output is a
+      Keras tensor.
+      True
+  ```
+  """
+  if not isinstance(x, (ops.Tensor,
+                        variables_module.Variable,
+                        sparse_tensor.SparseTensor)):
+    raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
+                     '`. Expected a symbolic tensor instance.')
+  return hasattr(x, '_keras_history')
 
 
 def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
@@ -599,6 +660,21 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
   return x
 
 
+def is_placeholder(x):
+  """Returns whether `x` is a placeholder.
+
+  Arguments:
+      x: A candidate placeholder.
+
+  Returns:
+      Boolean.
+  """
+  try:
+    return x.op.type == 'Placeholder'
+  except AttributeError:
+    return False
+
+
 def shape(x):
   """Returns the symbolic shape of a tensor or variable.
 
@@ -609,7 +685,8 @@ def shape(x):
       A symbolic shape (which is itself a tensor).
 
   Examples:
-  ```
+
+  ```python
       # TensorFlow example
       >>> from keras import backend as K
       >>> tf_session = K.get_session()
@@ -651,9 +728,8 @@ def int_shape(x):
       (2, 2)
   ```
   """
-  shape = x.get_shape()
   try:
-    return tuple(shape.as_list())
+    return tuple(x.get_shape().as_list())
   except ValueError:
     return None
 
@@ -759,7 +835,6 @@ def zeros(shape, dtype=None, name=None):
   """
   if dtype is None:
     dtype = floatx()
-  shape = tuple(map(int, shape))
   tf_dtype = _convert_string_dtype(dtype)
   return variable(
       init_ops.constant_initializer(0., dtype=tf_dtype)(shape), dtype, name)
@@ -788,7 +863,6 @@ def ones(shape, dtype=None, name=None):
   """
   if dtype is None:
     dtype = floatx()
-  shape = tuple(map(int, shape))
   tf_dtype = _convert_string_dtype(dtype)
   return variable(
       init_ops.constant_initializer(1., dtype=tf_dtype)(shape), dtype, name)
@@ -908,7 +982,6 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
   """
   if dtype is None:
     dtype = floatx()
-  shape = tuple(map(int, shape))
   tf_dtype = _convert_string_dtype(dtype)
   if seed is None:
     # ensure that randomness is conditioned by the Numpy RNG
@@ -946,7 +1019,6 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
   """
   if dtype is None:
     dtype = floatx()
-  shape = tuple(map(int, shape))
   tf_dtype = _convert_string_dtype(dtype)
   if seed is None:
     # ensure that randomness is conditioned by the Numpy RNG
@@ -1276,28 +1348,6 @@ def gather(reference, indices):
 # ELEMENT-WISE OPERATIONS
 
 
-def _normalize_axis(axis, ndim):
-  """Converts negative axes to positive values.
-
-  Arguments:
-      axis: Integer axis (possibly negative).
-      ndim: Rank of the tensor considered.
-
-  Returns:
-      Positive integer axis.
-  """
-  if isinstance(axis, tuple):
-    axis = list(axis)
-  if isinstance(axis, list):
-    for i, a in enumerate(axis):
-      if a is not None and a < 0:
-        axis[i] = a % ndim
-  else:
-    if axis is not None and axis < 0:
-      axis %= ndim
-  return axis
-
-
 def max(x, axis=None, keepdims=False):
   """Maximum value in a tensor.
 
@@ -1312,7 +1362,6 @@ def max(x, axis=None, keepdims=False):
   Returns:
       A tensor with maximum values of `x`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.reduce_max(x, axis=axis, keep_dims=keepdims)
 
 
@@ -1330,7 +1379,6 @@ def min(x, axis=None, keepdims=False):
   Returns:
       A tensor with miminum values of `x`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.reduce_min(x, axis=axis, keep_dims=keepdims)
 
 
@@ -1348,7 +1396,6 @@ def sum(x, axis=None, keepdims=False):
   Returns:
       A tensor with sum of `x`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.reduce_sum(x, axis=axis, keep_dims=keepdims)
 
 
@@ -1366,7 +1413,6 @@ def prod(x, axis=None, keepdims=False):
   Returns:
       A tensor with the product of elements of `x`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.reduce_prod(x, axis=axis, keep_dims=keepdims)
 
 
@@ -1380,7 +1426,6 @@ def cumsum(x, axis=0):
   Returns:
       A tensor of the cumulative sum of values of `x` along `axis`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.cumsum(x, axis=axis)
 
 
@@ -1394,7 +1439,6 @@ def cumprod(x, axis=0):
   Returns:
       A tensor of the cumulative product of values of `x` along `axis`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.cumprod(x, axis=axis)
 
 
@@ -1412,7 +1456,6 @@ def var(x, axis=None, keepdims=False):
   Returns:
       A tensor with the variance of elements of `x`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
   m = math_ops.reduce_mean(x, axis=axis, keep_dims=True)
@@ -1452,7 +1495,6 @@ def mean(x, axis=None, keepdims=False):
   Returns:
       A tensor with the mean of elements of `x`.
   """
-  axis = _normalize_axis(axis, ndim(x))
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
   return math_ops.reduce_mean(x, axis=axis, keep_dims=keepdims)
@@ -1469,7 +1511,6 @@ def any(x, axis=None, keepdims=False):
   Returns:
       A uint8 tensor (0s and 1s).
   """
-  axis = _normalize_axis(axis, ndim(x))
   x = math_ops.cast(x, dtypes_module.bool)
   return math_ops.reduce_any(x, axis=axis, keep_dims=keepdims)
 
@@ -1485,7 +1526,6 @@ def all(x, axis=None, keepdims=False):
   Returns:
       A uint8 tensor (0s and 1s).
   """
-  axis = _normalize_axis(axis, ndim(x))
   x = math_ops.cast(x, dtypes_module.bool)
   return math_ops.reduce_all(x, axis=axis, keep_dims=keepdims)
 
@@ -1500,7 +1540,6 @@ def argmax(x, axis=-1):
   Returns:
       A tensor.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.argmax(x, axis)
 
 
@@ -1514,7 +1553,6 @@ def argmin(x, axis=-1):
   Returns:
       A tensor.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.argmin(x, axis)
 
 
@@ -1599,7 +1637,6 @@ def logsumexp(x, axis=None, keepdims=False):
   Returns:
       The reduced tensor.
   """
-  axis = _normalize_axis(axis, ndim(x))
   return math_ops.reduce_logsumexp(x, axis=axis, keep_dims=keepdims)
 
 
@@ -1992,24 +2029,45 @@ def repeat_elements(x, rep, axis):
       rep: Python integer, number of times to repeat.
       axis: Axis along which to repeat.
 
-  Raises:
-      ValueError: In case `x.shape[axis]` is undefined.
-
   Returns:
       A tensor.
   """
   x_shape = x.get_shape().as_list()
-  if x_shape[axis] is None:
-    raise ValueError('Axis ' + str(axis) + ' of input tensor '
-                     'should have a defined dimension, but is None. '
-                     'Full tensor shape: ' + str(tuple(x_shape)) + '. '
-                     'Typically you need to pass a fully-defined '
-                     '`input_shape` argument to your first layer.')
-  # slices along the repeat axis
-  splits = array_ops.split(value=x, num_or_size_splits=x_shape[axis], axis=axis)
-  # repeat each slice the given number of reps
-  x_rep = [s for s in splits for _ in range(rep)]
-  return concatenate(x_rep, axis)
+  # For static axis
+  if x_shape[axis] is not None:
+    # slices along the repeat axis
+    splits = array_ops.split(value=x,
+                             num_or_size_splits=x_shape[axis],
+                             axis=axis)
+    # repeat each slice the given number of reps
+    x_rep = [s for s in splits for _ in range(rep)]
+    return concatenate(x_rep, axis)
+
+  # Here we use tf.tile to mimic behavior of np.repeat so that
+  # we can handle dynamic shapes (that include None).
+  # To do that, we need an auxiliary axis to repeat elements along
+  # it and then merge them along the desired axis.
+
+  # Repeating
+  auxiliary_axis = axis + 1
+  x_shape = array_ops.shape(x)
+  x_rep = array_ops.expand_dims(x, axis=auxiliary_axis)
+  reps = np.ones(len(x.get_shape()) + 1)
+  reps[auxiliary_axis] = rep
+  x_rep = array_ops.tile(x_rep, reps)
+
+  # Merging
+  reps = np.delete(reps, auxiliary_axis)
+  reps[axis] = rep
+  reps = array_ops.constant(reps, dtype='int32')
+  x_shape *= reps
+  x_rep = array_ops.reshape(x_rep, x_shape)
+
+  # Fix shape representation
+  x_shape = x.get_shape().as_list()
+  x_rep.set_shape(x_shape)
+  x_rep._keras_shape = tuple(x_shape)
+  return x_rep
 
 
 def repeat(x, n):
@@ -2303,7 +2361,7 @@ def set_value(x, value):
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
-  value = np.asarray(value)
+  value = np.asarray(value, dtype=dtype(x))
   tf_dtype = _convert_string_dtype(x.dtype.name.split('_')[0])
   if hasattr(x, '_assign_placeholder'):
     assign_placeholder = x._assign_placeholder
@@ -2327,7 +2385,7 @@ def batch_set_value(tuples):
     assign_ops = []
     feed_dict = {}
     for x, value in tuples:
-      value = np.asarray(value)
+      value = np.asarray(value, dtype=dtype(x))
       tf_dtype = _convert_string_dtype(x.dtype.name.split('_')[0])
       if hasattr(x, '_assign_placeholder'):
         assign_placeholder = x._assign_placeholder
@@ -2457,11 +2515,16 @@ def stop_gradient(variables):
   """Returns `variables` but with zero gradient w.r.t. every other variable.
 
   Arguments:
-      variables: List of variables.
+      variables: Tensor or list of tensors to consider constant with respect
+        to any other variable.
+
 
   Returns:
-      The same list of variables.
+      A single tensor or a list of tensors (depending on the passed argument)
+      that has no gradient with respect to any other variable.
   """
+  if isinstance(variables, (list, tuple)):
+    return map(array_ops.stop_gradient, variables)
   return array_ops.stop_gradient(variables)
 
 
@@ -2874,14 +2937,14 @@ def softsign(x):
   return nn.softsign(x)
 
 
-def categorical_crossentropy(output, target, from_logits=False):
+def categorical_crossentropy(target, output, from_logits=False):
   """Categorical crossentropy between an output tensor and a target tensor.
 
   Arguments:
+      target: A tensor of the same shape as `output`.
       output: A tensor resulting from a softmax
           (unless `from_logits` is True, in which
           case `output` is expected to be the logits).
-      target: A tensor of the same shape as `output`.
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
 
@@ -2895,8 +2958,8 @@ def categorical_crossentropy(output, target, from_logits=False):
     output /= math_ops.reduce_sum(
         output, axis=len(output.get_shape()) - 1, keep_dims=True)
     # manual computation of crossentropy
-    epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
-    output = clip_ops.clip_by_value(output, epsilon, 1. - epsilon)
+    epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+    output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
     return -math_ops.reduce_sum(
         target * math_ops.log(output),
         axis=len(output.get_shape()) - 1)
@@ -2904,14 +2967,14 @@ def categorical_crossentropy(output, target, from_logits=False):
     return nn.softmax_cross_entropy_with_logits(labels=target, logits=output)
 
 
-def sparse_categorical_crossentropy(output, target, from_logits=False):
+def sparse_categorical_crossentropy(target, output, from_logits=False):
   """Categorical crossentropy with integer targets.
 
   Arguments:
+      target: An integer tensor.
       output: A tensor resulting from a softmax
           (unless `from_logits` is True, in which
           case `output` is expected to be the logits).
-      target: An integer tensor.
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
 
@@ -2921,8 +2984,8 @@ def sparse_categorical_crossentropy(output, target, from_logits=False):
   # Note: nn.sparse_softmax_cross_entropy_with_logits
   # expects logits, Keras expects probabilities.
   if not from_logits:
-    epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
-    output = clip_ops.clip_by_value(output, epsilon, 1 - epsilon)
+    epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+    output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
     output = math_ops.log(output)
 
   output_shape = output.get_shape()
@@ -2937,12 +3000,12 @@ def sparse_categorical_crossentropy(output, target, from_logits=False):
     return res
 
 
-def binary_crossentropy(output, target, from_logits=False):
+def binary_crossentropy(target, output, from_logits=False):
   """Binary crossentropy between an output tensor and a target tensor.
 
   Arguments:
-      output: A tensor.
       target: A tensor with the same shape as `output`.
+      output: A tensor.
       from_logits: Whether `output` is expected to be a logits tensor.
           By default, we consider that `output`
           encodes a probability distribution.
@@ -2954,8 +3017,8 @@ def binary_crossentropy(output, target, from_logits=False):
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # transform back to logits
-    epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
-    output = clip_ops.clip_by_value(output, epsilon, 1 - epsilon)
+    epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+    output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
     output = math_ops.log(output / (1 - output))
   return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
@@ -3026,7 +3089,7 @@ def dropout(x, level, noise_shape=None, seed=None):
   return nn.dropout(x * 1., retain_prob, noise_shape, seed=seed)
 
 
-def l2_normalize(x, axis):
+def l2_normalize(x, axis=None):
   """Normalizes a tensor wrt the L2 norm alongside the specified axis.
 
   Arguments:
@@ -3036,8 +3099,6 @@ def l2_normalize(x, axis):
   Returns:
       A tensor.
   """
-  if axis < 0:
-    axis %= len(x.get_shape())
   return nn.l2_normalize(x, dim=axis)
 
 
@@ -3807,7 +3868,7 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
       label_lengths: length of the labels.
 
   Returns:
-      A sparse tensor representation of the lablels.
+      A sparse tensor representation of the labels.
   """
   label_shape = array_ops.shape(labels)
   num_batches_tns = array_ops.stack([label_shape[0]])

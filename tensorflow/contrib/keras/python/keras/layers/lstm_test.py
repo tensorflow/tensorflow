@@ -337,6 +337,33 @@ class LSTMLayerTest(test.TestCase):
       inputs = np.random.random((num_samples, timesteps, embedding_dim))
       outputs = model.predict(inputs)
 
+  def test_initial_states_as_other_inputs(self):
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+    num_states = 2
+    layer_class = keras.layers.LSTM
+
+    with self.test_session():
+      # Test with Keras tensor
+      main_inputs = keras.Input((timesteps, embedding_dim))
+      initial_state = [keras.Input((units,)) for _ in range(num_states)]
+      inputs = [main_inputs] + initial_state
+
+      layer = layer_class(units)
+      output = layer(inputs)
+      assert initial_state[0] in layer.inbound_nodes[0].input_tensors
+
+      model = keras.models.Model(inputs, output)
+      model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+      main_inputs = np.random.random((num_samples, timesteps, embedding_dim))
+      initial_state = [np.random.random((num_samples, units))
+                       for _ in range(num_states)]
+      targets = np.random.random((num_samples, units))
+      model.train_on_batch([main_inputs] + initial_state, targets)
+
 
 if __name__ == '__main__':
   test.main()

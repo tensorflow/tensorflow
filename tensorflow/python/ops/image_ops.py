@@ -22,6 +22,7 @@ See the @{$python/image} guide.
 @@decode_gif
 @@decode_jpeg
 @@encode_jpeg
+@@extract_jpeg_shape
 @@decode_png
 @@encode_png
 @@decode_image

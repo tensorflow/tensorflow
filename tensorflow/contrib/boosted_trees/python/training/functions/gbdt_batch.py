@@ -467,6 +467,11 @@ class GradientBoostedDecisionTreeModel(object):
     Raises:
       ValueError: if inputs are not valid.
     """
+    # Get the worker device from input dependencies.
+    input_deps = (self._dense_floats + self._sparse_float_indices +
+                  self._sparse_int_indices)
+    worker_device = input_deps[0].device
+
     # Get tensors relevant for training and form the loss.
     predictions = predictions_dict[PREDICTIONS]
     partition_ids = predictions_dict[PARTITION_IDS]
@@ -478,7 +483,6 @@ class GradientBoostedDecisionTreeModel(object):
         colocate_gradients_with_ops=False,
         gate_gradients=0,
         aggregation_method=None)[0]
-
     strategy = self._learner_config.multi_class_strategy
     num_classes = self._learner_config.num_classes
 
@@ -541,7 +545,7 @@ class GradientBoostedDecisionTreeModel(object):
     fc_name_idx = 0
     handlers = []
     init_stamp_token = constant_op.constant(0, dtype=dtypes.int64)
-    with ops.device(self._get_replica_device_setter()):
+    with ops.device(self._get_replica_device_setter(worker_device)):
       # Create handlers for dense float columns
       for dense_float_column_idx in range(len(self._dense_floats)):
         fc_name = self._fc_names[fc_name_idx]
@@ -666,10 +670,6 @@ class GradientBoostedDecisionTreeModel(object):
 
     # Update handler stats.
     handler_reads = {}
-
-    input_deps = (self._dense_floats + self._sparse_float_indices +
-                  self._sparse_int_indices)
-    worker_device = input_deps[0].device
     for handler in handlers:
       handler_reads[handler] = handler.scheduled_reads()
 
@@ -841,7 +841,7 @@ class GradientBoostedDecisionTreeModel(object):
 
     return diag_hessian_list
 
-  def _get_replica_device_setter(self):
+  def _get_replica_device_setter(self, worker_device):
     """Creates a replica device setter."""
     ps_tasks = self._num_ps_replicas
     ps_ops = [
@@ -854,6 +854,7 @@ class GradientBoostedDecisionTreeModel(object):
     ]
     ps_strategy = _OpRoundRobinStrategy(ps_ops, ps_tasks)
     return device_setter.replica_device_setter(
+        worker_device=worker_device,
         ps_tasks=ps_tasks,
         merge_devices=True,
         ps_ops=ps_ops,

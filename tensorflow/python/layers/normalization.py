@@ -187,17 +187,6 @@ class BatchNormalization(base.Layer):
     self.input_spec = base.InputSpec(ndim=ndim,
                                      axes={self.axis: param_dim.value})
 
-    if self.center:
-      self.beta = self.add_variable(name='beta',
-                                    shape=(param_dim,),
-                                    initializer=self.beta_initializer,
-                                    regularizer=self.beta_regularizer,
-                                    constraint=self.beta_constraint,
-                                    trainable=True)
-    else:
-      self.beta = None
-      if self.fused:
-        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
     if self.scale:
       self.gamma = self.add_variable(name='gamma',
                                      shape=(param_dim,),
@@ -209,6 +198,18 @@ class BatchNormalization(base.Layer):
       self.gamma = None
       if self.fused:
         self._gamma_const = array_ops.constant(1.0, shape=(param_dim,))
+
+    if self.center:
+      self.beta = self.add_variable(name='beta',
+                                    shape=(param_dim,),
+                                    initializer=self.beta_initializer,
+                                    regularizer=self.beta_regularizer,
+                                    constraint=self.beta_constraint,
+                                    trainable=True)
+    else:
+      self.beta = None
+      if self.fused:
+        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
 
     # Disable variable partitioning when creating the moving mean and variance
     try:

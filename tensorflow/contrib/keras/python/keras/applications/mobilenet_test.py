@@ -59,5 +59,43 @@ class MobileNetTest(test.TestCase):
     self.assertEqual(model.output_shape, (None, 1000))
     keras.backend.set_image_data_format('channels_last')
 
+  def test_mobilenet_variable_input_channels(self):
+    input_shape = (None, None, 1)
+    model = keras.applications.MobileNet(weights=None,
+                                         include_top=False,
+                                         input_shape=input_shape)
+    self.assertEqual(model.output_shape, (None, None, None, 1024))
+
+    input_shape = (None, None, 4)
+    model = keras.applications.MobileNet(weights=None,
+                                         include_top=False,
+                                         input_shape=input_shape)
+    self.assertEqual(model.output_shape, (None, None, None, 1024))
+
+  def test_mobilenet_image_size(self):
+    with self.test_session():
+      valid_image_sizes = [128, 160, 192, 224]
+      for size in valid_image_sizes:
+        keras.backend.set_image_data_format('channels_last')
+        input_shape = (size, size, 3)
+        model = keras.applications.MobileNet(input_shape=input_shape,
+                                             weights=None,
+                                             include_top=True)
+        self.assertEqual(model.input_shape, (None,) + input_shape)
+
+        keras.backend.set_image_data_format('channels_first')
+        input_shape = (3, size, size)
+        model = keras.applications.MobileNet(input_shape=input_shape,
+                                             weights=None,
+                                             include_top=True)
+        self.assertEqual(model.input_shape, (None,) + input_shape)
+
+      keras.backend.set_image_data_format('channels_last')
+      invalid_image_shape = (112, 112, 3)
+      with self.assertRaises(ValueError):
+        model = keras.applications.MobileNet(input_shape=invalid_image_shape,
+                                             weights='imagenet',
+                                             include_top=True)
+
 if __name__ == '__main__':
   test.main()

@@ -20,7 +20,11 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
@@ -34,45 +38,48 @@ from tensorflow.python.platform import test
 
 class BaseLayerTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testLayerProperties(self):
     layer = base_layers.Layer(name='my_layer')
     self.assertListEqual(layer.variables, [])
     self.assertListEqual(layer.trainable_variables, [])
     self.assertListEqual(layer.non_trainable_variables, [])
-    self.assertListEqual(layer.updates, [])
-    self.assertListEqual(layer.losses, [])
+    if context.in_graph_mode():
+      # updates, losses only suppported in GRAPH mode
+      self.assertListEqual(layer.updates, [])
+      self.assertListEqual(layer.losses, [])
     self.assertEqual(layer.built, False)
     layer = base_layers.Layer(name='my_layer', trainable=False)
     self.assertEqual(layer.trainable, False)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAddWeight(self):
-    with self.test_session():
-      layer = base_layers.Layer(name='my_layer')
+    layer = base_layers.Layer(name='my_layer')
 
-      # Test basic variable creation.
-      variable = layer.add_variable(
-          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
-      self.assertEqual(variable.name, 'my_layer/my_var:0')
-      self.assertListEqual(layer.variables, [variable])
-      self.assertListEqual(layer.trainable_variables, [variable])
-      self.assertListEqual(layer.non_trainable_variables, [])
-      self.assertListEqual(
-          layer.variables,
-          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+    # Test basic variable creation.
+    variable = layer.add_variable(
+        'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'my_layer/my_var:0')
+    self.assertListEqual(layer.variables, [variable])
+    self.assertListEqual(layer.trainable_variables, [variable])
+    self.assertListEqual(layer.non_trainable_variables, [])
+    self.assertListEqual(layer.variables,
+                         ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
-      # Test non-trainable variable creation.
-      # layer.add_variable should work even outside `build` and `call`.
-      variable_2 = layer.add_variable(
-          'non_trainable_var', [2, 2],
-          initializer=init_ops.zeros_initializer(),
-          trainable=False)
-      self.assertListEqual(layer.variables, [variable, variable_2])
-      self.assertListEqual(layer.trainable_variables, [variable])
-      self.assertListEqual(layer.non_trainable_variables, [variable_2])
-      self.assertEqual(
-          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
+    # Test non-trainable variable creation.
+    # layer.add_variable should work even outside `build` and `call`.
+    variable_2 = layer.add_variable(
+        'non_trainable_var', [2, 2],
+        initializer=init_ops.zeros_initializer(),
+        trainable=False)
+    self.assertListEqual(layer.variables, [variable, variable_2])
+    self.assertListEqual(layer.trainable_variables, [variable])
+    self.assertListEqual(layer.non_trainable_variables, [variable_2])
+    self.assertEqual(
+        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
-      # Test with regularizer.
+    if context.in_graph_mode():
+      # regularizers only supported in GRAPH mode.
       regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
       variable = layer.add_variable(
           'reg_var', [2, 2],
@@ -80,69 +87,63 @@ class BaseLayerTest(test.TestCase):
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testGetVariable(self):
-    with self.test_session():
 
-      class MyLayer(base_layers.Layer):
+    class MyLayer(base_layers.Layer):
 
-        def build(self, input_shape):
-          self.my_var = self.add_variable(
-              'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+      def build(self, input_shape):
+        self.my_var = self.add_variable(
+            'my_var', [2, 2], initializer=init_ops.zeros_initializer())
 
-        def call(self, inputs):
-          return inputs * 2
+      def call(self, inputs):
+        return inputs * 2
 
-      layer = MyLayer(name='my_layer')
-      inputs = random_ops.random_uniform((5,), seed=1)
-      layer.apply(inputs)
-      layer.apply(inputs)
-      self.assertListEqual([v.name for v in layer.variables],
-                           ['my_layer/my_var:0'])
+    layer = MyLayer(name='my_layer')
+    inputs = random_ops.random_uniform((5,), seed=1)
+    layer.apply(inputs)
+    layer.apply(inputs)
+    self.assertListEqual([v.name for v in layer.variables],
+                         ['my_layer/my_var:0'])
 
-      # Creating a layer with no scope leads to lazy construction of
-      # the scope at apply() time.  It uses scope "<current scope>/base_name"
-      lazy_layer = MyLayer(_reuse=True)
-      with variable_scope.variable_scope('new_scope'):
-        # This should attempt to reuse 'my_var' in 'new_scope'
-        with self.assertRaisesRegexp(
-            ValueError, r'new_scope/my_layer/my_var does not exist'):
-          lazy_layer.apply(inputs)
-        with variable_scope.variable_scope('my_layer'):
-          variable_scope.get_variable('my_var', [2, 2])
-
-        # Smoke test: it runs.
-        lazy_layer.apply(inputs)
-        # The variables were created outside of the Layer, and
-        # reuse=True, so the Layer does not own them and they are not
-        # stored in its collection.
-        self.assertListEqual(lazy_layer.variables, [])
-        self.assertEqual(lazy_layer._scope.name, 'new_scope/my_layer')
-
-      # Creating a layer with no scope leads to lazy construction of
-      # the scope at apply() time.  If 'scope' argument is passed to
-      # apply(), it uses that scope when accessing variables.
-      lazy_layer = MyLayer(_reuse=True)
-      with variable_scope.variable_scope('new_scope') as new_scope:
-        # This should attempt to reuse 'my_var' in 'new_scope'
-        with self.assertRaisesRegexp(
-            ValueError, r'new_scope/my_var does not exist'):
-          lazy_layer.apply(inputs, scope=new_scope)
+    # Creating a layer with no scope leads to lazy construction of
+    # the scope at apply() time.  It uses scope "<current scope>/base_name"
+    lazy_layer = MyLayer(_reuse=True)
+    with variable_scope.variable_scope('new_scope'):
+      with variable_scope.variable_scope('my_layer'):
         variable_scope.get_variable('my_var', [2, 2])
 
-        # Smoke test: it runs.
-        lazy_layer.apply(inputs, scope=new_scope)
-        # The variables were created outside of the Layer, and
-        # reuse=True, so the Layer does not own them and they are not
-        # stored in its collection.
-        self.assertListEqual(lazy_layer.variables, [])
-        self.assertEqual(lazy_layer._scope.name, 'new_scope')
+      # Smoke test: it runs.
+      lazy_layer.apply(inputs)
+      # The variables were created outside of the Layer, and
+      # reuse=True, so the Layer does not own them and they are not
+      # stored in its collection.
+      self.assertListEqual(lazy_layer.variables, [])
+      self.assertEqual(lazy_layer._scope.name, 'new_scope/my_layer')
 
+    # Creating a layer with no scope leads to lazy construction of
+    # the scope at apply() time. If 'scope' argument is passed to
+    # apply(), it uses that scope when accessing variables.
+    lazy_layer = MyLayer(_reuse=True)
+    with variable_scope.variable_scope('new_scope') as new_scope:
+      variable_scope.get_variable('my_var', [2, 2])
+
+      # Smoke test: it runs.
+      lazy_layer.apply(inputs, scope=new_scope)
+      # The variables were created outside of the Layer, and
+      # reuse=True, so the Layer does not own them and they are not
+      # stored in its collection.
+      self.assertListEqual(lazy_layer.variables, [])
+      self.assertEqual(lazy_layer._scope.name, 'new_scope')
+
+    if context.in_graph_mode():
+      # Checking for graph equality is only done in GRAPH mode.
       with ops.Graph().as_default():
         inputs_ng = random_ops.random_uniform((5,), seed=1)
-        with self.assertRaisesRegexp(ValueError,
-                                     r'graph are not the same'):
+        with self.assertRaisesRegexp(ValueError, r'graph are not the same'):
           layer.apply(inputs_ng)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testCall(self):
 
     class MyLayer(base_layers.Layer):
@@ -154,9 +155,13 @@ class BaseLayerTest(test.TestCase):
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
-    self.assertEqual(outputs.op.name, 'my_layer/Square')
+    if context.in_graph_mode():
+      # op is only supported in GRAPH mode
+      self.assertEqual(outputs.op.name, 'my_layer/Square')
 
   def testFirstCallCanCreateVariablesButSecondCanNotWhenBuildEmpty(self):
+    # Note that this test is only run in Graph mode since with EAGER mode we can
+    # still create a new variable on second call.
 
     class MyLayer(base_layers.Layer):
 
@@ -177,15 +182,16 @@ class BaseLayerTest(test.TestCase):
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
     self.assertEqual(outputs.op.name, 'my_layer/add')
-    self.assertListEqual(
-        [v.name for v in layer.variables], ['my_layer/my_var:0'])
+    self.assertListEqual([v.name
+                          for v in layer.variables], ['my_layer/my_var:0'])
     with self.assertRaisesRegexp(ValueError,
                                  'my_layer/this_will_break_on_second_call'):
       layer.apply(inputs)
     # The list of variables hasn't changed.
-    self.assertListEqual(
-        [v.name for v in layer.variables], ['my_layer/my_var:0'])
+    self.assertListEqual([v.name
+                          for v in layer.variables], ['my_layer/my_var:0'])
 
+  @test_util.run_in_graph_and_eager_modes()
   def testDeepCopy(self):
 
     class MyLayer(base_layers.Layer):
@@ -198,7 +204,9 @@ class BaseLayerTest(test.TestCase):
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
-    self.assertEqual(outputs.op.name, 'my_layer/Square')
+    if context.in_graph_mode():
+      # op only supported in GRAPH mode.
+      self.assertEqual(outputs.op.name, 'my_layer/Square')
 
     layer_copy = copy.deepcopy(layer)
     self.assertEqual(layer_copy.name, layer.name)
@@ -206,6 +214,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer_copy._graph, layer._graph)
     self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testScopeNaming(self):
 
     class PrivateLayer(base_layers.Layer):
@@ -253,6 +262,7 @@ class BaseLayerTest(test.TestCase):
       my_layer_scoped1.apply(inputs)
       self.assertEqual(my_layer_scoped1._scope.name, 'var_scope/my_layer_1')
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInputSpecNdimCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -264,18 +274,22 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
+    if context.in_graph_mode():
+      layer = CustomerLayer()
+      with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
+        layer.apply(array_ops.placeholder('int32'))
+
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError,
-                                 r'requires a defined rank'):
-      layer.apply(array_ops.placeholder('int32'))
+    with self.assertRaisesRegexp(ValueError, r'expected ndim=2'):
+      layer.apply(constant_op.constant([1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 r'expected ndim=2'):
-      layer.apply(array_ops.placeholder('int32', shape=(None,)))
-
+    # Note that we re-create the layer since in Eager mode, input spec checks
+    # only happen on first call.
     # Works
-    layer.apply(array_ops.placeholder('int32', shape=(None, None)))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([[1], [2]]))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInputSpecMinNdimCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -287,19 +301,23 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError,
-                                 r'requires a defined rank'):
-      layer.apply(array_ops.placeholder('int32'))
+    if context.in_graph_mode():
+      layer = CustomerLayer()
+      with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
+        layer.apply(array_ops.placeholder('int32'))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 r'expected min_ndim=2'):
-      layer.apply(array_ops.placeholder('int32', shape=(None,)))
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError, r'expected min_ndim=2'):
+      layer.apply(constant_op.constant([1]))
 
     # Works
-    layer.apply(array_ops.placeholder('int32', shape=(None, None)))
-    layer.apply(array_ops.placeholder('int32', shape=(None, None, None)))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([[1], [2]]))
 
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([[[1], [2]]]))
+
+  @test_util.run_in_graph_and_eager_modes()
   def testInputSpecMaxNdimCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -311,19 +329,23 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError,
-                                 r'requires a defined rank'):
-      layer.apply(array_ops.placeholder('int32'))
+    if context.in_graph_mode():
+      layer = CustomerLayer()
+      with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
+        layer.apply(array_ops.placeholder('int32'))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 r'expected max_ndim=2'):
-      layer.apply(array_ops.placeholder('int32', shape=(None, None, None)))
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError, r'expected max_ndim=2'):
+      layer.apply(constant_op.constant([[[1], [2]]]))
 
     # Works
-    layer.apply(array_ops.placeholder('int32', shape=(None, None)))
-    layer.apply(array_ops.placeholder('int32', shape=(None,)))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([1]))
 
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([[1], [2]]))
+
+  @test_util.run_in_graph_and_eager_modes()
   def testInputSpecDtypeCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -336,13 +358,14 @@ class BaseLayerTest(test.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError,
-                                 r'expected dtype=float32'):
-      layer.apply(array_ops.placeholder('int32'))
+    with self.assertRaisesRegexp(ValueError, r'expected dtype=float32'):
+      layer.apply(constant_op.constant(1, dtype=dtypes.int32))
 
     # Works
-    layer.apply(array_ops.placeholder('float32', shape=(None, None)))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant(1.0, dtype=dtypes.float32))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInputSpecAxesCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -355,14 +378,16 @@ class BaseLayerTest(test.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError,
-                                 r'expected axis'):
-      layer.apply(array_ops.placeholder('int32', shape=(None, 3)))
+    with self.assertRaisesRegexp(ValueError, r'expected axis'):
+      layer.apply(constant_op.constant([1, 2, 3]))
 
     # Works
-    layer.apply(array_ops.placeholder('int32', shape=(None, None, 2)))
-    layer.apply(array_ops.placeholder('int32', shape=(None, 2)))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([1, 2]))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInputSpecShapeCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -375,14 +400,14 @@ class BaseLayerTest(test.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError,
-                                 r'expected shape'):
-      layer.apply(array_ops.placeholder('int32', shape=(None, 2)))
+    with self.assertRaisesRegexp(ValueError, r'expected shape'):
+      layer.apply(constant_op.constant([[1, 2]]))
 
     # Works
-    layer.apply(array_ops.placeholder('int32', shape=(None, 3)))
-    layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
+    layer = CustomerLayer()
+    layer.apply(constant_op.constant([[1, 2, 3], [4, 5, 6]]))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testNoInputSpec(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -396,9 +421,12 @@ class BaseLayerTest(test.TestCase):
 
     layer = CustomerLayer()
 
+    layer.apply(constant_op.constant(1))
+
     # Works
-    layer.apply(array_ops.placeholder('int32'))
-    layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
+    if context.in_graph_mode():
+      layer.apply(array_ops.placeholder('int32'))
+      layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
 
   def test_get_updates_for(self):
     a = base_layers.Input(shape=(2,))
@@ -476,10 +504,11 @@ class BaseLayerTest(test.TestCase):
       _ = new_dense.output_shape
 
   def testTopologicalAttributesMultiOutputLayer(self):
+
     class PowersLayer(base_layers.Layer):
 
       def call(self, inputs):
-        return [inputs ** 2, inputs ** 3]
+        return [inputs**2, inputs**3]
 
     x = base_layers.Input(shape=(32,))
     test_layer = PowersLayer()
@@ -491,6 +520,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(test_layer.output_shape, [(None, 32), (None, 32)])
 
   def testTopologicalAttributesMultiInputLayer(self):
+
     class AddLayer(base_layers.Layer):
 
       def call(self, inputs):
@@ -507,6 +537,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(test_layer.input_shape, [(None, 32), (None, 32)])
     self.assertEqual(test_layer.output_shape, (None, 32))
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_count_params(self):
     dense = core_layers.Dense(16)
     dense.build((None, 4))
@@ -652,7 +683,7 @@ class NetworkTest(test.TestCase):
     class PowersLayer(base_layers.Layer):
 
       def call(self, inputs):
-        return [inputs ** 2, inputs ** 3]
+        return [inputs**2, inputs**3]
 
     x = base_layers.Input(shape=(32,))
     p1, p2 = PowersLayer()(x)  # pylint: disable=not-callable
@@ -673,7 +704,7 @@ class NetworkTest(test.TestCase):
 
   def testNetworkAttributes(self):
     x = base_layers.Input(shape=(32,))
-    z = core_layers.Dense(2, kernel_regularizer=lambda x: 0.01 * (x ** 2))(x)
+    z = core_layers.Dense(2, kernel_regularizer=lambda x: 0.01 * (x**2))(x)
     dense = core_layers.Dense(2, name='dense')
     dense.add_update(1)
     y = dense(z)
@@ -795,6 +826,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual(len(network.layers), 2)
     self.assertEqual(network.layers[0].sparse, True)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testMaskingSingleInput(self):
 
     class MaskedLayer(base_layers.Layer):
@@ -807,19 +839,29 @@ class NetworkTest(test.TestCase):
       def compute_mask(self, inputs, mask=None):
         return array_ops.ones_like(inputs)
 
-    x = base_layers.Input(shape=(32,))
-    y = MaskedLayer()(x)  # pylint: disable=not-callable
-    network = base_layers.Network(x, y)
+    if context.in_graph_mode():
+      x = base_layers.Input(shape=(32,))
+      y = MaskedLayer()(x)  # pylint: disable=not-callable
+      network = base_layers.Network(x, y)
 
-    # test callability on Input
-    x_2 = base_layers.Input(shape=(32,))
-    y_2 = network(x_2)
-    self.assertEqual(y_2.get_shape().as_list(), [None, 32])
+      # test callability on Input
+      x_2 = base_layers.Input(shape=(32,))
+      y_2 = network(x_2)
+      self.assertEqual(y_2.get_shape().as_list(), [None, 32])
 
-    # test callability on regular tensor
-    x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
-    y_2 = network(x_2)
-    self.assertEqual(y_2.get_shape().as_list(), [None, 32])
+      # test callability on regular tensor
+      x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
+      y_2 = network(x_2)
+      self.assertEqual(y_2.get_shape().as_list(), [None, 32])
+    else:
+      a = constant_op.constant([2] * 32)
+      mask = constant_op.constant([0, 1] * 16)
+      a._keras_mask = mask
+      b = MaskedLayer().apply(a)
+      self.assertTrue(hasattr(b, '_keras_mask'))
+      self.assertAllEqual(self.evaluate(array_ops.ones_like(mask)),
+                          self.evaluate(getattr(b, '_keras_mask')))
+      self.assertAllEqual(self.evaluate(a * mask), self.evaluate(b))
 
 
 if __name__ == '__main__':

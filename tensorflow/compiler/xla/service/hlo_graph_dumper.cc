@@ -479,7 +479,7 @@ stylesheet="
     // If this edge crosses a fusion cluster boundary, highlight it when the
     // cluster is hovered over.
     if (from_node->IsFused() &&
-        from_node->fusion_instruction()->fused_expression_root() == from_node) {
+        from_node->parent()->root_instruction() == from_node) {
       int64 cluster_id = cluster_ids_.at(from_node->parent());
       add_hover_css_rule("clust", cluster_id, kBlue);
     }
@@ -657,7 +657,7 @@ string HloDotDumper::GetInstructionNodeInlinedConstants(
   // Special case: If instr is a parameter to a fusion node, check whether the
   // corresponding operand to the fusion node is a constant.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* fusion = instr->parent()->FusionInstruction();
     const HloInstruction* operand = fusion->operand(instr->parameter_number());
     if (operand->opcode() != HloOpcode::kConstant) {
       return "";
@@ -898,7 +898,7 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   // expressions are handled specially -- we draw an edge from the corresponding
   // operand on the fusion node itself to the parameter.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* fusion = instr->parent()->FusionInstruction();
     add_edge(fusion->operand(instr->parameter_number()), instr,
              /*operand_num=*/0);
   } else {

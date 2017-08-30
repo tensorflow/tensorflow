@@ -43,6 +43,9 @@ class Scope::Impl {
        const std::shared_ptr<NameMap>& name_map,
        const std::shared_ptr<ShapeRefiner>& refiner);
 
+  const string& name() const { return name_; }
+  const std::vector<Operation>& control_deps() const { return control_deps_; }
+
  private:
   friend class Scope;
 
@@ -98,6 +101,8 @@ class Scope::Impl {
 
   const std::vector<Operation> control_deps_;
 
+  // The fully-qualified name of this scope (i.e. includes any parent scope
+  // names).
   const string name_ = "";
   const string op_name_ = "";
   const bool exit_on_error_ = false;

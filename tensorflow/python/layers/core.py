@@ -26,6 +26,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -148,13 +149,14 @@ class Dense(base.Layer):
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     shape = inputs.get_shape().as_list()
-    output_shape = shape[:-1] + [self.units]
-    if len(output_shape) > 2:
+    if len(shape) > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
                                                              [0]])
       # Reshape the output back to the original ndim of the input.
-      outputs.set_shape(output_shape)
+      if context.in_graph_mode():
+        output_shape = shape[:-1] + [self.units]
+        outputs.set_shape(output_shape)
     else:
       outputs = standard_ops.matmul(inputs, self.kernel)
     if self.use_bias:
@@ -287,6 +289,7 @@ class Dropout(base.Layer):
     return self.noise_shape
 
   def call(self, inputs, training=False):
+
     def dropped_inputs():
       return nn.dropout(inputs, 1  - self.rate,
                         noise_shape=self._get_noise_shape(inputs),

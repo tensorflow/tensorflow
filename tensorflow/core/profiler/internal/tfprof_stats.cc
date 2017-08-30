@@ -125,7 +125,7 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
   if (!Validate(opts)) {
     return empty_multi_graph_node_;
   }
-  if (cmd == kCmds[2]) {
+  if (cmd == kCmds[2] && has_code_traces()) {
     return code_view_->Show(opts);
   } else if (cmd == kCmds[3]) {
     return op_view_->Show(opts);
