@@ -172,7 +172,7 @@ class _Conv(base.Layer):
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, self.rank + 2))
 
-    if self.bias is not None:
+    if self.use_bias:
       if self.data_format == 'channels_first':
         if self.rank == 1:
           # nn.bias_add does not accept a 1D input tensor.
@@ -989,7 +989,7 @@ class SeparableConv2D(Conv2D):
         rate=self.dilation_rate,
         data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    if self.bias is not None:
+    if self.use_bias:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -1308,7 +1308,7 @@ class Conv2DTranspose(Conv2D):
                                                      stride_w)
       outputs.set_shape(out_shape)
 
-    if self.bias:
+    if self.use_bias:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -1611,7 +1611,7 @@ class Conv3DTranspose(Conv3D):
                                                      stride_w)
       outputs.set_shape(out_shape)
 
-    if self.bias:
+    if self.use_bias:
       outputs_shape = outputs.shape.as_list()
       if self.data_format == 'channels_first':
         outputs_4d = array_ops.reshape(outputs, [
