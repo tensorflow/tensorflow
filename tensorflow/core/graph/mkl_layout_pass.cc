@@ -1994,6 +1994,9 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // incoming edges are in TF format, we don't need all this overhead, so
   // replace the elementwise node only if at least one of its parents is a MKL
   // node.
+  //
+  // TODO(vrane): Add implementation for element-wise ops that doesn't reuse
+  // eigen code to reduce cross-library dependency.
   if (mkl_op_registry::IsMklElementWiseOp(
           mkl_op_registry::GetMklOpName(n->type_string()), T)) {
     bool incoming_mkl_edge = false;
