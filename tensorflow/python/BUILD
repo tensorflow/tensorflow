@@ -1774,6 +1774,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:custom_gradient",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/eager:tensor",
     ],
 )
@@ -3734,6 +3735,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3748,6 +3750,7 @@ py_test(
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":init_ops",
         ":layers",
         ":math_ops",
@@ -3766,6 +3769,7 @@ py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":layers",
         ":math_ops",
         ":nn_ops",
@@ -3785,6 +3789,7 @@ py_test(
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":layers",
         ":math_ops",
         ":nn_ops",
@@ -3812,6 +3817,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":framework_test_lib",
         ":layers",
         ":random_ops",
     ],
@@ -3825,6 +3831,7 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":layers",
         ":math_ops",
         ":random_ops",
