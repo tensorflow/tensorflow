@@ -2496,6 +2496,16 @@ TEST_F(OpTest, Sqrt) {
   });
 }
 
+TEST_F(OpTest, SqrtGrad) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SqrtGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, SquaredDifference) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
