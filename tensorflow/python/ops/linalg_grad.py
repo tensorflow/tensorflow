@@ -203,7 +203,7 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
   compute_v = op.get_attr("compute_v")
   # a = op.inputs[0], which satisfies
   # a[...,:,:] * v[...,:,i] = e[...,i] * v[...,i]
-  with ops.control_dependencies([grad_e.op, grad_v.op]):
+  with ops.control_dependencies([grad_e, grad_v]):
     if compute_v:
       v = op.outputs[1]
       # Construct the matrix f(i,j) = (i != j ? 1 / (e_i - e_j) : 0).

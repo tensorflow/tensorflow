@@ -148,6 +148,7 @@ from autograd import core as ag_core
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -2041,6 +2042,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+  if context.in_eager_mode():
+    # TODO(apassos) remove this once the lifetime of eager variables gets
+    # addressed.
+    raise ValueError("accumulate_n not supported in eager mode")
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise ValueError("inputs must be a list of at least one Tensor with the "
                      "same dtype and shape")
@@ -2062,7 +2067,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     tensor_dtype = inputs[0].dtype
   if tensor_dtype != inputs[0].dtype:
     raise TypeError("tensor_dtype is {}, but input is of type {}"
-                     .format(tensor_dtype, inputs[0].dtype))
+                    .format(tensor_dtype, inputs[0].dtype))
   if len(inputs) == 1:
     return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:

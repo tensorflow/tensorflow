@@ -909,7 +909,7 @@ def _SparseMatMulGrad(op, grad):
       op.inputs[0]: op.get_attr("a_is_sparse"),
       op.inputs[1]: op.get_attr("b_is_sparse"),
       # Use heuristic to figure out if grad might be sparse
-      grad: (grad.op.type == "ReluGrad")
+      grad: context.in_graph_mode() and (grad.op.type == "ReluGrad")
   }
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):
@@ -1033,7 +1033,7 @@ def _ImagGrad(_, grad):
 def _AngleGrad(op, grad):
   """Returns -grad / (Im(x) + iRe(x))"""
   x = op.inputs[0]
-  with ops.control_dependencies([grad.op]):
+  with ops.control_dependencies([grad]):
     re = math_ops.real(x)
     im = math_ops.imag(x)
     z = math_ops.reciprocal(math_ops.complex(im, re))
