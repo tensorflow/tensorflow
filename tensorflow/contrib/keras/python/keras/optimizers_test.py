@@ -54,6 +54,23 @@ def _test_optimizer(optimizer, target=0.75):
   new_config['class_name'] = new_config['class_name'].lower()
   assert config == new_config
 
+  # Test constraints.
+  model = keras.models.Sequential()
+  dense = keras.layers.Dense(10,
+                             input_shape=(x_train.shape[1],),
+                             kernel_constraint=lambda x: 0. * x + 1.,
+                             bias_constraint=lambda x: 0. * x + 2.,
+                             activation='relu')
+  model.add(dense)
+  model.add(keras.layers.Dense(y_train.shape[1], activation='softmax'))
+  model.compile(loss='categorical_crossentropy',
+                optimizer=optimizer,
+                metrics=['accuracy'])
+  model.train_on_batch(x_train[:10], y_train[:10])
+  kernel, bias = dense.get_weights()
+  np.testing.assert_allclose(kernel, 1., atol=1e-3)
+  np.testing.assert_allclose(bias, 2., atol=1e-3)
+
 
 class KerasOptimizersTest(test.TestCase):
 
@@ -105,19 +122,17 @@ class KerasOptimizersTest(test.TestCase):
                                            clipvalue=0.5))
 
   def test_tfoptimizer(self):
-    optimizer = keras.optimizers.TFOptimizer(AdamOptimizer)
+    optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
     # This is possible
     model.compile(loss='mean_squared_error', optimizer=optimizer)
-    # TF optimizers do not support weights constraints
-    with self.assertRaises(ValueError):
-      model.fit(np.random.random((5, 3)),
-                np.random.random((5, 2)),
-                epochs=1,
-                batch_size=5,
-                verbose=0)
+    model.fit(np.random.random((5, 3)),
+              np.random.random((5, 2)),
+              epochs=1,
+              batch_size=5,
+              verbose=0)
     # not supported
     with self.assertRaises(NotImplementedError):
       _ = optimizer.weights

@@ -420,6 +420,22 @@ compression_type: A scalar containing either (i) the empty string (no
 buffer_size: A scalar containing the number of bytes to buffer.
 )doc");
 
+REGISTER_OP("SqlDataset")
+    .Input("driver_name: string")
+    .Input("data_source_name: string")
+    .Input("query: string")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that executes a SQL query and emits rows of the result set.
+
+driver_name: The database type. Currently, the only supported type is 'sqlite'.
+data_source_name: A connection string to connect to the database.
+query: A SQL query to execute.
+)doc");
+
 REGISTER_OP("FixedLengthRecordDataset")
     .Input("filenames: string")
     .Input("header_bytes: int64")
@@ -481,6 +497,24 @@ Makes a new iterator from the given `dataset` and stores it in `iterator`.
 
 This operation may be executed multiple times. Each execution will reset the
 iterator in `iterator` to the first element of `dataset`.
+)doc");
+
+REGISTER_OP("SaveIterator")
+    .Input("iterator: resource")
+    .Input("path: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Saves the state of the `iterator` at `path`.
+
+This state can be restored using "RestoreIterator".
+)doc");
+
+REGISTER_OP("RestoreIterator")
+    .Input("iterator: resource")
+    .Input("path: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Restores the state of the `iterator` from the checkpoint saved at `path` using "SaveIterator".
 )doc");
 
 REGISTER_OP("OneShotIterator")

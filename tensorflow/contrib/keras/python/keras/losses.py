@@ -67,15 +67,15 @@ def logcosh(y_true, y_pred):
 
 
 def categorical_crossentropy(y_true, y_pred):
-  return K.categorical_crossentropy(y_pred, y_true)
+  return K.categorical_crossentropy(y_true, y_pred)
 
 
 def sparse_categorical_crossentropy(y_true, y_pred):
-  return K.sparse_categorical_crossentropy(y_pred, y_true)
+  return K.sparse_categorical_crossentropy(y_true, y_pred)
 
 
 def binary_crossentropy(y_true, y_pred):
-  return K.mean(K.binary_crossentropy(y_pred, y_true), axis=-1)
+  return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
 
 
 def kullback_leibler_divergence(y_true, y_pred):

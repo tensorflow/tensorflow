@@ -297,6 +297,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   native.new_http_archive(
+      name = "sqlite_archive",
+      urls = ["http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip"],
+      sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
+      strip_prefix = "sqlite-amalgamation-3200000",
+      build_file = str(Label("//third_party:sqlite.BUILD"))
+  )
+
+  native.new_http_archive(
       name = "gif_archive",
       urls = [
           "http://mirror.bazel.build/ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",

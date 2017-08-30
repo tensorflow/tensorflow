@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/frame.h"
 #include <deque>
 #include <stack>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -32,9 +33,10 @@ int IdentifyFrames(
     if (node.input_size() == 0) {
       std::vector<int> empty;
       ready_nodes.emplace_back(&node, empty);
+      (*frames)[&node] = empty;
     }
   }
-  int frame_id = 0;
+  std::map<string, int> name_to_id;
   while (!ready_nodes.empty()) {
     auto ready_node = ready_nodes.front();
     for (const auto& fanout : node_map.GetOutputs(ready_node.first->name())) {
@@ -44,18 +46,35 @@ int IdentifyFrames(
           frame_ids.pop_back();
         }
         if (IsEnter(*fanout)) {
-          frame_ids.push_back(frame_id);
-          frame_id++;
+          CHECK(fanout->attr().count("frame_name"))
+              << "Missing frame name for the Enter node " << fanout->name();
+          string name = fanout->attr().at("frame_name").s();
+          int id;
+          if (name_to_id.count(name)) {
+            id = name_to_id[name];
+          } else {
+            id = name_to_id.size();
+            name_to_id[name] = id;
+          }
+          frame_ids.push_back(id);
         }
         ready_nodes.emplace_back(fanout, frame_ids);
+        (*frames)[fanout] = frame_ids;
       } else {
-        CHECK(ready_node.second == (*frames)[fanout]);
+        auto frame_ids_fanout = (*frames)[fanout];
+        auto frame_ids_node = ready_node.second;
+        if (IsEnter(*fanout)) {
+          frame_ids_fanout.pop_back();
+        }
+        if (IsExit(*ready_node.first)) {
+          frame_ids_node.pop_back();
+        }
+        CHECK(frame_ids_node == frame_ids_fanout);
       }
     }
-    (*frames)[ready_node.first] = ready_node.second;
     ready_nodes.pop_front();
   }
-  return frame_id;
+  return name_to_id.size();
 }
 
 }  // namespace grappler

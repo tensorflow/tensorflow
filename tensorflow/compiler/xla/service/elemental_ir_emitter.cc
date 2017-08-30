@@ -616,7 +616,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
 
   auto random_value = [hlo]() {
     const HloModule* module =
-        hlo->IsFused() ? hlo->fusion_instruction()->parent()->parent()
+        hlo->IsFused() ? hlo->parent()->FusionInstruction()->parent()->parent()
                        : hlo->parent()->parent();
     return module->RandomNew64();
   };

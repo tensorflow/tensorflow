@@ -223,6 +223,37 @@ class Add(_Merge):
     return output
 
 
+class Subtract(_Merge):
+  """Layer that subtracts two inputs.
+
+  It takes as input a list of tensors of size 2,
+  both of the same shape, and returns a single tensor, (inputs[0] - inputs[1]),
+  also of the same shape.
+
+  Examples:
+
+  ```python
+      import keras
+
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      # Equivalent to subtracted = keras.layers.subtract([x1, x2])
+      subtracted = keras.layers.Subtract()([x1, x2])
+
+      out = keras.layers.Dense(4)(subtracted)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
+  """
+
+  def _merge_function(self, inputs):
+    if len(inputs) != 2:
+      raise ValueError('`Subtract` layer should be called '
+                       'on exactly 2 inputs. Received: %s' % inputs)
+    return inputs[0] - inputs[1]
+
+
 class Multiply(_Merge):
   """Layer that multiplies (element-wise) a list of inputs.
 
@@ -484,6 +515,34 @@ def add(inputs, **kwargs):
       A tensor, the sum of the inputs.
   """
   return Add(**kwargs)(inputs)
+
+
+def subtract(inputs, **kwargs):
+  """Functional interface to the `Subtract` layer.
+
+  Arguments:
+      inputs: A list of input tensors (exactly 2).
+      **kwargs: Standard layer keyword arguments.
+
+  Returns:
+      A tensor, the difference of the inputs.
+
+  Examples:
+
+  ```python
+      import keras
+
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      subtracted = keras.layers.subtract([x1, x2])
+
+      out = keras.layers.Dense(4)(subtracted)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
+  """
+  return Subtract(**kwargs)(inputs)
 
 
 def multiply(inputs, **kwargs):

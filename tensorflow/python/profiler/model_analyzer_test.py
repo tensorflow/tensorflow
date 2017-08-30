@@ -215,7 +215,7 @@ class PrintModelAnalysisTest(test.TestCase):
       with gfile.Open(outfile, 'r') as f:
         lines = f.read().split('\n')
         result = '\n'.join([l[:min(len(l), 80)] for l in lines])
-        self.assertEqual('node name | # parameters | # float_ops\n_TFProfRoot (--/2.84k params, --/91.04k flops)\n  model_analyzer_testlib.py:58:BuildFullModel:seq.append(array_... (0/1.80k para\n    model_analyzer_testlib.py:35:BuildSmallModel:image = array_ops... (0/0 param\n    model_analyzer_testlib.py:39:BuildSmallModel:initializer=init_... (0/4 param\n    model_analyzer_testlib.py:43:BuildSmallModel:initializer=init_... (0/648 par\n    model_analyzer_testlib.py:44:BuildSmallModel:x = nn_ops.conv2d... (0/0 param\n    model_analyzer_testlib.py:48:BuildSmallModel:initializer=init_... (0/1.15k p\n    model_analyzer_testlib.py:49:BuildSmallModel:x = nn_ops.conv2d... (0/0 param\n  model_analyzer_testlib.py:58:BuildFullModel:seq.append(array_... (gradient) (0\n    model_analyzer_testlib.py:44:BuildSmallModel:x = nn_ops.conv2d... (gradient)\n    model_analyzer_testlib.py:49:BuildSmallModel:x = nn_ops.conv2d... (gradient)\n  model_analyzer_testlib.py:62:BuildFullModel:cell, array_ops.c... (0/1.04k para\n  model_analyzer_testlib.py:62:BuildFullModel:cell, array_ops.c... (gradient) (0\n  model_analyzer_testlib.py:64:BuildFullModel:target = array_op... (0/0 params, \n  model_analyzer_testlib.py:65:BuildFullModel:loss = nn_ops.l2_... (0/0 params, \n  model_analyzer_testlib.py:65:BuildFullModel:loss = nn_ops.l2_... (gradient) (0\n  model_analyzer_testlib.py:67:BuildFullModel:return sgd_op.min... (0/0 params, \n',
+        self.assertEqual('node name | # parameters | # float_ops\n_TFProfRoot (--/2.84k params, --/91.04k flops)\n  model_analyzer_testlib.py:58:BuildFullModel (0/1.80k params, 0/41.76k flops)\n    model_analyzer_testlib.py:35:BuildSmallModel (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:39:BuildSmallModel (0/4 params, 0/0 flops)\n    model_analyzer_testlib.py:43:BuildSmallModel (0/648 params, 0/0 flops)\n    model_analyzer_testlib.py:44:BuildSmallModel (0/0 params, 0/23.33k flops)\n    model_analyzer_testlib.py:48:BuildSmallModel (0/1.15k params, 0/0 flops)\n    model_analyzer_testlib.py:49:BuildSmallModel (0/0 params, 0/18.43k flops)\n  model_analyzer_testlib.py:58:BuildFullModel (gradient) (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:44:BuildSmallModel (gradient) (0/0 params, 0/0 flo\n    model_analyzer_testlib.py:49:BuildSmallModel (gradient) (0/0 params, 0/0 flo\n  model_analyzer_testlib.py:62:BuildFullModel (0/1.04k params, 0/16.51k flops)\n  model_analyzer_testlib.py:62:BuildFullModel (gradient) (0/0 params, 0/32.77k f\n  model_analyzer_testlib.py:64:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:65:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:65:BuildFullModel (gradient) (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:67:BuildFullModel (0/0 params, 0/0 flops)\n',
                          result)
 
       self.assertLess(0, tfprof_node.total_exec_micros)
@@ -224,28 +224,28 @@ class PrintModelAnalysisTest(test.TestCase):
       self.assertEqual(8, len(tfprof_node.children))
       self.assertEqual('_TFProfRoot', tfprof_node.name)
       self.assertEqual(
-          'model_analyzer_testlib.py:58:BuildFullModel:seq.append(array_...',
+          'model_analyzer_testlib.py:58:BuildFullModel',
           tfprof_node.children[0].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:58:BuildFullModel:seq.append(array_... (gradient)',
+          'model_analyzer_testlib.py:58:BuildFullModel (gradient)',
           tfprof_node.children[1].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:62:BuildFullModel:cell, array_ops.c...',
+          'model_analyzer_testlib.py:62:BuildFullModel',
           tfprof_node.children[2].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:62:BuildFullModel:cell, array_ops.c... (gradient)',
+          'model_analyzer_testlib.py:62:BuildFullModel (gradient)',
           tfprof_node.children[3].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:64:BuildFullModel:target = array_op...',
+          'model_analyzer_testlib.py:64:BuildFullModel',
           tfprof_node.children[4].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:65:BuildFullModel:loss = nn_ops.l2_...',
+          'model_analyzer_testlib.py:65:BuildFullModel',
           tfprof_node.children[5].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:65:BuildFullModel:loss = nn_ops.l2_... (gradient)',
+          'model_analyzer_testlib.py:65:BuildFullModel (gradient)',
           tfprof_node.children[6].name)
       self.assertEqual(
-          'model_analyzer_testlib.py:67:BuildFullModel:return sgd_op.min...',
+          'model_analyzer_testlib.py:67:BuildFullModel',
           tfprof_node.children[7].name)
       # pylint: enable=line-too-long
 

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
@@ -32,6 +33,47 @@ from tensorflow.python.util import compat
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
+
+
+def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
+  r"""Computes Cholesky factorization of regularized gramian matrix.
+
+  Below we will use the following notation for each pair of matrix and
+  right-hand sides in the batch:
+
+  `matrix`=\\(A \in \Re^{m \times n}\\),
+  `output`=\\(C  \in \Re^{\min(m, n) \times \min(m,n)}\\),
+  `l2_regularizer`=\\(\lambda\\).
+
+  If `first_kind` is True, returns the Cholesky factorization \\(L\\) such that
+  \\(L L^H =  A^H A + \lambda I\\).
+  If `first_kind` is False, returns the Cholesky factorization \\(L\\) such that
+  \\(L L^H =  A A^H + \lambda I\\).
+
+  Args:
+    matrix: `Tensor` of shape `[..., M, N]`.
+    l2_regularizer: 0-D `double` `Tensor`. Ignored if `fast=False`.
+    first_kind: bool. Controls what gramian matrix to factor.
+  Returns:
+    output: `Tensor` of shape `[..., min(M,N), min(M,N)]` whose inner-most 2
+      dimensions contain the Cholesky factors \\(L\\) described above.
+  """
+
+  gramian = math_ops.matmul(
+      matrix, matrix, adjoint_a=first_kind, adjoint_b=not first_kind)
+  if isinstance(l2_regularizer, ops.Tensor) or l2_regularizer != 0:
+    matrix_shape = array_ops.shape(matrix)
+    batch_shape = matrix_shape[:-2]
+    if first_kind:
+      small_dim = matrix_shape[-1]
+    else:
+      small_dim = matrix_shape[-2]
+    identity = eye(small_dim, batch_shape=batch_shape, dtype=matrix.dtype)
+    small_dim_static = matrix.shape[-1 if first_kind else -2]
+    identity.set_shape(
+        matrix.shape[:-2].concatenate([small_dim_static, small_dim_static]))
+    gramian += l2_regularizer * identity
+  return gen_linalg_ops.cholesky(gramian)
 
 
 def cholesky_solve(chol, rhs, name=None):
@@ -195,10 +237,90 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
       `M`-by-`K` matrices that solve the equations
       `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
       squares sense.
+
+  Raises:
+    NotImplementedError: matrix_solve_ls is currently disabled for complex128
+    and l2_regularizer != 0 due to poor accuracy.
   """
-  # pylint: disable=protected-access
-  return gen_linalg_ops._matrix_solve_ls(
-      matrix, rhs, l2_regularizer, fast=fast, name=name)
+
+  # pylint: disable=protected-access,long-lambda
+  def _use_composite_impl(fast, tensor_shape):
+    """Determines whether to use the composite or specialized CPU kernel.
+
+    When the total size of the tensor is larger than the cache size and the
+    batch size is large compared to the smallest matrix dimension, then the
+    composite implementation is inefficient since it has to read the entire
+    tensor from memory multiple times. In this case we fall back to the
+    original CPU kernel, which does all the computational steps on each
+    matrix separately.
+
+    Only fast mode is supported by the composite impl, so `False` is returned
+    if `fast` is `False`.
+
+    Args:
+      fast: bool indicating if fast mode in the solver was requested.
+      tensor_shape: The shape of the tensor.
+
+    Returns:
+      True if the composite impl should be used. False otherwise.
+    """
+    if fast is False:
+      return False
+    batch_shape = tensor_shape[:-2]
+    matrix_shape = tensor_shape[-2:]
+    if not tensor_shape.is_fully_defined():
+      return True
+    tensor_size = tensor_shape.num_elements() * matrix.dtype.size
+    is_io_bound = batch_shape.num_elements() > np.min(matrix_shape)
+    L2_CACHE_SIZE_GUESSTIMATE = 256000
+    if tensor_size > L2_CACHE_SIZE_GUESSTIMATE and is_io_bound:
+      return False
+    else:
+      return True
+
+  def _overdetermined(matrix, rhs, l2_regularizer):
+    """Computes (A^H*A + l2_regularizer)^{-1} * A^H * rhs."""
+    chol = _RegularizedGramianCholesky(
+        matrix, l2_regularizer=l2_regularizer, first_kind=True)
+    return cholesky_solve(chol, math_ops.matmul(matrix, rhs, adjoint_a=True))
+
+  def _underdetermined(matrix, rhs, l2_regularizer):
+    """Computes A^H * (A*A^H + l2_regularizer)^{-1} * rhs."""
+    chol = _RegularizedGramianCholesky(
+        matrix, l2_regularizer=l2_regularizer, first_kind=False)
+    return math_ops.matmul(matrix, cholesky_solve(chol, rhs), adjoint_a=True)
+
+  def _composite_impl(matrix, rhs, l2_regularizer):
+    """Composite implementation of matrix_solve_ls that supports GPU."""
+    with ops.name_scope(name, 'matrix_solve_ls', [matrix, rhs, l2_regularizer]):
+      matrix_shape = matrix.get_shape()[-2:]
+      if matrix_shape.is_fully_defined():
+        if matrix_shape[-2] >= matrix_shape[-1]:
+          return _overdetermined(matrix, rhs, l2_regularizer)
+        else:
+          return _underdetermined(matrix, rhs, l2_regularizer)
+      else:
+        # We have to defer determining the shape to runtime and use
+        # conditional execution of the appropriate graph.
+        matrix_shape = array_ops.shape(matrix)[-2:]
+        return control_flow_ops.cond(
+            matrix_shape[-2] >= matrix_shape[-1],
+            lambda: _overdetermined(matrix, rhs, l2_regularizer),
+            lambda: _underdetermined(matrix, rhs, l2_regularizer))
+
+  matrix = ops.convert_to_tensor(matrix, name='matrix')
+  if matrix.dtype == dtypes.complex128 and l2_regularizer != 0:
+    # TODO(rmlarsen): Investigate and fix accuracy bug.
+    raise NotImplementedError('matrix_solve_ls is currently disabled for '
+                              'complex128 and l2_regularizer != 0 due to '
+                              'poor accuracy.')
+  tensor_shape = matrix.get_shape()
+  if _use_composite_impl(fast, tensor_shape):
+    return _composite_impl(matrix, rhs, l2_regularizer)
+  else:
+    return gen_linalg_ops._matrix_solve_ls(
+        matrix, rhs, l2_regularizer, fast=fast, name=name)
+  # pylint: enable=protected-access
 
 
 def self_adjoint_eig(tensor, name=None):
@@ -291,7 +413,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   """
   # pylint: disable=protected-access
   s, u, v = gen_linalg_ops._svd(
-      tensor, compute_uv=compute_uv, full_matrices=full_matrices)
+      tensor, compute_uv=compute_uv, full_matrices=full_matrices, name=name)
   # pylint: enable=protected-access
   if compute_uv:
     return math_ops.real(s), u, v

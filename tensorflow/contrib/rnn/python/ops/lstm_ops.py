@@ -342,7 +342,8 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
                num_units,
                forget_bias=1.0,
                clip_cell=True,
-               use_peephole=False):
+               use_peephole=False,
+               reuse=None):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -351,10 +352,14 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
       clip_cell: boolean, whether to apply cell clipping. See
         `_lstm_block_cell()` for details.
       use_peephole: Whether to use peephole connections or not.
+      reuse: (optional) boolean describing whether to reuse variables in an
+        existing scope.  If not `True`, and the existing scope already has the
+        given variables, an error is raised.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMBlockCell instead.
     """
+    super(LSTMBlockCell, self).__init__(_reuse=reuse)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
