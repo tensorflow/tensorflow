@@ -3213,8 +3213,8 @@ class IndicatorColumnTest(test.TestCase):
     weights = fc.weighted_categorical_column(ids, 'weights')
     indicator = fc.indicator_column(weights)
     features = {
-      'ids': constant_op.constant(['c', 'b', 'a'], shape=(1, 3)),
-      'weights': constant_op.constant([2., 4., 6.], shape=(1, 3))
+      'ids': constant_op.constant([['c', 'b', 'a']]),
+      'weights': constant_op.constant([[2., 4., 6.]])
     }
     indicator_tensor = _transform_features(features, [indicator])[indicator]
     with _initialized_session():
