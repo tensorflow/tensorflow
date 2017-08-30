@@ -57,7 +57,7 @@ struct FusedBatchNormFreezeGrad {
                   T epsilon, Tensor* x_backprop_output,
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
                   typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2) {
-    typename TTypes<T, 4>::ConstTensor out_backprop(y_backprop_input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor y_backprop(y_backprop_input.tensor<T, 4>());
     typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
     typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
     typename TTypes<T>::ConstVec mean(mean_input.vec<T>());
@@ -82,22 +82,22 @@ struct FusedBatchNormFreezeGrad {
     rest_by_one.set(0, rest_size);
 #endif
 
-    // db = out_backprop
-    // dg = out_backprop * ((x - m) * rsqrt(v + epsilon))
-    // dx = out_backprop * (gamma * rsqrt(v + epsilon))
-    offset_backprop.device(d) = out_backprop.reshape(rest_by_depth).sum(reduction_axis);
+    // offset_backprop  = sum(y_backprop)
+    // scale_backprop = y_backprop * ((x - mean) * rsqrt(var + epsilon))
+    // x_backprop = y_backprop * (scale * rsqrt(var + epsilon))
+    offset_backprop.device(d) = y_backprop.reshape(rest_by_depth).sum(reduction_axis);
 
-    // scratch1 = rsqrt(v + epsilon)
+    // scratch1 = rsqrt(var + epsilon)
     scratch1.device(d) = (var + var.constant(epsilon)).rsqrt();
 
-    // scratch2 = sum_over_rest(out_backprop * (x - m))
-    scratch2.device(d) = (out_backprop.reshape(rest_by_depth) *
+    // scratch2 = sum(y_backprop * (x - mean))
+    scratch2.device(d) = (y_backprop.reshape(rest_by_depth) *
                           (input.reshape(rest_by_depth) -
                            mean.reshape(one_by_depth).broadcast(rest_by_one)))
                            .sum(reduction_axis);
 
     x_backprop.reshape(rest_by_depth).device(d) =
-        out_backprop.reshape(rest_by_depth) * ((scratch1 * scale)
+        y_backprop.reshape(rest_by_depth) * ((scratch1 * scale)
                                                .eval()
                                                .reshape(one_by_depth)
                                                .broadcast(rest_by_one));
