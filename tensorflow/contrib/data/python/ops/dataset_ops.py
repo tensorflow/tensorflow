@@ -2134,7 +2134,8 @@ class FlatMapDataset(Dataset):
 
 
 class InterleaveDataset(Dataset):
-  """A `Dataset` that maps a function over its input and flattens the result."""
+  """A `Dataset` that maps a function over its input and interleaves the result.
+  """
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
