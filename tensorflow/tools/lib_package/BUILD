@@ -105,7 +105,6 @@ genrule(
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
-        "@sqlite_archive//:LICENSE",
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
@@ -141,7 +140,6 @@ genrule(
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
-        "@sqlite_archive//:LICENSE",
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",

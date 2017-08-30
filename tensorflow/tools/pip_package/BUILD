@@ -125,7 +125,6 @@ filegroup(
         "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
-        "@sqlite_archive//:LICENSE",
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + if_mkl([
