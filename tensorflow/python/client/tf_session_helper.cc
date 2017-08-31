@@ -337,4 +337,38 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
+TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
+                                        const char* fn_name,
+                                        const std::vector<TF_Operation*>* opers,
+                                        const std::vector<TF_Output>& inputs,
+                                        const std::vector<TF_Output>& outputs,
+                                        const NameVector& output_names,
+                                        const TF_FunctionOptions* opts,
+                                        TF_Status* out_status) {
+  if (!output_names.empty() && output_names.size() != outputs.size()) {
+    Set_TF_Status_from_Status(
+        out_status,
+        errors::InvalidArgument(
+            "output names must be either empty or equal in size to outputs. ",
+            "output names size = ", output_names.size(),
+            " outputs size = ", outputs.size()));
+    return nullptr;
+  }
+
+  int nopers = -1;
+  const TF_Operation* const* opers_array = nullptr;
+  if (opers != nullptr) {
+    nopers = opers->size();
+    opers_array = opers->data();
+  }
+
+  const char** output_names_ptr =
+      output_names.empty() ? nullptr
+                           : const_cast<const char**>(output_names.data());
+
+  return TF_GraphToFunction(fn_body, fn_name, nopers, opers_array,
+                            inputs.size(), inputs.data(), outputs.size(),
+                            outputs.data(), output_names_ptr, opts, out_status);
+}
+
 }  // namespace tensorflow

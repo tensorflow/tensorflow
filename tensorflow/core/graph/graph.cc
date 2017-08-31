@@ -523,6 +523,17 @@ Status Graph::IsValidNode(const Node* node) const {
   return Status::OK();
 }
 
+Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
+  TF_RETURN_IF_ERROR(IsValidNode(node));
+  if (idx >= node->num_outputs()) {
+    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
+                                   node->op_def().name(),
+                                   "', num of outputs: ", node->num_outputs(),
+                                   ") does not have ", "output ", idx);
+  }
+  return Status::OK();
+}
+
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
                           const Node* cost_node) {
   Node* node = nullptr;
@@ -572,7 +583,7 @@ int Graph::InternDeviceName(const string& device_name) {
 }
 
 string Edge::DebugString() const {
-  return strings::Printf("Edge %d %s:%d -> %s:%d", id_, src_->name().c_str(),
+  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
                          src_output_, dst_->name().c_str(), dst_input_);
 }
 

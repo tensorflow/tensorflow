@@ -2948,6 +2948,14 @@ class Graph(object):
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
+    if self._c_graph:
+      # pylint: disable=protected-access
+      assert function._c_func, (
+          "Cannot add function created without C API support to graph "
+          "created with C API support")
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_GraphAddFunction(self._c_graph, function._c_func, status)
+      # pylint: enable=protected-access
 
   @property
   def building_function(self):
