@@ -20306,7 +20306,7 @@ func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional .
 //	gradients: The backpropagated gradients to the corresponding softsign operation.
 //	features: The features passed as input to the corresponding softsign operation.
 //
-// Returns The gradients: `gradients / (1 + abs(-features)) ** 2`.
+// Returns The gradients: `gradients / (1 + abs(features)) ** 2`.
 func SoftsignGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
 	if scope.Err() != nil {
 		return
