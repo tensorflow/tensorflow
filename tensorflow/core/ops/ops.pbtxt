@@ -24686,7 +24686,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients / (1 + abs(-features)) ** 2`."
+    description: "The gradients: `gradients / (1 + abs(features)) ** 2`."
     type_attr: "T"
   }
   attr {
