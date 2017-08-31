@@ -31,7 +31,6 @@ tf_kernel_library(
         "function_ops.cc",
         "gather_op.cc",
         "identity_op.cc",
-        "is_finite_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
