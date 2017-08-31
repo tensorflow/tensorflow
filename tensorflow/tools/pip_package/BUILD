@@ -84,6 +84,7 @@ py_binary(
         "//tensorflow/python/saved_model",
         "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/tools:tools_pip",
+        "//tensorflow/python/eager:eager_pip",
         # These targets don't build on Windows yet. Exclude them for now.
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
