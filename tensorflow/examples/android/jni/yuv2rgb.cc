@@ -27,7 +27,7 @@ limitations under the License.
 // are normalized to eight bits.
 static const int kMaxChannelValue = 262143;
 
-static inline uint32 YUV2RGB(int nY, int nU, int nV) {
+static inline uint32_t YUV2RGB(int nY, int nU, int nV) {
   nY -= 16;
   nU -= 128;
   nV -= 128;
@@ -39,9 +39,9 @@ static inline uint32 YUV2RGB(int nY, int nU, int nV) {
   // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
   // nB = (int)(1.164 * nY + 1.596 * nV);
 
-  int nR = (int)(1192 * nY + 1634 * nV);
-  int nG = (int)(1192 * nY - 833 * nV - 400 * nU);
-  int nB = (int)(1192 * nY + 2066 * nU);
+  int nR = 1192 * nY + 1634 * nV;
+  int nG = 1192 * nY - 833 * nV - 400 * nU;
+  int nB = 1192 * nY + 2066 * nU;
 
   nR = MIN(kMaxChannelValue, MAX(0, nR));
   nG = MIN(kMaxChannelValue, MAX(0, nG));
@@ -58,19 +58,20 @@ static inline uint32 YUV2RGB(int nY, int nU, int nV) {
 //  separate u and v planes with arbitrary row and column strides,
 //  containing 8 bit 2x2 subsampled chroma samples.
 //  Converts to a packed ARGB 32 bit output of the same pixel dimensions.
-void ConvertYUV420ToARGB8888(const uint8* const yData, const uint8* const uData,
-                             const uint8* const vData, uint32* const output,
+void ConvertYUV420ToARGB8888(const uint8_t* const yData,
+                             const uint8_t* const uData,
+                             const uint8_t* const vData, uint32_t* const output,
                              const int width, const int height,
                              const int y_row_stride, const int uv_row_stride,
                              const int uv_pixel_stride) {
-  uint32* out = output;
+  uint32_t* out = output;
 
   for (int y = 0; y < height; y++) {
-    const uint8* pY = yData + y_row_stride * y;
+    const uint8_t* pY = yData + y_row_stride * y;
 
     const int uv_row_start = uv_row_stride * (y >> 1);
-    const uint8* pU = uData + uv_row_start;
-    const uint8* pV = vData + uv_row_start;
+    const uint8_t* pU = uData + uv_row_start;
+    const uint8_t* pV = vData + uv_row_start;
 
     for (int x = 0; x < width; x++) {
       const int uv_offset = (x >> 1) * uv_pixel_stride;
@@ -83,13 +84,13 @@ void ConvertYUV420ToARGB8888(const uint8* const yData, const uint8* const uData,
 //  interleaved U/V plane containing 8 bit 2x2 subsampled chroma samples,
 //  except the interleave order of U and V is reversed. Converts to a packed
 //  ARGB 32 bit output of the same pixel dimensions.
-void ConvertYUV420SPToARGB8888(const uint8* const yData,
-                               const uint8* const uvData,
-                               uint32* const output, const int width,
+void ConvertYUV420SPToARGB8888(const uint8_t* const yData,
+                               const uint8_t* const uvData,
+                               uint32_t* const output, const int width,
                                const int height) {
-  const uint8* pY = yData;
-  const uint8* pUV = uvData;
-  uint32* out = output;
+  const uint8_t* pY = yData;
+  const uint8_t* pUV = uvData;
+  uint32_t* out = output;
 
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
@@ -109,12 +110,12 @@ void ConvertYUV420SPToARGB8888(const uint8* const yData,
 }
 
 // The same as above, but downsamples each dimension to half size.
-void ConvertYUV420SPToARGB8888HalfSize(const uint8* const input,
-                                       uint32* const output,
-                                       int width, int height) {
-  const uint8* pY = input;
-  const uint8* pUV = input + (width * height);
-  uint32* out = output;
+void ConvertYUV420SPToARGB8888HalfSize(const uint8_t* const input,
+                                       uint32_t* const output, int width,
+                                       int height) {
+  const uint8_t* pY = input;
+  const uint8_t* pUV = input + (width * height);
+  uint32_t* out = output;
   int stride = width;
   width >>= 1;
   height >>= 1;
@@ -141,11 +142,11 @@ void ConvertYUV420SPToARGB8888HalfSize(const uint8* const input,
 //  interleaved U/V plane containing 8 bit 2x2 subsampled chroma samples,
 //  except the interleave order of U and V is reversed. Converts to a packed
 //  RGB 565 bit output of the same pixel dimensions.
-void ConvertYUV420SPToRGB565(const uint8* const input, uint16* const output,
+void ConvertYUV420SPToRGB565(const uint8_t* const input, uint16_t* const output,
                              const int width, const int height) {
-  const uint8* pY = input;
-  const uint8* pUV = input + (width * height);
-  uint16 *out = output;
+  const uint8_t* pY = input;
+  const uint8_t* pUV = input + (width * height);
+  uint16_t* out = output;
 
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
@@ -170,9 +171,9 @@ void ConvertYUV420SPToRGB565(const uint8* const input, uint16* const output,
       // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
       // nB = (int)(1.164 * nY + 1.596 * nV);
 
-      int nR = (int)(1192 * nY + 1634 * nV);
-      int nG = (int)(1192 * nY - 833 * nV - 400 * nU);
-      int nB = (int)(1192 * nY + 2066 * nU);
+      int nR = 1192 * nY + 1634 * nV;
+      int nG = 1192 * nY - 833 * nV - 400 * nU;
+      int nB = 1192 * nY + 2066 * nU;
 
       nR = MIN(kMaxChannelValue, MAX(0, nR));
       nG = MIN(kMaxChannelValue, MAX(0, nG));

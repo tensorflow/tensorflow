@@ -24,5 +24,9 @@ namespace tensorflow {
 // The returned WorkerCacheInterface object takes the ownership of "cc".
 WorkerCacheInterface* NewGrpcWorkerCache(GrpcChannelCache* cc);
 
+WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
+    GrpcChannelCache* cc, WorkerInterface* local_worker,
+    const string& local_target);
+
 }  // namespace tensorflow
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_CACHE_H_

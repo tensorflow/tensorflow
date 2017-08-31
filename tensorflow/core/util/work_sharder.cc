@@ -31,12 +31,10 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
     work(0, total);
     return;
   }
-#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
   if (max_parallelism >= workers->NumThreads()) {
     workers->ParallelFor(total, cost_per_unit, work);
     return;
   }
-#endif
   cost_per_unit = std::max(1LL, cost_per_unit);
   // We shard [0, total) into "num_shards" shards.
   //   1 <= num_shards <= num worker threads

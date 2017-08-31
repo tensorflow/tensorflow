@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "RewriterConfigProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+message AutoParallelOptions {
+  bool enable = 1;
+  int32 num_replicas = 2;
+}
+
+message RewriterConfig {
+  // Graph rewriting is experimental and subject to change, not covered by any
+  // API stability guarantees.
+
+  // Configuration options for the meta-optimizer. Unless otherwise noted, these
+  // configuration options do not apply to explicitly triggered optimization
+  // passes in the optimizers field.
+
+  enum Toggle {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
+
+  // Optimize tensor layouts
+  bool optimize_tensor_layout = 1;
+  // Fold constants (default is ON)
+  Toggle constant_folding = 3;
+  // Arithmetic optimizations (default is OFF)
+  Toggle arithmetic_optimization = 7;
+  // If true, don't remove unnecessary ops from the graph
+  bool disable_model_pruning = 2;
+
+  enum MemOptType {
+    // The default setting (currently disabled)
+    DEFAULT_MEM_OPT = 0;
+    // Disabled in the meta-optimizer.
+    NO_MEM_OPT = 1;
+    // Driven by manual op-level annotations.
+    MANUAL = 2;
+    // Driven by heuristics. The behavior of these heuristics is subject to
+    // change. Currently includes an experimental recomputation
+    // heuristic. Manual annotations are respected, but additional nodes are
+    // selected automatically.
+    HEURISTICS = 3;
+  }
+  // Configures memory optimization passes through the meta-optimizer. Has no
+  // effect on manually requested memory optimization passes in the optimizers
+  // field.
+  MemOptType memory_optimization = 4;
+  // The prefix for nodes which are valid outputs of recomputations. Inputs to
+  // nodes with this name prefix may be recomputed (subject either to manual
+  // annotation of those input nodes or to manual annotation and heuristics
+  // depending on memory_optimization), but the prefixed nodes themselves will
+  // not be recomputed. Typically this will be "gradients/", indicating that
+  // activations from the forward pass of a graph may be recomputed as inputs to
+  // gradients, but may be adjusted if gradients are inside a name scope or if
+  // inputs to non-gradients should be recomputed. Defaults to "gradients/" if
+  // empty or not set.
+  string memory_optimizer_target_node_name_prefix = 6;
+
+  // Configures AutoParallel optimization passes either through the
+  // meta-optimizer or when manually specified through the optimizers field.
+  AutoParallelOptions auto_parallel = 5;
+
+  // If non-empty, will use this as an alternative way to specify a list of
+  // optimizations to turn on and the order of the optimizations (replacing the
+  // meta-optimizer).
+  //
+  // Of the RewriterConfig options, only the AutoParallel configuration options
+  // (the auto_parallel field) apply to manually requested optimization passes
+  // ("autoparallel"). Memory optimization passes ("memory") invoked here are
+  // not configurable (in contrast to memory optimization passes through the
+  // meta-optimizer) and act only on manual op annotations.
+  repeated string optimizers = 100;
+}

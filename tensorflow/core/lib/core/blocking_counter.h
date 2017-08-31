@@ -16,40 +16,63 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_BLOCKING_COUNTER_H_
 #define TENSORFLOW_LIB_CORE_BLOCKING_COUNTER_H_
 
+#include <atomic>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 class BlockingCounter {
  public:
-  BlockingCounter(int initial_count) : count_(initial_count) {
-    CHECK_GE(count_, 0);
+  BlockingCounter(int initial_count)
+      : state_(initial_count << 1), notified_(false) {
+    CHECK_GE(initial_count, 0);
+    DCHECK_EQ((initial_count << 1) >> 1, initial_count);
   }
 
   ~BlockingCounter() {}
 
   inline void DecrementCount() {
-    mutex_lock l(mu_);
-    --count_;
-    CHECK(count_ >= 0);
-    if (count_ == 0) {
-      cond_var_.notify_all();
+    unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
+    if (v != 1) {
+      DCHECK_NE(((v + 2) & ~1), 0);
+      return;  // either count has not dropped to 0, or waiter is not waiting
     }
+    mutex_lock l(mu_);
+    DCHECK(!notified_);
+    notified_ = true;
+    cond_var_.notify_all();
   }
 
   inline void Wait() {
+    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
+    if ((v >> 1) == 0) return;
     mutex_lock l(mu_);
-    while (count_ > 0) {
+    while (!notified_) {
       cond_var_.wait(l);
     }
   }
+  // Wait for the specified time, return false iff the count has not dropped to
+  // zero before the timeout expired.
+  inline bool WaitFor(std::chrono::milliseconds ms) {
+    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
+    if ((v >> 1) == 0) return true;
+    mutex_lock l(mu_);
+    while (!notified_) {
+      const std::cv_status status = cond_var_.wait_for(l, ms);
+      if (status == std::cv_status::timeout) {
+        return false;
+      }
+    }
+    return true;
+  }
 
  private:
-  int count_;
   mutex mu_;
   condition_variable cond_var_;
+  std::atomic<int> state_;  // low bit is waiter flag
+  bool notified_;
 };
 
 }  // namespace tensorflow

@@ -19,7 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-DEFINE_BINARY7(div, Eigen::half, float, double, uint8, int16, int32, int64);
+DEFINE_BINARY10(div, Eigen::half, float, double, uint8, uint16, int16, int32,
+                int64, complex64, complex128);
 }  // namespace functor
 }  // namespace tensorflow
 

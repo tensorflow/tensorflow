@@ -287,7 +287,9 @@ class CTCBeamSearchDecoderOp : public OpKernel {
                                 batch_size, num_classes);
     }
 
-    ctc::CTCBeamSearchDecoder<> beam_search(num_classes, beam_width_);
+    ctc::CTCBeamSearchDecoder<> beam_search(num_classes, beam_width_,
+                                            &beam_scorer_, 1 /* batch_size */,
+                                            merge_repeated_);
     Tensor input_chip(DT_FLOAT, TensorShape({num_classes}));
     auto input_chip_t = input_chip.flat<float>();
 
@@ -304,8 +306,10 @@ class CTCBeamSearchDecoderOp : public OpKernel {
             Eigen::Map<const Eigen::ArrayXf>(input_chip_t.data(), num_classes);
         beam_search.Step(input_bi);
       }
-      beam_search.TopPaths(decode_helper_.GetTopPaths(), &best_paths_b,
-                           &log_probs, merge_repeated_);
+      OP_REQUIRES_OK(
+          ctx, beam_search.TopPaths(decode_helper_.GetTopPaths(), &best_paths_b,
+                                    &log_probs, merge_repeated_));
+
       beam_search.Reset();
 
       for (int bp = 0; bp < decode_helper_.GetTopPaths(); ++bp) {
@@ -320,6 +324,7 @@ class CTCBeamSearchDecoderOp : public OpKernel {
 
  private:
   CTCDecodeHelper decode_helper_;
+  ctc::CTCBeamSearchDecoder<>::DefaultBeamScorer beam_scorer_;
   bool merge_repeated_;
   int beam_width_;
   TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoderOp);

@@ -1,0 +1,437 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/compiler/xla/service/session.proto";
+
+package xla;
+
+// Options for the HLO insert-reduce-precision-operations pass.
+message HloReducePrecisionOptions {
+  // When and how the pass will be run.
+  enum PassTiming {
+    // Pass runs before operation fusion or other optimization occurs,
+    // selecting operations to suffix according to their type.
+    BEFORE_OP_FUSION = 0;
+    // Pass runs after the operation-fusion pass, selecting operations to
+    // suffix according to their type.
+    AFTER_OP_FUSION = 1;
+    // Pass runs after the operation-fusion pass, and selects fusion operations
+    // to suffix according to their contents.
+    FUSION_BY_CONTENT = 2;
+  }
+  PassTiming pass_timing = 1;
+
+  // Exponent and mantissa bit counts for the reduced precision.
+  uint32 exponent_bits = 2;
+  uint32 mantissa_bits = 3;
+
+  // Operations matching these opcodes should be suffixed with reduce-precision
+  // operations.
+  repeated uint32 opcodes_to_suffix = 4;
+
+  // Operations with names containing these substrings should be suffixed with
+  // reduce-precision operations.
+  repeated string opname_substrings_to_suffix = 5;
+}
+
+// Debugging options for XLA. These options may change at any time - there are
+// no guarantees about backward or forward compatibility for these fields.
+message DebugOptions {
+  // HLO modules matching this regex will be dumped to a .dot file throughout
+  // various stages in compilation (file names are LOG(INFO)'d). Set to ".*" to
+  // dump *all* HLO modules.
+  string xla_generate_hlo_graph = 1;
+
+  // Show addresses of HLO ops in graph dump.
+  bool xla_hlo_graph_addresses = 2;
+
+  // Path to dump HLO graphs to.
+  string xla_hlo_graph_path = 4;
+
+  // Dump HLO graphs as TensorFlow GraphDefs.
+  bool xla_hlo_dump_as_graphdef = 5;
+
+  // HLO modules matching this regex will be dumped to LOG(INFO). Set to ".*" to
+  // dump *all* HLO modules.
+  string xla_log_hlo_text = 6;
+
+  // Dump all HLO modules as text into the provided directory path.
+  string xla_generate_hlo_text_to = 7;
+
+  // Dump compilation artifacts as JSON into this directory.
+  string xla_dump_debug_json_to = 8;
+
+  // Instrument the computation to collect per-HLO cycle counts.
+  bool xla_hlo_profile = 9;
+
+  // Dumps computations that XLA executes into the provided directory path.
+  string xla_dump_computations_to = 10;
+
+  // Dumps parameters and results of computations that XLA executes into the
+  // provided directory path.
+  string xla_dump_executions_to = 11;
+
+  // List of HLO passes to disable. These names must exactly match the pass
+  // names as specified by the HloPassInterface::name() method.
+  repeated string xla_disable_hlo_passes = 30;
+
+  // Numerical optimization level for the XLA compiler backend; the specific
+  // interpretation of this value is left to the backends.
+  int32 xla_backend_optimization_level = 31;
+
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_enable_fast_math = 32;
+
+  // Embed the compiler IR as a string in the executable.
+  bool xla_embed_ir_in_executable = 33;
+
+  // Dump the compiler IR into this directory as individual files.
+  string xla_dump_ir_to = 34;
+
+  // Eliminate implicit broadcasts when lowering user computations to HLO
+  // instructions; use explicit broadcast instead.
+  bool xla_eliminate_hlo_implicit_broadcast = 35;
+
+  // When generating calls to Eigen in the CPU backend, use multi-threaded Eigen
+  // mode.
+  bool xla_cpu_multi_thread_eigen = 60;
+
+  // Path to directory with cuda/ptx tools and libraries.
+  string xla_gpu_cuda_data_dir = 61;
+
+  // Enable flush-to-zero semantics in the GPU backend.
+  bool xla_gpu_ftz = 62;
+
+  // Disable multi-streaming in the GPU backend.
+  bool xla_gpu_disable_multi_streaming = 63;
+
+  // If true, in LLVM-based backends, emit !alias.scope metadata in
+  // generated IR.
+  bool xla_llvm_enable_alias_scope_metadata = 70;
+
+  // If true, in LLVM-based backends, emit !noalias metadata in the
+  // generated IR.
+  bool xla_llvm_enable_noalias_metadata = 71;
+
+  // If true, in LLVM-based backends, emit !invariant.load metadata in
+  // the generated IR.
+  bool xla_llvm_enable_invariant_load_metadata = 72;
+
+  // Options for inserting reduce-precision operations for numerical
+  // experimentation.  This is a repeated field, as we may want to have
+  // multiple passes with different parameters.
+  repeated HloReducePrecisionOptions hlo_reduce_precision_options = 80;
+
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run n! times with all permunations of layouts for the
+  // output shape in rank n. For example, with a 3D shape, all permutations of
+  // the set {0, 1, 2} are tried.
+  bool xla_test_all_output_layouts = 90;
+
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run for all permunations of layouts of all input
+  // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
+  // computation will run 2! * 4! times.
+  bool xla_test_all_input_layouts = 91;
+
+  // Extra options to pass to the compilation backend; specific interpretation
+  // of these values is left to the backend.
+  map<string, string> xla_backend_extra_options = 500;
+}
+
+// These settings control how XLA compiles and/or runs code.  Not all settings
+// will have an effect on every platform.
+//
+// When adding new fields, keep in mind that boolean fields default to false.
+message ExecutionOptions {
+  // This optional field's layout is used as a hint when storing the output of
+  // this computation.  Subsequent transfers of this output array to the client
+  // may be faster when using this layout.
+  //
+  // We use a Shape here to accommodate computations that return a tuple.
+  Shape shape_with_output_layout = 2;
+
+  // Used to seed random-number generators used in this computation.  If this is
+  // 0, we generate a seed ourselves.
+  //
+  // TODO(b/32083678): Changing the seed unnecessarily forces a recompilation.
+  uint64 seed = 3;
+
+  DebugOptions debug_options = 4;
+}
+
+message SnapshotComputationRequest {
+  ComputationHandle computation = 1;
+}
+
+message SnapshotComputationResponse {
+  SessionModule module = 1;
+}
+
+message LoadComputationSnapshotRequest {
+  SessionModule module = 1;
+}
+
+message LoadComputationSnapshotResponse {
+  ComputationHandle computation = 1;
+}
+
+message GetDeviceHandlesRequest {
+  int64 device_count = 1;
+}
+
+message GetDeviceHandlesResponse {
+  repeated DeviceHandle device_handles = 1;
+}
+
+message TransferToClientRequest {
+  GlobalDataHandle data = 1;
+
+  // This optional field directs the service to return the literal in this
+  // layout. A shape is used to hold the layout to accommodate tuples.
+  Shape shape_with_layout = 2;
+}
+
+message TransferToClientResponse {
+  LiteralProto literal = 1;
+}
+
+message TransferToServerRequest {
+  LiteralProto literal = 1;
+  DeviceHandle device_handle = 2;
+}
+
+message TransferToServerResponse {
+  GlobalDataHandle data = 1;
+}
+
+message TransferToInfeedRequest {
+  LiteralProto literal = 1;
+  int64 replica_id = 2;
+  DeviceHandle device_handle = 3;
+}
+
+message TransferToInfeedResponse {
+}
+
+message TransferFromOutfeedRequest {
+  // This optional field directs the service to return the literal in this
+  // layout. A shape is used to hold the layout to accommodate tuples.
+  Shape shape_with_layout = 1;
+
+  int64 replica_id = 2;
+  DeviceHandle device_handle = 3;
+}
+
+message TransferFromOutfeedResponse {
+  LiteralProto literal = 1;
+}
+
+message ResetDeviceRequest {
+  DeviceHandle device_handle = 1;
+}
+
+message ResetDeviceResponse {
+}
+
+message ComputationStatsRequest {
+  ComputationHandle computation = 1;
+  DebugOptions debug_options = 2;
+}
+
+message ComputationStatsResponse {
+  ComputationStats stats = 1;
+}
+
+message ComputationRequest {
+  string name = 1;
+}
+
+message ComputationResponse {
+  ComputationHandle computation = 1;
+}
+
+message CreateChannelHandleRequest {
+}
+
+message CreateChannelHandleResponse {
+  ChannelHandle channel = 1;
+}
+
+message UnregisterRequest {
+  GlobalDataHandle data = 1;
+}
+
+message UnregisterResponse {
+}
+
+message SetReturnValueRequest {
+  ComputationHandle computation = 1;
+  ComputationDataHandle operand = 2;
+}
+
+message SetReturnValueResponse {
+}
+
+message ExecuteRequest {
+  reserved 3, 4;
+
+  ComputationHandle computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // This optional field specifies a particular device to run the computation.
+  // If not provided, the default device will be chosen.
+  DeviceHandle device_handle = 5;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 6;
+}
+
+message ExecuteParallelRequest {
+  repeated ExecuteRequest requests = 1;
+}
+
+message ExecuteResponse {
+  GlobalDataHandle output = 1;
+  ExecutionProfile profile = 2;
+}
+
+message ExecuteParallelResponse {
+  repeated ExecuteResponse responses = 1;
+}
+
+message ExecuteAsyncRequest {
+  reserved 3, 4;
+
+  ComputationHandle computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 6;
+}
+
+message ExecuteAsyncResponse {
+  // A handle to the execution launched asynchronously.
+  ExecutionHandle execution = 1;
+}
+
+message WaitForExecutionRequest {
+  ExecutionHandle execution = 1;
+}
+
+message WaitForExecutionResponse {
+  GlobalDataHandle output = 1;
+  ExecutionProfile profile = 2;
+}
+
+message IsConstantRequest {
+  ComputationHandle computation = 1;
+  ComputationDataHandle operand = 2;
+}
+
+message IsConstantResponse {
+  bool is_constant = 1;
+}
+
+message ComputeConstantRequest {
+  ComputationHandle computation = 1;
+  ComputationDataHandle operand = 2;
+  Layout output_layout = 3;
+}
+
+message ComputeConstantResponse {
+  // A LiteralProto is returned directly for this request, instead of a
+  // ComputationDataHandle.
+  LiteralProto literal = 1;
+}
+
+message DeconstructTupleRequest {
+  GlobalDataHandle tuple_handle = 2;
+}
+
+message DeconstructTupleResponse {
+  repeated GlobalDataHandle element_handles = 1;
+}
+
+message LoadDataRequest {
+  // Describes the path of the ColumnIO tablet to load.
+  string columnio_tablet_path = 1;
+
+  // Describes the field to load within the ColumnIO tablet.
+  string columnio_field = 2;
+
+  // Individual element shape, excluding rows.
+  Shape element_shape = 3;
+
+  // Warning: ColumnIO does not support random-access, so use offset with
+  // caution in performance-critical scenarios.
+  int64 offset = 4;
+
+  // Maximum number of elements (with shape element_shape) to load.
+  int64 limit = 5;
+
+  // If more than one item is requested (via limit > 1), then this request
+  // attribute zips together the produced vectors.
+  bool zip = 6;
+}
+
+message LoadDataResponse {
+  GlobalDataHandle data = 1;
+  Shape data_shape = 2;
+  int64 available_rows = 3;
+  int64 rows_loaded = 4;
+  int64 nanoseconds = 5;
+}
+
+message SpecializeRequest {
+  ComputationHandle computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+}
+
+message SpecializeResponse {
+}
+
+message GetShapeRequest {
+  GlobalDataHandle data = 1;
+}
+
+message GetShapeResponse {
+  Shape shape = 1;
+}
+
+message GetComputationShapeRequest {
+  ComputationHandle computation = 1;
+}
+
+message GetComputationShapeResponse {
+  ProgramShape program_shape = 1;
+}
+
+message UnpackRequest {
+  GlobalDataHandle data = 1;
+}
+
+message UnpackResponse {
+  repeated GlobalDataHandle tied_data = 1;
+}

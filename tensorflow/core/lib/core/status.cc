@@ -20,7 +20,7 @@ namespace tensorflow {
 
 Status::Status(tensorflow::error::Code code, StringPiece msg) {
   assert(code != tensorflow::error::OK);
-  state_ = new State;
+  state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = msg.ToString();
 }
@@ -32,11 +32,10 @@ void Status::Update(const Status& new_status) {
 }
 
 void Status::SlowCopyFrom(const State* src) {
-  delete state_;
   if (src == nullptr) {
     state_ = nullptr;
   } else {
-    state_ = new State(*src);
+    state_ = std::unique_ptr<State>(new State(*src));
   }
 }
 
@@ -46,7 +45,7 @@ const string& Status::empty_string() {
 }
 
 string Status::ToString() const {
-  if (state_ == NULL) {
+  if (state_ == nullptr) {
     return "OK";
   } else {
     char tmp[30];
@@ -113,9 +112,23 @@ string Status::ToString() const {
   }
 }
 
+void Status::IgnoreError() const {
+  // no-op
+}
+
 std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;
+}
+
+string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
+                                 const char* msg) {
+  string r("Non-OK-status: ");
+  r += msg;
+  r += " status: ";
+  r += v.ToString();
+  // Leaks string but this is only to be used in a fatal error message
+  return new string(r);
 }
 
 }  // namespace tensorflow

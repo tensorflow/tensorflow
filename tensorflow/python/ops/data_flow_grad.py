@@ -23,7 +23,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
@@ -46,8 +45,9 @@ def _DynamicPartitionGrads(op, *grads):
 
 
 @ops.RegisterGradient("DynamicStitch")
+@ops.RegisterGradient("ParallelDynamicStitch")
 def _DynamicStitchGrads(op, grad):
-  """Gradients for DynamicStitch."""
+  """Gradients for DynamicStitch and ParallelDynamicStitch."""
 
   num_values = len(op.inputs) // 2
   indices_grad = [None] * num_values
@@ -64,20 +64,21 @@ def _DynamicStitchGrads(op, grad):
   return indices_grad + values_grad
 
 
-ops.NoGradient("Queue")
-ops.NoGradient("QueueEnqueue")
-ops.NoGradient("QueueEnqueueMany")
-ops.NoGradient("QueueDequeue")
-ops.NoGradient("QueueDequeueMany")
-ops.NoGradient("QueueDequeueUpTo")
-ops.NoGradient("QueueClose")
-ops.NoGradient("QueueSize")
+ops.NotDifferentiable("Queue")
+ops.NotDifferentiable("QueueEnqueue")
+ops.NotDifferentiable("QueueEnqueueMany")
+ops.NotDifferentiable("QueueDequeue")
+ops.NotDifferentiable("QueueDequeueMany")
+ops.NotDifferentiable("QueueDequeueUpTo")
+ops.NotDifferentiable("QueueClose")
+ops.NotDifferentiable("QueueSize")
 
-ops.NoGradient("Stack")
-ops.NoGradient("StackPush")
-ops.NoGradient("StackPop")
-ops.NoGradient("StackClose")
+ops.NotDifferentiable("Stack")
+ops.NotDifferentiable("StackPush")
+ops.NotDifferentiable("StackPop")
+ops.NotDifferentiable("StackClose")
 
-ops.NoGradient("GetSessionHandle")
-ops.NoGradient("GetSessionTensor")
-ops.NoGradient("DeleteSessionTensor")
+ops.NotDifferentiable("GetSessionHandle")
+ops.NotDifferentiable("GetSessionHandleV2")
+ops.NotDifferentiable("GetSessionTensor")
+ops.NotDifferentiable("DeleteSessionTensor")

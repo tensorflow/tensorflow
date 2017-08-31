@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -30,8 +32,8 @@ Status ValidateGraphDef(const GraphDef& graph_def,
   const int version = graph_def.versions().producer();
   for (const NodeDef& node_def : graph_def.node()) {
     // Look up the OpDef for the node_def's op name.
-    const OpDef* op_def = op_registry.LookUp(node_def.op(), &s);
-    TF_RETURN_IF_ERROR(s);
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(node_def.op(), &op_def));
     TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
     TF_RETURN_IF_ERROR(CheckOpDeprecation(*op_def, version));
   }

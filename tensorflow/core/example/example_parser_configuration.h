@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/example_parser_configuration.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,6 +40,14 @@ namespace tensorflow {
 Status ExtractExampleParserConfiguration(
     const tensorflow::GraphDef& graph, const string& node_name,
     tensorflow::Session* session,
+    std::vector<FixedLenFeature>* fixed_len_features,
+    std::vector<VarLenFeature>* var_len_features);
+
+// Given a config proto, ostensibly extracted via python,
+// fill a vector of C++ structs suitable for calling
+// the tensorflow.Example -> Tensor conversion code.
+Status ExampleParserConfigurationProtoToFeatureVectors(
+    const ExampleParserConfiguration& config_proto,
     std::vector<FixedLenFeature>* fixed_len_features,
     std::vector<VarLenFeature>* var_len_features);
 

@@ -16,15 +16,23 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 
 #include <deque>
+#include <queue>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,6 +41,15 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+inline bool IsMerge(const NodeDef& node_def) {
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+}
+
+inline bool IsNextIteration(const NodeDef& node_def) {
+  return node_def.op() == "NextIteration" ||
+         node_def.op() == "RefNextIteration";
+}
 
 struct DupRecvKey {
   int src_node_id;           // Edge's src node id
@@ -71,14 +88,6 @@ struct RecvInfo {
 
 typedef std::unordered_map<DupRecvKey, RecvInfo, DupRecvKeyHash, DupRecvKeyEq>
     DupRecvTable;
-
-// Control flow info for a graph node.
-struct ControlFlowInfo {
-  const Node* frame = nullptr;         // frame of a node
-  const Node* parent_frame = nullptr;  // parent frame of a node
-  string frame_name;                   // frame name of a node
-  int iter_level = -1;                 // level of a node
-};
 
 struct PairIntHash {
  public:
@@ -119,8 +128,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
   if (src->assigned_device_name() == dst->assigned_device_name()) {
     int src_port = edge->src_output();
     int dst_port = edge->dst_input();
-    // TODO(vrv): Shouldn't this be != DEVICE_CPU?
-    if (info.device_types[src->id()] == DEVICE_GPU) {
+    if (info.device_types[src->id()] != DEVICE_CPU) {
       auto src_it = info.output_types.find({src->id(), src_port});
       DCHECK(src_it != info.output_types.end());
       auto dst_it = info.input_types.find({dst->id(), dst_port});
@@ -135,7 +143,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
 bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
   Node* dst = edge->dst();
   int dst_port = edge->dst_input();
-  if (info.device_types[dst->id()] == DEVICE_GPU) {
+  if (info.device_types[dst->id()] != DEVICE_CPU) {
     if (edge->IsControlEdge()) return false;
     auto dst_it = info.input_types.find({dst->id(), dst_port});
     DCHECK(dst_it != info.input_types.end());
@@ -317,148 +325,45 @@ NodeDef* AddControlTrigger(const PartitionOptions& opts, GraphDef* gdef,
 // TODO(yuanbyu): In this case, we don't respect the requested device in
 // the GraphDef for these nodes. Ideally, the placer would enforce the
 // colocation to render this unnecessary.
-void OptimizeControlFlowColocation(Node* node) {
-  if (IsSwitch(node)) {
-    for (const Edge* in_edge : node->in_edges()) {
-      if (in_edge->dst_input() == 0) {
-        // Colocate with the data input.
-        node->set_assigned_device_name(in_edge->src()->assigned_device_name());
-        return;
-      }
-    }
-  } else if (IsExit(node)) {
-    for (const Edge* in_edge : node->in_edges()) {
-      if (!in_edge->IsControlEdge()) {
-        // Colocate with upstream node.
-        node->set_assigned_device_name(in_edge->src()->assigned_device_name());
-        return;
-      }
-    }
-  } else {
-    if ((IsEnter(node) && !IsRefType(node->input_type(0))) ||
-        IsNextIteration(node)) {
-      const Edge* data_edge = nullptr;
-      for (const Edge* out_edge : node->out_edges()) {
-        if (!out_edge->IsControlEdge()) {
-          if (data_edge) {
-            data_edge = nullptr;
-            return;
-          }
-          data_edge = out_edge;
+void OptimizeControlFlowColocation(Graph* graph) {
+  auto visit = [](Node* node) {
+    if (IsSwitch(node)) {
+      for (const Edge* in_edge : node->in_edges()) {
+        if (in_edge->dst_input() == 0) {
+          // Colocate with the data input.
+          node->set_assigned_device_name(
+              in_edge->src()->assigned_device_name());
+          return;
         }
       }
-      // Colocate if there is only one downstream data node.
-      if (data_edge) {
-        node->set_assigned_device_name(
-            data_edge->dst()->assigned_device_name());
-      }
-    }
-  }
-}
-
-// Assign to each node the name of the frame and the level it belongs to.
-// We check the well-formedness of the graph: All inputs to a node must
-// come from the same frame and have the same "static" iteration level.
-// NOTE(yuanbyu): For now, we require all sends/recvs have iteration level
-// 0. This essentially means there can't be multiple serial Nexts in
-// an iteration, which all sane front-ends should satisfy.
-Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
-  info->clear();
-  info->resize(g->num_node_ids());
-
-  Node* src_node = g->source_node();
-  ControlFlowInfo& src_info = (*info)[src_node->id()];
-  src_info.frame = src_node;
-  src_info.parent_frame = src_node;
-  src_info.iter_level = 0;
-
-  string frame_name;
-  std::deque<Node*> ready;
-  ready.push_back(src_node);
-  while (!ready.empty()) {
-    Node* curr_node = ready.front();
-    ready.pop_front();
-    const ControlFlowInfo& curr_info = (*info)[curr_node->id()];
-    const Node* frame = curr_info.frame;
-    const Node* parent = curr_info.parent_frame;
-    frame_name = curr_info.frame_name;
-    int iter_level = curr_info.iter_level;
-
-    if (IsExit(curr_node)) {
-      // Exit to the parent frame.
-      const ControlFlowInfo& parent_info = (*info)[parent->id()];
-      frame = parent_info.frame;
-      parent = parent_info.parent_frame;
-      frame_name = parent_info.frame_name;
-      iter_level = parent_info.iter_level;
-    }
-
-    // Optimize colocation for control flow nodes.
-    OptimizeControlFlowColocation(curr_node);
-
-    for (const Edge* out_edge : curr_node->out_edges()) {
-      Node* out = out_edge->dst();
-      int out_id = out->id();
-      ControlFlowInfo* out_info = &(*info)[out_id];
-      const Node* out_parent = out_info->parent_frame;
-      bool is_visited = (out_info->iter_level != -1);
-
-      // Skip Sink/Source nodes.
-      if (!out->IsOp()) continue;
-
-      // Add to ready queue if not seen.
-      if (!is_visited) {
-        ready.push_back(out);
-      }
-
-      // Process the node 'out'.
-      if (IsEnter(out)) {
-        if (is_visited) {
-          const string& parent_name = (*info)[out_parent->id()].frame_name;
-          if (parent_name != frame_name || iter_level != out_info->iter_level) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
-          }
-        } else {
-          out_info->frame = out;
-          out_info->parent_frame = frame;
-          TF_RETURN_IF_ERROR(
-              GetNodeAttr(out->def(), "frame_name", &out_info->frame_name));
-          if (out_info->frame_name.empty()) {
-            return errors::InvalidArgument("The Enter node ", out->name(),
-                                           " must have a frame name.");
-          }
-          out_info->iter_level = 0;
+    } else if (IsExit(node)) {
+      for (const Edge* in_edge : node->in_edges()) {
+        if (!in_edge->IsControlEdge()) {
+          // Colocate with upstream node.
+          node->set_assigned_device_name(
+              in_edge->src()->assigned_device_name());
+          return;
         }
-      } else if (IsNextIteration(out)) {
-        if (is_visited) {
-          if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
+      }
+    } else {
+      if ((IsEnter(node) && !IsRefType(node->input_type(0))) ||
+          IsNextIteration(node)) {
+        const Edge* data_edge = nullptr;
+        for (const Edge* out_edge : node->out_edges()) {
+          if (!out_edge->IsControlEdge()) {
+            data_edge = out_edge;
+            break;
           }
-        } else {
-          out_info->frame = frame;
-          out_info->parent_frame = parent;
-          out_info->frame_name = frame_name;
-          out_info->iter_level = iter_level + 1;
         }
-      } else {
-        if (is_visited) {
-          if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
-          }
-        } else {
-          out_info->frame = frame;
-          out_info->parent_frame = parent;
-          out_info->frame_name = frame_name;
-          out_info->iter_level = iter_level;
+        // Colocate with the first downstream data node.
+        if (data_edge) {
+          node->set_assigned_device_name(
+              data_edge->dst()->assigned_device_name());
         }
       }
     }
-  }
-
-  return Status::OK();
+  };
+  DFS(*graph, visit, {});
 }
 
 string ControlLoopName(const string& name) {
@@ -466,7 +371,7 @@ string ControlLoopName(const string& name) {
 }
 
 bool IsControlLoop(const Node* node) {
-  const string& name = node->def().name();
+  const string& name = node->name();
   return StringPiece(name).starts_with("_cloop");
 }
 
@@ -502,7 +407,8 @@ Node* AddControlMerge(const string& in_name1, const string& in_name2, Graph* g,
 Node* AddControlSwitch(NodeBuilder::NodeOut input1, NodeBuilder::NodeOut input2,
                        const string& device_name,
                        const GraphDefBuilder::Options& bopts) {
-  Node* res_node = ops::BinaryOp("Switch", input1, input2, bopts);
+  Node* res_node =
+      ops::BinaryOp("Switch", std::move(input1), std::move(input2), bopts);
   if (bopts.HaveError()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -511,7 +417,7 @@ Node* AddControlSwitch(NodeBuilder::NodeOut input1, NodeBuilder::NodeOut input2,
 // A next_iteration node for control flow.
 Node* AddControlNext(NodeBuilder::NodeOut input, const string& device_name,
                      const GraphDefBuilder::Options& bopts) {
-  Node* res_node = ops::UnaryOp("NextIteration", input, bopts);
+  Node* res_node = ops::UnaryOp("NextIteration", std::move(input), bopts);
   if (bopts.HaveError()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -548,7 +454,7 @@ struct ControlLoop {
 };
 
 // Add the control flow info of a new node added during partitioning.
-// The new node has the same control flow info as edge->src().
+// The new node has the same control flow info as src.
 void AddControlFlowInfo(const Node* node, const Node* src,
                         std::vector<ControlFlowInfo>* cf_info) {
   int id = node->id();
@@ -560,7 +466,6 @@ void AddControlFlowInfo(const Node* node, const Node* src,
   info->frame = src_info.frame;
   info->parent_frame = src_info.parent_frame;
   info->frame_name = src_info.frame_name;
-  info->iter_level = src_info.iter_level;
 }
 
 // Constructs a control loop. Returns a struct containing the newly created
@@ -579,7 +484,7 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
   const string& device_name = edge->dst()->assigned_device_name();
   const string& frame_name = src_info.frame_name;
   int parallel_iterations;
-  status = GetNodeAttr(src_info.frame->def(), "parallel_iterations",
+  status = GetNodeAttr(src_info.frame->attrs(), "parallel_iterations",
                        &parallel_iterations);
   if (!status.ok()) return status;
 
@@ -630,9 +535,7 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
   MemoryTypeVector output_memory_types;
 
   info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
-  for (const Node* node : g.nodes()) {
-    if (!node->IsOp()) continue;  // Skip Sink/Source nodes.
-
+  for (const Node* node : g.op_nodes()) {
     DeviceNameUtils::ParsedName parsed;
     if (!DeviceNameUtils::ParseFullName(node->assigned_device_name(),
                                         &parsed)) {
@@ -656,6 +559,26 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
   return Status::OK();
 }
 
+const Node* InputFrame(const Node* node,
+                       const std::vector<ControlFlowInfo>& cf_info) {
+  // An input is in the same frame as the node except for Enter nodes.
+  // The input of Enter is in the parent frame of the Enter node.
+  if (!node->IsEnter()) {
+    return node;
+  }
+  return cf_info[node->id()].parent_frame;
+}
+
+const Node* OutputFrame(const Node* node,
+                        const std::vector<ControlFlowInfo>& cf_info) {
+  // An output is in the same frame as the node except for Exit nodes.
+  // The output of Exit is in the parent frame of the Exit node.
+  if (!node->IsExit()) {
+    return node;
+  }
+  return cf_info[node->id()].parent_frame;
+}
+
 // Each participating device needs to decide a) if there is a next iteration,
 // and b) if the loop terminates. We take the approach to encode this control
 // flow logic in the dataflow graph. There are at least two possible encodings.
@@ -675,6 +598,8 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
   // Build the control flow info for every node.
   status = BuildControlFlowInfo(g, &cf_info);
   if (!status.ok()) return status;
+
+  OptimizeControlFlowColocation(g);
 
   // The map from frames to their LoopCond nodes.
   std::unordered_map<string, Node*> frame_cond_map;
@@ -714,10 +639,12 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
     // Skip local edges.
     if (src_device == dst_device) continue;
 
-    const string& src_frame = cf_info[src->id()].frame_name;
-    const string& dst_frame = cf_info[dst->id()].frame_name;
+    const Node* src_frame = OutputFrame(src, cf_info);
+    const Node* dst_frame = InputFrame(dst, cf_info);
+    const string& src_frame_name = cf_info[src_frame->id()].frame_name;
+    const string& dst_frame_name = cf_info[dst_frame->id()].frame_name;
     // Skip if src and dst are not in the same frame.
-    if (src_frame.empty() || src_frame != dst_frame) {
+    if (src_frame_name.empty() || src_frame_name != dst_frame_name) {
       continue;
     }
 
@@ -726,8 +653,8 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
     // for its outer frame when nested.
     ControlLoop child_loop;
     while (true) {
-      const string& curr_frame = cf_info[src->id()].frame_name;
-      if (curr_frame.empty()) {
+      const string& curr_frame_name = cf_info[src_frame->id()].frame_name;
+      if (curr_frame_name.empty()) {
         // We have reached the root frame.
         if (child_loop.merge != nullptr) {
           const string& node_name = opts.new_name(edge->dst()->name());
@@ -735,13 +662,13 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
           Node* const_node =
               AddControlConst(device_name, bopts.WithName(node_name));
           if (!status.ok()) return status;
-          AddControlFlowInfo(const_node, src, &cf_info);
+          AddControlFlowInfo(const_node, src_frame, &cf_info);
           g->AddEdge(const_node, 0, child_loop.enter, 0);
         }
         break;
       }
 
-      const string& cl_key = strings::StrCat(curr_frame, "$$", dst_device);
+      const string& cl_key = strings::StrCat(curr_frame_name, "$$", dst_device);
       auto it = control_loops.find(cl_key);
       if (it != control_loops.end()) {
         if (child_loop.enter != nullptr) {
@@ -751,17 +678,18 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
       }
 
       // Get the frame's LoopCond.
-      auto cond_it = frame_cond_map.find(curr_frame);
+      auto cond_it = frame_cond_map.find(curr_frame_name);
       if (cond_it == frame_cond_map.end()) {
         return errors::InvalidArgument(
-            "A cross-device loop must have a pivot predicate: ", curr_frame);
+            "A cross-device loop must have a pivot predicate: ",
+            curr_frame_name);
       }
       Node* loop_cond = cond_it->second;
 
       // Add the control loop.
       ControlLoop curr_loop;
-      status =
-          AddControlLoop(opts, g, src, edge, loop_cond, &cf_info, &curr_loop);
+      status = AddControlLoop(opts, g, src_frame, edge, loop_cond, &cf_info,
+                              &curr_loop);
       if (!status.ok()) return status;
       control_loops[cl_key] = curr_loop;
 
@@ -769,7 +697,7 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
         // Connect the merge of the outer loop to the enter of the inner.
         g->AddEdge(curr_loop.merge, 0, child_loop.enter, 0);
       }
-      src = cf_info[src->id()].parent_frame;
+      src_frame = cf_info[src_frame->id()].parent_frame;
       child_loop = curr_loop;
     }
   }
@@ -791,10 +719,13 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
     const string& src_device = src->assigned_device_name();
     const string& dst_device = dst->assigned_device_name();
     if (src_device != dst_device) {
-      const string& src_frame = cf_info[src->id()].frame_name;
-      const string& dst_frame = cf_info[dst->id()].frame_name;
-      if (!src_frame.empty() && src_frame == dst_frame) {
-        const string& cl_key = strings::StrCat(dst_frame, "$$", dst_device);
+      const Node* src_frame = OutputFrame(src, cf_info);
+      const Node* dst_frame = InputFrame(dst, cf_info);
+      const string& src_frame_name = cf_info[src_frame->id()].frame_name;
+      const string& dst_frame_name = cf_info[dst_frame->id()].frame_name;
+      if (!src_frame_name.empty() && src_frame_name == dst_frame_name) {
+        const string& cl_key =
+            strings::StrCat(dst_frame_name, "$$", dst_device);
         ControlLoop loop = control_loops[cl_key];
         DCHECK(loop.enter != nullptr);
         g->AddControlEdge(loop.merge, dst);
@@ -804,7 +735,106 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
   return Status::OK();
 }
 
-}  // end namespace
+struct PriorityTopoSortNode {
+  PriorityTopoSortNode(const NodeDef* n, int64 st) : node(n), start_time(st) {}
+
+  const NodeDef* node;
+  int64 start_time;
+};
+
+struct PriorityTopoSortNodeGreater {
+  bool operator()(const PriorityTopoSortNode& left,
+                  const PriorityTopoSortNode& right) {
+    return left.start_time > right.start_time;
+  }
+};
+
+}  // namespace
+
+// Returns in <nodes> the nodes that should participate in epoch-based recv
+// scheduling, along with their times; <nodes> is ordered by increasing
+// start_time. Returns in <node_to_start_time_out> the timing for all nodes,
+// even those not in <nodes>.
+//
+// Comparing to sorting on the node's start time only, this also processes the
+// nodes in dependency order, and updates start times to ensure a node's
+// start_time > the start time for all dependencies.
+//
+// Note that graph_partition_test.cc accesses this function for testing, even
+// though it's not declared in the header.
+Status TopologicalSortNodesWithTimePriority(
+    const GraphDef* gdef, std::vector<std::pair<const NodeDef*, int64>>* nodes,
+    std::unordered_map<const NodeDef*, int64>* node_to_start_time_out) {
+  // Queue of nodes to process; lowest start time is returned first.
+  std::priority_queue<PriorityTopoSortNode, std::vector<PriorityTopoSortNode>,
+                      PriorityTopoSortNodeGreater>
+      q;
+  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  auto enqueue = [&q, &node_to_start_time](const NodeDef* node) {
+    const int64 start_time = node_to_start_time[node];
+    q.emplace(node, start_time);
+  };
+
+  // Build initial structures, initial contents of queue.
+  std::unordered_map<string, std::vector<const NodeDef*>> node_to_output_nodes;
+  std::unordered_map<const NodeDef*, int> inputs_needed;
+  for (int n = 0; n < gdef->node_size(); ++n) {
+    const NodeDef* ndef = &gdef->node(n);
+    for (int i = 0; i < ndef->input_size(); ++i) {
+      node_to_output_nodes[ParseTensorName(ndef->input(i)).first.ToString()]
+          .push_back(ndef);
+    }
+    int64 start_time;
+    TF_RETURN_IF_ERROR(GetNodeAttr(*ndef, "_start_time", &start_time));
+    node_to_start_time[ndef] = start_time;
+    inputs_needed[ndef] = ndef->input_size();
+    if (ndef->input_size() == 0) {
+      enqueue(ndef);
+    }
+  }
+
+  // Determine which merge nodes are parts of loops; these
+  // need to happen in the traversal after all non-NextIteration inputs
+  // are run.
+  for (int n = 0; n < gdef->node_size(); ++n) {
+    const NodeDef* ndef = &gdef->node(n);
+    if (IsNextIteration(*ndef)) {
+      for (const NodeDef* n : node_to_output_nodes[ndef->name()]) {
+        if (IsMerge(*n)) {
+          // n is a merge that is part of a loop structure.
+          // It doesn't need to wait for this NextIteration loop
+          // when doing the traversal.
+          --inputs_needed[n];
+        }
+      }
+    }
+  }
+
+  // Traverse.
+  std::vector<std::pair<const NodeDef*, int64>> start_times;
+  start_times.reserve(gdef->node_size());
+  while (!q.empty()) {
+    PriorityTopoSortNode cur = q.top();
+    q.pop();
+
+    start_times.emplace_back(cur.node, cur.start_time);
+
+    for (const NodeDef* n : node_to_output_nodes[cur.node->name()]) {
+      auto& output_start_time = node_to_start_time[n];
+      if (output_start_time <= cur.start_time) {
+        output_start_time = cur.start_time + 1;
+      }
+      if (--inputs_needed[n] == 0) {
+        enqueue(n);
+      }
+    }
+  }
+
+  // Done.
+  nodes->swap(start_times);
+  node_to_start_time_out->swap(node_to_start_time);
+  return Status::OK();
+}
 
 Status AddControlEdges(const PartitionOptions& opts,
                        std::unordered_map<string, GraphDef>* partitions) {
@@ -813,26 +843,15 @@ Status AddControlEdges(const PartitionOptions& opts,
   const int num_epochs = 100;
   const int prefetch = 6;
 
-  typedef std::pair<const NodeDef*, int64> NodeStartTime;
   for (auto& part : *partitions) {
     GraphDef* gdef = &part.second;
-
-    std::vector<NodeStartTime> start_times;
-    start_times.resize(gdef->node_size());
-    for (int n = 0; n < gdef->node_size(); ++n) {
-      const NodeDef& ndef = gdef->node(n);
-      int64 start_time;
-      status = GetNodeAttr(ndef, "_start_time", &start_time);
-      if (!status.ok()) {
-        return status;
-      }
-      start_times[n] = std::make_pair(&ndef, start_time);
+    std::vector<std::pair<const NodeDef*, int64>> start_times;
+    std::unordered_map<const NodeDef*, int64> node_to_start_time;
+    status = TopologicalSortNodesWithTimePriority(gdef, &start_times,
+                                                  &node_to_start_time);
+    if (!status.ok()) {
+      return status;
     }
-
-    // Sort the nodes based on their start times.
-    std::sort(
-        start_times.begin(), start_times.end(),
-        [](NodeStartTime x, NodeStartTime y) { return x.second < y.second; });
 
     // Add a dummy node for every epoch, and add a control edge from the
     // "last" node in the preceding epoch to the dummy node.
@@ -865,12 +884,8 @@ Status AddControlEdges(const PartitionOptions& opts,
     for (int n = 0; n < gdef->node_size(); ++n) {
       NodeDef* ndef = gdef->mutable_node(n);
       if (ndef->op() == "_Recv") {
-        int64 start_time;
-        status = GetNodeAttr(*ndef, "_start_time", &start_time);
-        if (!status.ok()) {
-          return status;
-        }
-        int recv_epoch = start_time / resolution;
+        const int64 start_time = node_to_start_time[ndef];
+        const int recv_epoch = start_time / resolution;
         if (recv_epoch >= prefetch) {
           NodeDef* dummy = dummys[recv_epoch - prefetch];
           AddInput(ndef, dummy->name(), Graph::kControlSlot);
@@ -879,6 +894,41 @@ Status AddControlEdges(const PartitionOptions& opts,
     }
   }
   return Status::OK();
+}
+
+// If 'ndef' is a Send or Recv, fills its attr send_device_incarnation
+// if possible.
+void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
+  StringPiece op(ndef->op());
+  if (op != "_Send" && op != "_Recv") {
+    // Not related to send/recv.
+    return;
+  }
+  string send_device;
+  if (!GetNodeAttr(*ndef, "send_device", &send_device).ok()) {
+    // No known send_device. The runtime will detect it later.
+    return;
+  }
+  int64 incarnation = PartitionOptions::kIllegalIncarnation;
+  if (!GetNodeAttr(*ndef, "send_device_incarnation", &incarnation).ok() ||
+      (incarnation == PartitionOptions::kIllegalIncarnation)) {
+    incarnation = opts.get_incarnation(send_device);
+    SetAttrValue(incarnation,
+                 &((*ndef->mutable_attr())["send_device_incarnation"]));
+  }
+}
+
+// Sets attribute send_device_incarnation of all Send/Recv nodes in
+// 'gdef', if possible.
+void SetIncarnation(const PartitionOptions& opts, GraphDef* gdef) {
+  for (NodeDef& ndef : *gdef->mutable_node()) {
+    SetIncarnation(opts, &ndef);
+  }
+  for (FunctionDef& fdef : *gdef->mutable_library()->mutable_function()) {
+    for (NodeDef& ndef : *fdef.mutable_node_def()) {
+      SetIncarnation(opts, &ndef);
+    }
+  }
 }
 
 Status Partition(const PartitionOptions& opts, Graph* g,
@@ -896,6 +946,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     status = AddControlFlow(opts, g, &g_info);
     if (!status.ok()) return status;
   }
+
   // At this point, all the graph mutations have been done. Build memory
   // and device type info for every node and edge in the graph.
   status = BuildMemoryDeviceInfo(*g, &g_info);
@@ -913,9 +964,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   int32 num_data = 0;
   int32 num_control = 0;
-  for (const Node* dst : g->nodes()) {
-    if (!dst->IsOp()) continue;  // Skip Sink/Source nodes.
-
+  for (const Node* dst : g->op_nodes()) {
     dstp = opts.node_to_loc(dst);
     GraphDef* dst_graph = &(*partitions)[dstp];
     NodeDef* dst_def = dst_graph->add_node();
@@ -923,8 +972,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     dst_def->set_device(dst->assigned_device_name());
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {
-      int64 start_time = opts.start_times[dst->id()].value();
-      AddNodeAttr("_start_time", start_time, dst_def);
+      int64 start_time;
+      status = GetNodeAttr(*dst_def, "_start_time", &start_time);
+      if (errors::IsNotFound(status)) {
+        start_time = opts.start_times[dst->id()].value();
+        AddNodeAttr("_start_time", start_time, dst_def);
+      } else if (!status.ok()) {
+        return status;
+      }
     }
 
     // Arrange the incoming edges to dst so that input[i] holds the
@@ -935,25 +990,34 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     ref_recvs.clear();
     ref_control_inputs.clear();
     const Edge* control_flow_edge = nullptr;
+    int32 num_control_flow_edges = 0;
+    int32 num_input_edges = 0;
     for (const Edge* edge : dst->in_edges()) {
       if (edge->IsControlEdge()) {
         if (IsMerge(edge->src()) && IsControlLoop(edge->src())) {
           // This is one of the control edges added for control flow. There
           // can be multiple such edges as the dest node may have multiple
-          // remote inputs. We will just take one and ignore the others.
+          // remote inputs. We keep track of the number of such edges.
           control_flow_edge = edge;
+          ++num_control_flow_edges;
         } else {
           inputs.push_back(edge);
         }
       } else {
         DCHECK(inputs[edge->dst_input()] == nullptr);
         inputs[edge->dst_input()] = edge;
+        ++num_input_edges;
       }
+    }
+
+    if (num_input_edges != dst->num_inputs()) {
+      return errors::InvalidArgument("Incomplete graph, missing ",
+                                     (dst->num_inputs() - num_input_edges),
+                                     " inputs for ", dst->name());
     }
 
     // Process in order so that all data edges are added as inputs to
     // dst in Edge::dst_input() order.
-    bool recv_added = false;
     for (const Edge* edge : inputs) {
       const Node* src = edge->src();
       if (!src->IsOp()) continue;  // Skip Sink/Source nodes.
@@ -972,18 +1036,18 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       int64 send_start_time = 0;
       int64 recv_start_time = 0;
       if (opts.scheduling_for_recvs) {
-        if (opts.need_to_record_start_times) {
+        status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
+        if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
           send_start_time = opts.start_times[src->id()].value();
+        } else if (!status.ok()) {
+          return status;
+        }
+
+        status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
+        if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
           recv_start_time = opts.start_times[dst->id()].value();
-        } else {
-          status = GetNodeAttr(src->def(), "_start_time", &send_start_time);
-          if (!status.ok()) {
-            return status;
-          }
-          status = GetNodeAttr(dst->def(), "_start_time", &recv_start_time);
-          if (!status.ok()) {
-            return status;
-          }
+        } else if (!status.ok()) {
+          return status;
         }
       }
 
@@ -1000,6 +1064,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         } else {
           AddInput(dst_def, recv_node_name, 0);
         }
+        ref_control_inputs.push_back(recv_node_name);
+
         // We want the start_time for the recv to be the smallest of the start
         // times of it's consumers. So we update this whenever we use a recv,
         // and write it out to the attribute at the end of the subroutine
@@ -1039,19 +1105,19 @@ Status Partition(const PartitionOptions& opts, Graph* g,
           AddRecv(opts, g_info, dst_graph, edge, &real_recv, &status);
       if (!status.ok()) return status;
 
-      // Fix up the control flow edge. Redirect it to the recv.
+      // Fix up the control flow edge.
       // NOTE(yuanbyu): 'real_recv' must be the real recv node.
-      recv_added = true;
-      if (control_flow_edge != nullptr) {
+      if (src_graph == dst_graph) {
+        // For same device send/recv, add a control edge from send to recv.
+        // This prevents the asynchronous recv kernel from being scheduled
+        // before the data is available.
+        AddInput(real_recv, send->name(), Graph::kControlSlot);
+      } else if (control_flow_edge != nullptr) {
+        // Redirect control edge to the real recv since this is not a same
+        // device send/recv.
+        --num_control_flow_edges;
         AddInput(real_recv, control_flow_edge->src()->name(),
                  Graph::kControlSlot);
-      }
-
-      // For same device send/recv, add a control edge from send to recv.
-      // This prevents the asynchronous recv kernel from being scheduled
-      // immediately.
-      if (src_graph == dst_graph) {
-        AddInput(real_recv, send->name(), Graph::kControlSlot);
       }
 
       if (!edge->IsControlEdge() &&
@@ -1090,15 +1156,29 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     // execution of recvs until all the other inputs become available.
     AddReadControl(ref_recvs, ref_control_inputs);
 
-    // Add back this control edge for control flow if not used.
-    if (!recv_added && (control_flow_edge != nullptr)) {
-      AddInput(dst_def, control_flow_edge->src()->name(), Graph::kControlSlot);
+    // Add back the control edges for control flow that are not used.
+    if (control_flow_edge != nullptr) {
+      for (int i = 0; i < num_control_flow_edges; ++i) {
+        AddInput(dst_def, control_flow_edge->src()->name(),
+                 Graph::kControlSlot);
+      }
     }
   }
 
-  // Set versions
+  const FunctionLibraryDefinition* flib_def = opts.flib_def;
+  if (flib_def == nullptr) {
+    flib_def = &g->flib_def();
+  }
+
+  // Set versions, function library and send/recv incarnation.
   for (auto& it : *partitions) {
-    it.second.mutable_versions()->CopyFrom(g->versions());
+    GraphDef* gdef = &it.second;
+    *gdef->mutable_versions() = g->versions();
+    *gdef->mutable_library() = flib_def->ToProto();
+
+    // Traverse the graph to fill every send/recv op's incarnation
+    // information.
+    SetIncarnation(opts, gdef);
   }
 
   // Set the start times for recvs at the very end.

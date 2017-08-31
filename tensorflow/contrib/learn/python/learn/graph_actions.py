@@ -28,18 +28,19 @@ import numpy as np
 
 from six import reraise
 
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.layers.python.layers import summaries
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
@@ -47,17 +48,24 @@ from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_manager as session_manager_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
+from tensorflow.python.util.deprecation import deprecated
 
-# pylint: disable=invalid-name
-Supervisor = tf_supervisor.Supervisor
-Coordinator = coordinator.Coordinator
-SummaryWriter = summary_io.SummaryWriter
-
-# Singletone for SummaryWriter per logdir folder.
+# Singleton for SummaryWriter per logdir folder.
 _SUMMARY_WRITERS = {}
 
 # Lock protecting _SUMMARY_WRITERS
 _summary_writer_lock = threading.Lock()
+
+_graph_action_deprecation = deprecated(
+    '2017-02-15',
+    'graph_actions.py will be deleted. Use tf.train.* utilities instead. '
+    'You can use learn/estimators/estimator.py as an example.')
+
+
+@_graph_action_deprecation
+def clear_summary_writers():
+  """Clear cached summary writers. Currently only used for unit tests."""
+  return summary_io.SummaryWriterCache.clear()
 
 
 def get_summary_writer(logdir):
@@ -70,31 +78,22 @@ def get_summary_writer(logdir):
     Existing `SummaryWriter` object or new one if never wrote to given
     directory.
   """
-  _summary_writer_lock.acquire()
-  if logdir not in _SUMMARY_WRITERS:
-    _SUMMARY_WRITERS[logdir] = SummaryWriter(logdir,
-                                             graph=ops.get_default_graph())
-  _summary_writer_lock.release()
-  return _SUMMARY_WRITERS[logdir]
+  return summary_io.SummaryWriterCache.get(logdir)
 
 
-class NanLossDuringTrainingError(RuntimeError):
-
-  def __str__(self):
-    return 'NaN loss during training.'
-
-
-def _make_saver(graph):
-  vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
+def _make_saver(graph, keep_checkpoint_max=5):
+  vars_to_save = (graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
+                  graph.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
   if vars_to_save:
-    return tf_saver.Saver(vars_to_save, sharded=True)
+    return tf_saver.Saver(vars_to_save,
+                          sharded=True,
+                          max_to_keep=keep_checkpoint_max)
   else:
     return None
 
 
 def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
   logging.info('Loading model from checkpoint: %s.', checkpoint_path)
-  assert gfile.Glob(checkpoint_path)
   saver = saver or _make_saver(graph)
   if saver:
     saver.restore(session, checkpoint_path)
@@ -120,8 +119,7 @@ def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   return outputs, should_stop
 
 
-# TODO(ptucker): Add unit test.
-# TODO(wicke): switch to forced named kwargs
+@_graph_action_deprecation
 def train(graph,
           output_dir,
           train_op,
@@ -134,11 +132,13 @@ def train(graph,
           supervisor_is_chief=True,
           supervisor_master='',
           supervisor_save_model_secs=600,
+          keep_checkpoint_max=5,
           supervisor_save_summaries_steps=100,
           feed_fn=None,
-          max_steps=None,
+          steps=None,
           fail_on_nan_loss=True,
-          monitors=None):
+          monitors=None,
+          max_steps=None):
   """Train a model.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -174,59 +174,132 @@ def train(graph,
     supervisor_master: The master string to use when preparing the session.
     supervisor_save_model_secs: Save a checkpoint every
       `supervisor_save_model_secs` seconds when training.
+    keep_checkpoint_max: The maximum number of recent checkpoint files to
+      keep. As new files are created, older files are deleted. If None or 0,
+      all checkpoint files are kept. This is simply passed as the max_to_keep
+      arg to tf.train.Saver constructor.
     supervisor_save_summaries_steps: Save summaries every
       `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
       passed to `session.run` calls. Optional.
-    max_steps: Train until `global_step_tensor` evaluates to this value.
+    steps: Trains for this many steps (e.g. current global step + `steps`).
     fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
       evaluates to `NaN`. If false, continue training as if nothing happened.
     monitors: List of `BaseMonitor` subclass instances. Used for callbacks
       inside the training loop.
+    max_steps: Number of total steps for which to train model. If `None`,
+      train forever. Two calls fit(steps=100) means 200 training iterations.
+      On the other hand two calls of fit(max_steps=100) means, second call
+      will not do any iteration since first call did all 100 steps.
 
   Returns:
     The final loss value.
 
   Raises:
-    ValueError: If `global_step_tensor` is not provided. See
-        `tf.contrib.framework.get_global_step` for how we look it up if not
-        provided explicitly.
+    ValueError: If `output_dir`, `train_op`, `loss_op`, or `global_step_tensor`
+      is not provided. See `tf.contrib.framework.get_global_step` for how we
+      look up the latter if not provided explicitly.
     NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
-        evaluates to `NaN`.
+      evaluates to `NaN`.
+    ValueError: If both `steps` and `max_steps` are not `None`.
   """
+  while True:
+    try:
+      return _train_internal(graph,
+                             output_dir,
+                             train_op,
+                             loss_op,
+                             global_step_tensor,
+                             init_op,
+                             init_feed_dict,
+                             init_fn,
+                             log_every_steps,
+                             supervisor_is_chief,
+                             supervisor_master,
+                             supervisor_save_model_secs,
+                             keep_checkpoint_max,
+                             supervisor_save_summaries_steps,
+                             feed_fn,
+                             steps,
+                             fail_on_nan_loss,
+                             monitors,
+                             max_steps)
+    except errors.AbortedError:
+      # Happens when PS restarts, keep training.
+      logging.warning('Training got Aborted error. Keep training.')
+
+
+def _train_internal(graph,
+                    output_dir,
+                    train_op,
+                    loss_op,
+                    global_step_tensor,
+                    init_op,
+                    init_feed_dict,
+                    init_fn,
+                    log_every_steps,
+                    supervisor_is_chief,
+                    supervisor_master,
+                    supervisor_save_model_secs,
+                    keep_checkpoint_max,
+                    supervisor_save_summaries_steps,
+                    feed_fn,
+                    steps,
+                    fail_on_nan_loss,
+                    monitors,
+                    max_steps):
+  """See train."""
+  if (steps is not None) and (max_steps is not None):
+    raise ValueError('Can not provide both steps and max_steps.')
   if not output_dir:
-    raise ValueError('Output directory should be non-empty.')
+    raise ValueError('Output directory should be non-empty %s.' % output_dir)
+  if train_op is None:
+    raise ValueError('Missing train_op.')
+  if loss_op is None:
+    raise ValueError('Missing loss_op.')
 
-  global_step_tensor = contrib_variables.assert_or_get_global_step(
-      graph, global_step_tensor)
-  if global_step_tensor is None:
-    raise ValueError('No "global_step" was provided or found in the graph.')
+  with graph.as_default():
+    global_step_tensor = contrib_variables.assert_or_get_global_step(
+        graph, global_step_tensor)
+    if global_step_tensor is None:
+      raise ValueError('No "global_step" was provided or found in the graph.')
 
-  summary_writer = (get_summary_writer(output_dir)
-                    if supervisor_is_chief else None)
+    # Get current step.
+    try:
+      start_step = load_variable(output_dir, global_step_tensor.name)
+    except (errors.NotFoundError, ValueError):
+      start_step = 0
 
-  # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
-  if not supervisor_is_chief:
-    # monitors should run only on the chief.
-    monitors = []
-  elif not monitors:
-    monitors = monitors_lib.get_default_monitors(
-        loss_op=loss_op,
-        summary_op=logging_ops.get_summary_op(),
-        save_summary_steps=supervisor_save_summaries_steps,
-        summary_writer=summary_writer)
+    summary_writer = (get_summary_writer(output_dir)
+                      if supervisor_is_chief else None)
 
-  # Start monitors, can create graph parts.
-  for monitor in monitors:
-    monitor.begin(max_steps=max_steps)
+    # Add default chief monitors if none were provided.
+    if not monitors:
+      monitors = monitors_lib.get_default_monitors(
+          loss_op=loss_op,
+          summary_op=logging_ops.get_summary_op(),
+          save_summary_steps=supervisor_save_summaries_steps,
+          summary_writer=summary_writer) if supervisor_is_chief else []
 
-  supervisor = Supervisor(
+    # TODO(ipolosukhin): Replace all functionality of Supervisor
+    # with Chief-Exclusive Monitors.
+    if not supervisor_is_chief:
+      # Prune list of monitor to the ones runnable on all workers.
+      monitors = [monitor for monitor in monitors if monitor.run_on_all_workers]
+
+    if max_steps is None:
+      max_steps = (start_step + steps) if steps else None
+    # Start monitors, can create graph parts.
+    for monitor in monitors:
+      monitor.begin(max_steps=max_steps)
+
+  supervisor = tf_supervisor.Supervisor(
       graph,
-      init_op=init_op or Supervisor.USE_DEFAULT,
+      init_op=init_op or tf_supervisor.Supervisor.USE_DEFAULT,
       init_feed_dict=init_feed_dict,
       is_chief=supervisor_is_chief,
       logdir=output_dir,
-      saver=_make_saver(graph),
+      saver=_make_saver(graph, keep_checkpoint_max),
       global_step=global_step_tensor,
       summary_op=None,
       summary_writer=summary_writer,
@@ -261,7 +334,7 @@ def train(graph,
           failure_message = 'Model diverged with loss = NaN.'
           if fail_on_nan_loss:
             logging.error(failure_message)
-            raise NanLossDuringTrainingError()
+            raise monitors_lib.NanLossDuringTrainingError()
           else:
             logging.warning(failure_message)
 
@@ -285,6 +358,8 @@ def train(graph,
     except errors.OutOfRangeError as e:
       logging.warn('Got exception during tf.learn training loop possibly '
                    'due to exhausted input queue %s.', e)
+    except StopIteration:
+      logging.info('Exhausted input iterarator.')
     except BaseException as e:  # pylint: disable=broad-except
       # Hold on to any other exceptions while we try recording a final
       # checkpoint and summary.
@@ -331,21 +406,15 @@ def train(graph,
 
 def _get_first_op_from_collection(collection_name):
   elements = ops.get_collection(collection_name)
-  if elements is not None:
-    if elements:
-      return elements[0]
+  if elements:
+    return elements[0]
   return None
 
 
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is not None:
-    if saver:
-      saver = saver[0]
-    else:
-      saver = None
-  if saver is None and variables.all_variables():
+  if saver is None and variables.global_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
@@ -360,27 +429,46 @@ def _get_ready_op():
 
 
 def _get_local_init_op():
+  """Returns the local init ops to initialize tables and local variables."""
   local_init_op = _get_first_op_from_collection(
       ops.GraphKeys.LOCAL_INIT_OP)
   if local_init_op is None:
-    op_list = [variables.initialize_local_variables(),
-               data_flow_ops.initialize_all_tables()]
+    op_list = [
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer()
+    ]
     if op_list:
       local_init_op = control_flow_ops.group(*op_list)
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
   return local_init_op
 
 
-def _start_queue_runners(session, coord):
-  queue_runners = ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
-  threads = []
-  for qr in queue_runners:
-    threads.extend(qr.create_threads(session, coord=coord, daemon=True,
-                                     start=True))
-  return threads
+def _eval_results_to_str(eval_results):
+  return ', '.join('%s = %s' % (k, v) for k, v in sorted(eval_results.items()))
 
 
-# TODO(ptucker): Add unit test.
+def _write_summary_results(output_dir, eval_results, current_global_step):
+  """Writes eval results into summary file in given dir."""
+  logging.info('Saving evaluation summary for step %d: %s', current_global_step,
+               _eval_results_to_str(eval_results))
+  summary_writer = get_summary_writer(output_dir)
+  summary = summary_pb2.Summary()
+  for key in eval_results:
+    if eval_results[key] is None:
+      continue
+    value = summary.value.add()
+    value.tag = key
+    if (isinstance(eval_results[key], np.float32) or
+        isinstance(eval_results[key], float)):
+      value.simple_value = float(eval_results[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
+  summary_writer.add_summary(summary, current_global_step)
+  summary_writer.flush()
+
+
+@_graph_action_deprecation
 def evaluate(graph,
              output_dir,
              checkpoint_path,
@@ -395,7 +483,9 @@ def evaluate(graph,
 
   Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
   to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
-  loop for `max_steps` steps.
+  loop for `max_steps` steps, or until an exception (generally, an
+  end-of-input signal from a reader operation) is raised from running
+  `eval_dict`.
 
   In each step of evaluation, all tensors in the `eval_dict` are evaluated, and
   every `log_every_steps` steps, they are logged. At the very end of evaluation,
@@ -410,7 +500,9 @@ def evaluate(graph,
       Can be `None` if the graph doesn't require loading any variables.
     eval_dict: A `dict` mapping string names to tensors to evaluate. It is
       evaluated in every logging step. The result of the final evaluation is
-      returned. If update_op is None, then it's evaluated in every step.
+      returned. If `update_op` is None, then it's evaluated in every step. If
+      `max_steps` is `None`, this should depend on a reader that will raise an
+      end-of-input exception when the inputs are exhausted.
     update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
@@ -428,39 +520,41 @@ def evaluate(graph,
       that are the result of running eval_dict in the last step. `None` if no
       eval steps were run.
     global_step: The global step this evaluation corresponds to.
+
+  Raises:
+    ValueError: if `output_dir` is empty.
   """
-  global_step_tensor = contrib_variables.assert_or_get_global_step(
-      graph, global_step_tensor)
+  if not output_dir:
+    raise ValueError('Output directory should be non-empty %s.' % output_dir)
+  with graph.as_default():
+    global_step_tensor = contrib_variables.assert_or_get_global_step(
+        graph, global_step_tensor)
 
-  for key, value in eval_dict.items():
-    if not summaries.is_summary_tag_unique(key):
-      continue
-    if isinstance(value, ops.Tensor):
-      summaries.summarize_tensor(value, tag=key)
+    # Create or get summary op, global_step and saver.
+    saver = _get_saver()
+    local_init_op = _get_local_init_op()
+    ready_for_local_init_op = _get_first_op_from_collection(
+        ops.GraphKeys.READY_FOR_LOCAL_INIT_OP)
+    ready_op = _get_ready_op()
 
-  # Create or get summary op, global_step and saver.
-  summary_op = logging_ops.get_summary_op()
-  saver = _get_saver()
-  local_init_op = _get_local_init_op()
-  ready_op = _get_ready_op()
+    session_manager = session_manager_lib.SessionManager(
+        local_init_op=local_init_op,
+        ready_op=ready_op,
+        ready_for_local_init_op=ready_for_local_init_op)
+    session, initialized = session_manager.recover_session(
+        master=supervisor_master,
+        saver=saver,
+        checkpoint_dir=checkpoint_path)
 
-  session_manager = session_manager_lib.SessionManager(
-      local_init_op=local_init_op,
-      ready_op=ready_op)
-  session, initialized = session_manager.recover_session(
-      master=supervisor_master,
-      saver=saver,
-      checkpoint_dir=checkpoint_path)
-
-  # Start queue runners.
-  coord = coordinator.Coordinator()
-  threads = _start_queue_runners(session, coord)
+    # Start queue runners.
+    coord = coordinator.Coordinator()
+    threads = queue_runner.start_queue_runners(session, coord)
 
   with session:
     if not initialized:
       logging.warning('Failed to initialize from %s.', checkpoint_path)
       # TODO(ipolosukhin): This should be failing, but old code relies on that.
-      session.run(variables.initialize_all_variables())
+      session.run(variables.global_variables_initializer())
       if checkpoint_path:
         _restore_from_checkpoint(session, graph, checkpoint_path, saver)
 
@@ -493,30 +587,21 @@ def evaluate(graph,
             duration = time.time() - start_time
             logging.info('Results after %d steps (%.3f sec/batch): %s.',
                          step, float(duration),
-                         ', '.join('%s = %s' % (k, v)
-                                   for k, v in eval_results.items()))
+                         _eval_results_to_str(eval_results))
       finally:
         if eval_results is None or step != eval_step:
           eval_results = session.run(eval_dict, feed_dict=feed_dict)
           eval_step = step
-        # Stop queue runners.
-        coord.request_stop()
-        coord.join(threads, stop_grace_period_secs=120)
+        # Stop session first, before queue runners.
+        session.close()
 
-        # Make our own summary writer and write a summary to the eval dir.
-        # Only is feed_fn is not provided.
-        # TODO(ipolosukhin): Convert evaluation to use streaming_metrics,
-        # then we can save for non feed_fn as well.
-        if summary_op is not None and feed_fn is None:
-          summary_writer = None
-          try:
-            summary_writer = get_summary_writer(output_dir)
-            summary_str = session.run(summary_op)
-            if summary_str:
-              summary_writer.add_summary(summary_str, current_global_step)
-          finally:
-            if summary_writer:
-              summary_writer.close()
+        # Stop queue runners.
+        try:
+          coord.request_stop()
+          coord.join(threads, stop_grace_period_secs=120)
+        except (RuntimeError, errors.CancelledError) as e:
+          logging.warning('Coordinator didn\'t stop cleanly: %s', e)
+
     # catch OutOfRangeError which is thrown when queue is out of data (and for
     # other reasons as well).
     except errors.OutOfRangeError as e:
@@ -531,9 +616,13 @@ def evaluate(graph,
       else:
         logging.warn('Input iterator is exhausted: %s.', e)
 
+  # Save summaries for this evaluation.
+  _write_summary_results(output_dir, eval_results, current_global_step)
+
   return eval_results, current_global_step
 
 
+@_graph_action_deprecation
 def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
   """Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
@@ -555,12 +644,12 @@ def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
       restore_checkpoint_path=restore_checkpoint_path)
 
 
-# TODO(ptucker): Add save_checkpoint_path.
-def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
+@_graph_action_deprecation
+def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
   """Run `output_dict` tensors with each input in `feed_dicts`.
 
-  If `checkpoint_path` is supplied, restore from checkpoint. Otherwise, init all
-  variables.
+  If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
+  init all variables.
 
   Args:
     output_dict: A `dict` mapping string names to `Tensor` objects to run.
@@ -569,9 +658,9 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
     restore_checkpoint_path: A string containing the path to a checkpoint to
       restore.
 
-  Returns:
-    A list of dicts of values read from `output_dict` tensors, one item in the
-    list for each item in `feed_dicts`. Keys are the same as `output_dict`,
+  Yields:
+    A sequence of dicts of values read from `output_dict` tensors, one item
+    yielded for each item in `feed_dicts`. Keys are the same as `output_dict`,
     values are the results read from the corresponding `Tensor` in
     `output_dict`.
 
@@ -584,24 +673,57 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
     raise ValueError('feed_dicts is invalid: %s.' % feed_dicts)
 
   graph = contrib_ops.get_graph_from_inputs(output_dict.values())
-
   with graph.as_default() as g:
     with tf_session.Session('') as session:
+      session.run(
+          resources.initialize_resources(resources.shared_resources() +
+                                         resources.local_resources()))
       if restore_checkpoint_path:
         _restore_from_checkpoint(session, g, restore_checkpoint_path)
       else:
-        session.run(variables.initialize_all_variables())
-      session.run(variables.initialize_local_variables())
-      session.run(data_flow_ops.initialize_all_tables())
-      coord = Coordinator()
+        session.run(variables.global_variables_initializer())
+      session.run(variables.local_variables_initializer())
+      session.run(lookup_ops.tables_initializer())
+      coord = coordinator.Coordinator()
+      threads = None
       try:
-        queue_runner.start_queue_runners(session, coord=coord)
-        return [session.run(output_dict, f) for f in feed_dicts]
+        threads = queue_runner.start_queue_runners(session, coord=coord)
+        for f in feed_dicts:
+          yield session.run(output_dict, f)
       finally:
         coord.request_stop()
+        if threads:
+          coord.join(threads, stop_grace_period_secs=120)
 
 
+@_graph_action_deprecation
+def run_feeds(*args, **kwargs):
+  """See run_feeds_iter(). Returns a `list` instead of an iterator."""
+  return list(run_feeds_iter(*args, **kwargs))
+
+
+@_graph_action_deprecation
 def infer(restore_checkpoint_path, output_dict, feed_dict=None):
+  """Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
+
+  If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
+  init all variables.
+
+  Args:
+    restore_checkpoint_path: A string containing the path to a checkpoint to
+      restore.
+    output_dict: A `dict` mapping string names to `Tensor` objects to run.
+      Tensors must all be from the same graph.
+    feed_dict: `dict` object mapping `Tensor` objects to input values to feed.
+
+  Returns:
+    Dict of values read from `output_dict` tensors. Keys are the same as
+    `output_dict`, values are the results read from the corresponding `Tensor`
+    in `output_dict`.
+
+  Raises:
+    ValueError: if `output_dict` or `feed_dicts` is None or empty.
+  """
   return run_feeds(output_dict=output_dict,
                    feed_dicts=[feed_dict] if feed_dict is not None else [None],
                    restore_checkpoint_path=restore_checkpoint_path)[0]

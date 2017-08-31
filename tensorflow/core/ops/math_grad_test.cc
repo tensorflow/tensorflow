@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <vector>
+
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -21,17 +23,16 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
+namespace {
 
 namespace f = test::function;
-typedef FunctionDefHelper FDH;
+using FDH = FunctionDefHelper;
 
-namespace {
-Session* NewSession() {
+std::unique_ptr<Session> NewSession() {
   SessionOptions opts;
   (*opts.config.mutable_device_count())["CPU"] = 1;
-  return NewSession(opts);
+  return std::unique_ptr<Session>(NewSession(opts));
 }
-}  // end namespace
 
 class MathGradTest : public ::testing::Test {
  protected:
@@ -66,7 +67,7 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, T}},
                  {"Tout", DataTypeSlice{T}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
+            {{"dx"}, "Identity", {"grad"}, {{"T", T}}},
         });
     // Each test case will feed in "x:0" and expects to get "dx:0".
     auto gdef = test::function::GDef(
@@ -85,7 +86,6 @@ class MathGradTest : public ::testing::Test {
       *y = outputs[0];
     }
     TF_CHECK_OK(sess->Close());
-    delete sess;
     return s;
   }
 
@@ -120,7 +120,7 @@ class MathGradTest : public ::testing::Test {
         {
             FDH::Const("one", 1),
             {{"dz"}, "Cast", {"one"}, {{"DstT", T}, {"SrcT", DT_INT32}}},
-            {{"grad"},
+            {{"grad0", "grad1"},
              "SymbolicGradient",
              {"x", "y", "dz"},
              {
@@ -128,8 +128,8 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, T, T}},
                  {"Tout", DataTypeSlice{T, T}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
-            {{"dy"}, "Identity", {"grad:1"}, {{"T", T}}},
+            {{"dx"}, "Identity", {"grad0"}, {{"T", T}}},
+            {{"dy"}, "Identity", {"grad1"}, {{"T", T}}},
         });
     // Each test case will feed in "x:0" and "y:0" and expects to get "d0" and
     // "d:0".
@@ -148,7 +148,6 @@ class MathGradTest : public ::testing::Test {
         sess->Run({{"x:0", x}, {"y:0", y}}, {"d:0", "d:1"}, {}, &outputs));
     CHECK_EQ(outputs.size(), 2);
     TF_CHECK_OK(sess->Close());
-    delete sess;
     *dx = outputs[0];
     *dy = outputs[1];
   }
@@ -177,7 +176,7 @@ class MathGradTest : public ::testing::Test {
         {
             FDH::Const("one", 1),
             {{"dy"}, "Cast", {"one"}, {{"DstT", T}, {"SrcT", DT_INT32}}},
-            {{"grad"},
+            {{"grad0", "grad1"},
              "SymbolicGradient",
              {"x", "i", "dy"},
              {
@@ -185,8 +184,8 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, DT_INT32, T}},
                  {"Tout", DataTypeSlice{T, DT_INT32}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
-            {{"di"}, "Identity", {"grad:1"}, {{"T", DT_INT32}}},
+            {{"dx"}, "Identity", {"grad0"}, {{"T", T}}},
+            {{"di"}, "Identity", {"grad1"}, {{"T", DT_INT32}}},
         });
     // Each test case will feed in "x:0" and expects to get "dx:0".
     auto gdef = test::function::GDef(
@@ -204,7 +203,6 @@ class MathGradTest : public ::testing::Test {
         sess->Run({{"x:0", x}, {"i:0", idx}}, {"d:0", "d:1"}, {}, &outputs));
     CHECK_EQ(outputs.size(), 2);
     TF_CHECK_OK(sess->Close());
-    delete sess;
     *dx = outputs[0];
     *di = outputs[1];
   }
@@ -227,7 +225,6 @@ class MathGradTest : public ::testing::Test {
     TF_CHECK_OK(sess->Run({{"x:0", x}, {"y:0", y}}, {"z:0"}, {}, &outputs));
     CHECK_EQ(outputs.size(), 1);
     TF_CHECK_OK(sess->Close());
-    delete sess;
     return outputs[0];
   }
 
@@ -267,7 +264,7 @@ class MathGradTest : public ::testing::Test {
         {
             FDH::Const("one", 1),
             {{"dz"}, "Cast", {"one"}, {{"DstT", T}, {"SrcT", DT_INT32}}},
-            {{"grad"},
+            {{"grad0", "grad1"},
              "SymbolicGradient",
              {"x", "y", "dz"},
              {
@@ -275,8 +272,8 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, T, T}},
                  {"Tout", DataTypeSlice{T, T}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
-            {{"dy"}, "Identity", {"grad:1"}, {{"T", T}}},
+            {{"dx"}, "Identity", {"grad0"}, {{"T", T}}},
+            {{"dy"}, "Identity", {"grad1"}, {{"T", T}}},
         });
     // Each test case will feed in "x:0" and "y:0" and expects to get "d0" and
     // "d:0".
@@ -295,7 +292,6 @@ class MathGradTest : public ::testing::Test {
         sess->Run({{"x:0", x}, {"y:0", y}}, {"d:0", "d:1"}, {}, &outputs));
     CHECK_EQ(outputs.size(), 2);
     TF_CHECK_OK(sess->Close());
-    delete sess;
     *dx = outputs[0];
     *dy = outputs[1];
   }
@@ -331,7 +327,7 @@ class MathGradTest : public ::testing::Test {
     auto grad = FDH::Define("TestGrad", {"c:bool", "x:float", "y:float"},
                             {"dc:bool", "dx:float", "dy:float"}, {},
                             {FDH::Const("dz", 1.f),
-                             {{"grad"},
+                             {{"grad0", "grad1", "grad2"},
                               "SymbolicGradient",
                               {"c", "x", "y", "dz"},
                               {
@@ -339,9 +335,9 @@ class MathGradTest : public ::testing::Test {
                                   {"Tin", DataTypeSlice{DT_BOOL, T, T, T}},
                                   {"Tout", DataTypeSlice{DT_BOOL, T, T}},
                               }},
-                             {{"dc"}, "Identity", {"grad:0"}, {{"T", DT_BOOL}}},
-                             {{"dx"}, "Identity", {"grad:1"}, {{"T", T}}},
-                             {{"dy"}, "Identity", {"grad:2"}, {{"T", T}}}});
+                             {{"dc"}, "Identity", {"grad0"}, {{"T", DT_BOOL}}},
+                             {{"dx"}, "Identity", {"grad1"}, {{"T", T}}},
+                             {{"dy"}, "Identity", {"grad2"}, {{"T", T}}}});
     // Each test case will feed in "x:0" and expects to get "dx:0".
     auto gdef = test::function::GDef(
         {
@@ -356,17 +352,16 @@ class MathGradTest : public ::testing::Test {
     TF_CHECK_OK(sess->Create(gdef));
     std::vector<Tensor> outputs;
     TF_CHECK_OK(sess->Run({{"c:0", c}, {"x:0", x}, {"y:0", y}},
-                           {"d:0", "d:1", "d:2"}, {}, &outputs));
+                          {"d:0", "d:1", "d:2"}, {}, &outputs));
     CHECK_EQ(outputs.size(), 3);
     TF_CHECK_OK(sess->Close());
-    delete sess;
     *dc = outputs[0];
     *dx = outputs[1];
     *dy = outputs[2];
   }
 };
 
-static void HasError(const Status& s, const string& substr) {
+void HasError(const Status& s, const string& substr) {
   EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
       << s << ", expected substring " << substr;
 }
@@ -388,6 +383,9 @@ class TestOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { ctx->set_output(0, Tensor()); }
 };
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_SYCL), TestOp);
+#endif // TENSORFLOW_USE_SYCL
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});
@@ -417,13 +415,13 @@ TEST_F(MathGradTest, Neg) {
   test::ExpectClose(ans, dx);
 }
 
-TEST_F(MathGradTest, Inv) {
+TEST_F(MathGradTest, Reciprocal) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
   auto g = [](float x) { return -1.f / (x * x); };
   auto dx = test::AsTensor<float>(
       {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
-  auto ans = SymGrad("Inv", x);
+  auto ans = SymGrad("Reciprocal", x);
   test::ExpectClose(ans, dx);
 }
 
@@ -467,6 +465,16 @@ TEST_F(MathGradTest, Exp) {
   test::ExpectClose(ans, dx);
 }
 
+TEST_F(MathGradTest, Expm1) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) { return std::exp(x); };
+  auto dx = test::AsTensor<float>(
+      {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Expm1", x);
+  test::ExpectClose(ans, dx);
+}
+
 TEST_F(MathGradTest, Log) {
   auto x = test::AsTensor<float>({0.1f, 1.f, 2.f, 3.f, 4.f, 10.f},
                                  TensorShape({2, 3}));
@@ -474,6 +482,36 @@ TEST_F(MathGradTest, Log) {
   auto dx = test::AsTensor<float>(
       {g(.1f), g(1.f), g(2.f), g(3.f), g(4.f), g(10.f)}, TensorShape({2, 3}));
   auto ans = SymGrad("Log", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Log1p) {
+  auto x = test::AsTensor<float>({0.1f, 1.f, 2.f, 3.f, 4.f, 10.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) { return 1 / (1 + x); };
+  auto dx = test::AsTensor<float>(
+      {g(.1f), g(1.f), g(2.f), g(3.f), g(4.f), g(10.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Log1p", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Sinh) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) { return std::cosh(x); };
+  auto dx = test::AsTensor<float>(
+      {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Sinh", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Cosh) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) { return std::sinh(x); };
+  auto dx = test::AsTensor<float>(
+      {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Cosh", x);
   test::ExpectClose(ans, dx);
 }
 
@@ -487,6 +525,44 @@ TEST_F(MathGradTest, Tanh) {
   auto dx = test::AsTensor<float>(
       {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
   auto ans = SymGrad("Tanh", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Asinh) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) {
+    auto y = std::asinh(x);
+    return std::cosh(y);
+  };
+  auto dx = test::AsTensor<float>(
+      {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Asinh", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Acosh) {
+  auto x = test::AsTensor<float>({6.f, 5.f, 4.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) {
+    auto y = std::acosh(x);
+    return std::sinh(y);
+  };
+  auto dx = test::AsTensor<float>(
+      {g(6.f), g(5.f), g(4.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Acosh", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Atanh) {
+  auto x = test::AsTensor<float>({-0.3f, -0.2f, -0.1f, 0.1f, 0.2f, 0.3f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) {
+    return 1.f / (1.f - x * x);
+  };
+  auto dx = test::AsTensor<float>(
+      {g(-0.3f), g(-0.2f), g(-0.1f), g(0.1f), g(0.2f), g(0.3f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Atanh", x);
   test::ExpectClose(ans, dx);
 }
 
@@ -536,6 +612,7 @@ TEST_F(MathGradTest, Cos) {
 // TODO(zhifengc)
 // TEST_F(MathGradSComplexTest, Real) {}
 // TEST_F(MathGradSComplexTest, Imag) {}
+// TEST_F(MathGradSComplexTest, Angle) {}
 // TEST_F(MathGradSComplexTest, Conj) {}
 // TEST_F(MathGradTernary, Select) {}
 
@@ -651,46 +728,60 @@ TEST_F(MathGradTest, Div) {
 }
 
 TEST_F(MathGradTest, Pow) {
-  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+  auto x = test::AsTensor<float>({0.f, 1.f, 2.f, 3.f, 4.f, 5.f},
                                  TensorShape({2, 3}));
   auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
   Tensor dx;
   Tensor dy;
+  auto g = [](float x, float y) { return y * std::pow(x, y - 1); };
+  auto h = [](float x, float y) {
+    return std::pow(x, y) * (x ? std::log(x) : 0);
+  };
   {
     SymGrad("Pow", x, y, &dx, &dy);
-    {
-      auto g = [](float x, float y) { return y * std::pow(x, y - 1); };
-      test::ExpectClose(
-          dx, test::AsTensor<float>({g(1.f, .5f), g(2.f, .5f), g(3.f, .5f),
-                                     g(4.f, 2.f), g(5.f, 2.f), g(6.f, 2.f)},
-                                    TensorShape({2, 3})));
-    }
-    {
-      auto g = [](float x, float y) { return std::pow(x, y) * std::log(x); };
-      test::ExpectClose(
-          dy, test::AsTensor<float>({g(1.f, .5f) + g(2.f, .5f) + g(3.f, .5f),
-                                     g(4.f, 2.f) + g(5.f, 2.f) + g(6.f, 2.f)},
-                                    TensorShape({2, 1})));
-    }
+    test::ExpectClose(
+        dx, test::AsTensor<float>({g(0.f, .5f), g(1.f, .5f), g(2.f, .5f),
+                                   g(3.f, 2.f), g(4.f, 2.f), g(5.f, 2.f)},
+                                  TensorShape({2, 3})));
+    test::ExpectClose(
+        dy, test::AsTensor<float>({h(0.f, .5f) + h(1.f, .5f) + h(2.f, .5f),
+                                   h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                  TensorShape({2, 1})));
   }
   {  // Swap x and y
     SymGrad("Pow", y, x, &dy, &dx);
-    {
-      auto g = [](float x, float y) { return y * std::pow(x, y - 1); };
-      test::ExpectClose(
-          dy, test::AsTensor<float>({g(.5f, 1.f) + g(.5f, 2.f) + g(.5f, 3.f),
-                                     g(2.f, 4.f) + g(2.f, 5.f) + g(2.f, 6.f)},
-                                    TensorShape({2, 1})));
-    }
-    {
-      auto g = [](float x, float y) { return std::pow(x, y) * std::log(x); };
-      test::ExpectClose(
-          dx, test::AsTensor<float>({g(.5f, 1.f), g(.5f, 2.f), g(.5f, 3.f),
-                                     g(2.f, 4.f), g(2.f, 5.f), g(2.f, 6.f)},
-                                    TensorShape({2, 3})));
-    }
+    test::ExpectClose(
+        dy, test::AsTensor<float>({g(.5f, 0.f) + g(.5f, 1.f) + g(.5f, 2.f),
+                                   g(2.f, 3.f) + g(2.f, 4.f) + g(2.f, 5.f)},
+                                  TensorShape({2, 1})));
+    test::ExpectClose(
+        dx, test::AsTensor<float>({h(.5f, 0.f), h(.5f, 1.f), h(.5f, 2.f),
+                                   h(2.f, 3.f), h(2.f, 4.f), h(2.f, 5.f)},
+                                  TensorShape({2, 3})));
   }
 }
+
+//TODO{lukeiwanski}: Implement Complex Pow for SYCL
+#ifndef TENSORFLOW_USE_SYCL
+TEST_F(MathGradTest, ComplexPow) {
+  auto x = test::AsTensor<complex64>({0.f, 2.f, -2.f}, TensorShape({3}));
+  auto y = test::AsTensor<complex64>({2.f, 2.f, 2.f}, TensorShape({3}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](complex64 x, complex64 y) { return y * std::pow(x, y - 1.f); };
+  auto h = [](complex64 x, complex64 y) {
+    return std::pow(x, y) * (x != complex64(0) ? std::log(x) : 0);
+  };
+  SymGrad("Pow", x, y, &dx, &dy);
+
+  test::ExpectClose(
+      dx, test::AsTensor<complex64>({g(0.f, 2.f), g(2.f, 2.f), g(-2.f, 2.f)},
+                                    TensorShape({3})));
+  test::ExpectClose(
+      dy, test::AsTensor<complex64>({h(0.f, 2.f), h(2.f, 2.f), h(-2.f, 2.f)},
+                                    TensorShape({3})));
+}
+#endif // TENSORFLOW_USE_SYCL
 
 TEST_F(MathGradTest, Maximum) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
@@ -852,6 +943,8 @@ TEST_F(MathGradTest, MatMul_11) {
   test::ExpectClose(dy, MatMul(dz, true, x, true));
 }
 
+//TODO{lukeiwanski}: Implement BatchMatMul for SYCL
+#ifndef TENSORFLOW_USE_SYCL
 TEST_F(MathGradTest, BatchMatMul_00) {
   auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
                                  TensorShape({1, 2, 3}));
@@ -899,6 +992,7 @@ TEST_F(MathGradTest, BatchMatMul_11) {
   test::ExpectClose(dx, BatchMatMul(y, true, dz, true));
   test::ExpectClose(dy, BatchMatMul(dz, true, x, true));
 }
+#endif // TENSORFLOW_USE_SYCL
 
 TEST_F(MathGradTest, Sum_dim0) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
@@ -1086,4 +1180,5 @@ TEST_F(MathGradTest, Max_dim0_dim1_Dups) {
       di, test::AsTensor<int32>({0, 0}, TensorShape({2})));
 }
 
-}  // end namespace tensorflow
+}  // namespace
+}  // namespace tensorflow

@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
+# TODO(jart): Delete non-slim imports
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics
 from tensorflow.contrib.framework.python.ops.arg_scope import *
@@ -31,9 +32,17 @@ from tensorflow.contrib.layers.python.layers.initializers import *
 from tensorflow.contrib.layers.python.layers.regularizers import *
 from tensorflow.contrib.slim.python.slim import evaluation
 from tensorflow.contrib.slim.python.slim import learning
+from tensorflow.contrib.slim.python.slim import model_analyzer
 from tensorflow.contrib.slim.python.slim import queues
+from tensorflow.contrib.slim.python.slim import summaries
+from tensorflow.contrib.slim.python.slim.data import data_decoder
+from tensorflow.contrib.slim.python.slim.data import data_provider
+from tensorflow.contrib.slim.python.slim.data import dataset
+from tensorflow.contrib.slim.python.slim.data import dataset_data_provider
+from tensorflow.contrib.slim.python.slim.data import parallel_reader
+from tensorflow.contrib.slim.python.slim.data import prefetch_queue
+from tensorflow.contrib.slim.python.slim.data import tfexample_decoder
 from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,line-too-long,g-importing-member,wildcard-import
 
 __all__ = make_all(__name__)
-

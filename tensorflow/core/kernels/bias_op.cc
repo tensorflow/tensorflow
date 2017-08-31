@@ -35,14 +35,13 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
-class BiasOp;
-
-template <typename T>
-class BiasOp<CPUDevice, T> : public BinaryOp<T> {
+class BiasOp : public BinaryOp<T> {
  public:
-  typedef CPUDevice Device;
   explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
@@ -52,7 +51,8 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
       data_format_ = FORMAT_NHWC;
     }
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("CPU BiasOp only supports NHWC."));
+                errors::InvalidArgument(context->device()->name() +
+                                        " BiasOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -74,8 +74,9 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
             bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
+    if (input.NumElements() == 0) return;
 
     switch (input.shape().dims()) {
       case 2:
@@ -121,6 +122,21 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(type)                                          \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("BiasAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
+      BiasOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      BiasOp<SYCLDevice, type>);
+
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
@@ -164,12 +180,8 @@ struct AccumulatorType<Eigen::half> {
 }  // namespace
 
 template <typename Device, typename T>
-class BiasGradOp;
-
-template <typename T>
-class BiasGradOp<CPUDevice, T> : public OpKernel {
+class BiasGradOp : public OpKernel {
  public:
-  typedef CPUDevice Device;
   explicit BiasGradOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
@@ -179,7 +191,8 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
       data_format_ = FORMAT_NHWC;
     }
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("CPU BiasGradOp only supports NHWC."));
+                errors::InvalidArgument(context->device()->name() +
+                                        " BiasGradOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -191,8 +204,9 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
                                         output_backprop.shape().DebugString()));
 
     OP_REQUIRES(
-        context, FastBoundsCheck(output_backprop.NumElements(),
-                                 std::numeric_limits<int32>::max()),
+        context,
+        FastBoundsCheck(output_backprop.NumElements(),
+                        std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
     int32 batch, height, width, channel;
@@ -202,18 +216,25 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-    Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
+    if (channel == 0) {
+      return;  // Nothing to do
+    } else if (output_backprop.NumElements() == 0) {
+      // Eigen often crashes by design on empty tensors, but setZero is safe
+      output->template flat<T>().setZero();
+    } else {
+      Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
 #ifdef EIGEN_HAS_INDEX_LIST
-    Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+      Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
 #else
-    Eigen::array<int, 1> reduction_axis = {0};
+      Eigen::array<int, 1> reduction_axis = {0};
 #endif
-    output->template flat<T>().device(context->eigen_device<CPUDevice>()) =
-        output_backprop.flat<T>()
-            .template cast<typename AccumulatorType<T>::type>()
-            .reshape(two_dims)
-            .sum(reduction_axis)
-            .template cast<T>();
+      output->template flat<T>().device(context->eigen_device<Device>()) =
+          output_backprop.flat<T>()
+              .template cast<typename AccumulatorType<T>::type>()
+              .reshape(two_dims)
+              .sum(reduction_axis)
+              .template cast<T>();
+    }
   }
 
  private:
@@ -228,6 +249,18 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(type)                                            \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("BiasAddGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      BiasGradOp<SYCLDevice, type>);
+
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 template <typename T>
@@ -254,9 +287,6 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 errors::InvalidArgument("Biases must be 1D: ",
                                         bias.shape().DebugString()));
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
     int32 batch, height, width, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &channel);
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
@@ -265,10 +295,15 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
                     "of the input tensor: ",
                     bias.shape().DebugString(), " vs. ", channel, " in ",
                     input.shape().DebugString()));
-    BiasGPU<T>::compute(context->template eigen_device<Device>(),
-                        input.flat<T>().data(), bias.flat<T>().data(),
-                        output->flat<T>().data(), batch, width, height, channel,
-                        data_format_);
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
+    if (input.NumElements() > 0) {
+      BiasGPU<T>::compute(context->template eigen_device<Device>(),
+                          input.flat<T>().data(), bias.flat<T>().data(),
+                          output->flat<T>().data(), batch, width, height,
+                          channel, data_format_);
+    }
   }
 
  private:
@@ -314,15 +349,18 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (channel == 0) return;
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     perftools::gputools::DeviceMemoryBase output_ptr(
         output->flat<T>().data(), output->NumElements() * sizeof(T));
     stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
-    BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
-                            output_backprop.template flat<T>().data(),
-                            output->flat<T>().data(), batch, width, height,
-                            channel, data_format_);
+    if (output_backprop.NumElements() > 0) {
+      BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
+                              output_backprop.template flat<T>().data(),
+                              output->flat<T>().data(), batch, width, height,
+                              channel, data_format_);
+    }
   }
 
  private:

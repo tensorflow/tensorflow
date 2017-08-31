@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -27,6 +28,7 @@ TEST(PartialTensorShapeTest, Default) {
   // with unknown rank.
   const PartialTensorShape s;
   EXPECT_EQ(s.dims(), -1);
+  EXPECT_TRUE(s.unknown_rank());
 }
 
 TEST(PartialTensorShapeTest, Concatenate) {
@@ -34,6 +36,7 @@ TEST(PartialTensorShapeTest, Concatenate) {
   ASSERT_EQ(2, s.dims());
   EXPECT_EQ(10, s.dim_size(0));
   EXPECT_EQ(5, s.dim_size(1));
+  EXPECT_EQ(50, s.num_elements());
 
   const auto s1 = s.Concatenate(s);
   ASSERT_EQ(4, s1.dims());
@@ -41,6 +44,7 @@ TEST(PartialTensorShapeTest, Concatenate) {
   EXPECT_EQ(5, s1.dim_size(1));
   EXPECT_EQ(10, s1.dim_size(2));
   EXPECT_EQ(5, s1.dim_size(3));
+  EXPECT_EQ(50 * 50, s1.num_elements());
 
   const auto s2 = s.Concatenate(-1);
   const auto s3 = s2.Concatenate(0);
@@ -53,9 +57,12 @@ TEST(PartialTensorShapeTest, Concatenate) {
   EXPECT_EQ(-1, s2.dim_size(2));
   EXPECT_EQ(-1, s3.dim_size(2));
   EXPECT_EQ(0, s3.dim_size(3));
+  EXPECT_EQ(-1, s2.num_elements());
+  EXPECT_EQ(-1, s3.num_elements());
 
   const auto s4 = s.Concatenate(PartialTensorShape());
-  ASSERT_EQ(-1, s4.dims());
+  EXPECT_EQ(-1, s4.dims());
+  EXPECT_EQ(-1, s4.num_elements());
 }
 
 TEST(PartialTensorShapeTest, InvalidShapeProto) {
@@ -114,6 +121,25 @@ TEST(PartialTensorShapeTest, ToTensorShape) {
   EXPECT_FALSE(d.AsTensorShape(&full));
 }
 
+TEST(PartialTensorShapeTest, PartialShapeIdenticalTo) {
+  const PartialTensorShape a({-1, 0, 1});
+  const PartialTensorShape b({1, 0, 1});
+  const PartialTensorShape c({-1, -1, 1});
+  const PartialTensorShape d({1, 0});
+  const PartialTensorShape e({-1, 0, 2});
+  const PartialTensorShape f({});
+  const PartialTensorShape g;
+  std::vector<PartialTensorShape> shapes = {a, b, c, d, e, f, g};
+  for (int i = 0; i < shapes.size(); ++i) {
+    for (int j = 0; j < i; ++j) {
+      if (i == j) {
+        EXPECT_TRUE(shapes[i].IsIdenticalTo(shapes[j]));
+      } else {
+        EXPECT_FALSE(shapes[i].IsIdenticalTo(shapes[j]));
+      }
+    }
+  }
+}
 
 TEST(PartialTensorShapeTest, PartialShapeCompatibleWith) {
   const PartialTensorShape a({-1, 0, 1});
@@ -220,7 +246,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
   // Empty made partial shapes should still be fully defined
-  const int64 dims[0] = {};
+  const int64 dims[1] = {};
   PartialTensorShape shape;
   EXPECT_FALSE(shape.IsFullyDefined());
   TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 0, &shape));
@@ -236,6 +262,14 @@ TEST(PartialTensorShapeTest, MakePartialShapeFull) {
   for (int i = 0; i < 3; i++) {
     EXPECT_EQ(shape.dim_size(i), dims[i]);
   }
+}
+
+TEST(PartialTensorShapeTest, MakePartialShapeInvalid) {
+  // Check that arrays are copied through correctly
+  const int64 dims[3] = {7, -2, 2};
+  PartialTensorShape shape;
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            PartialTensorShape::MakePartialShape(dims, 3, &shape).code());
 }
 
 }  // namespace

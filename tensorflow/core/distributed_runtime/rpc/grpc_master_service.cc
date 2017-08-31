@@ -25,7 +25,7 @@ limitations under the License.
 // A GrpcMasterService discovers remote devices in the background and
 // keeps track of statistics of those remote devices.
 //
-// Each session analyses the graph, places nodes across available
+// Each session analyzes the graph, places nodes across available
 // devices, and ultimately drives the graph computation by initiating
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
@@ -40,23 +40,23 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
 class GrpcMasterService : public AsyncServiceInterface {
  public:
-  GrpcMasterService(MasterEnv* env, ::grpc::ServerBuilder* builder)
-      : master_impl_(new Master(env, 0.0)), is_shutdown_(false) {
+  GrpcMasterService(Master* master, int64 default_timeout_in_ms,
+                    ::grpc::ServerBuilder* builder)
+      : master_impl_(master),
+        default_timeout_in_ms_(default_timeout_in_ms),
+        is_shutdown_(false) {
     builder->RegisterService(&master_service_);
-    cq_ = builder->AddCompletionQueue().release();
+    cq_ = builder->AddCompletionQueue();
   }
 
-  ~GrpcMasterService() {
-    delete shutdown_alarm_;
-    delete cq_;
-    delete master_impl_;
-  }
+  ~GrpcMasterService() override { delete shutdown_alarm_; }
 
   void Shutdown() override {
     bool did_shutdown = false;
@@ -73,7 +73,7 @@ class GrpcMasterService : public AsyncServiceInterface {
       // that causes the completion queue to be shut down on the
       // polling thread.
       shutdown_alarm_ =
-          new ::grpc::Alarm(cq_, gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
+          new ::grpc::Alarm(cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
     }
   }
 
@@ -94,17 +94,18 @@ class GrpcMasterService : public AsyncServiceInterface {
     if (!is_shutdown_) {                                                      \
       Call<GrpcMasterService, grpc::MasterService::AsyncService,              \
            method##Request, method##Response>::                               \
-          EnqueueRequest(&master_service_, cq_,                               \
+          EnqueueRequest(&master_service_, cq_.get(),                         \
                          &grpc::MasterService::AsyncService::Request##method, \
                          &GrpcMasterService::method##Handler,                 \
                          (supports_cancel));                                  \
     }                                                                         \
   } while (0)
 
-  void HandleRPCsLoop() {
+  void HandleRPCsLoop() override {
     ENQUEUE_REQUEST(CreateSession, true);
     ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(PartialRunSetup, false);
       ENQUEUE_REQUEST(RunStep, true);
     }
     ENQUEUE_REQUEST(CloseSession, false);
@@ -118,7 +119,6 @@ class GrpcMasterService : public AsyncServiceInterface {
           static_cast<UntypedCall<GrpcMasterService>::Tag*>(tag);
       if (callback_tag) {
         callback_tag->OnCompleted(this, ok);
-        delete callback_tag;
       } else {
         // NOTE(mrry): A null `callback_tag` indicates that this is
         // the shutdown alarm.
@@ -128,13 +128,14 @@ class GrpcMasterService : public AsyncServiceInterface {
   }
 
  private:
-  Master* master_impl_;                // Owned.
-  ::grpc::ServerCompletionQueue* cq_;  // Owned.
+  Master* master_impl_ = nullptr;  // Not owned.
+  const int64 default_timeout_in_ms_;
+  std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   grpc::MasterService::AsyncService master_service_;
 
   mutex mu_;
   bool is_shutdown_ GUARDED_BY(mu_);
-  ::grpc::Alarm* shutdown_alarm_;
+  ::grpc::Alarm* shutdown_alarm_ = nullptr;
 
   template <class RequestMessage, class ResponseMessage>
   using MasterCall = Call<GrpcMasterService, grpc::MasterService::AsyncService,
@@ -160,14 +161,37 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(ExtendSession, false);
   }
 
+  // RPC handler for setting up a partial run call.
+  void PartialRunSetupHandler(
+      MasterCall<PartialRunSetupRequest, PartialRunSetupResponse>* call) {
+    master_impl_->PartialRunSetup(&call->request, &call->response,
+                                  [call](const Status& status) {
+                                    call->SendResponse(ToGrpcStatus(status));
+                                  });
+    ENQUEUE_REQUEST(PartialRunSetup, false);
+  }
+
   // RPC handler for running one step in a session.
   void RunStepHandler(MasterCall<RunStepRequest, RunStepResponse>* call) {
+    auto* trace = TraceRpc("RunStep/Server", call->client_metadata());
     CallOptions* call_opts = new CallOptions;
+    if (call->request.options().timeout_in_ms() > 0) {
+      call_opts->SetTimeout(call->request.options().timeout_in_ms());
+    } else {
+      call_opts->SetTimeout(default_timeout_in_ms_);
+    }
+    RunStepRequestWrapper* wrapped_request =
+        new ProtoRunStepRequest(&call->request);
+    MutableRunStepResponseWrapper* wrapped_response =
+        new NonOwnedProtoRunStepResponse(&call->response);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunStep(call_opts, &call->request, &call->response,
-                          [call, call_opts](const Status& status) {
+    master_impl_->RunStep(call_opts, wrapped_request, wrapped_response,
+                          [call, call_opts, wrapped_request, wrapped_response,
+                           trace](const Status& status) {
                             call->ClearCancelCallback();
                             delete call_opts;
+                            delete wrapped_request;
+                            delete trace;
                             call->SendResponse(ToGrpcStatus(status));
                           });
     ENQUEUE_REQUEST(RunStep, true);
@@ -203,13 +227,25 @@ class GrpcMasterService : public AsyncServiceInterface {
   }
 #undef ENQUEUE_REQUEST
 
+  // Start tracing, including the ID attached to the RPC.
+  port::Tracing::TraceMe* TraceRpc(
+      StringPiece name,
+      const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
+    StringPiece id;
+    auto it = metadata.find(GrpcIdKey());
+    if (it != metadata.end()) {
+      id = StringPiece(it->second.data(), it->second.size());
+    }
+    return new port::Tracing::TraceMe(name, id);
+  }
+
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
 };
 
-AsyncServiceInterface* NewGrpcMasterService(MasterEnv* env,
+AsyncServiceInterface* NewGrpcMasterService(Master* master,
+                                            int64 default_timeout_in_ms,
                                             ::grpc::ServerBuilder* builder) {
-  CHECK(!env->local_devices.empty());
-  return new GrpcMasterService(env, builder);
+  return new GrpcMasterService(master, default_timeout_in_ms, builder);
 }
 
 }  // end namespace tensorflow

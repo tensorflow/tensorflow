@@ -18,7 +18,7 @@ service.
 
 In order to run the notebook locally, the following dependencies must be installed:
 
-- Python 2.7
+- Python 2.7 or 3.5
 - TensorFlow (>=r0.7)
 - NumPy
 - Jupyter Notebook

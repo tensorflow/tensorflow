@@ -19,5 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-from tensorflow.contrib.tensor_forest.python.ops import inference_ops
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import data_ops
+from tensorflow.contrib.tensor_forest.python.ops import model_ops
+from tensorflow.contrib.tensor_forest.python.ops import stats_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops

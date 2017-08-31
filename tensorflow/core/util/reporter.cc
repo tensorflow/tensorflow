@@ -41,8 +41,8 @@ Status TestReporter::Benchmark(int64 iters, double cpu_time, double wall_time,
                                double throughput) {
   if (closed_) return Status::OK();
   benchmark_entry_.set_iters(iters);
-  benchmark_entry_.set_cpu_time(cpu_time);
-  benchmark_entry_.set_wall_time(wall_time);
+  benchmark_entry_.set_cpu_time(cpu_time / iters);
+  benchmark_entry_.set_wall_time(wall_time / iters);
   benchmark_entry_.set_throughput(throughput);
   return Status::OK();
 }
@@ -54,14 +54,12 @@ Status TestReporter::Initialize() {
   string mangled_fname = strings::StrCat(
       fname_, str_util::Join(str_util::Split(test_name_, '/'), "__"));
   Env* env = Env::Default();
-  if (env->FileExists(mangled_fname)) {
+  if (env->FileExists(mangled_fname).ok()) {
     return errors::InvalidArgument("Cannot create TestReporter, file exists: ",
                                    mangled_fname);
   }
-  WritableFile* log_file;
-  TF_RETURN_IF_ERROR(env->NewWritableFile(mangled_fname, &log_file));
-  log_file_.reset(log_file);
-  TF_RETURN_IF_ERROR(log_file->Flush());
+  TF_RETURN_IF_ERROR(env->NewWritableFile(mangled_fname, &log_file_));
+  TF_RETURN_IF_ERROR(log_file_->Flush());
 
   benchmark_entry_.set_name(test_name_);
   closed_ = false;

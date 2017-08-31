@@ -1,8 +1,8 @@
-# Tensorflow Builds
+# TensorFlow Builds
 
 This directory contains all the files and setup instructions to run all
 the important builds and tests. **You can trivially run it yourself!** It also
-run continuous integration [ci.tensorflow.org](http://ci.tensorflow.org).
+run continuous integration [ci.tensorflow.org](https://ci.tensorflow.org).
 
 
 
@@ -13,33 +13,37 @@ run continuous integration [ci.tensorflow.org](http://ci.tensorflow.org).
 
    You can run all the jobs **without docker** if you are on mac or on linux
    and you just don't want docker. Just install all the dependencies from
-   [os_setup.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md).
+   [Installing TensorFlow](https://www.tensorflow.org/install/).
    Then run any of the one liners below without the
    `tensorflow/tools/ci_build/ci_build.sh` in them.
 
 2. Clone tensorflow repository.
 
    ```bash
-git clone https://github.com/tensorflow/tensorflow.git
-```
+   git clone https://github.com/tensorflow/tensorflow.git
+   ```
 
 3. Go to tensorflow directory
 
    ```bash
-cd tensorflow
-```
+   cd tensorflow
+   ```
 
 4. Build what you want, for example
 
    ```bash
-tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-```
-
+   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+   ```
+   If you are using the Docker image on Windows or OS X, the Docker VM's default
+   memory limit may be too low to build TensorFlow. This can result in
+   strange-looking errors, e.g. the compilation may fail with `gcc: internal
+   compiler error: Killed (program cc1plus)`. Try increasing the memory limit in
+   the Docker preferences.
 
 
 ## Jobs
 
-The jobs run by [ci.tensorflow.org](http://ci.tensorflow.org) include following:
+The jobs run by [ci.tensorflow.org](https://ci.tensorflow.org) include following:
 
 ```bash
 # Note: You can run the following one-liners yourself if you have Docker. Run
@@ -53,10 +57,10 @@ tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 tensorflow/tools/ci_build/ci_build.sh GPU bazel test -c opt --config=cuda //tensorflow/...
 
 # build pip with gpu support
-tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU
+tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU -c opt --config=cuda
 
 # build and run gpu tests using python 3
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3" tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3" tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU -c opt --config=cuda
 
 # build android example app
 tensorflow/tools/ci_build/ci_build.sh ANDROID tensorflow/tools/ci_build/builds/android.sh
@@ -71,14 +75,14 @@ CI_DOCKER_EXTRA_PARAMS='-it --rm' tensorflow/tools/ci_build/ci_build.sh CPU /bin
 **Note**: The set of jobs and how they are triggered is still evolving.
 There are builds for master branch on cpu, gpu and android. There is a build
 for incoming gerrit changes. Gpu tests and benchmark are coming soon. Check
-[ci.tensorflow.org](http://ci.tensorflow.org) for current jobs.
+[ci.tensorflow.org](https://ci.tensorflow.org) for current jobs.
 
 
 
-## How Does Tensorflow Continuous Integration Work
+## How Does TensorFlow Continuous Integration Work
 
 We use [jenkins](https://jenkins-ci.org/) as our continuous integration.
-It is running at [ci.tensorflow.org](http://ci.tensorflow.org).
+It is running at [ci.tensorflow.org](https://ci.tensorflow.org).
 All the jobs are run within [docker](http://www.docker.com/) containers.
 
 Builds can be triggered by push to master, push a change set or manually.

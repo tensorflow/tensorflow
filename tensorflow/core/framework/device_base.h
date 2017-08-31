@@ -17,18 +17,21 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
+#ifdef TENSORFLOW_USE_SYCL
+struct SyclDevice;
+#endif
 }  // end namespace Eigen
 
 namespace perftools {
@@ -40,10 +43,12 @@ class Stream;
 namespace tensorflow {
 
 class Device;
+class DeviceAttributes;
 class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
+class TensorProto;
 
 namespace thread {
 class ThreadPool;
@@ -80,13 +85,14 @@ class DeviceContext : public core::RefCounted {
   // device_tensor into "cpu_tensor".  "cpu_tensor" must be allocated
   // to be of the same size as "device_tensor".
   virtual void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                     const string& tensor_name, Device* device,
+                                     StringPiece tensor_name, Device* device,
                                      Tensor* cpu_tensor, StatusCallback done) {
     done(errors::Internal("Unrecognized device type in device-to-CPU Copy"));
   }
 };
 
-typedef std::unordered_map<int, DeviceContext*> DeviceContextMap;
+// map[i] is the DeviceContext* for the node with id i, if i < map.size().
+typedef std::vector<DeviceContext*> DeviceContextMap;
 
 class DeviceBase {
  public:
@@ -110,7 +116,7 @@ class DeviceBase {
     cpu_worker_threads_ = t;
   }
 
-  const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
+  virtual const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
     CHECK(cpu_worker_threads_ != nullptr);
     return cpu_worker_threads_;
   }
@@ -127,6 +133,7 @@ class DeviceBase {
     perftools::gputools::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
     EventMgr* event_mgr = nullptr;
+    int gpu_id = -1;
   };
 
   // Does not take ownership.
@@ -134,7 +141,7 @@ class DeviceBase {
     gpu_device_info_ = g;
   }
 
-  const GpuDeviceInfo* tensorflow_gpu_device_info() const {
+  virtual const GpuDeviceInfo* tensorflow_gpu_device_info() const {
     return gpu_device_info_;
   }
 
@@ -143,10 +150,15 @@ class DeviceBase {
     eigen_cpu_device_ = d;
   }
 
+#ifdef TENSORFLOW_USE_SYCL
+  void set_eigen_sycl_device(Eigen::SyclDevice* d) { eigen_sycl_device_ = d; }
+#endif
+
   // Return the Allocator implementation to use based on the allocator
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
     LOG(FATAL) << "GetAllocator() is not implemented.";
+    return nullptr;
   }
 
   // Return the Allocator implementation to use based on the allocator
@@ -159,10 +171,17 @@ class DeviceBase {
     return GetAllocator(attr);
   }
 
-  const Eigen::ThreadPoolDevice* eigen_cpu_device() {
+  virtual const Eigen::ThreadPoolDevice* eigen_cpu_device() {
     CHECK(eigen_cpu_device_ != nullptr);
     return eigen_cpu_device_;
   }
+
+#ifdef TENSORFLOW_USE_SYCL
+  virtual const Eigen::SyclDevice* eigen_sycl_device() const {
+    CHECK(eigen_sycl_device_ != nullptr);
+    return eigen_sycl_device_;
+  }
+#endif
 
   // Caller owns the return value. The OpKernelContext calls this even
   // for devices that do not implement an eigen_gpu_device. Overridden
@@ -176,9 +195,9 @@ class DeviceBase {
                                      DeviceContext* /*dc*/,
                                      Allocator* /*allocator*/) {}
 
-  virtual const DeviceAttributes& attributes() const {
-    LOG(FATAL) << "Device does not implement attributes()";
-  }
+  // Unimplemented by default
+  virtual const DeviceAttributes& attributes() const;
+  virtual const string& name() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.
@@ -198,6 +217,9 @@ class DeviceBase {
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;
+#ifdef TENSORFLOW_USE_SYCL
+  Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
+#endif
 };
 
 }  // namespace tensorflow

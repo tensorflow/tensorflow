@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -43,7 +44,7 @@ class StdThread : public Thread {
   StdThread(const ThreadOptions& thread_options, const string& name,
             std::function<void()> fn)
       : thread_(fn) {}
-  ~StdThread() { thread_.join(); }
+  ~StdThread() override { thread_.join(); }
 
  private:
   std::thread thread_;
@@ -55,13 +56,30 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
-  uint64 NowMicros() override {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
+  bool MatchPath(const string& path, const string& pattern) override {
+    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
   }
 
-  void SleepForMicroseconds(int micros) override { usleep(micros); }
+  void SleepForMicroseconds(int64 micros) override {
+    while (micros > 0) {
+      timespec sleep_time;
+      sleep_time.tv_sec = 0;
+      sleep_time.tv_nsec = 0;
+
+      if (micros >= 1e6) {
+        sleep_time.tv_sec =
+            std::min<int64>(micros / 1e6, std::numeric_limits<time_t>::max());
+        micros -= static_cast<int64>(sleep_time.tv_sec) * 1e6;
+      }
+      if (micros < 1e6) {
+        sleep_time.tv_nsec = 1000 * micros;
+        micros = 0;
+      }
+      while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {
+        // Ignore signals and wait for the full interval to elapse.
+      }
+    }
+  }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
@@ -76,7 +94,7 @@ class PosixEnv : public Env {
     closure_thread.detach();
   }
 
-  void SchedClosureAfter(int micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
     // TODO(b/27290852): Consuming a thread here is wasteful, but this
     // code is (currently) only used in the case where a step fails
     // (AbortStep). This could be replaced by a timer thread
@@ -95,6 +113,11 @@ class PosixEnv : public Env {
     return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
                                                       symbol);
   }
+
+  string FormatLibraryFileName(const string& name,
+                               const string& version) override {
+    return tensorflow::internal::FormatLibraryFileName(name, version);
+  }
 };
 
 }  // namespace
@@ -107,5 +130,40 @@ Env* Env::Default() {
   return default_env;
 }
 #endif
+
+void Env::GetLocalTempDirectories(std::vector<string>* list) {
+  list->clear();
+  // Directories, in order of preference. If we find a dir that
+  // exists, we stop adding other less-preferred dirs
+  const char* candidates[] = {
+      // Non-null only during unittest/regtest
+      getenv("TEST_TMPDIR"),
+
+      // Explicitly-supplied temp dirs
+      getenv("TMPDIR"),
+      getenv("TMP"),
+
+      // If all else fails
+      "/tmp",
+  };
+
+  for (const char* d : candidates) {
+    if (!d || d[0] == '\0') continue;  // Empty env var
+
+    // Make sure we don't surprise anyone who's expecting a '/'
+    string dstr = d;
+    if (dstr[dstr.size() - 1] != '/') {
+      dstr += "/";
+    }
+
+    struct stat statbuf;
+    if (!stat(d, &statbuf) && S_ISDIR(statbuf.st_mode) &&
+        !access(dstr.c_str(), 0)) {
+      // We found a dir that exists and is accessible - we're done.
+      list->push_back(dstr);
+      return;
+    }
+  }
+}
 
 }  // namespace tensorflow

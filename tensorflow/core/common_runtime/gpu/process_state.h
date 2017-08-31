@@ -89,10 +89,10 @@ class ProcessState {
   //
   // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
   // current system environment.  Otherwise returns nullptr.
-  Allocator* GetGPUAllocator(const GPUOptions& options, int gpu_id,
-                             size_t total_bytes);
+  virtual Allocator* GetGPUAllocator(const GPUOptions& options, int gpu_id,
+                                     size_t total_bytes);
 
-  Allocator* GetCUDAHostAllocator(int numa_node);
+  virtual Allocator* GetCUDAHostAllocator(int numa_node);
 
   // Registers a function to be called once on every new Region
   // allocated by every GPURegionAllocator proximate to the specified
@@ -105,7 +105,7 @@ class ProcessState {
   // the index of one of the PCIe buses.  If the bus_id is invalid,
   // results are undefined.
   typedef std::function<void(void*, size_t)> AllocVisitor;
-  void AddGPUAllocVisitor(int bus_id, AllocVisitor visitor);
+  virtual void AddGPUAllocVisitor(int bus_id, AllocVisitor visitor);
 
   typedef std::unordered_map<const void*, MemDesc> MDMap;
 

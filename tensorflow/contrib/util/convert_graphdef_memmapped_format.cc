@@ -28,6 +28,8 @@ limitations under the License.
 // min_conversion_size_bytes - tensors with fewer than this many bytes of data
 // will not be converted to ImmutableConst format, and kept in the graph.
 
+#include <vector>
+
 #include "tensorflow/contrib/util/convert_graphdef_memmapped_format_lib.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -40,23 +42,23 @@ int ParseFlagsAndConvertGraph(int argc, char* argv[]) {
   string in_graph = "";
   string out_graph = "";
   int min_conversion_tensor_size = 10000;
-  const bool parse_result = ParseFlags(
-      &argc, argv,
-      {// input graph
-       Flag("in_graph", &in_graph),
-       // output graph
-       Flag("out_graph", &out_graph),
-       // constants with tensors that have less than this number elements won't
-       // be converted into ImmutableConst (be memmapped).
-       Flag("min_conversion_tensor_size", &min_conversion_tensor_size)});
+  std::vector<Flag> flag_list = {
+      Flag("in_graph", &in_graph, "input graph"),
+      Flag("out_graph", &out_graph, "output graph"),
+      Flag("min_conversion_tensor_size", &min_conversion_tensor_size,
+           "constants with tensors that have less than this number elements "
+           "won't be converted into ImmutableConst (be memmapped)"),
+  };
+  string usage = Flags::Usage(argv[0], flag_list);
+  const bool parse_result = Flags::Parse(&argc, argv, flag_list);
   // We need to call this to set up global state for TensorFlow.
-  port::InitMain(argv[0], &argc, &argv);
+  port::InitMain(usage.c_str(), &argc, &argv);
   if (!parse_result) {
-    LOG(ERROR) << "Error parsing command-line flags.";
+    LOG(ERROR) << "\n" << usage;
     return -1;
   }
   if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1];
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return -1;
   }
   if (in_graph.empty()) {

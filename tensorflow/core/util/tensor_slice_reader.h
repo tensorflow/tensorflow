@@ -114,9 +114,6 @@ class TensorSliceReader {
 
   void LoadShard(int shard) const;
   void LoadAllShards() const;
-  void RegisterTensorSlice(const string& name, const TensorShape& shape,
-                           DataType type, const string& tag,
-                           const TensorSlice& slice) const;
 
   const TensorSliceSet* FindTensorSlice(
       const string& name, const TensorSlice& slice,

@@ -20,10 +20,8 @@ namespace tensorflow {
 
 Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
                                                    const string& filename) {
-  WritableFile* writable_file;
-  auto status = env->NewWritableFile(filename, &writable_file);
+  auto status = env->NewWritableFile(filename, &output_file_);
   if (status.ok()) {
-    output_file_.reset(writable_file);
     output_file_offset_ = 0;
   }
   return status;
@@ -43,7 +41,7 @@ Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
         " and include [A-Za-z0-9_.]");
   }
   const auto tensor_data = tensor.tensor_data();
-  if (0 == tensor_data.size()) {
+  if (tensor_data.empty()) {
     return errors::InvalidArgument(
         "MemmappedEnvWritter: saving tensor with 0 size");
   }

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
+#include <utility>
+
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -68,10 +71,10 @@ class TableBuilder : public TensorSliceWriter::Builder {
 Status CreateTableTensorSliceBuilder(const string& name,
                                      TensorSliceWriter::Builder** builder) {
   *builder = nullptr;
-  WritableFile* f;
+  std::unique_ptr<WritableFile> f;
   Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
-    *builder = new TableBuilder(name, f);
+    *builder = new TableBuilder(name, f.release());
     return Status::OK();
   } else {
     return s;
@@ -81,7 +84,7 @@ Status CreateTableTensorSliceBuilder(const string& name,
 TensorSliceWriter::TensorSliceWriter(const string& filename,
                                      CreateBuilderFunction create_builder)
     : filename_(filename),
-      create_builder_(create_builder),
+      create_builder_(std::move(create_builder)),
       tmpname_(strings::StrCat(filename, ".tempstate", random::New64())),
       slices_(0) {
   VersionDef* versions = sts_.mutable_meta()->mutable_versions();
@@ -121,9 +124,74 @@ Status TensorSliceWriter::Finish() {
       LOG(ERROR) << "Failed to rename file " << tmpname_ << " to " << filename_;
     }
   } else {
-    Env::Default()->DeleteFile(tmpname_);
+    Env::Default()->DeleteFile(tmpname_).IgnoreError();
   }
   return s;
+}
+
+/* static */
+size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
+  switch (dt) {
+    case DT_FLOAT:
+      return 4;
+    case DT_DOUBLE:
+      return 8;
+    case DT_INT32:
+      return 10;
+    case DT_UINT8:
+      return 2;
+    case DT_INT16:
+      return 10;
+    case DT_INT8:
+      return 10;
+    case DT_COMPLEX64:
+      return 8;
+    case DT_INT64:
+      return 10;
+    case DT_BOOL:
+      return 1;
+    case DT_QINT8:
+      return 10;
+    case DT_QUINT8:
+      return 2;
+    case DT_QINT32:
+      return 10;
+    case DT_QINT16:
+      return 10;
+    case DT_QUINT16:
+      return 3;
+    case DT_UINT16:
+      return 3;
+    case DT_COMPLEX128:
+      return 16;
+    case DT_HALF:
+      return 3;
+    case DT_INVALID:
+    case DT_STRING:
+    case DT_BFLOAT16:
+    default:
+      CHECK(false) << "MaxBytesPerElement not implemented for dtype: " << dt;
+  }
+  return 0;
+}
+
+template <>
+Status TensorSliceWriter::SaveData(const string* data, int64 num_elements,
+                                   SavedSlice* ss) {
+  size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
+                      (num_elements * MaxBytesPerElement(DT_INT32));
+  for (int64 i = 0; i < num_elements; ++i) {
+    size_bound += data[i].size();
+  }
+  if (size_bound > kMaxMessageBytes) {
+    return errors::InvalidArgument(
+        "Tensor slice is too large to serialize (conservative estimate: ",
+        size_bound, " bytes)");
+  }
+  Fill(data, num_elements, ss->mutable_data());
+  DCHECK_GE(ss->ByteSize(), 0);
+  DCHECK_LE(ss->ByteSize(), size_bound);
+  return Status::OK();
 }
 
 }  // namespace checkpoint

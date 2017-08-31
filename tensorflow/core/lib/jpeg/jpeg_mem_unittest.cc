@@ -70,18 +70,18 @@ void TestJPEG(Env* env, const string& jpegfile) {
 
   // Set min_acceptable_fraction to something insufficient
   flags.min_acceptable_fraction = 0.8;
-  imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, NULL));
-  CHECK(imgdata.get() == NULL);
+  imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, nullptr));
+  CHECK(imgdata == nullptr);
 
   // Now, use a value that makes fsize/2 be enough for a black-filling
   flags.min_acceptable_fraction = 0.01;
-  imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, NULL));
-  CHECK(imgdata.get() != NULL);
+  imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, nullptr));
+  CHECK(imgdata != nullptr);
 
   // Finally, uncompress the whole data
   flags.min_acceptable_fraction = 1.0;
-  imgdata.reset(Uncompress(temp, fsize, flags, &w, &h, &c, NULL));
-  CHECK(imgdata.get() != NULL);
+  imgdata.reset(Uncompress(temp, fsize, flags, &w, &h, &c, nullptr));
+  CHECK(imgdata != nullptr);
 }
 
 TEST(JpegMemTest, Jpeg) {
@@ -146,15 +146,15 @@ TEST(JpegMemTest, Jpeg2) {
     CHECK_EQ(cptest, cpdata2);
   }
 
-  // Uncompress twice: once with 3 components and once with autodetect
+  // Uncompress twice: once with 3 components and once with autodetect.
   std::unique_ptr<uint8[]> imgdata1;
   for (const int components : {0, 3}) {
     // Uncompress it
     UncompressFlags flags;
     flags.components = components;
     int w, h, c;
-    imgdata1.reset(
-        Uncompress(cpdata1.c_str(), cpdata1.length(), flags, &w, &h, &c, NULL));
+    imgdata1.reset(Uncompress(cpdata1.c_str(), cpdata1.length(), flags, &w, &h,
+                              &c, nullptr));
 
     // Check obvious formatting stuff
     CHECK_EQ(w, in_w);
@@ -185,6 +185,27 @@ TEST(JpegMemTest, Jpeg2) {
     const int totalerr = ComputeSumAbsoluteDifference(
         imgdata1.get(), imgdata2.get(), in_w, in_h, stride1, flags.stride);
     CHECK_EQ(totalerr, 0);
+  }
+
+  {
+    // Uncompress it with a faster, lossier algorithm.
+    UncompressFlags flags;
+    flags.components = 3;
+    flags.dct_method = JDCT_IFAST;
+    int w, h, c;
+    imgdata1.reset(Uncompress(cpdata1.c_str(), cpdata1.length(), flags, &w, &h,
+                              &c, nullptr));
+
+    // Check obvious formatting stuff
+    CHECK_EQ(w, in_w);
+    CHECK_EQ(h, in_h);
+    CHECK_EQ(c, 3);
+    CHECK(imgdata1.get());
+
+    // Compare the two images
+    const int totalerr = ComputeSumAbsoluteDifference(
+        imgdata1.get(), refdata1.get(), in_w, in_h, stride1, stride1);
+    ASSERT_LE(totalerr, 200000);
   }
 }
 
@@ -246,7 +267,7 @@ TEST(JpegMemTest, ChromaDownsampling) {
   int64 num_warnings;
   std::unique_ptr<uint8[]> uncompressed(Uncompress(
       jpeg.c_str(), jpeg.size(), unflags, &w, &h, &c, &num_warnings));
-  CHECK(uncompressed.get() != NULL);
+  CHECK(uncompressed != nullptr);
   CHECK_EQ(num_warnings, 0);
 
   // Recompress the JPEG with and without chroma downsampling
@@ -275,7 +296,7 @@ void TestBadJPEG(Env* env, const string& bad_jpeg_file, int expected_width,
   int width, height, components;
   std::unique_ptr<uint8[]> imgdata;
   imgdata.reset(Uncompress(jpeg.c_str(), jpeg.size(), flags, &width, &height,
-                           &components, NULL));
+                           &components, nullptr));
   if (expected_width > 0) {  // we expect the file to decode into 'something'
     CHECK_EQ(width, expected_width);
     CHECK_EQ(height, expected_height);

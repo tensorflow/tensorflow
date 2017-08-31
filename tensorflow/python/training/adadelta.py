@@ -19,19 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
 
 class AdadeltaOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the Adadelta algorithm. 
+  """Optimizer that implements the Adadelta algorithm.
 
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
   ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
-
-  @@__init__
   """
 
   def __init__(self, learning_rate=0.001, rho=0.95, epsilon=1e-8,
@@ -40,6 +37,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
 
     Args:
       learning_rate: A `Tensor` or a floating point value. The learning rate.
+        To match the exact form in the original paper use 1.0.
       rho: A `Tensor` or a floating point value. The decay rate.
       epsilon: A `Tensor` or a floating point value.  A constant epsilon used
                to better conditioning the grad update.
@@ -80,6 +78,19 @@ class AdadeltaOptimizer(optimizer.Optimizer):
         grad,
         use_locking=self._use_locking)
 
+  def _resource_apply_dense(self, grad, var):
+    accum = self.get_slot(var, "accum")
+    accum_update = self.get_slot(var, "accum_update")
+    return training_ops.resource_apply_adadelta(
+        var.handle,
+        accum.handle,
+        accum_update.handle,
+        math_ops.cast(self._lr_t, grad.dtype.base_dtype),
+        math_ops.cast(self._rho_t, grad.dtype.base_dtype),
+        math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
   def _apply_sparse(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
@@ -92,4 +103,18 @@ class AdadeltaOptimizer(optimizer.Optimizer):
         math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
         grad.values,
         grad.indices,
+        use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    accum = self.get_slot(var, "accum")
+    accum_update = self.get_slot(var, "accum_update")
+    return training_ops.resource_sparse_apply_adadelta(
+        var.handle,
+        accum.handle,
+        accum_update.handle,
+        math_ops.cast(self._lr_t, grad.dtype),
+        math_ops.cast(self._rho_t, grad.dtype),
+        math_ops.cast(self._epsilon_t, grad.dtype),
+        grad,
+        indices,
         use_locking=self._use_locking)

@@ -18,7 +18,12 @@ limitations under the License.
 namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Exp", functor::exp, float, Eigen::half, double,
           complex64, complex128);
+
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double);
 #endif
+
+#if TENSORFLOW_USE_SYCL
+REGISTER2(UnaryOp, SYCL, "Exp", functor::exp, float, double);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

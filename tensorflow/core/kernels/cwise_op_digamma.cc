@@ -21,5 +21,5 @@ REGISTER3(UnaryOp, CPU, "Digamma", functor::digamma, float, Eigen::half,
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Digamma", functor::digamma, float, Eigen::half,
           double);
-#endif
+#endif  // GOOGLE_CUDA
 }  // namespace tensorflow

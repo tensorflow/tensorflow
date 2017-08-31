@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"  // NOLINT
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -28,9 +29,9 @@ namespace tensorflow {
 namespace {
 
 OpDef ToOpDef(const OpDefBuilder& builder) {
-  OpDef op_def;
-  TF_EXPECT_OK(builder.Finalize(&op_def));
-  return op_def;
+  OpRegistrationData op_reg_data;
+  TF_EXPECT_OK(builder.Finalize(&op_reg_data));
+  return op_reg_data.op_def;
 }
 
 NodeDef ToNodeDef(const string& text) {

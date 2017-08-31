@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -182,18 +183,14 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
 
 }  // namespace
 
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<Eigen::half>("T"),
-                        CheckNumericsOp<CPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        CheckNumericsOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        CheckNumericsOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("CheckNumerics").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      CheckNumericsOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .Device(DEVICE_GPU)

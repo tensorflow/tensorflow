@@ -57,7 +57,6 @@ TEST(ThreadPool, DoWork) {
   }
 }
 
-#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
 TEST(ThreadPool, ParallelFor) {
   // Make ParallelFor use as many threads as possible.
   int64 kHugeCost = 1 << 30;
@@ -80,7 +79,45 @@ TEST(ThreadPool, ParallelFor) {
     }
   }
 }
-#endif
+
+TEST(ThreadPool, ParallelForWithWorkerId) {
+  // Make ParallelForWithWorkerId use as many threads as possible.
+  int64 kHugeCost = 1 << 30;
+  for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
+    fprintf(stderr, "Testing with %d threads\n", num_threads);
+    const int kWorkItems = 15;
+    volatile std::atomic<bool> work[kWorkItems];
+    ThreadPool pool(Env::Default(), "test", num_threads);
+    for (int i = 0; i < kWorkItems; i++) {
+      work[i] = false;
+    }
+    volatile std::atomic<bool> threads_running[kNumThreads + 1];
+    for (int i = 0; i < num_threads + 1; i++) {
+      threads_running[i] = false;
+    }
+    pool.ParallelForWithWorkerId(
+        kWorkItems, kHugeCost,
+        [&threads_running, &work, num_threads](
+            int64 begin, int64 end, int64 id) {
+          // Store true for the current thread, and assert that another thread
+          // is not running with the same id.
+          ASSERT_LE(0, id);
+          ASSERT_LE(id, kNumThreads);
+          ASSERT_FALSE(threads_running[id].exchange(true));
+          for (int64 i = begin; i < end; ++i) {
+            ASSERT_FALSE(work[i].exchange(true));
+          }
+          ASSERT_TRUE(threads_running[id].exchange(false));
+          threads_running[id] = false;
+        });
+    for (int i = 0; i < kWorkItems; i++) {
+      ASSERT_TRUE(work[i]);
+    }
+    for (int i = 0; i < num_threads + 1; i++) {
+      ASSERT_FALSE(threads_running[i]);
+    }
+  }
+}
 
 static void BM_Sequential(int iters) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/log_memory.h"
 
-#include "tensorflow/core/framework/log_memory.pb.h"
 #include "tensorflow/core/framework/log_memory.pb_text.h"
+#include "tensorflow/core/framework/log_memory.pb.h"
 
 namespace tensorflow {
 
@@ -30,7 +30,7 @@ namespace {
 template <typename T>
 void OutputToLog(const T& proto) {
   string type_name = proto.GetTypeName();
-  const int index = type_name.find_last_of(".");
+  const size_t index = type_name.find_last_of(".");
   if (index != string::npos) type_name = type_name.substr(index + 1);
   LOG(INFO) << LogMemory::kLogMemoryLabel << " " << type_name << " { "
             << ProtoShortDebugString(proto) << " }";

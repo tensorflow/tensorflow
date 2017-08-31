@@ -186,27 +186,31 @@ class EditDistanceOp : public OpKernel {
 
         ++hypothesis_iter;
         ++truth_iter;
-      } else if (g_truth > g_hypothesis) {  // missing truth @ this hypothesis
+      } else if (g_truth > g_hypothesis) {  // zero-length truth
         auto loc = std::inner_product(g_hypothesis.begin(), g_hypothesis.end(),
                                       output_strides.begin(), int64{0});
         output_t(loc) = hypothesis_seq.size();
-        if (normalize_) output_t(loc) /= 0.0;
+        if (normalize_ && output_t(loc) != 0.0f) {
+          output_t(loc) = std::numeric_limits<float>::infinity();
+        }
         ++hypothesis_iter;
-      } else {  // missing hypothesis @ this truth
+      } else {  // zero-length hypothesis
         auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
                                       output_strides.begin(), int64{0});
         output_t(loc) = (normalize_) ? 1.0 : truth_seq.size();
         ++truth_iter;
       }
     }
-    while (hypothesis_iter != hypothesis_grouper.end()) {  // missing truths
+    while (hypothesis_iter != hypothesis_grouper.end()) {  // zero-length truths
       sparse::Group hypothesis_j = *hypothesis_iter;
       std::vector<int64> g_hypothesis = hypothesis_j.group();
       auto hypothesis_seq = hypothesis_j.values<T>();
       auto loc = std::inner_product(g_hypothesis.begin(), g_hypothesis.end(),
                                     output_strides.begin(), int64{0});
       output_t(loc) = hypothesis_seq.size();
-      if (normalize_) output_t(loc) /= 0.0;
+      if (normalize_ && output_t(loc) != 0.0f) {
+        output_t(loc) = std::numeric_limits<float>::infinity();
+      }
       ++hypothesis_iter;
     }
     while (truth_iter != truth_grouper.end()) {  // missing hypotheses
@@ -231,7 +235,7 @@ class EditDistanceOp : public OpKernel {
       Name("EditDistance").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       EditDistanceOp<T>);
 
-TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
+TF_CALL_POD_STRING_TYPES(REGISTER_CPU_KERNEL);
 
 #undef REGISTER_CPU_KERNEL
 

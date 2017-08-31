@@ -59,22 +59,25 @@ class TrackingAllocator : public Allocator {
   void GetStats(AllocatorStats* stats) override;
 
   // If the underlying allocator tracks allocation sizes, this returns
-  // a pair where the first value is the total number of bytes
-  // allocated through this wrapper, and the second value is the high
-  // watermark of bytes allocated through this wrapper. If the
+  // a tuple where the first value is the total number of bytes
+  // allocated through this wrapper, the second value is the high
+  // watermark of bytes allocated through this wrapper and the third value is
+  // the allocated bytes through this wrapper that are still alive. If the
   // underlying allocator does not track allocation sizes the first
   // value is the total number of bytes requested through this wrapper
-  // and the second is 0.
+  // and the second and the third are 0.
   //
   // After GetSizesAndUnref is called, the only further calls allowed
   // on this wrapper are calls to DeallocateRaw with pointers that
   // were allocated by this wrapper and have not yet been
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
-  std::pair<size_t, size_t> GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> GetSizesAndUnRef();
+
+ protected:
+  ~TrackingAllocator() override {}
 
  private:
-  ~TrackingAllocator() override {}
   bool UnRef() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.

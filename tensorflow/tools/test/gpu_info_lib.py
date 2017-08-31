@@ -12,33 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Library for getting system information during TensorFlow tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import ctypes as ct
 import platform
 
-import tensorflow as tf
-
 from tensorflow.core.util import test_log_pb2
+from tensorflow.python.framework import errors
+from tensorflow.python.platform import gfile
 
 
 def _gather_gpu_devices_proc():
   """Try to gather NVidia GPU device information via /proc/driver."""
   dev_info = []
-  for f in tf.gfile.Glob("/proc/driver/nvidia/gpus/*/information"):
+  for f in gfile.Glob("/proc/driver/nvidia/gpus/*/information"):
     bus_id = f.split("/")[5]
-    key_values = dict(
-        line.rstrip().replace("\t", "").split(":", 1)
-        for line in tf.gfile.GFile(f, "r"))
-    key_values = dict(
-        (k.lower(), v.strip(" ").rstrip(" "))
-        for (k, v) in key_values.items())
+    key_values = dict(line.rstrip().replace("\t", "").split(":", 1)
+                      for line in gfile.GFile(f, "r"))
+    key_values = dict((k.lower(), v.strip(" ").rstrip(" "))
+                      for (k, v) in key_values.items())
     info = test_log_pb2.GPUInfo()
     info.model = key_values.get("model", "Unknown")
     info.uuid = key_values.get("gpu uuid", "Unknown")
@@ -115,7 +111,8 @@ class CUDADeviceProperties(ct.Structure):
       ("multiGpuBoardGroupID", ct.c_int),
       # Pad with extra space to avoid dereference crashes if future
       # versions of CUDA extend the size of this struct.
-      ("__future_buffer", ct.c_char * 4096)]
+      ("__future_buffer", ct.c_char * 4096)
+  ]
 
 
 def _gather_gpu_devices_cudart():
@@ -174,11 +171,11 @@ def gather_gpu_devices():
     if not dev_info:
       raise ValueError("No devices found")
     return dev_info
-  except (IOError, ValueError):
+  except (IOError, ValueError, errors.OpError):
     pass
 
   try:
     # Fall back on using libcudart
     return _gather_gpu_devices_cudart()
-  except (OSError, ValueError, NotImplementedError):
+  except (OSError, ValueError, NotImplementedError, errors.OpError):
     return []

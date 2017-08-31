@@ -32,7 +32,7 @@ TEST(GetFeatureValuesInt64Test, ReadsASingleValue) {
       .mutable_int64_list()
       ->add_value(42);
 
-  auto tag = GetFeatureValues<int64>("tag", example);
+  auto tag = GetFeatureValues<protobuf_int64>("tag", example);
 
   ASSERT_EQ(1, tag.size());
   EXPECT_EQ(42, tag.Get(0));
@@ -41,7 +41,7 @@ TEST(GetFeatureValuesInt64Test, ReadsASingleValue) {
 TEST(GetFeatureValuesInt64Test, WritesASingleValue) {
   Example example;
 
-  GetFeatureValues<int64>("tag", &example)->Add(42);
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
 
   ASSERT_EQ(1,
             example.features().feature().at("tag").int64_list().value_size());
@@ -53,7 +53,7 @@ TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistence) {
 
   EXPECT_FALSE(ExampleHasFeature("tag", example));
 
-  GetFeatureValues<int64>("tag", &example)->Add(0);
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(0);
 
   EXPECT_TRUE(ExampleHasFeature("tag", example));
 }
@@ -62,12 +62,12 @@ TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistence) {
   Example example;
 
   GetFeatureValues<float>("tag", &example)->Add(3.14);
-  ASSERT_FALSE(ExampleHasFeature<int64>("tag", example));
+  ASSERT_FALSE(ExampleHasFeature<protobuf_int64>("tag", example));
 
-  GetFeatureValues<int64>("tag", &example)->Add(42);
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
 
-  EXPECT_TRUE(ExampleHasFeature<int64>("tag", example));
-  auto tag_ro = GetFeatureValues<int64>("tag", example);
+  EXPECT_TRUE(ExampleHasFeature<protobuf_int64>("tag", example));
+  auto tag_ro = GetFeatureValues<protobuf_int64>("tag", example);
   ASSERT_EQ(1, tag_ro.size());
   EXPECT_EQ(42, tag_ro.Get(0));
 }
@@ -78,9 +78,9 @@ TEST(GetFeatureValuesInt64Test, CopyIterableToAField) {
 
   std::copy(values.begin(), values.end(),
             protobuf::RepeatedFieldBackInserter(
-                GetFeatureValues<int64>("tag", &example)));
+                GetFeatureValues<protobuf_int64>("tag", &example)));
 
-  auto tag_ro = GetFeatureValues<int64>("tag", example);
+  auto tag_ro = GetFeatureValues<protobuf_int64>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
   EXPECT_EQ(1, tag_ro.Get(0));
   EXPECT_EQ(2, tag_ro.Get(1));
@@ -114,7 +114,7 @@ TEST(GetFeatureValuesFloatTest, WritesASingleValue) {
 TEST(GetFeatureValuesFloatTest, CheckTypedFieldExistence) {
   Example example;
 
-  GetFeatureValues<int64>("tag", &example)->Add(42);
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
   ASSERT_FALSE(ExampleHasFeature<float>("tag", example));
 
   GetFeatureValues<float>("tag", &example)->Add(3.14);
@@ -151,7 +151,7 @@ TEST(GetFeatureValuesStringTest, WritesASingleValue) {
 TEST(GetFeatureValuesBytesTest, CheckTypedFieldExistence) {
   Example example;
 
-  GetFeatureValues<int64>("tag", &example)->Add(42);
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
   ASSERT_FALSE(ExampleHasFeature<string>("tag", example));
 
   *GetFeatureValues<string>("tag", &example)->Add() = "FOO";
@@ -190,9 +190,10 @@ TEST(AppendFeatureValuesTest, FloatValuesUsingInitializerList) {
 TEST(AppendFeatureValuesTest, Int64ValuesUsingInitializerList) {
   Example example;
 
-  AppendFeatureValues({1, 2, 3}, "tag", &example);
+  std::vector<protobuf_int64> values{1, 2, 3};
+  AppendFeatureValues(values, "tag", &example);
 
-  auto tag_ro = GetFeatureValues<int64>("tag", example);
+  auto tag_ro = GetFeatureValues<protobuf_int64>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
   EXPECT_EQ(1, tag_ro.Get(0));
   EXPECT_EQ(2, tag_ro.Get(1));

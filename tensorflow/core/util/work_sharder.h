@@ -31,6 +31,12 @@ namespace tensorflow {
 // limit). A common configuration is that "workers" is a thread pool
 // with at least "max_parallelism" threads.
 //
+// "cost_per_unit" is an estimate of the number of CPU cycles (or nanoseconds
+// if not CPU-bound) to complete a unit of work. Overestimating creates too
+// many shards and CPU time will be dominated by per-shard overhead, such as
+// Context creation. Underestimating may not fully make use of the specified
+// parallelism.
+//
 // "work" should be a callable taking (int64, int64) arguments.
 // work(start, limit) computes the work units from [start,
 // limit), i.e., [start, limit) is a shard.

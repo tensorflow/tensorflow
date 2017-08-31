@@ -25,6 +25,21 @@ filegroup(
 )
 
 cc_library(
+    name = "expiring_lru_cache",
+    hdrs = ["expiring_lru_cache.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "file_block_cache",
+    srcs = ["file_block_cache.cc"],
+    hdrs = ["file_block_cache.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
     name = "gcs_file_system",
     srcs = [
         "gcs_file_system.cc",
@@ -35,26 +50,29 @@ cc_library(
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
-        "@jsoncpp_git//:jsoncpp",
+        ":expiring_lru_cache",
+        ":file_block_cache",
         ":google_auth_provider",
         ":http_request",
+        ":retrying_file_system",
+        ":retrying_utils",
+        ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "http_request",
-    srcs = [
-        "http_request.cc",
-    ],
-    hdrs = [
-        "http_request.h",
-    ],
+    srcs = ["http_request.cc"],
+    hdrs = ["http_request.h"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "@curl//:curl",
     ],
 )
 
@@ -64,11 +82,13 @@ cc_library(
     hdrs = [
         "http_request_fake.h",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":http_request",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
+        "@curl//:curl",
     ],
 )
 
@@ -81,12 +101,25 @@ cc_library(
         "auth_provider.h",
         "google_auth_provider.h",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "@jsoncpp_git//:jsoncpp",
-        ":base64",
         ":http_request",
         ":oauth_client",
+        ":retrying_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+cc_library(
+    name = "now_seconds_env",
+    testonly = 1,
+    hdrs = ["now_seconds_env.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -99,30 +132,87 @@ cc_library(
         "oauth_client.h",
     ],
     deps = [
-        "@boringssl_git//:crypto",
-        "@jsoncpp_git//:jsoncpp",
-        ":base64",
         ":http_request",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@boringssl//:crypto",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
 cc_library(
-    name = "base64",
+    name = "retrying_utils",
     srcs = [
-        "base64.cc",
+        "retrying_utils.cc",
     ],
     hdrs = [
-        "base64.h",
+        "retrying_utils.h",
     ],
     deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "retrying_file_system",
+    srcs = [
+        "retrying_file_system.cc",
+    ],
+    hdrs = [
+        "retrying_file_system.h",
+    ],
+    deps = [
+        ":retrying_utils",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "time_util",
+    srcs = [
+        "time_util.cc",
+    ],
+    hdrs = [
+        "time_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "expiring_lru_cache_test",
+    size = "small",
+    srcs = ["expiring_lru_cache_test.cc"],
+    deps = [
+        ":expiring_lru_cache",
+        ":now_seconds_env",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "file_block_cache_test",
+    size = "small",
+    srcs = ["file_block_cache_test.cc"],
+    deps = [
+        ":file_block_cache",
+        ":now_seconds_env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
 tf_cc_test(
     name = "gcs_file_system_test",
     size = "small",
+    srcs = ["gcs_file_system_test.cc"],
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
@@ -134,6 +224,7 @@ tf_cc_test(
 tf_cc_test(
     name = "http_request_test",
     size = "small",
+    srcs = ["http_request_test.cc"],
     deps = [
         ":http_request",
         "//tensorflow/core:lib",
@@ -145,46 +236,71 @@ tf_cc_test(
 tf_cc_test(
     name = "oauth_client_test",
     size = "small",
+    srcs = ["oauth_client_test.cc"],
     data = [
         "testdata/service_account_credentials.json",
         "testdata/service_account_public_key.txt",
     ],
     deps = [
-        "@boringssl_git//:crypto",
-        ":base64",
         ":http_request_fake",
         ":oauth_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "base64_test",
-    size = "small",
-    deps = [
-        ":base64",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "@boringssl//:crypto",
     ],
 )
 
 tf_cc_test(
     name = "google_auth_provider_test",
     size = "small",
+    srcs = ["google_auth_provider_test.cc"],
     data = [
         "testdata/application_default_credentials.json",
         "testdata/service_account_credentials.json",
     ],
     deps = [
-        ":base64",
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "retrying_file_system_test",
+    size = "small",
+    srcs = ["retrying_file_system_test.cc"],
+    deps = [
+        ":retrying_file_system",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "time_util_test",
+    size = "small",
+    srcs = ["time_util_test.cc"],
+    deps = [
+        ":time_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "retrying_utils_test",
+    size = "small",
+    srcs = ["retrying_utils_test.cc"],
+    deps = [
+        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

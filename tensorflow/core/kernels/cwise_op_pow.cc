@@ -18,8 +18,12 @@ limitations under the License.
 namespace tensorflow {
 REGISTER7(BinaryOp, CPU, "Pow", functor::pow, float, Eigen::half, double, int32,
           int64, complex64, complex128);
+
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double,
           int64);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER2(BinaryOp, SYCL, "Pow", functor::pow, float, double);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

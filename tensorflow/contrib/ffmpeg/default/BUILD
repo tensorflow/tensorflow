@@ -16,8 +16,8 @@ cc_library(
         "//tensorflow/contrib/ffmpeg:ffmpeg_lib.h",
     ],
     deps = [
-        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 

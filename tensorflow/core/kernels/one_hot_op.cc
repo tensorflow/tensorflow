@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -75,6 +76,15 @@ class OneHotOp : public OpKernel {
 
     // The one-hot dimension.
     const int32 depth_v = depth.scalar<int32>()();
+    OP_REQUIRES(
+        ctx, depth_v >= 0,
+        errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
+    OP_REQUIRES(
+        ctx,
+        MultiplyWithoutOverflow(indices_shape.num_elements(), depth_v) >= 0,
+        errors::InvalidArgument("OneHot result would have shape ",
+                                indices_shape.DebugString(), " + [", depth_v,
+                                "], which exceeds 2**63 - 1 elements"));
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);
@@ -85,26 +95,28 @@ class OneHotOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
 
-    // prefix_dim_size == # of elements before the axis
-    // depth_v == # of elements per axis
-    // suffix_dim_size == # of elements after the axis
-    TI prefix_dim_size = 1;
-    for (int i = 0; i < axis; ++i) {
-      prefix_dim_size *= indices_shape.dim_size(i);
+    if (output_shape.num_elements() > 0) {
+      // prefix_dim_size == # of elements before the axis
+      // depth_v == # of elements per axis
+      // suffix_dim_size == # of elements after the axis
+      int64 prefix_dim_size = 1;
+      for (int i = 0; i < axis; ++i) {
+        prefix_dim_size *= indices_shape.dim_size(i);
+      }
+      TI suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
+
+      // Split indices into matrix of size prefix_dim_size x suffix_dim_size
+      auto indices_t =
+          indices.shaped<TI, 2>({prefix_dim_size, suffix_dim_size});
+      // Split output into 3-Tensor of size:
+      //   prefix_dim_size x depth x suffix_dim_size.
+      auto output_t =
+          output->shaped<T, 3>({prefix_dim_size, depth_v, suffix_dim_size});
+
+      functor::OneHot<Device, T, TI>::Compute(ctx->eigen_device<Device>(),
+                                              indices_t, on_value_t,
+                                              off_value_t, &output_t);
     }
-    TI suffix_dim_size =
-        indices_shape.num_elements() / prefix_dim_size;
-
-    // Split indices into matrix of size prefix_dim_size x suffix_dim_size
-    auto indices_t =
-        indices.shaped<TI, 2>({prefix_dim_size, suffix_dim_size});
-    // Split output into 3-Tensor of size:
-    //   prefix_dim_size x depth x suffix_dim_size.
-    auto output_t =
-        output->shaped<T, 3>({prefix_dim_size, depth_v, suffix_dim_size});
-
-    functor::OneHot<Device, T, TI>::Compute(ctx->eigen_device<Device>(), indices_t,
-                                        on_value_t, off_value_t, &output_t);
   }
 
  private:
@@ -113,16 +125,17 @@ class OneHotOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(OneHotOp);
 };
 
-#define REGISTER_ONE_HOT_INDEX(type, index_type)                  \
-  REGISTER_KERNEL_BUILDER(Name("OneHot")                          \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<index_type>("TI")   \
-                              .TypeConstraint<type>("T")          \
-                              .HostMemory("depth"),               \
+#define REGISTER_ONE_HOT_INDEX(type, index_type)                \
+  REGISTER_KERNEL_BUILDER(Name("OneHot")                        \
+                              .Device(DEVICE_CPU)               \
+                              .TypeConstraint<index_type>("TI") \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("depth"),             \
                           OneHotOp<CPUDevice, type, index_type>);
 
-#define REGISTER_ONE_HOT(type)          \
-  REGISTER_ONE_HOT_INDEX(type, int32);  \
+#define REGISTER_ONE_HOT(type)         \
+  REGISTER_ONE_HOT_INDEX(type, uint8); \
+  REGISTER_ONE_HOT_INDEX(type, int32); \
   REGISTER_ONE_HOT_INDEX(type, int64)
 
 TF_CALL_ALL_TYPES(REGISTER_ONE_HOT);
@@ -131,18 +144,19 @@ TF_CALL_ALL_TYPES(REGISTER_ONE_HOT);
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC_INDEX(T, TI)                                       \
-  template <>                                                               \
-  void OneHot<GPUDevice, T, TI>::Compute(                                   \
-      const GPUDevice& d, const typename TTypes<TI>::ConstMatrix& indices,  \
-      const typename TTypes<T>::ConstScalar& on_value,                      \
-      const typename TTypes<T>::ConstScalar& off_value,                     \
-      typename TTypes<T, 3>::Tensor* output);                               \
+#define DECLARE_GPU_SPEC_INDEX(T, TI)                                      \
+  template <>                                                              \
+  void OneHot<GPUDevice, T, TI>::Compute(                                  \
+      const GPUDevice& d, const typename TTypes<TI>::ConstMatrix& indices, \
+      const typename TTypes<T>::ConstScalar& on_value,                     \
+      const typename TTypes<T>::ConstScalar& off_value,                    \
+      typename TTypes<T, 3>::Tensor* output);                              \
   extern template struct OneHot<GPUDevice, T, TI>;
 
-#define DECLARE_GPU_SPEC(T)          \
-  DECLARE_GPU_SPEC_INDEX(T, int32);  \
-  DECLARE_GPU_SPEC_INDEX(T, int64);  \
+#define DECLARE_GPU_SPEC(T)         \
+  DECLARE_GPU_SPEC_INDEX(T, uint8); \
+  DECLARE_GPU_SPEC_INDEX(T, int32); \
+  DECLARE_GPU_SPEC_INDEX(T, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
@@ -152,17 +166,18 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_ONE_HOT_GPU_INDEX(type, index_type)              \
-  REGISTER_KERNEL_BUILDER(Name("OneHot")                          \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<index_type>("TI")   \
-                              .TypeConstraint<type>("T")          \
-                              .HostMemory("depth"),               \
+#define REGISTER_ONE_HOT_GPU_INDEX(type, index_type)            \
+  REGISTER_KERNEL_BUILDER(Name("OneHot")                        \
+                              .Device(DEVICE_GPU)               \
+                              .TypeConstraint<index_type>("TI") \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("depth"),             \
                           OneHotOp<GPUDevice, type, index_type>);
 
-#define REGISTER_ONE_HOT_GPU(type)          \
-  REGISTER_ONE_HOT_GPU_INDEX(type, int32);  \
-  REGISTER_ONE_HOT_GPU_INDEX(type, int64);  \
+#define REGISTER_ONE_HOT_GPU(type)         \
+  REGISTER_ONE_HOT_GPU_INDEX(type, uint8); \
+  REGISTER_ONE_HOT_GPU_INDEX(type, int32); \
+  REGISTER_ONE_HOT_GPU_INDEX(type, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ONE_HOT_GPU);
 

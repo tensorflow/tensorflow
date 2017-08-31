@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/test.h"
-
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
@@ -48,4 +48,28 @@ TEST(BlockingCounterTest, TestMultipleThread) {
 }
 
 }  // namespace
+
+static void BM_BlockingCounter(int iters, int num_threads,
+                               int shards_per_thread) {
+  testing::StopTiming();
+  std::unique_ptr<thread::ThreadPool> thread_pool(
+      new thread::ThreadPool(Env::Default(), "test", num_threads));
+  const int num_shards = num_threads * shards_per_thread;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    BlockingCounter bc(num_shards);
+    for (int j = 0; j < num_threads; ++j) {
+      thread_pool->Schedule([&bc, shards_per_thread] {
+        for (int k = 0; k < shards_per_thread; ++k) {
+          bc.DecrementCount();
+        }
+      });
+    }
+    bc.Wait();
+  }
+  testing::StopTiming();
+}
+
+BENCHMARK(BM_BlockingCounter)->RangePair(1, 12, 1, 1000);
+
 }  // namespace tensorflow

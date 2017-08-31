@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 
 #include <errno.h>
+#ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
+#endif
 
 #include <map>
+#include <utility>
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
@@ -31,7 +34,7 @@ namespace tensorflow {
 PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
                              SubAllocator* allocator,
                              RoundUpInterface* size_rounder, string name)
-    : name_(name),
+    : name_(std::move(name)),
       has_size_limit_(pool_size_limit > 0),
       auto_resize_(auto_resize),
       pool_size_limit_(pool_size_limit),
@@ -125,7 +128,7 @@ void* PoolAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
     return PrepareChunk(r, alignment, num_bytes);
   } else {
     void* ptr = allocator_->Alloc(kPoolAlignment, num_bytes);
-    for (auto v : alloc_visitors_) {
+    for (const auto& v : alloc_visitors_) {
       v(ptr, num_bytes);
     }
     return PrepareChunk(ptr, alignment, num_bytes);
@@ -137,7 +140,7 @@ void PoolAllocator::DeallocateRaw(void* ptr) {
   ChunkPrefix* cp = FindPrefix(ptr);
   CHECK_LE((void*)cp, (void*)ptr);
   if (!has_size_limit_ && !auto_resize_) {
-    for (auto v : free_visitors_) {
+    for (const auto& v : free_visitors_) {
       v(cp, cp->num_bytes);
     }
     allocator_->Free(cp, cp->num_bytes);
@@ -160,7 +163,7 @@ void PoolAllocator::Clear() {
     mutex_lock lock(mutex_);
     for (auto iter : pool_) {
       PtrRecord* pr = iter.second;
-      for (auto v : free_visitors_) {
+      for (const auto& v : free_visitors_) {
         v(pr->ptr, pr->num_bytes);
       }
       allocator_->Free(pr->ptr, pr->num_bytes);
@@ -217,7 +220,7 @@ void PoolAllocator::EvictOne() {
     DCHECK(iter != pool_.end());
   }
   pool_.erase(iter);
-  for (auto v : free_visitors_) {
+  for (const auto& v : free_visitors_) {
     v(prec->ptr, prec->num_bytes);
   }
   allocator_->Free(prec->ptr, prec->num_bytes);
@@ -236,11 +239,9 @@ void PoolAllocator::EvictOne() {
         (alloc_request_count == 0)
             ? 0.0
             : allocated_count_ / static_cast<double>(alloc_request_count);
-    static int log_counter = 0;
-    // (counter increment not thread safe but it's just for logging, so we
-    // don't care).
-    bool should_log = ((log_counter++ % 10) == 0);
-    if (should_log) {
+    // Can turn on for debugging purposes.
+    const bool kShouldLog = false;
+    if (kShouldLog) {
       LOG(INFO) << "PoolAllocator: After " << alloc_request_count
                 << " get requests, put_count=" << put_count_
                 << " evicted_count=" << evicted_count_
@@ -252,7 +253,7 @@ void PoolAllocator::EvictOne() {
       size_t new_size_limit = (pool_size_limit_ < kMinPoolSize)
                                   ? kMinPoolSize
                                   : (kIncreaseFactor * pool_size_limit_);
-      if (should_log) {
+      if (kShouldLog) {
         LOG(INFO) << "Raising pool_size_limit_ from " << pool_size_limit_
                   << " to " << new_size_limit;
       }

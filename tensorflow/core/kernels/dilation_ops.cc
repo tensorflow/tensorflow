@@ -64,8 +64,8 @@ void ParseAttributes(OpKernelConstruction* context, std::vector<int32>* strides,
 void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
                 const std::vector<int32>& rates, const Padding& padding,
                 int* stride_rows, int* stride_cols, int* rate_rows,
-                int* rate_cols, int* pad_top, int* pad_left, int* out_rows,
-                int* out_cols) {
+                int* rate_cols, int64* pad_top, int64* pad_left,
+                int64* out_rows, int64* out_cols) {
   // Input tensor is of the following dimensions:
   // [ batch, input_rows, input_cols, depth ]
   const Tensor& input = context->input(0);
@@ -103,12 +103,12 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
   const int filter_cols_eff =
       filter_cols + (filter_cols - 1) * (*rate_cols - 1);
 
-  int pad_bottom = 0, pad_right = 0;
-  OP_REQUIRES_OK(context,
-                 Get2dOutputSizeVerbose(
-                     input_rows, input_cols, filter_rows_eff, filter_cols_eff,
-                     *stride_rows, *stride_cols, padding, out_rows, out_cols,
-                     pad_top, &pad_bottom, pad_left, &pad_right));
+  OP_REQUIRES_OK(
+      context, GetWindowedOutputSize(input_rows, filter_rows_eff, *stride_rows,
+                                     padding, out_rows, pad_top));
+  OP_REQUIRES_OK(
+      context, GetWindowedOutputSize(input_cols, filter_cols_eff, *stride_cols,
+                                     padding, out_cols, pad_left));
 }
 
 template <typename Device, typename T>
@@ -125,8 +125,8 @@ class DilationOp : public OpKernel {
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
-    int pad_top = 0, pad_left = 0;
-    int out_rows = 0, out_cols = 0;
+    int64 pad_top = 0, pad_left = 0;
+    int64 out_rows = 0, out_cols = 0;
     ParseSizes(context, strides_, rates_, padding_, &stride_rows, &stride_cols,
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);
@@ -224,8 +224,8 @@ class DilationBackpropInputOp : public OpKernel {
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
-    int pad_top = 0, pad_left = 0;
-    int out_rows = 0, out_cols = 0;
+    int64 pad_top = 0, pad_left = 0;
+    int64 out_rows = 0, out_cols = 0;
     ParseSizes(context, strides_, rates_, padding_, &stride_rows, &stride_cols,
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);
@@ -343,8 +343,8 @@ class DilationBackpropFilterOp : public OpKernel {
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
-    int pad_top = 0, pad_left = 0;
-    int out_rows = 0, out_cols = 0;
+    int64 pad_top = 0, pad_left = 0;
+    int64 out_rows = 0, out_cols = 0;
     ParseSizes(context, strides_, rates_, padding_, &stride_rows, &stride_cols,
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);

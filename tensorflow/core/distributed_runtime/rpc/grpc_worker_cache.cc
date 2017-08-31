@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -25,10 +26,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
 class GrpcWorkerCache : public WorkerCachePartial {
  public:
-  explicit GrpcWorkerCache(GrpcChannelCache* channel_cache)
-      : channel_cache_(channel_cache) {
+  explicit GrpcWorkerCache(GrpcChannelCache* channel_cache,
+                           WorkerInterface* local_worker,
+                           const string& local_target)
+      : local_target_(local_target),
+        local_worker_(local_worker),
+        channel_cache_(channel_cache) {
     // TODO(mrry): Investigate possible performance improvements by
     // replacing this thread with a threadpool.
     polling_thread_ = Env::Default()->StartThread(
@@ -38,28 +45,43 @@ class GrpcWorkerCache : public WorkerCachePartial {
           while (completion_queue_.Next(&tag, &ok)) {
             GrpcClientCQTag* callback_tag = static_cast<GrpcClientCQTag*>(tag);
             callback_tag->OnCompleted(ok);
-            delete callback_tag;
           }
         });
   }
 
   // Explicit destructor to control destruction order.
   ~GrpcWorkerCache() override {
+    // Wait until all live rpcs are done since otherwise the completion
+    // queue shutdown will interfere with rpc operation.
+    live_rpc_counter_.WaitUntilUnused();
     completion_queue_.Shutdown();
     delete polling_thread_;  // Blocks until thread exits.
     delete channel_cache_;
   }
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<string>* workers) const override {
     channel_cache_->ListWorkers(workers);
   }
 
   WorkerInterface* CreateWorker(const string& target) override {
-    SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
-    if (!channel) return nullptr;
-    WorkerInterface* ret =
-        NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
-    return ret;
+    if (target == local_target_) {
+      return local_worker_;
+    } else {
+      SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
+      if (!channel) return nullptr;
+      WorkerInterface* ret = NewGrpcRemoteWorker(&live_rpc_counter_, channel,
+                                                 &completion_queue_, &logger_);
+      return ret;
+    }
+  }
+
+  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
+    if (target == local_target_) {
+      CHECK_EQ(worker, local_worker_)
+          << "Releasing a worker that was not returned by this WorkerCache";
+    } else {
+      WorkerCacheInterface::ReleaseWorker(target, worker);
+    }
   }
 
   void SetLogging(bool v) override { logger_.SetLogging(v); }
@@ -71,14 +93,25 @@ class GrpcWorkerCache : public WorkerCachePartial {
   }
 
  private:
+  const string local_target_;
+  WorkerInterface* const local_worker_;  // Not owned.
+  GrpcCounter live_rpc_counter_;
   GrpcChannelCache* channel_cache_;  // Owned.
   ::grpc::CompletionQueue completion_queue_;
   Thread* polling_thread_;  // Owned.
   WorkerCacheLogger logger_;
 };
 
+}  // namespace
+
 WorkerCacheInterface* NewGrpcWorkerCache(GrpcChannelCache* cc) {
-  return new GrpcWorkerCache(cc);
+  return new GrpcWorkerCache(cc, nullptr, "");
+}
+
+WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
+    GrpcChannelCache* cc, WorkerInterface* local_worker,
+    const string& local_target) {
+  return new GrpcWorkerCache(cc, local_worker, local_target);
 }
 
 }  // namespace tensorflow

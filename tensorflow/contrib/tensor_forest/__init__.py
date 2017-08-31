@@ -18,4 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.tensor_forest.client import *
 from tensorflow.contrib.tensor_forest.python import *
+# pylint: enable=unused-import,wildcard-import

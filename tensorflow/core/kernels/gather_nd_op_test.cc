@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -87,7 +86,7 @@ template <typename Index>
 static Graph* GatherNd(int dim) {
   Graph* g = new Graph(OpRegistry::Global());
   // Always use a 512MB buffer.
-  //const int kRows = ((512 << 20) / sizeof(float)) / dim;
+  // const int kRows = ((512 << 20) / sizeof(float)) / dim;
   Tensor params(DT_FLOAT, TensorShape({dim, 8, 16, 32}));
   params.flat<float>().setRandom();
 
@@ -109,20 +108,17 @@ static Graph* GatherNd(int dim) {
 
 #define BM_GATHER_ND(DEVICE, INDEX)                                 \
   static void BM_##DEVICE##_gather_nd_##INDEX(int iters, int dim) { \
-    const int64 tot = static_cast<int64>(iters) * kLookups * dim;   \
+    const int64 tot = static_cast<int64>(iters) * kLookups * 4;     \
     testing::ItemsProcessed(tot);                                   \
     testing::BytesProcessed(tot * sizeof(float));                   \
     testing::UseRealTime();                                         \
     test::Benchmark(#DEVICE, GatherNd<INDEX>(dim)).Run(iters);      \
   }                                                                 \
   BENCHMARK(BM_##DEVICE##_gather_nd_##INDEX)                        \
-      ->Arg(1)                                                      \
       ->Arg(10)                                                     \
-      ->Arg(20)                                                     \
-      ->Arg(64)                                                     \
       ->Arg(100)                                                    \
-      ->Arg(200)                                                    \
-      ->Arg(1000)
+      ->Arg(1000)                                                   \
+      ->Arg(10000)
 
 BM_GATHER_ND(cpu, int32);
 BM_GATHER_ND(gpu, int32);

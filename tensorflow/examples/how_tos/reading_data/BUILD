@@ -13,7 +13,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist:input_data",
+        "//tensorflow/contrib/learn/python/learn/datasets",
     ],
 )
 

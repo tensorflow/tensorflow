@@ -18,63 +18,56 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/binary_linalg_ops_common.h"
+#include "tensorflow/core/kernels/linalg_ops_common.h"
 
 namespace tensorflow {
 
-template <typename Scalar, bool SupportsBatchOperationT>
-class CholeskyGrad
-    : public BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+template <typename Scalar>
+class CholeskyGrad : public LinearAlgebraOp<Scalar> {
  public:
-  explicit CholeskyGrad(OpKernelConstruction* context)
-      : BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
-  ~CholeskyGrad() override {}
+  typedef LinearAlgebraOp<Scalar> Base;
 
-  using Matrix =
-      Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-  using ConstMatrixMap = Eigen::Map<const Matrix>;
-  using MatrixMap = Eigen::Map<Matrix>;
+  explicit CholeskyGrad(OpKernelConstruction* context) : Base(context) {}
+
+  using TensorShapes = typename Base::TensorShapes;
+  using Matrix = typename Base::Matrix;
+  using MatrixMap = typename Base::MatrixMap;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
   using ConstRef = Eigen::Ref<const Matrix>;
   using Ref = Eigen::Ref<Matrix>;
 
-  TensorShape GetOutputMatrixShape(
-      const TensorShape& input_matrix_l_full_shape,
-      const TensorShape& input_matrix_grad_shape) override {
-    return input_matrix_l_full_shape;
-  }
-
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape,
-                       const TensorShape& rhs_matrix_shape) override {
-    const int64 rows = input_matrix_shape.dim_size(0);
-    if (rows > (1LL << 20)) {
-      // A big number to cap the cost in case overflow.
-      return kint64max;
-    } else {
-      return rows * rows * rows;
-    }
-  }
-
-  void ComputeMatrix(OpKernelContext* context,
-                     const ConstMatrixMap& input_matrix_l_full,
-                     const ConstMatrixMap& input_matrix_grad,
-                     MatrixMap* output_matrix) override {
+  void ValidateInputMatrixShapes(
+      OpKernelContext* context,
+      const TensorShapes& input_matrix_shapes) const final {
+    OP_REQUIRES(context, input_matrix_shapes.size() == 2,
+                errors::InvalidArgument("Expected two input matrices, got %d.",
+                                        input_matrix_shapes.size()));
+    OP_REQUIRES(context, input_matrix_shapes[0] == input_matrix_shapes[1],
+                errors::InvalidArgument(
+                    "Inputs (L and grad) must have the same shape."));
     OP_REQUIRES(context,
-                input_matrix_l_full.rows() == input_matrix_l_full.cols(),
-                errors::InvalidArgument("Input matrix must be square."));
-    OP_REQUIRES(
-        context, input_matrix_l_full.cols() == input_matrix_grad.cols(),
-        errors::InvalidArgument(
-            "Input matrix and gradient must have same number of cols."));
-    OP_REQUIRES(
-        context, input_matrix_l_full.rows() == input_matrix_grad.rows(),
-        errors::InvalidArgument(
-            "Input matrix and gradient must have same number of rows."));
+                TensorShapeUtils::IsSquareMatrix(input_matrix_shapes[0]),
+                errors::InvalidArgument("Inputs must be a square matrices."));
+  }
+
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    return TensorShapes({input_matrix_shapes[0]});
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& input_matrix_l_full = inputs[0];
+    const ConstMatrixMap& input_matrix_grad = inputs[1];
+    MatrixMap output_matrix = outputs->at(0);
 
     // Algorithm only depends on lower triangular half on input_matrix_l.
     const Matrix input_matrix_l =
         input_matrix_l_full.template triangularView<Eigen::Lower>();
     // Algorithm only depends on lower triangular half on input_matrix_grad.
-    *output_matrix = input_matrix_grad.template triangularView<Eigen::Lower>();
+    output_matrix = input_matrix_grad.template triangularView<Eigen::Lower>();
 
     const int64 kMatrixSize = input_matrix_l.rows();
     const int64 kMaxBlockSize = 32;
@@ -97,34 +90,35 @@ class CholeskyGrad
 
       auto B = input_matrix_l.block(block_end, 0, trailing_size, block_begin);
       auto B_bar =
-          output_matrix->block(block_end, 0, trailing_size, block_begin);
+          output_matrix.block(block_end, 0, trailing_size, block_begin);
 
       auto C = input_matrix_l.block(block_end, block_begin, trailing_size,
                                     block_size);
-      auto C_bar = output_matrix->block(block_end, block_begin, trailing_size,
-                                        block_size);
+      auto C_bar = output_matrix.block(block_end, block_begin, trailing_size,
+                                       block_size);
 
       auto D = input_matrix_l.block(block_begin, block_begin, block_size,
                                     block_size);
-      auto D_bar = output_matrix->block(block_begin, block_begin, block_size,
-                                        block_size);
+      auto D_bar =
+          output_matrix.block(block_begin, block_begin, block_size, block_size);
 
       auto R = input_matrix_l.block(block_begin, 0, block_size, block_begin);
-      auto R_bar =
-          output_matrix->block(block_begin, 0, block_size, block_begin);
+      auto R_bar = output_matrix.block(block_begin, 0, block_size, block_begin);
 
-      C_bar = D.adjoint().template triangularView<Eigen::Upper>()
-          .solve(C_bar.adjoint()).adjoint();
+      C_bar = D.adjoint()
+                  .template triangularView<Eigen::Upper>()
+                  .solve(C_bar.adjoint())
+                  .adjoint();
       D_bar -= (C_bar.adjoint() * C).template triangularView<Eigen::Lower>();
       B_bar -= C_bar * R;
       R_bar -= C_bar.adjoint() * B;
       CholeskyGradUnblocked(D, D_bar);
       R_bar -= (D_bar + D_bar.adjoint()) * R;
     }
-    *output_matrix =
-        (0.5 * (*output_matrix + output_matrix->transpose())).eval();
+    output_matrix = (0.5 * (output_matrix + output_matrix.transpose())).eval();
   }
 
+ private:
   void CholeskyGradUnblocked(const ConstRef& l_block, Ref grad_block) {
     const int64 kMatrixSize = l_block.rows();
     for (int64 k = kMatrixSize - 1; k >= 0; k--) {
@@ -162,11 +156,9 @@ class CholeskyGrad
   }
 };
 
-REGISTER_BINARY_LINALG_OP("CholeskyGrad", (CholeskyGrad<float, false>), float);
-REGISTER_BINARY_LINALG_OP("CholeskyGrad", (CholeskyGrad<double, false>),
-                          double);
-REGISTER_BINARY_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<float, true>),
-                          float);
-REGISTER_BINARY_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<double, true>),
-                          double);
+REGISTER_LINALG_OP("CholeskyGrad", (CholeskyGrad<float>), float);
+REGISTER_LINALG_OP("CholeskyGrad", (CholeskyGrad<double>), double);
+REGISTER_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<float>), float);
+REGISTER_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<double>), double);
+
 }  // namespace tensorflow

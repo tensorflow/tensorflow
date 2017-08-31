@@ -22,7 +22,7 @@ limitations under the License.
 // Device names
 // * Every Device should have a unique name with the format:
 //     /job:___/replica:___/task:___/(gpu|cpu):___
-//   An example name would be "/job:train/replica:0/task:3/gpu:2".
+//   An example name would be "/job:train/replica:0/task:3/device:GPU:2".
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 
@@ -34,8 +34,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb_text.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -53,15 +53,16 @@ namespace tensorflow {
 
 class Device : public DeviceBase {
  public:
-  Device(Env* env, const DeviceAttributes& device_attributes,
-         Allocator* device_allocator);
+  Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
   // Full name of this device (see top comment).
-  const string& name() const { return device_attributes_.name(); }
+  const string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName parsed_name() const { return parsed_name_; }
+  const DeviceNameUtils::ParsedName& parsed_name() const {
+    return parsed_name_;
+  }
 
   // Describes what kind of device this is.  This is intended to be
   // human-readable and not computer-parsed, except that two devices
@@ -85,7 +86,7 @@ class Device : public DeviceBase {
   // Asynchronous kernel's compute.
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
-    op_kernel->ComputeAsync(context, done);
+    op_kernel->ComputeAsync(context, std::move(done));
   }
 
   // Takes ownership of the references in tensors. If necessary, a
@@ -111,10 +112,10 @@ class Device : public DeviceBase {
   //
   // 'library' provides access to the function library which is shared
   // between all device partitions.
-  // 'graphdef' supplies the partition of the graph assigned to this
+  // 'graph' supplies the partition of the graph assigned to this
   // device.
   virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   GraphDef* /*graphdef*/) {
+                                   std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 
@@ -141,14 +142,19 @@ class Device : public DeviceBase {
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
       const string& name, DeviceType device, Bytes memory_limit,
-      BusAdjacency bus_adjacency, const string& physical_device_desc);
+      const DeviceLocality& locality, const string& physical_device_desc);
 
-  static DeviceAttributes BuildDeviceAttributes(const string& name,
-                                                DeviceType device,
-                                                Bytes memory_limit,
-                                                BusAdjacency bus_adjacency) {
+  static DeviceAttributes BuildDeviceAttributes(
+      const string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
-    return BuildDeviceAttributes(name, device, memory_limit, bus_adjacency, "");
+    return BuildDeviceAttributes(name, device, memory_limit, locality, "");
+  }
+
+ protected:
+  void DeleteResourceMgr() {
+    delete rmgr_;
+    rmgr_ = nullptr;
   }
 
  private:

@@ -52,6 +52,7 @@ class DimensionTest(test_util.TensorFlowTestCase):
                             tensor_shape.Dimension(12))
     self.assertGreaterEqual(tensor_shape.Dimension(13),
                             tensor_shape.Dimension(12))
+    self.assertNotEqual(dim, (12,))
     with self.assertRaises(ValueError):
       dim.merge_with(tensor_shape.Dimension(13))
 
@@ -187,6 +188,9 @@ class ShapeTest(test_util.TensorFlowTestCase):
       len(s)
     self.assertFalse(s)
     self.assertIs(None, s.dims)
+    with self.assertRaises(ValueError):
+      for _ in tensor_shape.TensorShape(None):
+        pass
 
   def testFullyDefinedShape(self):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
@@ -205,6 +209,8 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual([3, 4, 7], s.as_list())
     s.assert_is_compatible_with([3, 4, 7])
     s.assert_same_rank([6, 3, 7])
+    for d1, d2 in zip(s, [3, 4, 7]):
+      assert d1.value == d2
 
   def testPartiallyDefinedShape(self):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
@@ -219,6 +225,8 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.Dimension(None).value, s[1].value)
     self.assertEqual(tensor_shape.Dimension(7), s[2])
     s.assert_same_rank([6, 3, 7])
+    for d1, d2 in zip(s, [3, None, 7]):
+      assert d1.value == d2
 
   def testMergeFullShapes(self):
     self.assertEqual([3, 4, 7],
@@ -266,6 +274,26 @@ class ShapeTest(test_util.TensorFlowTestCase):
     tensor_shape.TensorShape([1, 2, 3]).assert_is_compatible_with(
         tensor_shape.TensorShape([1, 2]).concatenate(
             tensor_shape.Dimension(3)))
+
+  def _testMostSpecificCompatibleShapeHelper(self, x, y, expected):
+    mcs = tensor_shape.TensorShape(x).most_specific_compatible_shape(
+        tensor_shape.TensorShape(y))
+    mcs_dims = mcs.dims
+    if expected is None or mcs_dims is None:
+      self.assertIs(expected, mcs_dims)
+    else:
+      self.assertEqual(expected, mcs.as_list())
+
+  def testMostSpecificCompatibleShape(self):
+    self._testMostSpecificCompatibleShapeHelper([1, 2], None, None)
+    self._testMostSpecificCompatibleShapeHelper(None, [1, 2], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2], [1, 2, 3, 4], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2, 3, 4], [1, 2], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2], [1, 2], [1, 2])
+    self._testMostSpecificCompatibleShapeHelper([None, 2, 3], [1, 1, 3],
+                                                [None, None, 3])
+    self._testMostSpecificCompatibleShapeHelper([1, 1, 3], [None, 2, 3],
+                                                [None, None, 3])
 
   def testHelpers(self):
     tensor_shape.TensorShape([]).assert_is_compatible_with(
@@ -349,6 +377,29 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertFalse(s3 == "a string")
     self.assertTrue(s3 != "a string")
 
+    # eq and neq are not symmetric for unknown shapes.
+    unk0 = tensor_shape.unknown_shape()
+    self.assertFalse(unk0 == s1)
+    self.assertFalse(s1 == unk0)
+    with self.assertRaises(ValueError):
+      unk0 != s1  # pylint: disable=pointless-statement
+    with self.assertRaises(ValueError):
+      s1 != unk0  # pylint: disable=pointless-statement
+    unk1 = tensor_shape.unknown_shape()
+    self.assertTrue(unk0 == unk1)
+    self.assertTrue(unk1 == unk0)
+    with self.assertRaises(ValueError):
+      unk0 != unk1  # pylint: disable=pointless-statement
+    with self.assertRaises(ValueError):
+      unk1 != unk0  # pylint: disable=pointless-statement
+
+  def testAsList(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 "not defined on an unknown TensorShape"):
+      tensor_shape.unknown_shape().as_list()
+    self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
+    self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(
+        (2, None, 4)).as_list())
 
 if __name__ == "__main__":
   googletest.main()

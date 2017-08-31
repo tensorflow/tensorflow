@@ -20,6 +20,10 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/versions.pb_text.h"
@@ -56,68 +60,96 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
         node_offset, " with total nodes in graph: ", graph_def->node_size());
   }
 
-  Status s;
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
-    const OpDef* op_def = op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) {
-      return s;
-    }
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(node_def->op(), &op_def));
     AddDefaultsToNodeDef(*op_def, node_def);
   }
 
-  return s;
+  return Status::OK();
+}
+
+static Status RemoveNewDefaultAttrsFromNodeDef(
+    NodeDef* node_def, const OpRegistryInterface& consumer_op_registry,
+    const OpRegistryInterface& producer_op_registry,
+    std::set<std::pair<string, string>>* op_attr_removed) {
+  const OpDef* producer_op_def;
+  const OpDef* consumer_op_def;
+  TF_RETURN_IF_ERROR(
+      producer_op_registry.LookUpOpDef(node_def->op(), &producer_op_def));
+  TF_RETURN_IF_ERROR(
+      consumer_op_registry.LookUpOpDef(node_def->op(), &consumer_op_def));
+
+  std::vector<string> to_remove;
+  for (const auto& attr : node_def->attr()) {
+    // If the attr is not in consumer_op_def and doesn't start with '_'...
+    if (!StringPiece(attr.first).starts_with("_") &&
+        FindAttr(attr.first, *consumer_op_def) == nullptr) {
+      const OpDef::AttrDef* producer_attr_def =
+          FindAttr(attr.first, *producer_op_def);
+      if (producer_attr_def == nullptr) {
+        return errors::InvalidArgument(
+            "Attr '", attr.first, "' missing in producer's OpDef: ",
+            SummarizeOpDef(*producer_op_def), " but found in node: ",
+            SummarizeNodeDef(*node_def));
+      }
+      // ...and it has the same value as the default in producer,
+      if (producer_attr_def->has_default_value() &&
+          AreAttrValuesEqual(producer_attr_def->default_value(), attr.second)) {
+        // then we will remove it below.
+        to_remove.emplace_back(attr.first);
+      }
+    }
+  }
+  // We separate identifying which attrs should be removed from
+  // actually removing them to avoid invalidating the loop iterators
+  // above.
+  for (const string& attr_name : to_remove) {
+    node_def->mutable_attr()->erase(attr_name);
+    if (op_attr_removed != nullptr) {
+      op_attr_removed->insert(std::make_pair(node_def->op(), attr_name));
+    }
+  }
+
+  return Status::OK();
+}
+
+static bool IsFunction(const GraphDef& graph_def, const string& op_name) {
+  for (const auto& func_def : graph_def.library().function()) {
+    if (op_name == func_def.signature().name()) return true;
+  }
+  return false;
 }
 
 Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed) {
-  Status s;
-  std::vector<string> to_remove;
+  // TODO(joshL): Make IsFunction() faster by collecting the names of
+  // all functions as a preprocessing step.
   for (int n = 0; n < graph_def->node_size(); ++n) {
     NodeDef* node_def = graph_def->mutable_node(n);
-    const OpDef* producer_op_def =
-        producer_op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) return s;
-    const OpDef* consumer_op_def =
-        consumer_op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) return s;
-
-    for (const auto& attr : node_def->attr()) {
-      // If the attr is not in consumer_op_def and doesn't start with '_'...
-      if (!StringPiece(attr.first).starts_with("_") &&
-          FindAttr(attr.first, *consumer_op_def) == nullptr) {
-        const OpDef::AttrDef* producer_attr_def =
-            FindAttr(attr.first, *producer_op_def);
-        if (producer_attr_def == nullptr) {
-          return errors::InvalidArgument(
-              "Attr '", attr.first, "' missing in producer's OpDef: ",
-              SummarizeOpDef(*producer_op_def), " but found in node: ",
-              SummarizeNodeDef(*node_def));
-        }
-        // ...and it has the same value as the default in producer,
-        if (producer_attr_def->has_default_value() &&
-            AreAttrValuesEqual(producer_attr_def->default_value(),
-                               attr.second)) {
-          // then we will remove it below.
-          to_remove.emplace_back(attr.first);
-        }
+    if (!IsFunction(*graph_def, node_def->op())) {
+      TF_RETURN_IF_ERROR(RemoveNewDefaultAttrsFromNodeDef(
+          node_def, consumer_op_registry, producer_op_registry,
+          op_attr_removed));
+    }
+  }
+  for (int f = 0; f < graph_def->library().function_size(); ++f) {
+    FunctionDef* func_def = graph_def->mutable_library()->mutable_function(f);
+    for (int n = 0; n < func_def->node_def_size(); ++n) {
+      NodeDef* node_def = func_def->mutable_node_def(n);
+      if (!IsFunction(*graph_def, node_def->op())) {
+        // TODO(josh11b): Better handling of attrs with placeholder values.
+        TF_RETURN_IF_ERROR(RemoveNewDefaultAttrsFromNodeDef(
+            node_def, consumer_op_registry, producer_op_registry,
+            op_attr_removed));
       }
     }
-    // We separate identifying which attrs should be removed from
-    // actually removing them to avoid invalidating the loop iterators
-    // above.
-    for (const string& attr_name : to_remove) {
-      node_def->mutable_attr()->erase(attr_name);
-      if (op_attr_removed != nullptr) {
-        op_attr_removed->insert(std::make_pair(node_def->op(), attr_name));
-      }
-    }
-    to_remove.clear();
   }
 
-  return s;
+  return Status::OK();
 }
 
 void OpsUsedByGraph(const GraphDef& graph_def,
@@ -150,7 +182,7 @@ void OpsUsedByGraph(const GraphDef& graph_def,
   while (!functions_to_process.empty()) {
     const FunctionDef* fun = functions_to_process.back();
     functions_to_process.pop_back();
-    for (const auto& node : fun->node()) {
+    for (const auto& node : fun->node_def()) {
       mark_op_as_used(node.op());
     }
   }
@@ -172,13 +204,12 @@ Status StrippedOpListForGraph(const GraphDef& graph_def,
   OpsUsedByGraph(graph_def, &used_ops);
 
   // Build the stripped op list in sorted order, ignoring functions.
-  Status status;
   stripped_op_list->clear_op();
   for (const string& op_name : used_ops) {
-    const OpDef* op = op_registry.LookUp(op_name, &status);
-    if (!op) return status;
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(op_name, &op_def));
     OpDef* stripped_op = stripped_op_list->add_op();
-    stripped_op->CopyFrom(*op);
+    stripped_op->CopyFrom(*op_def);
     RemoveDescriptionsFromOpDef(stripped_op);
   }
   return Status::OK();

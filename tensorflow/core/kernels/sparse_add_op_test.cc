@@ -61,8 +61,10 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
   // [3   4]
 
   const auto indices_shape = TensorShape({4, 2});
-  const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> shape = {3, 2};
+  std::initializer_list<int64> in{ 0, 1, 1, 0, 2, 0, 2, 1 };
+  const gtl::ArraySlice<int64> indices(in);
+  std::initializer_list<int64> sh{ 3, 2 };
+  const gtl::ArraySlice<int64> shape(sh);
 
 #define ADD_TENSOR_INPUT()                                  \
   AddInputFromArray<int64>(indices_shape, indices);         \
@@ -99,8 +101,10 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
     DataType val_dtype = tensorflow::DataTypeToEnum<VALTYPE>::value;        \
                                                                             \
     const auto indices_shape = TensorShape({4, 2});                         \
-    const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};        \
-    const gtl::ArraySlice<int64> shape = {3, 2};                            \
+    std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};                \
+    const gtl::ArraySlice<int64> indices(in);                               \
+    std::initializer_list<int64> sh{3, 2};                                  \
+    const gtl::ArraySlice<int64> shape(sh);                                 \
                                                                             \
     AddInputFromArray<int64>(indices_shape, indices);                       \
     AddInputFromArray<VALTYPE>(TensorShape({4}), {1, 2, 3, 4});             \
@@ -154,8 +158,10 @@ RUN_TEST(complex128);
     MakeOp<VALTYPE>();                                                   \
     DataType val_dtype = tensorflow::DataTypeToEnum<VALTYPE>::value;     \
     const auto indices_shape = TensorShape({4, 2});                      \
-    const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};     \
-    const gtl::ArraySlice<int64> shape = {3, 2};                         \
+    std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};             \
+    const gtl::ArraySlice<int64> indices(in);                            \
+    std::initializer_list<int64> sh{3, 2};                               \
+    const gtl::ArraySlice<int64> shape(sh);                              \
                                                                          \
     auto AddSparseTensor = [indices, indices_shape, shape,               \
                             this](bool negate) {                         \
@@ -192,10 +198,10 @@ RUN_TEST(complex128);
   }
 
 RUN_TEST(int64, 1);
-RUN_TEST(float, 1e-3);
-RUN_TEST(double, 1e-3);
-RUN_TEST(complex64, 1e-3);
-RUN_TEST(complex128, 1e-3);
+RUN_TEST(float, 1e-3f);
+RUN_TEST(double, 1e-3f);
+RUN_TEST(complex64, 1e-3f);
+RUN_TEST(complex128, 1e-3f);
 #undef RUN_TEST
 
 }  // namespace

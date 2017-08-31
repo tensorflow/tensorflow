@@ -18,13 +18,40 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import sys as _sys
 
 from tensorflow.python.platform import flags
+from tensorflow.python.util.all_util import remove_undocumented
 
 
-def run(main=None):
+def _benchmark_tests_can_log_memory():
+  return True
+
+
+def run(main=None, argv=None):
+  """Runs the program with an optional 'main' function and 'argv' list."""
   f = flags.FLAGS
-  f._parse_flags()
-  main = main or sys.modules['__main__'].main
-  sys.exit(main(sys.argv))
+
+  # Extract the args from the optional `argv` list.
+  args = argv[1:] if argv else None
+
+  # Parse the known flags from that list, or from the command
+  # line otherwise.
+  # pylint: disable=protected-access
+  flags_passthrough = f._parse_flags(args=args)
+  # pylint: enable=protected-access
+
+  main = main or _sys.modules['__main__'].main
+
+  # Call the main function, passing through any arguments
+  # to the final program.
+  _sys.exit(main(_sys.argv[:1] + flags_passthrough))
+
+
+_allowed_symbols = [
+    'run',
+    # Allowed submodule.
+    'flags',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

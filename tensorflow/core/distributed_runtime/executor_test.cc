@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -127,14 +128,19 @@ float V(const Tensor& tensor) {
 
 static uint64 kIncarnation = 1;  // Uses in following tests.
 
-string Key(const string& sender, const uint64 incarnation,
-           const string& receiver, const string& name) {
-  return Rendezvous::CreateKey(sender, incarnation, receiver, name,
-                               FrameAndIter(0, 0));
+Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
+                          const string& receiver, const string& name) {
+  Rendezvous::ParsedKey result;
+  CHECK(
+      Rendezvous::ParseKey(Rendezvous::CreateKey(sender, incarnation, receiver,
+                                                 name, FrameAndIter(0, 0)),
+                           &result)
+          .ok());
+  return result;
 }
 
 #define ALICE "/job:j/replica:0/task:0/cpu:0"
-#define BOB "/job:j/replica:0/task:0/gpu:0"
+#define BOB "/job:j/replica:0/task:0/device:GPU:0"
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b

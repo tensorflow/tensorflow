@@ -95,8 +95,10 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
 }
 
 TEST(ValidateGraphDefAgainstOpListTest, GraphWithOpOnlyInOpList) {
+  OpRegistrationData op_reg_data;
+  TF_ASSERT_OK(OpDefBuilder("UniqueSnowflake").Finalize(&op_reg_data));
   OpList op_list;
-  TF_ASSERT_OK(OpDefBuilder("UniqueSnowflake").Finalize(op_list.add_op()));
+  *op_list.add_op() = op_reg_data.op_def;
   const string graph_def_str = "node { name: 'A' op: 'UniqueSnowflake' }";
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();
@@ -105,8 +107,10 @@ TEST(ValidateGraphDefAgainstOpListTest, GraphWithOpOnlyInOpList) {
 }
 
 TEST(ValidateGraphDefAgainstOpListTest, GraphWithGlobalOpNotInOpList) {
+  OpRegistrationData op_reg_data;
+  TF_ASSERT_OK(OpDefBuilder("NotAnywhere").Finalize(&op_reg_data));
   OpList op_list;
-  TF_ASSERT_OK(OpDefBuilder("NotAnywhere").Finalize(op_list.add_op()));
+  *op_list.add_op() = op_reg_data.op_def;
   const string graph_def_str = "node { name: 'A' op: 'FloatInput' }";
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();

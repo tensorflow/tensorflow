@@ -1,0 +1,60 @@
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/util/event.proto";
+
+// Reply message from EventListener to the client, i.e., to the source of the
+// Event protocol buffers, e.g., debug ops inserted by a debugged runtime to a
+// TensorFlow graph being executed.
+message EventReply {
+  message DebugOpStateChange {
+    enum State {
+      STATE_UNSPECIFIED = 0;
+      DISABLED = 1;
+      READ_ONLY = 2;
+      READ_WRITE = 3;
+    }
+
+    State state = 1;
+    string node_name = 2;
+    int32 output_slot = 3;
+    string debug_op = 4;
+  }
+
+  repeated DebugOpStateChange debug_op_state_changes = 1;
+
+  // New tensor value to override the current tensor value with.
+  TensorProto tensor = 2;
+  // TODO(cais): Make use of this field to implement overriding of tensor value
+  // during debugging.
+}
+
+// EventListener: Receives Event protos, e.g., from debugged TensorFlow
+// runtime(s).
+service EventListener {
+  // Client(s) can use this RPC method to send the EventListener Event protos.
+  // The Event protos can hold information such as:
+  //   1) intermediate tensors from a debugged graph being executed, which can
+  //      be sent from DebugIdentity ops configured with grpc URLs.
+  //   2) GraphDefs of partition graphs, which can be sent from special debug
+  //      ops that get executed immediately after the beginning of the graph
+  //      execution.
+  rpc SendEvents(stream Event) returns (stream EventReply);
+}

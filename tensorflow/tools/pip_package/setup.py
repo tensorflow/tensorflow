@@ -19,49 +19,75 @@ from __future__ import print_function
 
 import fnmatch
 import os
-import platform
 import re
 import sys
 
-from setuptools import find_packages, setup, Command, Extension
+from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.8.0'
-
-numpy_version = "1.8.2"
-if platform.system() == "Darwin":
-  # There are bugs with numpy pip installation on OS X prior to
-  # 1.10.1, so on mac we require a higher version than on other
-  # platforms.
-  numpy_version = "1.10.1"
+# This version string is semver compatible, but incompatible with pip.
+# For pip, we will remove all '-' characters from this string, and use the
+# result for pip.
+_VERSION = '1.3.0'
 
 REQUIRED_PACKAGES = [
-    'numpy >= %s' % numpy_version,
+    'enum34 >= 1.1.6',
+    'numpy >= 1.12.1',
     'six >= 1.10.0',
-    'protobuf == 3.0.0b2',
+    'protobuf >= 3.3.0',
+    'tensorflow-tensorboard >= 0.1.0, < 0.2.0',
+    'autograd >= 1.1.11',
 ]
+
+project_name = 'tensorflow'
+if '--project_name' in sys.argv:
+  project_name_idx = sys.argv.index('--project_name')
+  project_name = sys.argv[project_name_idx + 1]
+  sys.argv.remove('--project_name')
+  sys.argv.pop(project_name_idx)
 
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')
 else:
   REQUIRED_PACKAGES.append('wheel')
+  # mock comes with unittest.mock for python3, need to install for python2
+  REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
+# remove tensorboard from tf-nightly packages
+if 'tf_nightly' in project_name:
+  for package in REQUIRED_PACKAGES:
+    if 'tensorflow-tensorboard' in package:
+      REQUIRED_PACKAGES.remove(package)
+      break
+
+# weakref.finalize was introduced in Python 3.4
+if sys.version_info < (3, 4):
+  REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'tensorboard = tensorflow.tensorboard.tensorboard:main',
+    'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
+    # We need to keep the TensorBoard command, even though the console script
+    # is now declared by the tensorboard pip package. If we remove the
+    # TensorBoard command, pip will inappropriately remove it during install,
+    # even though the command is not removed, just moved to a different wheel.
+    'tensorboard = tensorboard.main:main',
 ]
 # pylint: enable=line-too-long
+
+# remove the tensorboard console script if building tf_nightly
+if 'tf_nightly' in project_name:
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:main')
 
 TEST_PACKAGES = [
     'scipy >= 0.15.1',
 ]
 
 class BinaryDistribution(Distribution):
-  def is_pure(self):
-    return False
+  def has_ext_modules(self):
+    return True
 
 
 class InstallCommand(InstallCommandBase):
@@ -105,23 +131,18 @@ class InstallHeaders(Command):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
-    install_dir = re.sub('/google/protobuf/src', '', install_dir)
+    install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
-    # Copy eigen code into tensorflow/include,
-    # tensorflow/include/external/eigen_archive/eigen-eigen-<revision>,
-    # and tensorflow/include/eigen-eigen-<revision>.
+    # Copy eigen code into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    if re.search(r'(external/eigen_archive/eigen-eigen-\w+)', install_dir):
-      extra_dirs = [re.sub('/external/eigen_archive', '', install_dir),
-                    re.sub(r'external/eigen_archive/eigen-eigen-\w+', '',
-                           install_dir)]
-      for extra_dir in extra_dirs:
-        if not os.path.exists(extra_dir):
-          self.mkpath(extra_dir)
-        self.copy_file(header, extra_dir)
+    if 'external/eigen_archive/' in install_dir:
+      extra_dir = install_dir.replace('external/eigen_archive', '')
+      if not os.path.exists(extra_dir):
+        self.mkpath(extra_dir)
+      self.copy_file(header, extra_dir)
 
     if not os.path.exists(install_dir):
       self.mkpath(install_dir)
@@ -152,17 +173,24 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
+matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
 
+if os.name == 'nt':
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
+else:
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
-           list(find_files('*.h', 'google/protobuf/src')) +
+           list(find_files('*.h', 'tensorflow/stream_executor')) +
+           list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'external/eigen_archive')))
+           list(find_files('*', 'external/eigen_archive')) +
+           list(find_files('*.h', 'external/nsync/public')))
 
 
 setup(
-    name='tensorflow',
-    version=_VERSION,
+    name=project_name,
+    version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
     long_description='',
     url='http://tensorflow.org/',
@@ -179,11 +207,9 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': ['python/_pywrap_tensorflow.so',
-                       'tensorboard/dist/index.html',
-                       'tensorboard/dist/tf-tensorboard.html',
-                       'tensorboard/lib/css/global.css',
-                     ] + matches,
+        'tensorflow': [
+            EXTENSION_NAME,
+        ] + matches,
     },
     zip_safe=False,
     distclass=BinaryDistribution,
@@ -198,11 +224,18 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-        'Topic :: Software Development :: Libraries',
-        ],
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',  
+        'Topic :: Software Development :: Libraries :: Python Modules',  
+    ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',
-    )
+    keywords='tensorflow tensor machine learning',)

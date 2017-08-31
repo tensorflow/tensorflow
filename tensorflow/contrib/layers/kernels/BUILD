@@ -8,24 +8,13 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 cc_library(
-    name = "bucketization_kernel",
-    srcs = ["bucketization_kernel.cc"],
-    deps = [
-        "@protobuf//:protobuf",
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "sparse_feature_cross_kernel",
     srcs = ["sparse_feature_cross_kernel.cc"],
     deps = [
-        "@farmhash_archive//:farmhash",
-        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
 )

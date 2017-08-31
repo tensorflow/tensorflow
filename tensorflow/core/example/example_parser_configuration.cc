@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -153,6 +155,44 @@ Status ExtractExampleParserConfiguration(
     int output_idx = dense_values_output_start + i;
     (*fixed_len_features)[i].values_output_tensor_name =
         strings::StrCat(node_output_prefix, output_idx);
+  }
+  return Status::OK();
+}
+
+Status ExampleParserConfigurationProtoToFeatureVectors(
+    const ExampleParserConfiguration& config_proto,
+    std::vector<FixedLenFeature>* fixed_len_features,
+    std::vector<VarLenFeature>* var_len_features) {
+  const auto& feature_map = config_proto.feature_map();
+  for (auto it = feature_map.cbegin(); it != feature_map.cend(); ++it) {
+    string key = it->first;
+    const auto& config = it->second;
+    if (config.has_fixed_len_feature()) {
+      const auto& fixed_config = config.fixed_len_feature();
+      FixedLenFeature f;
+      f.key = key;
+      f.dtype = fixed_config.dtype();
+      f.shape = TensorShape(fixed_config.shape());
+      Tensor default_value(f.dtype, f.shape);
+      if (!default_value.FromProto(fixed_config.default_value())) {
+        return errors::InvalidArgument(
+            "Invalid default_value in config proto ",
+            fixed_config.default_value().DebugString());
+      }
+      f.default_value = default_value;
+      f.values_output_tensor_name = fixed_config.values_output_tensor_name();
+      fixed_len_features->push_back(f);
+    } else {
+      const auto& var_len_config = config.var_len_feature();
+      VarLenFeature v;
+      v.key = key;
+      v.dtype = var_len_config.dtype();
+      v.values_output_tensor_name = var_len_config.values_output_tensor_name();
+      v.indices_output_tensor_name =
+          var_len_config.indices_output_tensor_name();
+      v.shapes_output_tensor_name = var_len_config.shapes_output_tensor_name();
+      var_len_features->push_back(v);
+    }
   }
   return Status::OK();
 }

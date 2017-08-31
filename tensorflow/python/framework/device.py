@@ -29,6 +29,7 @@ class DeviceSpec(object):
   strings to verify their validity, merge them or compose them programmatically.
 
   Example:
+
   ```python
   # Place the operations on device "GPU:0" in the "ps" job.
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)

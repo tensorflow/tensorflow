@@ -16,35 +16,44 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STEP_STATS_COLLECTOR_H_
 
 #include <unordered_map>
-#include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-class CostModel;
+class CostModelManager;
 class Graph;
-class Node;
 class NodeExecStats;
 class StepStats;
 
+// StepStatsCollector manages the collection of a StepStats object.
+// The StepStats object holds multiple DeviceStats.
+// Each DeviceStats object holds multiple NodeExecStats.
 class StepStatsCollector {
  public:
-  explicit StepStatsCollector(StepStats* ss,
-                              CostModelManager* cost_model_manager = nullptr);
+  explicit StepStatsCollector(StepStats* ss);
 
-  void UpdateCostModelNode(const NodeExecStats* nt, const Graph* graph,
-                           const Node* node);
+  // BuildCostModel builds or updates a CostModel managed by cost_model_manager,
+  // using the currently collected DeviceStats associated with the devices in
+  // device_map.
+  void BuildCostModel(
+      CostModelManager* cost_model_manager,
+      const std::unordered_map<string, const Graph*>& device_map);
 
+  // Save saves nt to the DeviceStats object associated with device.
   void Save(const string& device, NodeExecStats* nt);
 
+  // Swap replaces the current step stats with ss.
   void Swap(StepStats* ss);
 
  private:
+  // TODO(suharshs): Make this configurable if its not possible to find a value
+  //                 that works for all cases.
+  const uint64 kMaxCollectedNodes = 1 << 20;
   mutex mu_;
   StepStats* step_stats_ GUARDED_BY(mu_);
-  CostModelManager* cost_model_manager_ GUARDED_BY(mu_);
+  uint64 collectedNodes GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

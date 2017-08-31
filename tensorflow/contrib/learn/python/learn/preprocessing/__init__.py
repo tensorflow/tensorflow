@@ -22,3 +22,4 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn.preprocessing.categorical import *
 from tensorflow.contrib.learn.python.learn.preprocessing.text import *
+# pylint: enable=wildcard-import

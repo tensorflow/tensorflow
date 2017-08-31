@@ -12,28 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.numerics."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
+from tensorflow.python.platform import test
 
 
-class VerifyTensorAllFiniteTest(tf.test.TestCase):
+class VerifyTensorAllFiniteTest(test.TestCase):
 
   def testVerifyTensorAllFiniteSucceeds(self):
     x_shape = [5, 4]
     x = np.random.random_sample(x_shape).astype(np.float32)
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        t = tf.constant(x, shape=x_shape, dtype=tf.float32)
-        t_verified = tf.verify_tensor_all_finite(t, "Input is not a number.")
-        self.assertAllClose(x, t_verified.eval())
+    with self.test_session(use_gpu=True):
+      t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
+      t_verified = numerics.verify_tensor_all_finite(t,
+                                                     "Input is not a number.")
+      self.assertAllClose(x, t_verified.eval())
 
   def testVerifyTensorAllFiniteFails(self):
     x_shape = [5, 4]
@@ -42,67 +48,61 @@ class VerifyTensorAllFiniteTest(tf.test.TestCase):
 
     # Test NaN.
     x[0] = np.nan
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        with self.assertRaisesOpError(my_msg):
-          t = tf.constant(x, shape=x_shape, dtype=tf.float32)
-          t_verified = tf.verify_tensor_all_finite(t, my_msg)
-          t_verified.eval()
+    with self.test_session(use_gpu=True):
+      with self.assertRaisesOpError(my_msg):
+        t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
+        t_verified = numerics.verify_tensor_all_finite(t, my_msg)
+        t_verified.eval()
 
     # Test Inf.
     x[0] = np.inf
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        with self.assertRaisesOpError(my_msg):
-          t = tf.constant(x, shape=x_shape, dtype=tf.float32)
-          t_verified = tf.verify_tensor_all_finite(t, my_msg)
-          t_verified.eval()
+    with self.test_session(use_gpu=True):
+      with self.assertRaisesOpError(my_msg):
+        t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
+        t_verified = numerics.verify_tensor_all_finite(t, my_msg)
+        t_verified.eval()
 
 
-class NumericsTest(tf.test.TestCase):
+class NumericsTest(test.TestCase):
 
   def testInf(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu, graph=tf.Graph()):
-        t1 = tf.constant(1.0)
-        t2 = tf.constant(0.0)
-        a = tf.div(t1, t2)
-        check = tf.add_check_numerics_ops()
-        a = control_flow_ops.with_dependencies([check], a)
-        with self.assertRaisesOpError("Inf"):
-          a.eval()
+    with self.test_session(graph=ops.Graph()):
+      t1 = constant_op.constant(1.0)
+      t2 = constant_op.constant(0.0)
+      a = math_ops.div(t1, t2)
+      check = numerics.add_check_numerics_ops()
+      a = control_flow_ops.with_dependencies([check], a)
+      with self.assertRaisesOpError("Inf"):
+        a.eval()
 
   def testNaN(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu, graph=tf.Graph()):
-        t1 = tf.constant(0.0)
-        t2 = tf.constant(0.0)
-        a = tf.div(t1, t2)
-        check = tf.add_check_numerics_ops()
-        a = control_flow_ops.with_dependencies([check], a)
-        with self.assertRaisesOpError("NaN"):
-          a.eval()
+    with self.test_session(graph=ops.Graph()):
+      t1 = constant_op.constant(0.0)
+      t2 = constant_op.constant(0.0)
+      a = math_ops.div(t1, t2)
+      check = numerics.add_check_numerics_ops()
+      a = control_flow_ops.with_dependencies([check], a)
+      with self.assertRaisesOpError("NaN"):
+        a.eval()
 
   def testBoth(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu, graph=tf.Graph()):
-        t1 = tf.constant([1.0, 0.0])
-        t2 = tf.constant([0.0, 0.0])
-        a = tf.div(t1, t2)
-        check = tf.add_check_numerics_ops()
-        a = control_flow_ops.with_dependencies([check], a)
-        with self.assertRaisesOpError("Inf and NaN"):
-          a.eval()
+    with self.test_session(graph=ops.Graph()):
+      t1 = constant_op.constant([1.0, 0.0])
+      t2 = constant_op.constant([0.0, 0.0])
+      a = math_ops.div(t1, t2)
+      check = numerics.add_check_numerics_ops()
+      a = control_flow_ops.with_dependencies([check], a)
+      with self.assertRaisesOpError("Inf and NaN"):
+        a.eval()
 
   def testPassThrough(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu, graph=tf.Graph()):
-        t1 = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
-        checked = tf.check_numerics(t1, message="pass through test")
-        value = checked.eval()
-        self.assertAllEqual(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), value)
-        self.assertEqual([2, 3], checked.get_shape())
+    with self.test_session(graph=ops.Graph()):
+      t1 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
+      checked = array_ops.check_numerics(t1, message="pass through test")
+      value = checked.eval()
+      self.assertAllEqual(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), value)
+      self.assertEqual([2, 3], checked.get_shape())
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

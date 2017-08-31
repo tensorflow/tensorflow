@@ -1,0 +1,11 @@
+path: "tensorflow.sysconfig"
+tf_module {
+  member_method {
+    name: "get_include"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_lib"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

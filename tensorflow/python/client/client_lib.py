@@ -13,20 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""This library contains classes for launching graphs and executing operations.
+"""Support for launching graphs and executing operations.
 
-The [basic usage](../../get_started/index.md#basic-usage) guide has
-examples of how a graph is launched in a [`tf.Session`](#Session).
-
-## Session management
+See the @{$python/client} guide.
 
 @@Session
 @@InteractiveSession
-
 @@get_default_session
-
-## Error classes
-
 @@OpError
 @@CancelledError
 @@UnknownError
@@ -44,6 +37,9 @@ examples of how a graph is launched in a [`tf.Session`](#Session).
 @@InternalError
 @@UnavailableError
 @@DataLossError
+@@exception_type_from_error_code
+@@error_code_from_exception_type
+@@raise_exception_on_not_ok_status
 """
 
 from __future__ import absolute_import

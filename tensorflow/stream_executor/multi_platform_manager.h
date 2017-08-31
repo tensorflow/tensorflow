@@ -123,13 +123,16 @@ class MultiPlatformManager {
   // Provides access to the available set of platforms under a lock.
   static port::Status WithPlatforms(
       std::function<port::Status(PlatformMap*)> callback) {
-    mutex_lock lock(platforms_mutex_);
+    mutex_lock lock(GetPlatformsMutex());
     return callback(GetPlatformMap());
   }
 
  private:
   // mutex that guards the platform map.
-  static mutex platforms_mutex_;
+  static mutex& GetPlatformsMutex() {
+    static mutex* platforms_mutex = new mutex;
+    return *platforms_mutex;
+  }
 
   // TODO(b/22689637): Clean up these two maps; make sure they coexist nicely.
   // TODO(b/22689637): Move this (whatever the final/"official" map is) to

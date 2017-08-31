@@ -15,24 +15,32 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_def_util.h"
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {
 
+Status FinalizeOpDef(const OpDefBuilder& b, OpDef* op_def) {
+  OpRegistrationData op_reg_data;
+  const Status s = b.Finalize(&op_reg_data);
+  *op_def = op_reg_data.op_def;
+  return s;
+}
+
 // Producer and consumer have default for an attr -> graph unchanged.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeWithDefault) {
   OpList op_list;
-  TF_ASSERT_OK(OpDefBuilder("NoChangeWithDefault")
-                   .Attr("a: int = 12")
-                   .Finalize(op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("NoChangeWithDefault").Attr("a: int = 12"),
+                    op_list.add_op()));
   OpListOpRegistry registry(&op_list);
 
   GraphDef graph_def;
@@ -51,9 +59,8 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeWithDefault) {
 // Producer and consumer both have an attr -> graph unchanged.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeNoDefault) {
   OpList op_list;
-  TF_ASSERT_OK(OpDefBuilder("NoChangeNoDefault")
-                   .Attr("a: int")
-                   .Finalize(op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("NoChangeNoDefault").Attr("a: int"),
+                             op_list.add_op()));
   OpListOpRegistry registry(&op_list);
 
   GraphDef graph_def;
@@ -75,13 +82,13 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeNoDefault) {
 // attr removed from graph (and so able to be consumed).
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, UsesDefault) {
   OpList consumer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("UsesDefault").Finalize(consumer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("UsesDefault"), consumer_op_list.add_op()));
   OpListOpRegistry consumer_registry(&consumer_op_list);
 
   OpList producer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("UsesDefault")
-                   .Attr("a: int = 17")
-                   .Finalize(producer_op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("UsesDefault").Attr("a: int = 17"),
+                             producer_op_list.add_op()));
   OpListOpRegistry producer_registry(&producer_op_list);
 
   GraphDef produced_graph_def;
@@ -107,14 +114,14 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, UsesDefault) {
 // graph unchanged (but not able to be consumed by consumer).
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, ChangedFromDefault) {
   OpList consumer_op_list;
-  TF_ASSERT_OK(
-      OpDefBuilder("ChangedFromDefault").Finalize(consumer_op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("ChangedFromDefault"),
+                             consumer_op_list.add_op()));
   OpListOpRegistry consumer_registry(&consumer_op_list);
 
   OpList producer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("ChangedFromDefault")
-                   .Attr("a: int = 17")
-                   .Finalize(producer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("ChangedFromDefault").Attr("a: int = 17"),
+                    producer_op_list.add_op()));
   OpListOpRegistry producer_registry(&producer_op_list);
 
   GraphDef produced_graph_def;
@@ -136,11 +143,13 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, ChangedFromDefault) {
 // Attrs starting with underscores should not be removed.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, UnderscoreAttrs) {
   OpList consumer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("Underscore").Finalize(consumer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("Underscore"), consumer_op_list.add_op()));
   OpListOpRegistry consumer_registry(&consumer_op_list);
 
   OpList producer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("Underscore").Finalize(producer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("Underscore"), producer_op_list.add_op()));
   // Add the _underscore attr manually since OpDefBuilder would complain
   OpDef::AttrDef* attr = producer_op_list.mutable_op(0)->add_attr();
   attr->set_name("_underscore");
@@ -161,6 +170,58 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, UnderscoreAttrs) {
 
   TF_EXPECT_GRAPH_EQ(expected_graph_def, produced_graph_def);
   EXPECT_EQ(op_attr_removed.size(), 0);
+}
+
+TEST(RemoveNewDefaultAttrsFromGraphDefTest, HasFunction) {
+  OpList consumer_op_list;
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("UsesDefault"), consumer_op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("ChangedFromDefault"),
+                             consumer_op_list.add_op()));
+  OpListOpRegistry consumer_registry(&consumer_op_list);
+
+  OpList producer_op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("UsesDefault").Attr("a: int = 17"),
+                             producer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("ChangedFromDefault").Attr("a: int = 17"),
+                    producer_op_list.add_op()));
+  OpListOpRegistry producer_registry(&producer_op_list);
+
+  GraphDef produced_graph_def;
+  *produced_graph_def.mutable_library()->add_function() =
+      FunctionDefHelper::Create(
+          "my_func", {}, {}, {},
+          {{{"x"}, "UsesDefault", {}, {{"a", 17}}},
+           {{"y"}, "ChangedFromDefault", {}, {{"a", 99}}}},
+          {});
+  OpList function_op_list;
+  *function_op_list.add_op() =
+      produced_graph_def.library().function(0).signature();
+  OpListOpRegistry function_registry(&function_op_list);
+  TF_ASSERT_OK(NodeDefBuilder("call_func", "my_func", &function_registry)
+                   .Finalize(produced_graph_def.add_node()));
+
+  std::set<std::pair<string, string>> op_attr_removed;
+  TF_ASSERT_OK(
+      RemoveNewDefaultAttrsFromGraphDef(&produced_graph_def, consumer_registry,
+                                        producer_registry, &op_attr_removed));
+
+  GraphDef expected_graph_def;
+  *expected_graph_def.mutable_library()->add_function() =
+      FunctionDefHelper::Create(
+          "my_func", {}, {}, {},
+          {{{"x"}, "UsesDefault", {}, {}},
+           {{"y"}, "ChangedFromDefault", {}, {{"a", 99}}}},
+          {});
+  TF_ASSERT_OK(NodeDefBuilder("call_func", "my_func", &function_registry)
+                   .Finalize(expected_graph_def.add_node()));
+  TF_EXPECT_GRAPH_EQ(expected_graph_def, produced_graph_def);
+  EXPECT_EQ(expected_graph_def.library().DebugString(),
+            produced_graph_def.library().DebugString());
+
+  std::set<std::pair<string, string>> expected_removed({{"UsesDefault", "a"}});
+  EXPECT_EQ(expected_removed, op_attr_removed);
 }
 
 TEST(StrippedOpListForGraphTest, FlatTest) {
@@ -185,7 +246,7 @@ TEST(StrippedOpListForGraphTest, FlatTest) {
         FunctionDef* function_def = graph_def.mutable_library()->add_function();
         function_def->mutable_signature()->set_name("F");
         for (const string& op : graph_ops[order]) {
-          function_def->add_node()->set_op(op);
+          function_def->add_node_def()->set_op(op);
         }
         graph_def.add_node()->set_op("F");
       } else {
@@ -232,11 +293,11 @@ TEST(StrippedOpListForGraphTest, NestedFunctionTest) {
     FunctionDef* c = graph_def.mutable_library()->add_function();
     b->mutable_signature()->set_name("B");
     c->mutable_signature()->set_name("C");
-    b->add_node()->set_op("A");
-    c->add_node()->set_op("B");
+    b->add_node_def()->set_op("A");
+    c->add_node_def()->set_op("B");
     if (recursive) {
-      b->add_node()->set_op("B");
-      c->add_node()->set_op("C");
+      b->add_node_def()->set_op("B");
+      c->add_node_def()->set_op("C");
     }
 
     // Use C in the graph.

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include <vector>
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,7 +34,8 @@ TensorSlice::TensorSlice(const TensorSliceProto& proto) {
   }
 }
 
-TensorSlice::TensorSlice(std::initializer_list<std::pair<int, int>> extents) {
+TensorSlice::TensorSlice(
+    std::initializer_list<std::pair<int64, int64>> extents) {
   starts_.reserve(extents.size());
   lengths_.reserve(extents.size());
   for (const auto& e : extents) {
@@ -47,14 +49,15 @@ Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
   slice->starts_.reserve(items.size());
   slice->lengths_.reserve(items.size());
   for (const string& x : items) {
-    int s, l;
+    int64 s, l;
     if (x == "-") {
       // "everything"
       s = 0;
       l = kFullExtent;
     } else {
-      char junk;
-      if (sscanf(x.c_str(), "%d,%d%c", &s, &l, &junk) != 2) {
+      std::vector<string> sl = str_util::Split(x, ',', str_util::SkipEmpty());
+      if (sl.size() != 2 || !strings::safe_strto64(sl[0], &s) ||
+          !strings::safe_strto64(sl[1], &l)) {
         return errors::InvalidArgument(
             "Expected a pair of numbers or '-' "
             "but got '",
@@ -77,6 +80,13 @@ Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
 void TensorSlice::Clear() {
   starts_.clear();
   lengths_.clear();
+}
+
+bool TensorSlice::IsFull() const {
+  for (int d = 0; d < dims(); ++d) {
+    if (!IsFullAt(d)) return false;
+  }
+  return true;
 }
 
 void TensorSlice::SetFullSlice(int dim) {
@@ -156,8 +166,8 @@ bool TensorSlice::Intersect(const TensorSlice& other,
     } else {
       // If we have an intersection here, it should have a start that is the
       // max of the two starts and an end that is the min of the two ends.
-      int s = std::max(start(d), other.start(d));
-      int l = std::min(end(d), other.end(d)) - s;
+      int64 s = std::max(start(d), other.start(d));
+      int64 l = std::min(end(d), other.end(d)) - s;
       if (l > 0) {
         // We have a real intersection
         if (result) {
@@ -176,6 +186,11 @@ bool TensorSlice::Intersect(const TensorSlice& other,
   }
   // If we are here, we know there is overlap in every dimension.
   return true;
+}
+
+bool TensorSlice::operator==(const TensorSlice& other) const {
+  return dims() == other.dims() && starts_ == other.starts_ &&
+         lengths_ == other.lengths_;
 }
 
 void TensorSlice::ComputeRelative(const TensorSlice& sub,
@@ -253,6 +268,6 @@ Status TensorSlice::SliceTensorShape(const TensorShape& shape,
   return Status::OK();
 }
 
-const int TensorSlice::kFullExtent = -1;
+const int64 TensorSlice::kFullExtent = -1;
 
 }  // namespace tensorflow

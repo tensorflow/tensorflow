@@ -90,6 +90,7 @@ struct QInt32 {
   QInt32() {}
   QInt32(const int8_t v) : value(v) {}
   QInt32(const int32_t v) : value(v) {}
+  QInt32(const uint32_t v) : value(static_cast<int32_t>(v)) {}
   QInt32(const QInt8 v) : value(v.value) {}
   QInt32(const float v) : value(static_cast<int32_t>(lrint(v))) {}
 #ifdef EIGEN_MAKING_DOCS

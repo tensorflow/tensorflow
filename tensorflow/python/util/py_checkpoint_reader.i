@@ -17,8 +17,9 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 
 %{
+#include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/util/checkpoint_reader.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/py_func.h"
 %}
 
@@ -126,5 +127,5 @@ def NewCheckpointReader(filepattern):
     return CheckpointReader(compat.as_bytes(filepattern), status)
 %}
 
-%include "tensorflow/core/util/checkpoint_reader.h"
+%include "tensorflow/c/checkpoint_reader.h"
 %unignoreall
