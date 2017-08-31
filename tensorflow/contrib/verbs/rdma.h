@@ -243,13 +243,29 @@ class RdmaTensorBuffer : public RdmaBuffer {
       int64 step_id, const Rendezvous::ParsedKey& parsed);
 
   struct ReItem {
-    Status status;
     Rendezvous::Args send_args;
     Rendezvous::Args recv_args;
     Tensor in;
     bool is_dead;
-  };
 
+    ReItem(const Rendezvous::Args& send_args_, const Rendezvous::Args& recv_args_, const Tensor& in_, bool is_dead_ ): send_args(send_args_), recv_args(recv_args_), in(in_), is_dead(is_dead_){
+      if (send_args.device_context){
+        send_args.device_context->Ref();
+      }
+      if (recv_args.device_context){
+        recv_args.device_context->Ref();
+      }
+    }
+
+    ~ReItem() {
+      if (send_args.device_context) {
+        send_args.device_context->Unref();
+      }
+      if (recv_args.device_context) {
+        recv_args.device_context->Unref();
+      }
+    }
+  };
   typedef std::map<string, ReItem*> Table;
   typedef Table::iterator Itable;
 

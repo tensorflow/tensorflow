@@ -805,7 +805,6 @@ void RdmaTensorBuffer::ReSendNextItem() {
     Rendezvous::DoneCallback cb =
         getRecvTensorCallback(key_with_step_id, key, step_id, parsed);
     ReItem* item;
-    Status s;
     {
       mutex_lock lock{mu_};
       Itable it = retable.find(key_with_step_id);
@@ -843,14 +842,10 @@ void RdmaTensorBuffer::PostCopyOperations(
     CreateCPUBuffer(buffer_size, false);
     //Need to be recieved again, put into the re-recv queue and the table
     requeue.push(key_with_step_id);
-    ReItem* item = new ReItem();
-    item->send_args = send_args;
-    item->recv_args = recv_args;
-    item->in = in;
-    item->is_dead = is_dead;
+    ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
     retable.insert(std::pair<string, ReItem*>(key_with_step_id, item));
     mu_.unlock();
-    // no longer used: put back the key since it is not sent; 
+    // no longer used: put back the key since it is not sent;
     // ask the remote to create the same buffer
     rm.type_ = RDMA_MESSAGE_BUFFER_REQUEST;
     rm.remote_addr_ = reinterpret_cast<uint64_t>(buffer_);
@@ -898,11 +893,7 @@ void RdmaTensorBuffer::PostCopyOperations(
   } else {
     //Need to be recieved again, put into the re-recv queue and the table
     requeue.push(key_with_step_id);
-    ReItem* item = new ReItem();
-    item->send_args = send_args;
-    item->recv_args = recv_args;
-    item->in = in;
-    item->is_dead = is_dead;
+    ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
     retable.insert(std::pair<string, ReItem*>(key_with_step_id, item));
     mu_.unlock();
   }
