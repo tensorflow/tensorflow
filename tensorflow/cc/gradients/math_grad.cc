@@ -687,6 +687,18 @@ Status MeanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Mean", MeanGrad);
 
+Status LgammaGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.output(0));
+  auto dx = Mul(scope, grad, Digamma(scope, x))
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
+
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,
