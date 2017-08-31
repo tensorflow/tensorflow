@@ -637,5 +637,53 @@ class TopologyConstructionTest(test.TestCase):
     _ = keras.engine.topology.preprocess_weights_for_loading(
         model, model.weights, original_keras_version='1')
 
+  def test_layer_sharing_at_heterogenous_depth(self):
+    with self.test_session():
+      x_val = np.random.random((10, 5))
+
+      x = keras.Input(shape=(5,))
+      a = keras.layers.Dense(5, name='A')
+      b = keras.layers.Dense(5, name='B')
+      output = a(b(a(b(x))))
+      m = keras.models.Model(x, output)
+
+      output_val = m.predict(x_val)
+
+      config = m.get_config()
+      weights = m.get_weights()
+
+      m2 = keras.models.Model.from_config(config)
+      m2.set_weights(weights)
+
+      output_val_2 = m2.predict(x_val)
+      self.assertAllClose(output_val, output_val_2, atol=1e-6)
+
+  def test_layer_sharing_at_heterogenous_depth_with_concat(self):
+    with self.test_session():
+      input_shape = (16, 9, 3)
+      input_layer = keras.Input(shape=input_shape)
+
+      a = keras.layers.Dense(3, name='dense_A')
+      b = keras.layers.Dense(3, name='dense_B')
+      c = keras.layers.Dense(3, name='dense_C')
+
+      x1 = b(a(input_layer))
+      x2 = a(c(input_layer))
+      output = keras.layers.concatenate([x1, x2])
+
+      m = keras.models.Model(inputs=input_layer, outputs=output)
+
+      x_val = np.random.random((10, 16, 9, 3))
+      output_val = m.predict(x_val)
+
+      config = m.get_config()
+      weights = m.get_weights()
+
+      m2 = keras.models.Model.from_config(config)
+      m2.set_weights(weights)
+
+      output_val_2 = m2.predict(x_val)
+      self.assertAllClose(output_val, output_val_2, atol=1e-6)
+
 if __name__ == '__main__':
   test.main()

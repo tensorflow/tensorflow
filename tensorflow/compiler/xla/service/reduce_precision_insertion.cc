@@ -21,52 +21,35 @@ limitations under the License.
 
 namespace xla {
 
-// For now, ReducePrecision is only implemented for F32 arrays, so this
-// ignores instructions that produce other data.  In particular, this
-// currently ignores instructions producing tuples, even if those tuples
-// contain F32 arrays inside them.  The assumption is that in most cases
-// equivalent behavior can be obtained by adding ReducePrecision
-// instructions after the instructions that pull the F32 arrays out of
-// the tuples.
-//
-// TODO(b/64093391): Remove the IsScalar check once this won't cause
-// failures on the GPU backend if the ReducePrecision instruction ends up
-// inserted between a scalar constant and the init_value argument of a
-// Reduce operation.
-std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_suffix(
+std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_modify(
     const HloComputation* computation) {
-  std::vector<HloInstruction*> instructions_to_suffix;
+  std::vector<HloInstruction*> instruction_list;
 
-  switch (pass_timing_) {
-    case HloReducePrecisionOptions::BEFORE_OP_FUSION:
-    case HloReducePrecisionOptions::AFTER_OP_FUSION:
+  switch (location_) {
+    case HloReducePrecisionOptions::OP_INPUTS:
+    case HloReducePrecisionOptions::OP_OUTPUTS:
+    case HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS:
       for (auto& instruction : computation->instructions()) {
         VLOG(4) << "Visited instruction: " << instruction->ToString();
-
-        if (instruction->shape().element_type() == PrimitiveType::F32 &&
-            !ShapeUtil::IsScalar(instruction->shape()) &&
-            instruction_filter_function_(instruction.get())) {
-          instructions_to_suffix.push_back(instruction.get());
+        if (instruction_filter_function_(instruction.get())) {
+          instruction_list.push_back(instruction.get());
         }
       }
       break;
 
-    case HloReducePrecisionOptions::FUSION_BY_CONTENT:
+    case HloReducePrecisionOptions::FUSION_INPUTS_BY_CONTENT:
+    case HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT:
       for (auto& instruction : computation->instructions()) {
         VLOG(4) << "Visited instruction: " << instruction->ToString();
-
-        if (instruction->opcode() != HloOpcode::kFusion ||
-            instruction->shape().element_type() != PrimitiveType::F32 ||
-            ShapeUtil::IsScalar(instruction->shape())) {
+        if (instruction->opcode() != HloOpcode::kFusion) {
           continue;
         }
-
         for (auto& fused_instruction :
              instruction->fused_instructions_computation()->instructions()) {
           VLOG(4) << "Checking sub-instruction: "
                   << fused_instruction->ToString();
           if (instruction_filter_function_(fused_instruction.get())) {
-            instructions_to_suffix.push_back(instruction.get());
+            instruction_list.push_back(instruction.get());
             break;
           }
         }
@@ -76,10 +59,135 @@ std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_suffix(
     default:
       break;
   }
-  VLOG(1) << "Adding " << instructions_to_suffix.size()
-          << " reduce-precision operations.";
+  VLOG(1) << "Found " << instruction_list.size()
+          << " candidate instruction(s) for reduce-precision insertion";
 
-  return instructions_to_suffix;
+  return instruction_list;
+}
+
+StatusOr<bool> ReducePrecisionInsertion::insert_after(
+    HloInstruction* instruction) {
+  // Check that this isn't already an equivalent operation.
+  if (is_redundant(instruction)) {
+    VLOG(2) << "Skipped: instruction is already an equivalent"
+               " reduce-precision instruction:"
+            << instruction->ToString();
+    return false;
+  }
+
+  // Check that we haven't already inserted an equivalant reduce-precision
+  // operation after this instruction.  (The zero-user case occurs when this is
+  // the root instruction.)
+  if (instruction->user_count() > 0) {
+    bool redundant_followers = true;
+    for (HloInstruction* user : instruction->users()) {
+      if (!is_redundant(user)) {
+        redundant_followers = false;
+        break;
+      }
+    }
+    if (redundant_followers) {
+      VLOG(2) << "Skipped: instruction already followed by equivalent"
+                 " reduce-precision instructions";
+      return false;
+    }
+  }
+
+  HloInstruction* reduced = instruction->parent()->AddInstruction(
+      HloInstruction::CreateReducePrecision(instruction->shape(), instruction,
+                                            exponent_bits_, mantissa_bits_));
+  TF_RETURN_IF_ERROR(
+      instruction->parent()->ReplaceUsesOfInstruction(instruction, reduced));
+  return true;
+}
+
+StatusOr<bool> ReducePrecisionInsertion::insert_on_inputs(
+    const std::vector<HloInstruction*>& instructions) {
+  bool computation_changed = false;
+  for (auto instruction : instructions) {
+    VLOG(2) << "Adding reduce-precision operation to inputs of instruction: "
+            << instruction->ToString();
+    for (int64 i = 0; i < instruction->operand_count(); i++) {
+      HloInstruction* operand = instruction->mutable_operand(i);
+      VLOG(2) << "Adding to operand " << i << ": " << operand;
+
+      if (!is_valid_shape(operand->shape())) {
+        VLOG(2) << "Skipped: value is not an F32 vector";
+        continue;
+      }
+
+      if (is_redundant(operand)) {
+        VLOG(2) << "Skipped: operand is already an equivalent reduce-precision"
+                   " instruction";
+        continue;
+      }
+
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        // Insert the reduce-precision operation inside the fusion computation,
+        // after the corresponding parameter instruction.
+        TF_ASSIGN_OR_RETURN(
+            bool instruction_changed,
+            insert_after(instruction->fused_instructions_computation()
+                             ->parameter_instruction(i)));
+        computation_changed |= instruction_changed;
+      } else {
+        // Look for an existing reduce-precision operation on the operand.  (We
+        // need to be careful not to create a loop, though!)
+        HloInstruction* reduced = nullptr;
+        for (auto& user : operand->users()) {
+          if (user != instruction &&
+              user->opcode() == HloOpcode::kReducePrecision &&
+              user->exponent_bits() == exponent_bits_ &&
+              user->mantissa_bits() == mantissa_bits_) {
+            reduced = user;
+            break;
+          }
+        }
+        // If there wasn't an existing reduce-precision operation, create one.
+        if (!reduced) {
+          reduced = instruction->parent()->AddInstruction(
+              HloInstruction::CreateReducePrecision(
+                  operand->shape(), operand, exponent_bits_, mantissa_bits_));
+        }
+        // Insert the reduce-precision operation before the operand.
+        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(i, reduced));
+        computation_changed = true;
+      }
+    }
+  }
+
+  return computation_changed;
+}
+
+StatusOr<bool> ReducePrecisionInsertion::insert_on_outputs(
+    const std::vector<HloInstruction*>& instructions) {
+  bool computation_changed = false;
+  for (const auto& instruction : instructions) {
+    VLOG(2) << "Adding reduce-precision operation to output of instruction: "
+            << instruction->ToString();
+
+    if (!is_valid_shape(instruction->shape())) {
+      VLOG(2) << "Skipped: value is not an F32 nonscalar array";
+      continue;
+    }
+
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      // Insert the reduce-precision operation as the last operation inside
+      // the fusion computation.
+      HloInstruction* fusion_root = instruction->fused_expression_root();
+      VLOG(2) << "Inserting new operation after existing fusion root: "
+              << fusion_root->ToString();
+
+      TF_ASSIGN_OR_RETURN(bool instruction_changed, insert_after(fusion_root));
+      computation_changed |= instruction_changed;
+    } else {
+      // Insert the reduce-precision operation after the instruction.
+      TF_ASSIGN_OR_RETURN(bool instruction_changed, insert_after(instruction));
+      computation_changed |= instruction_changed;
+    }
+  }
+
+  return computation_changed;
 }
 
 StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
@@ -91,55 +199,26 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
       continue;
     }
 
-    bool computation_changed = false;
-    for (auto& instruction : instructions_to_suffix(computation.get())) {
-      VLOG(2) << "Adding reduce-precision operation to output of instruction: "
-              << instruction->ToString();
+    StatusOr<bool> computation_changed;
+    switch (location_) {
+      case HloReducePrecisionOptions::OP_INPUTS:
+      case HloReducePrecisionOptions::FUSION_INPUTS_BY_CONTENT:
+        computation_changed = ReducePrecisionInsertion::insert_on_inputs(
+            instructions_to_modify(computation.get()));
+        break;
 
-      // Check that we haven't already inserted an equivalant reduce-precision
-      // operation after this instruction.
-      if (instruction->user_count() == 1) {
-        HloInstruction* user = instruction->users()[0];
-
-        if (user->opcode() == HloOpcode::kReducePrecision &&
-            user->exponent_bits() == exponent_bits_ &&
-            user->mantissa_bits() == mantissa_bits_) {
-          VLOG(2) << "Skipped; instruction already followed by equivalent"
-                     " reduce-precision instruction:"
-                  << user->ToString();
-          continue;
-        }
-      }
-
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        // Insert the reduce-precision operation as the last operation inside
-        // the fusion computation.
-        instruction = instruction->fused_expression_root();
-
-        VLOG(2) << "Inserting new operation after existing fusion root: "
-                << instruction->ToString();
-
-        if (instruction->opcode() == HloOpcode::kReducePrecision &&
-            instruction->exponent_bits() == exponent_bits_ &&
-            instruction->mantissa_bits() == mantissa_bits_) {
-          VLOG(2) << "Skipped; fused computation already ends in equivalent"
-                     " reduce-precision instruction:"
-                  << instruction->ToString();
-          continue;
-        }
-      }
-
-      HloInstruction* reduced = instruction->parent()->AddInstruction(
-          HloInstruction::CreateReducePrecision(instruction->shape(),
-                                                instruction, exponent_bits_,
-                                                mantissa_bits_));
-
-      TF_RETURN_IF_ERROR(instruction->parent()->ReplaceUsesOfInstruction(
-          instruction, reduced));
-      computation_changed = true;
+      case HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT:
+      case HloReducePrecisionOptions::OP_OUTPUTS:
+      case HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS:
+        computation_changed = ReducePrecisionInsertion::insert_on_outputs(
+            instructions_to_modify(computation.get()));
+        break;
+      default:
+        break;
     }
+    TF_RETURN_IF_ERROR(computation_changed.status());
 
-    if (computation_changed) {
+    if (computation_changed.ValueOrDie()) {
       changed = true;
       VLOG(3) << "Computation after reduce-precision insertion:";
       XLA_VLOG_LINES(3, computation->ToString());
@@ -186,12 +265,12 @@ ReducePrecisionInsertion::make_filter_function(
 }
 
 HloReducePrecisionOptions ReducePrecisionInsertion::make_options_proto(
-    const HloReducePrecisionOptions::PassTiming pass_timing,
-    const int exponent_bits, const int mantissa_bits,
+    const HloReducePrecisionOptions::Location location, const int exponent_bits,
+    const int mantissa_bits,
     const std::function<bool(HloOpcode)>& opcode_filter_function,
     const std::vector<string>& opname_substring_list) {
   HloReducePrecisionOptions options;
-  options.set_pass_timing(pass_timing);
+  options.set_location(location);
   options.set_exponent_bits(exponent_bits);
   options.set_mantissa_bits(mantissa_bits);
   for (uint32_t opcode = 0; opcode < HloOpcodeCount(); opcode++) {
@@ -205,13 +284,27 @@ HloReducePrecisionOptions ReducePrecisionInsertion::make_options_proto(
   return options;
 }
 
-bool ReducePrecisionInsertion::AddPasses(
-    HloPassPipeline* pipeline, const DebugOptions& debug_options,
-    const HloReducePrecisionOptions::PassTiming pass_timing) {
+bool ReducePrecisionInsertion::AddPasses(HloPassPipeline* pipeline,
+                                         const DebugOptions& debug_options,
+                                         const PassTiming pass_timing) {
   bool passes_added = false;
   for (const auto& pass_options :
        debug_options.hlo_reduce_precision_options()) {
-    if (pass_options.pass_timing() == pass_timing) {
+    bool add_pass;
+    switch (pass_options.location()) {
+      case HloReducePrecisionOptions::OP_INPUTS:
+      case HloReducePrecisionOptions::OP_OUTPUTS:
+        add_pass = pass_timing == PassTiming::BEFORE_OPTIMIZATION;
+        break;
+      case HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS:
+      case HloReducePrecisionOptions::FUSION_INPUTS_BY_CONTENT:
+      case HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT:
+        add_pass = pass_timing == PassTiming::AFTER_FUSION;
+        break;
+      default:
+        add_pass = false;
+    }
+    if (add_pass) {
       pipeline->AddPass<ReducePrecisionInsertion>(pass_options);
       passes_added = true;
     }

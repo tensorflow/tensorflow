@@ -101,14 +101,37 @@ class TimeDistributedTest(test.TestCase):
       self.assertEqual(len(model.losses), 1)
 
   def test_TimeDistributed_learning_phase(self):
-    # test layers that need learning_phase to be set
-    np.random.seed(1234)
-    x = keras.layers.Input(shape=(3, 2))
-    y = keras.layers.TimeDistributed(
-        keras.layers.Dropout(.999))(x, training=True)
-    model = keras.models.Model(x, y)
-    y = model.predict(np.random.random((10, 3, 2)))
-    self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
+    with self.test_session():
+      # test layers that need learning_phase to be set
+      np.random.seed(1234)
+      x = keras.layers.Input(shape=(3, 2))
+      y = keras.layers.TimeDistributed(
+          keras.layers.Dropout(.999))(x, training=True)
+      model = keras.models.Model(x, y)
+      y = model.predict(np.random.random((10, 3, 2)))
+      self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
+
+  def test_TimeDistributed_batchnorm(self):
+    with self.test_session():
+      # test that wrapped BN updates still work.
+      model = keras.models.Sequential()
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.BatchNormalization(center=True, scale=True),
+          name='bn',
+          input_shape=(10, 2)))
+      model.compile(optimizer='rmsprop', loss='mse')
+      # Assert that mean and variance are 0 and 1.
+      td = model.layers[0]
+      self.assertAllClose(td.get_weights()[2], np.array([0, 0]))
+      assert np.array_equal(td.get_weights()[3], np.array([1, 1]))
+      # Train
+      model.train_on_batch(np.random.normal(loc=2, scale=2, size=(1, 10, 2)),
+                           np.broadcast_to(np.array([0, 1]), (1, 10, 2)))
+      # Assert that mean and variance changed.
+      assert not np.array_equal(td.get_weights()[2], np.array([0, 0]))
+      assert not np.array_equal(td.get_weights()[3], np.array([1, 1]))
+      # Verify input_map has one mapping from inputs to reshaped inputs.
+      self.assertEqual(len(td._input_map.keys()), 1)
 
 
 class BidirectionalTest(test.TestCase):

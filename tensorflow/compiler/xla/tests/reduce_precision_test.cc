@@ -270,7 +270,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionBeforeFusion) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::BEFORE_OP_FUSION, 5, 10,
+      HloReducePrecisionOptions::OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
   ComputeAndCompareR1<float>(&builder, {0.0f}, {a_data.get()});
@@ -294,7 +294,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedAfterFusion) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::AFTER_OP_FUSION, 5, 10,
+      HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
   ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
@@ -316,7 +316,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedAfterFusion) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::AFTER_OP_FUSION, 5, 10,
+      HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kFusion; });
 
   ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
@@ -339,7 +339,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedFusionContains) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::FUSION_BY_CONTENT, 5, 10,
+      HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kCos; });
 
   ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
@@ -362,7 +362,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedFusionContains) {
   auto reduce_precision_pass = execution_options_.mutable_debug_options()
                                    ->add_hlo_reduce_precision_options();
   *reduce_precision_pass = ReducePrecisionInsertion::make_options_proto(
-      HloReducePrecisionOptions::FUSION_BY_CONTENT, 5, 10,
+      HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
   ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});

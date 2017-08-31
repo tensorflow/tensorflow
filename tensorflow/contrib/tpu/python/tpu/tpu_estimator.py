@@ -55,6 +55,7 @@ from tensorflow.python.training import training
 _INITIAL_LOSS = 1e7
 _ZERO_LOSS = 0.
 _BATCH_SIZE_KEY = 'batch_size'
+_CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
 
@@ -1284,6 +1285,10 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
       summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
       with ops.control_dependencies([loss]):
         update_ops = _sync_variables_ops()
+
+      # Validate the TPU training graph to catch basic errors
+      _validate_tpu_training_graph()
+
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=loss,
@@ -1353,10 +1358,28 @@ def _train_on_tpu_system(model_fn_wrapper, dequeue_fn):
       dequeue_fn)
 
   multi_tpu_train_steps_on_single_shard = (lambda: training_loop.repeat(  # pylint: disable=g-long-lambda
-      iterations_per_loop, single_tpu_train_step, [_INITIAL_LOSS], name='loop'))
+      iterations_per_loop, single_tpu_train_step, [_INITIAL_LOSS],
+      name=b'loop'))
 
   (loss,) = tpu.shard(multi_tpu_train_steps_on_single_shard,
                       inputs=[],
                       num_shards=num_shards,
                       outputs_from_all_shards=False)
   return loss
+
+
+def _validate_tpu_training_graph():
+  """Validate graph before running distributed training.
+
+  Raises:
+    ValueError: If the graph seems invalid for running on device
+  """
+  operations = ops.get_default_graph().get_operations()
+
+  # Check if there is atleast one CrossReplicaSum operation in the graph
+  # This should be introduced by using the CrossShardOptimizer wrapper
+  cross_replica_sum_ops = [o for o in operations
+                           if o.type == _CROSS_REPLICA_SUM_OP]
+  if not cross_replica_sum_ops:
+    raise ValueError(
+        'CrossShardOptimizer must be used for model training on TPUs.')

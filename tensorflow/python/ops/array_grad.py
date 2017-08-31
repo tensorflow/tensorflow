@@ -534,7 +534,8 @@ def _TileGrad(op, grad):
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
-  input_grad.set_shape(op.inputs[0].get_shape())
+  if context.in_graph_mode():
+    input_grad.set_shape(op.inputs[0].get_shape())
   return [input_grad, None]
 
 

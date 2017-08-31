@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from autograd import core as ag_core
 import numpy as np
 import six
 
@@ -605,7 +606,7 @@ def ShapeEquals(tensor_proto, shape):
 
 def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
-  if not isinstance(tensor, ops.Tensor):
+  if not isinstance(ag_core.getval(tensor), ops.Tensor):
     raise TypeError("tensor is not a Tensor")
   if tensor.op.type == "Const":
     return MakeNdarray(tensor.op.get_attr("value"))
@@ -688,6 +689,22 @@ def _ConstantValue(tensor, partial):
       return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
     else:
       return None
+  elif tensor.op.type == "Equal":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.equal(value1, value2)
+  elif tensor.op.type == "NotEqual":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.not_equal(value1, value2)
   else:
     return None
 
@@ -719,7 +736,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  if isinstance(tensor, ops.EagerTensor):
+  if isinstance(ag_core.getval(tensor), ops.EagerTensor):
     return tensor.numpy()
   ret = _ConstantValue(tensor, partial)
   if ret is not None:

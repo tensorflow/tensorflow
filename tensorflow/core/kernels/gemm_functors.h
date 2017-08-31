@@ -33,10 +33,19 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
+// Apple provides an optimized BLAS library that is better than Eigen for their
+// devices, so use that if possible.
 #if defined(__APPLE__) && defined(USE_GEMM_FOR_CONV)
 #include <Accelerate/Accelerate.h>
-#define USE_ACCELERATE_GEMM
+#define USE_CBLAS_GEMM
 #endif  // __APPLE__
+
+// Older Raspberry Pi systems don't have NEON SIMD acceleration, so Eigen falls
+// back to scalar code, but OpenBLAS has much faster support so prefer that.
+#if defined(RASPBERRY_PI) && defined(USE_GEMM_FOR_CONV) && defined(USE_OPENBLAS)
+#include <cblas.h>
+#define USE_CBLAS_GEMM
+#endif
 
 // A readable but slow implementation of matrix multiplication, useful for
 // debugging and understanding the algorithm. Use instead of FastGemmFunctor in
@@ -94,9 +103,8 @@ class FastGemmFunctor {
   }
 };
 
-// If we have Apple's Accelerate framework, use their implementation of GEMM to
-// get a performance boost for float.
-#if defined(USE_ACCELERATE_GEMM)
+// If we have a fast CBLAS library, use its implementation through a wrapper.
+#if defined(USE_CBLAS_GEMM)
 template <>
 class FastGemmFunctor<float, float, float> {
  public:
@@ -107,4 +115,4 @@ class FastGemmFunctor<float, float, float> {
                 lda, b, ldb, 0.0f, c, ldc);
   }
 };
-#endif  // USE_ACCELERATE_GEMM
+#endif  // USE_CBLAS_GEMM

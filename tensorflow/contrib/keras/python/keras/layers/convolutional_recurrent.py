@@ -151,18 +151,30 @@ class ConvRecurrent2D(Recurrent):
         dilation=self.dilation_rate[1])
     if self.return_sequences:
       if self.data_format == 'channels_first':
-        return tensor_shape.TensorShape(
-            [input_shape[0], input_shape[1], self.filters, rows, cols])
+        output_shape = [input_shape[0], input_shape[1],
+                        self.filters, rows, cols]
       elif self.data_format == 'channels_last':
-        return tensor_shape.TensorShape(
-            [input_shape[0], input_shape[1], rows, cols, self.filters])
+        output_shape = [input_shape[0], input_shape[1],
+                        rows, cols, self.filters]
     else:
       if self.data_format == 'channels_first':
-        return tensor_shape.TensorShape(
-            [input_shape[0], self.filters, rows, cols])
+        output_shape = [input_shape[0], self.filters, rows, cols]
       elif self.data_format == 'channels_last':
-        return tensor_shape.TensorShape(
-            [input_shape[0], rows, cols, self.filters])
+        output_shape = [input_shape[0], rows, cols, self.filters]
+
+    if self.return_state:
+      if self.data_format == 'channels_first':
+        output_shapes = [output_shape] + [(input_shape[0],
+                                           self.filters,
+                                           rows,
+                                           cols) for _ in range(2)]
+      elif self.data_format == 'channels_last':
+        output_shapes = [output_shape] + [(input_shape[0],
+                                           rows,
+                                           cols,
+                                           self.filters) for _ in range(2)]
+      return [tensor_shape.TensorShape(shape) for shape in output_shapes]
+    return tensor_shape.TensorShape(output_shape)
 
   def get_config(self):
     config = {
@@ -447,7 +459,6 @@ class ConvLSTM2D(ConvRecurrent2D):
     if not self.stateful:
       raise RuntimeError('Layer must be stateful.')
     input_shape = self.input_spec[0].shape
-    output_shape = self._compute_output_shape(input_shape)
 
     if not input_shape[0]:
       raise ValueError('If a RNN is stateful, a complete '
@@ -455,20 +466,24 @@ class ConvLSTM2D(ConvRecurrent2D):
                        '(including batch size). '
                        'Got input shape: ' + str(input_shape))
 
-    if self.return_sequences:
-      out_row, out_col, out_filter = output_shape[2:]
+    if self.return_state:
+      output_shape = tuple(self._compute_output_shape(input_shape)[0].as_list())
     else:
-      out_row, out_col, out_filter = output_shape[1:]
+      output_shape = tuple(self._compute_output_shape(input_shape).as_list())
+    if self.return_sequences:
+      output_shape = (input_shape[0],) + output_shape[2:]
+    else:
+      output_shape = (input_shape[0],) + output_shape[1:]
 
     if hasattr(self, 'states'):
       K.set_value(self.states[0],
-                  np.zeros((input_shape[0], out_row, out_col, out_filter)))
+                  np.zeros(output_shape))
       K.set_value(self.states[1],
-                  np.zeros((input_shape[0], out_row, out_col, out_filter)))
+                  np.zeros(output_shape))
     else:
       self.states = [
-          K.zeros((input_shape[0], out_row, out_col, out_filter)),
-          K.zeros((input_shape[0], out_row, out_col, out_filter))
+          K.zeros(output_shape),
+          K.zeros(output_shape)
       ]
 
   def get_constants(self, inputs, training=None):

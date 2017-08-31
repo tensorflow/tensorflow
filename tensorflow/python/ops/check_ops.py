@@ -46,6 +46,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -861,8 +862,12 @@ def assert_type(tensor, tf_type, message=None, name=None):
   with ops.name_scope(name, 'assert_type', [tensor]):
     tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
-      raise TypeError(
-          '%s  %s must be of type %s' % (message, tensor.op.name, tf_type))
+      if context.in_graph_mode():
+        raise TypeError(
+            '%s  %s must be of type %s' % (message, tensor.name, tf_type))
+      else:
+        raise TypeError(
+            '%s tensor must be of type %s' % (message, tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 

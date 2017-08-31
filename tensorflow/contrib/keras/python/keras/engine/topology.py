@@ -89,7 +89,6 @@ class Layer(tf_base_layers.Layer):
       non_trainable_weights: List of variables.
       weights: The concatenation of the lists trainable_weights and
           non_trainable_weights (in this order).
-      constraints: Dict mapping weights to constraints.
 
   # Methods
       call(x, mask=None): Where the layer's logic lives.
@@ -647,7 +646,6 @@ class Network(tf_base_layers.Network, Layer):
       outbound_nodes: list of nodes
       trainable_weights (list of variables)
       non_trainable_weights (list of variables)
-      constraints (list of tuples (weight, constraint))
 
   # Methods
       summary
@@ -843,6 +841,8 @@ class Network(tf_base_layers.Network, Layer):
       layer, node_index, tensor_index = self._input_coordinates[i]
       node_key = tf_base_layers._make_node_key(layer.name,
                                                node_index)
+      if node_key not in self._network_nodes:
+        continue
       new_node_index = node_conversion_map[node_key]
       model_inputs.append([layer.name, new_node_index, tensor_index])
     config['input_layers'] = model_inputs
@@ -851,6 +851,8 @@ class Network(tf_base_layers.Network, Layer):
       layer, node_index, tensor_index = self._output_coordinates[i]
       node_key = tf_base_layers._make_node_key(layer.name,
                                                node_index)
+      if node_key not in self._network_nodes:
+        continue
       new_node_index = node_conversion_map[node_key]
       model_outputs.append([layer.name, new_node_index, tensor_index])
     config['output_layers'] = model_outputs
@@ -872,9 +874,60 @@ class Network(tf_base_layers.Network, Layer):
     Raises:
         ValueError: In case of improperly formatted config dict.
     """
-    # layer instances created during
+    # Layer instances created during
     # the graph reconstruction process
     created_layers = {}
+
+    # Dictionary mapping layer instances to
+    # node data that specifies a layer call.
+    # It acts as a queue that maintains any unprocessed
+    # layer call until it becomes possible to process it
+    # (i.e. until the input tensors to the call all exist).
+    unprocessed_nodes = {}
+
+    def add_unprocessed_node(layer, node_data):
+      if layer not in unprocessed_nodes:
+        unprocessed_nodes[layer] = [node_data]
+      else:
+        unprocessed_nodes[layer].append(node_data)
+
+    def process_node(layer, node_data):
+      """Deserialize a node.
+
+      Arguments:
+          layer: layer instance.
+          node_data: node config dict.
+
+      Raises:
+          ValueError: In case of improperly formatted `node_data` dict.
+      """
+      input_tensors = []
+      for input_data in node_data:
+        inbound_layer_name = input_data[0]
+        inbound_node_index = input_data[1]
+        inbound_tensor_index = input_data[2]
+        if len(input_data) == 3:
+          kwargs = {}
+        elif len(input_data) == 4:
+          kwargs = input_data[3]
+        else:
+          raise ValueError('Improperly formatted model config.')
+        if inbound_layer_name not in created_layers:
+          add_unprocessed_node(layer, node_data)
+          return
+        inbound_layer = created_layers[inbound_layer_name]
+        if len(inbound_layer.inbound_nodes) <= inbound_node_index:
+          add_unprocessed_node(layer, node_data)
+          return
+        inbound_node = inbound_layer.inbound_nodes[inbound_node_index]
+        input_tensors.append(inbound_node.output_tensors[inbound_tensor_index])
+      # Call layer on its inputs, thus creating the node
+      # and building the layer if needed.
+      if input_tensors:
+        if len(input_tensors) == 1:
+          layer(input_tensors[0], **kwargs)
+        else:
+          layer(input_tensors, **kwargs)
 
     def process_layer(layer_data):
       """Deserialize a layer, then call it on appropriate inputs.
@@ -889,39 +942,32 @@ class Network(tf_base_layers.Network, Layer):
 
       # Instantiate layer.
       from tensorflow.contrib.keras.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+
       layer = deserialize_layer(layer_data, custom_objects=custom_objects)
       created_layers[layer_name] = layer
 
       # Gather layer inputs.
       inbound_nodes_data = layer_data['inbound_nodes']
       for node_data in inbound_nodes_data:
-        input_tensors = []
-        for input_data in node_data:
-          inbound_layer_name = input_data[0]
-          inbound_node_index = input_data[1]
-          inbound_tensor_index = input_data[2]
-          if len(input_data) == 3:
-            kwargs = {}
-          elif len(input_data) == 4:
-            kwargs = input_data[3]
-          else:
-            raise ValueError('Improperly formatted model config.')
-          if inbound_layer_name not in created_layers:
-            raise ValueError('Missing layer: ' + inbound_layer_name)
-          inbound_layer = created_layers[inbound_layer_name]
-          inbound_node = inbound_layer.inbound_nodes[inbound_node_index]
-          input_tensors.append(
-              inbound_node.output_tensors[inbound_tensor_index])
-        # Call layer on its inputs, thus creating the node
-        # and building the layer if needed.
-        if input_tensors:
-          if len(input_tensors) == 1:
-            layer(input_tensors[0], **kwargs)
-          else:
-            layer(input_tensors, **kwargs)
+        # We don't process nodes (i.e. make layer calls)
+        # on the fly because the inbound node may not yet exist,
+        # in case of layer shared at different topological depths
+        # (e.g. a model such as A(B(A(B(x)))))
+        add_unprocessed_node(layer, node_data)
 
+    # First, we create all layers and enqueue nodes to be processed
     for layer_data in config['layers']:
       process_layer(layer_data)
+    # Then we process nodes in order of layer depth.
+    # Nodes that cannot yet be processed (if the inbound node
+    # does not yet exist) are re-enqueued, and the process
+    # is repeated until all nodes are processed.
+    while unprocessed_nodes:
+      for layer_data in config['layers']:
+        layer = created_layers[layer_data['name']]
+        if layer in unprocessed_nodes:
+          for node_data in unprocessed_nodes.pop(layer):
+            process_node(layer, node_data)
 
     name = config.get('name')
     input_tensors = []
