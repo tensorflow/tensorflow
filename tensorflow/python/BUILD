@@ -1401,9 +1401,10 @@ py_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
-        ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":sparse_tensor",
+        ":tensor_util",
         ":util",
         "//third_party/py/numpy",
     ],
@@ -1492,9 +1493,11 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":data_flow_ops_gen",
-        ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":random_seed",
+        ":tensor_util",
+        "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
 )
@@ -1632,7 +1635,10 @@ py_library(
 
 py_library(
     name = "linalg_ns",
-    srcs = ["ops/linalg_ns.py"],
+    srcs = [
+        "ops/linalg_impl.py",
+        "ops/linalg_ns.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
@@ -1687,10 +1693,14 @@ py_library(
     deps = [
         ":array_ops",
         ":constant_op",
-        ":framework",
+        ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":lookup_ops_gen",
         ":math_ops",
+        ":sparse_tensor",
+        ":string_ops",
+        ":util",
+        "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
 )
@@ -1702,10 +1712,11 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
-        ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":math_ops_gen",
+        ":tensor_util",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )
@@ -1732,6 +1743,7 @@ py_library(
         ":state_ops_gen",
         ":tensor_shape",
         ":util",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )
@@ -1762,6 +1774,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:custom_gradient",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/eager:tensor",
     ],
 )
@@ -1802,6 +1815,8 @@ py_library(
         ":nn_ops",
         ":nn_ops_gen",
         ":sparse_ops",
+        ":tensor_util",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2149,6 +2164,7 @@ py_library(
         ":resource_variable_ops_gen",
         ":state_ops_gen",
         ":tensor_shape",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2210,6 +2226,7 @@ py_library(
         ":tensor_shape",
         ":tensor_util",
         ":util",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2218,12 +2235,14 @@ py_library(
     srcs = ["ops/variable_scope.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":framework_ops",
         ":init_ops",
         ":platform",
         ":resource_variable_ops",
         ":tensor_shape",
+        ":util",
         ":variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:util",
@@ -3716,6 +3735,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3730,6 +3750,7 @@ py_test(
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":init_ops",
         ":layers",
         ":math_ops",
@@ -3748,6 +3769,7 @@ py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":layers",
         ":math_ops",
         ":nn_ops",
@@ -3767,6 +3789,7 @@ py_test(
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":layers",
         ":math_ops",
         ":nn_ops",
@@ -3794,6 +3817,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":framework_test_lib",
         ":layers",
         ":random_ops",
     ],
@@ -3807,6 +3831,7 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":layers",
         ":math_ops",
         ":random_ops",

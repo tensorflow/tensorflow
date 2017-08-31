@@ -89,6 +89,31 @@ class IteratorResource : public ResourceBase {
     }
   }
 
+  Status SaveState(OpKernelContext* ctx, StringPiece path) {
+    std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+    if (captured_iterator) {
+      return captured_iterator->SaveState(ctx, path);
+    } else {
+      return errors::FailedPrecondition(
+          "SaveState() failed because the iterator has not been initialized. "
+          "Ensure that you have run the initializer operation for this "
+          "iterator before getting the next element.");
+    }
+  }
+
+  Status RestoreState(OpKernelContext* ctx, StringPiece path) {
+    std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+    if (captured_iterator) {
+      return captured_iterator->RestoreState(ctx, path);
+    } else {
+      return errors::FailedPrecondition(
+          "RestoreState() failed because the iterator has not been "
+          "initialized. "
+          "Ensure that you have run the initializer operation for this "
+          "iterator before getting the next element.");
+    }
+  }
+
   // Transfers ownership of iterator to this. This method is thread-safe.
   Status set_iterator(std::unique_ptr<IteratorBase> iterator) {
     if (iterator) {
@@ -158,6 +183,32 @@ class MakeIteratorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
                             dataset->MakeIterator("Iterator")));
     iterator_resource->Unref();
+  }
+};
+
+class SaveIteratorOp : public OpKernel {
+ public:
+  explicit SaveIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    const string& path = ctx->input(1).scalar<string>()();
+    OP_REQUIRES_OK(ctx, iterator_resource->SaveState(ctx, path));
+  }
+};
+
+class RestoreIteratorOp : public OpKernel {
+ public:
+  explicit RestoreIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    const string& path = ctx->input(1).scalar<string>()();
+    OP_REQUIRES_OK(ctx, iterator_resource->RestoreState(ctx, path));
   }
 };
 
@@ -504,6 +555,10 @@ class IteratorFromStringHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("SaveIterator").Device(DEVICE_CPU),
+                        SaveIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("RestoreIterator").Device(DEVICE_CPU),
+                        RestoreIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),

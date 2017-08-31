@@ -30,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -2848,6 +2849,51 @@ class WhileOpBenchmark(test.Benchmark):
     self.report_benchmark(
         name="unroll_same_device", iters=iters, wall_time=duration)
 
+
+class EagerTest(test.TestCase):
+
+  def testCond(self):
+    with context.eager_mode():
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: constant_op.constant(10)
+      fn2 = lambda: constant_op.constant(20)
+      r = control_flow_ops.cond(pred, fn1, fn2)
+
+      self.assertAllEqual(r.numpy(), 10)
+
+  def testWhileLoop(self):
+    with context.eager_mode():
+      tensor = constant_op.constant([1, 2, 3, 4, 5])
+      self.assertAllEqual(isum(tensor).numpy(),
+                          [46, 47, 48, 49, 50])
+
+  def testWithDependencies(self):
+    with context.eager_mode():
+      t1 = constant_op.constant(1)
+      t2 = constant_op.constant(2)
+      t3 = control_flow_ops.with_dependencies(t1, t2)
+      self.assertAllEqual(t2.numpy(), t3.numpy())
+
+  def testTuple(self):
+    with context.eager_mode():
+      t1 = constant_op.constant(1)
+      t2 = constant_op.constant(2)
+      tup1, tup2 = control_flow_ops.tuple([t1, t2])
+      self.assertAllEqual(t1.numpy(), tup1.numpy())
+      self.assertAllEqual(t2.numpy(), tup2.numpy())
+
+  def testCase(self):
+    with context.eager_mode():
+      x = constant_op.constant(1)
+      y = constant_op.constant(2)
+      z = constant_op.constant(3)
+      f1 = lambda: constant_op.constant(17)
+      f2 = lambda: constant_op.constant(23)
+      f3 = lambda: constant_op.constant(-1)
+
+      r1 = control_flow_ops.case([(x < y, f1), (x > z, f2)],
+                                 default=f3, exclusive=True)
+      self.assertAllEqual(r1.numpy(), 17)
 
 if __name__ == "__main__":
   test.main()

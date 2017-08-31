@@ -56,13 +56,6 @@ class TypedQueueOp : public QueueOp {
  public:
   using QueueOp::QueueOp;
 
-  void Compute(OpKernelContext* context) override {
-    QueueOp::Compute(context);
-    if (queue_ && context->track_allocations()) {
-      context->record_host_persistent_memory_allocation(queue_->MemoryUsed());
-    }
-  }
-
  protected:
   template <typename TypedQueue>
   Status CreateTypedQueue(TypedQueue* queue, QueueInterface** ret) {

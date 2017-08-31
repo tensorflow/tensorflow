@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -255,7 +256,6 @@ class FixedLengthRecordReaderTest(test.TestCase):
 
   def testFixedLengthRecordDatasetBuffering(self):
     test_filenames = self._createFiles()
-
     dataset = dataset_ops.FixedLengthRecordDataset(
         test_filenames,
         self._record_bytes,
@@ -270,6 +270,124 @@ class FixedLengthRecordReaderTest(test.TestCase):
           self.assertEqual(self._record(j, i), sess.run(iterator.get_next()))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(iterator.get_next())
+
+  def _build_iterator_graph(self, num_epochs):
+    filenames = self._createFiles()
+    path = os.path.join(self.get_temp_dir(), "iterator")
+    dataset = (dataset_ops.FixedLengthRecordDataset(
+        filenames, self._record_bytes, self._header_bytes, self._footer_bytes)
+               .repeat(num_epochs))
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next_op = iterator.get_next()
+    save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+    restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                  path)
+    return init_op, get_next_op, save_op, restore_op
+
+  def testSaveRestore(self):
+    num_epochs = 10
+    epoch_break = 5
+    file_break = self._num_files // 2
+    record_break = self._num_records // 2
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
+          num_epochs=num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        # Note: There is no checkpoint saved currently so a NotFoundError is
+        # raised.
+        with self.assertRaises(errors.NotFoundError):
+          sess.run(restore_op)
+        for epoch in range(num_epochs):
+          for f in range(self._num_files):
+            for r in range(self._num_records):
+              if (epoch == epoch_break and f == file_break and
+                  r == record_break):
+                sess.run(save_op)
+                break
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
+            else:
+              continue
+            break
+          else:
+            continue
+          break
+        else:
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(get_next_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
+          num_epochs=num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for epoch in range(num_epochs):
+          for f in range(self._num_files):
+            for r in range(self._num_records):
+              if (epoch < epoch_break or
+                  (epoch == epoch_break and f < file_break) or
+                  (epoch == epoch_break and f == file_break and
+                   r < record_break)):
+                continue
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+  def testRestoreUnusedIterator(self):
+    num_epochs = 10
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
+          num_epochs=num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        # Note: There is no checkpoint saved currently so a NotFoundError is
+        # raised.
+        with self.assertRaises(errors.NotFoundError):
+          sess.run(restore_op)
+        # Save unused iterator.
+        sess.run(save_op)
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
+          num_epochs=num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for _ in range(num_epochs * self._num_files * self._num_records):
+          sess.run(get_next_op)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+
+  def testRestoreExhaustedIterator(self):
+    num_epochs = 10
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
+          num_epochs=num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        # Note: There is no checkpoint saved currently so a NotFoundError is
+        # raised.
+        with self.assertRaises(errors.NotFoundError):
+          sess.run(restore_op)
+        for _ in range(num_epochs):
+          for f in range(self._num_files):
+            for r in range(self._num_records):
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
+          num_epochs=num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next_op)
 
 
 class TFRecordDatasetTest(test.TestCase):
@@ -558,8 +676,8 @@ class ReadBatchFeaturesTest(test.TestCase):
   def testRead(self):
     for batch_size in [1, 2]:
       for num_epochs in [1, 10]:
-        with ops.Graph().as_default():
-          with self.test_session(graph=ops.get_default_graph()) as sess:
+        with ops.Graph().as_default() as g:
+          with self.test_session(graph=g) as sess:
             # Basic test: read from file 0.
             self.outputs = self._read_batch_features(
                 filenames=self.test_filenames[0],
@@ -569,8 +687,8 @@ class ReadBatchFeaturesTest(test.TestCase):
             with self.assertRaises(errors.OutOfRangeError):
               self._next_actual_batch(sess)
 
-        with ops.Graph().as_default():
-          with self.test_session(graph=ops.get_default_graph()) as sess:
+        with ops.Graph().as_default() as g:
+          with self.test_session(graph=g) as sess:
             # Basic test: read from file 1.
             self.outputs = self._read_batch_features(
                 filenames=self.test_filenames[1],
@@ -580,8 +698,8 @@ class ReadBatchFeaturesTest(test.TestCase):
             with self.assertRaises(errors.OutOfRangeError):
               self._next_actual_batch(sess)
 
-        with ops.Graph().as_default():
-          with self.test_session(graph=ops.get_default_graph()) as sess:
+        with ops.Graph().as_default() as g:
+          with self.test_session(graph=g) as sess:
             # Basic test: read from both files.
             self.outputs = self._read_batch_features(
                 filenames=self.test_filenames,

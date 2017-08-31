@@ -56,6 +56,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
 
   auto run_invariant_checkers = [this, module]() -> Status {
     for (auto& invariant_checker : invariant_checkers_) {
+      VLOG(1) << "    Invariant checker " << invariant_checker->name();
       TF_ASSIGN_OR_RETURN(bool changed, invariant_checker->Run(module));
       TF_RET_CHECK(!changed) << "invariant checkers must not change the graph";
     }

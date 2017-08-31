@@ -76,7 +76,7 @@ def VGG19(include_top=True,
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
           or `(3, 224, 224)` (with `channels_first` data format).
-          It should have exactly 3 inputs channels,
+          It should have exactly 3 input channels,
           and width and height should be no smaller than 48.
           E.g. `(200, 200, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -115,7 +115,8 @@ def VGG19(include_top=True,
       default_size=224,
       min_size=48,
       data_format=K.image_data_format(),
-      include_top=include_top)
+      require_flatten=include_top,
+      weights=weights)
 
   if input_tensor is None:
     img_input = Input(shape=input_shape)

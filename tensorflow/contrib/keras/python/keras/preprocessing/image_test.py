@@ -78,6 +78,11 @@ class TestImage(test.TestCase):
           cval=0.5,
           horizontal_flip=True,
           vertical_flip=True)
+      # Basic test before fit
+      x = np.random.random((32, 10, 10, 3))
+      generator.flow(x)
+
+      # Fit
       generator.fit(images, augment=True)
 
       for x, _ in generator.flow(
@@ -95,14 +100,17 @@ class TestImage(test.TestCase):
         samplewise_std_normalization=True,
         zca_whitening=True,
         data_format='channels_last')
+
     # Test fit with invalid data
     with self.assertRaises(ValueError):
       x = np.random.random((3, 10, 10))
       generator.fit(x)
     # Test flow with invalid data
     with self.assertRaises(ValueError):
-      x = np.random.random((32, 10, 10))
-      generator.flow(np.arange(x.shape[0]))
+      generator.flow(np.arange(5))
+    # Invalid number of channels: will work but raise a warning
+    x = np.random.random((32, 10, 10, 5))
+    generator.flow(x)
 
     with self.assertRaises(ValueError):
       generator = keras.preprocessing.image.ImageDataGenerator(

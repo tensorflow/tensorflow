@@ -52,7 +52,13 @@ def text_to_word_sequence(text,
   """
   if lower:
     text = text.lower()
-  text = text.translate(maketrans(filters, split * len(filters)))
+
+  if sys.version_info < (3,) and isinstance(text, unicode):
+    translate_map = dict((ord(c), unicode(split)) for c in filters)
+  else:
+    translate_map = maketrans(filters, split * len(filters))
+
+  text = text.translate(translate_map)
   seq = text.split(split)
   return [i for i in seq if i]
 

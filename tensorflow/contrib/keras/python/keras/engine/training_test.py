@@ -305,7 +305,7 @@ class TrainingTest(test.TestCase):
                       optimizer='rmsprop',
                       metrics=set(0))
 
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(ValueError):
         model.compile(loss=None,
                       optimizer='rmsprop')
 
@@ -979,6 +979,444 @@ class TestTrainingUtils(test.TestCase):
     keras.engine.training._slice_arrays(input_a, 0)
     keras.engine.training._slice_arrays(input_a, 0, 1)
     keras.engine.training._slice_arrays(input_a, stop=2)
+
+
+class TestTrainingWithDataTensors(test.TestCase):
+
+  def test_model_with_input_feed_tensor(self):
+    """We test building a model with a TF variable as input.
+
+    We should be able to call fit, evaluate, predict,
+    by only passing them data for the placeholder inputs
+    in the model.
+    """
+    with self.test_session():
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 3))
+
+      output_a_np = np.random.random((10, 4))
+      output_b_np = np.random.random((10, 3))
+
+      a = keras.Input(
+          tensor=keras.backend.variables_module.Variable(input_a_np,
+                                                         dtype='float32'))
+      b = keras.Input(shape=(3,), name='input_b')
+
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      dp = keras.layers.Dropout(0.5, name='dropout')
+      b_2 = dp(b)
+
+      model = keras.models.Model([a, b], [a_2, b_2])
+      model.summary()
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      loss_weights = [1., 0.5]
+      model.compile(optimizer, loss, metrics=['mean_squared_error'],
+                    loss_weights=loss_weights,
+                    sample_weight_mode=None)
+
+      # test train_on_batch
+      out = model.train_on_batch(input_b_np,
+                                 [output_a_np, output_b_np])
+      out = model.train_on_batch({'input_b': input_b_np},
+                                 [output_a_np, output_b_np])
+      out = model.test_on_batch({'input_b': input_b_np},
+                                [output_a_np, output_b_np])
+      out = model.predict_on_batch({'input_b': input_b_np})
+
+      # test fit
+      out = model.fit({'input_b': input_b_np},
+                      [output_a_np, output_b_np], epochs=1, batch_size=10)
+      out = model.fit(input_b_np,
+                      [output_a_np, output_b_np], epochs=1, batch_size=10)
+
+      # test evaluate
+      out = model.evaluate({'input_b': input_b_np},
+                           [output_a_np, output_b_np], batch_size=10)
+      out = model.evaluate(input_b_np,
+                           [output_a_np, output_b_np], batch_size=10)
+
+      # test predict
+      out = model.predict({'input_b': input_b_np}, batch_size=10)
+      out = model.predict(input_b_np, batch_size=10)
+      self.assertEqual(len(out), 2)
+
+      # Now test a model with a single input
+      # i.e. we don't pass any data to fit the model.
+      a = keras.Input(
+          tensor=keras.backend.variables_module.Variable(input_a_np,
+                                                         dtype='float32'))
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      a_2 = keras.layers.Dropout(0.5, name='dropout')(a_2)
+      model = keras.models.Model(a, a_2)
+      model.summary()
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      model.compile(optimizer, loss, metrics=['mean_squared_error'])
+
+      # test train_on_batch
+      out = model.train_on_batch(None,
+                                 output_a_np)
+      out = model.train_on_batch(None,
+                                 output_a_np)
+      out = model.test_on_batch(None,
+                                output_a_np)
+      out = model.predict_on_batch(None)
+      out = model.train_on_batch([],
+                                 output_a_np)
+      out = model.train_on_batch({},
+                                 output_a_np)
+
+      # test fit
+      out = model.fit(None,
+                      output_a_np, epochs=1, batch_size=10)
+      out = model.fit(None,
+                      output_a_np, epochs=1, batch_size=10)
+
+      # test evaluate
+      out = model.evaluate(None,
+                           output_a_np, batch_size=10)
+      out = model.evaluate(None,
+                           output_a_np, batch_size=10)
+
+      # test predict
+      out = model.predict(None, steps=3)
+      out = model.predict(None, steps=3)
+      self.assertEqual(out.shape, (10 * 3, 4))
+
+      # Same, without learning phase
+      # i.e. we don't pass any data to fit the model.
+      a = keras.Input(
+          tensor=keras.backend.variables_module.Variable(input_a_np,
+                                                         dtype='float32'))
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      model = keras.models.Model(a, a_2)
+      model.summary()
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      model.compile(optimizer, loss, metrics=['mean_squared_error'])
+
+      # test train_on_batch
+      out = model.train_on_batch(None,
+                                 output_a_np)
+      out = model.train_on_batch(None,
+                                 output_a_np)
+      out = model.test_on_batch(None,
+                                output_a_np)
+      out = model.predict_on_batch(None)
+      out = model.train_on_batch([],
+                                 output_a_np)
+      out = model.train_on_batch({},
+                                 output_a_np)
+
+      # test fit
+      out = model.fit(None,
+                      output_a_np, epochs=1, batch_size=10)
+      out = model.fit(None,
+                      output_a_np, epochs=1, batch_size=10)
+
+      # test evaluate
+      out = model.evaluate(None,
+                           output_a_np, batch_size=10)
+      out = model.evaluate(None,
+                           output_a_np, batch_size=10)
+
+      # test predict
+      out = model.predict(None, steps=3)
+      out = model.predict(None, steps=3)
+      self.assertEqual(out.shape, (10 * 3, 4))
+
+  def test_model_with_partial_loss(self):
+    with self.test_session():
+      a = keras.Input(shape=(3,), name='input_a')
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      dp = keras.layers.Dropout(0.5, name='dropout')
+      a_3 = dp(a_2)
+      model = keras.models.Model(a, [a_2, a_3])
+
+      optimizer = 'rmsprop'
+      loss = {'dropout': 'mse'}
+      model.compile(optimizer, loss, metrics=['mae'])
+
+      input_a_np = np.random.random((10, 3))
+      output_a_np = np.random.random((10, 4))
+
+      # test train_on_batch
+      _ = model.train_on_batch(input_a_np, output_a_np)
+      _ = model.test_on_batch(input_a_np, output_a_np)
+      # fit
+      _ = model.fit(input_a_np, [output_a_np])
+      # evaluate
+      _ = model.evaluate(input_a_np, [output_a_np])
+
+      # Same without dropout.
+      a = keras.Input(shape=(3,), name='input_a')
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      a_3 = keras.layers.Dense(4, name='dense_2')(a_2)
+      model = keras.models.Model(a, [a_2, a_3])
+
+      optimizer = 'rmsprop'
+      loss = {'dense_2': 'mse'}
+      model.compile(optimizer, loss, metrics={'dense_1': 'mae'})
+
+      # test train_on_batch
+      _ = model.train_on_batch(input_a_np, output_a_np)
+      _ = model.test_on_batch(input_a_np, output_a_np)
+      # fit
+      _ = model.fit(input_a_np, [output_a_np])
+      # evaluate
+      _ = model.evaluate(input_a_np, [output_a_np])
+
+  def test_model_with_external_loss(self):
+    with self.test_session():
+      # None loss, only regularization loss.
+      a = keras.Input(shape=(3,), name='input_a')
+      a_2 = keras.layers.Dense(4, name='dense_1',
+                               kernel_regularizer='l1',
+                               bias_regularizer='l2')(a)
+      dp = keras.layers.Dropout(0.5, name='dropout')
+      a_3 = dp(a_2)
+
+      model = keras.models.Model(a, [a_2, a_3])
+
+      optimizer = 'rmsprop'
+      loss = None
+      model.compile(optimizer, loss, metrics=['mae'])
+
+      input_a_np = np.random.random((10, 3))
+
+      # test train_on_batch
+      out = model.train_on_batch(input_a_np, None)
+      out = model.test_on_batch(input_a_np, None)
+      # fit
+      out = model.fit(input_a_np, None)
+      # evaluate
+      out = model.evaluate(input_a_np, None)
+
+      # No dropout, external loss.
+      a = keras.Input(shape=(3,), name='input_a')
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      a_3 = keras.layers.Dense(4, name='dense_2')(a)
+
+      model = keras.models.Model(a, [a_2, a_3])
+      model.add_loss(keras.backend.mean(a_3 + a_2))
+
+      optimizer = 'rmsprop'
+      loss = None
+      model.compile(optimizer, loss, metrics=['mae'])
+
+      # test train_on_batch
+      out = model.train_on_batch(input_a_np, None)
+      out = model.test_on_batch(input_a_np, None)
+      # fit
+      out = model.fit(input_a_np, None)
+      # evaluate
+      out = model.evaluate(input_a_np, None)
+
+      # Test model with no external data at all.
+      a = keras.Input(
+          tensor=keras.backend.variables_module.Variable(input_a_np,
+                                                         dtype='float32'))
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      a_2 = keras.layers.Dropout(0.5, name='dropout')(a_2)
+      model = keras.models.Model(a, a_2)
+      model.add_loss(keras.backend.mean(a_2))
+
+      model.compile(optimizer='rmsprop',
+                    loss=None,
+                    metrics=['mean_squared_error'])
+
+      # test train_on_batch
+      out = model.train_on_batch(None, None)
+      out = model.test_on_batch(None, None)
+      out = model.predict_on_batch(None)
+
+      # test fit
+      with self.assertRaises(ValueError):
+        out = model.fit(None, None, epochs=1, batch_size=10)
+      out = model.fit(None, None, epochs=1, steps_per_epoch=1)
+
+      # test fit with validation data
+      with self.assertRaises(ValueError):
+        out = model.fit(None, None, epochs=1,
+                        steps_per_epoch=None,
+                        validation_steps=2)
+      out = model.fit(None, None, epochs=1,
+                      steps_per_epoch=2,
+                      validation_steps=2)
+
+      # test evaluate
+      with self.assertRaises(ValueError):
+        out = model.evaluate(None, None, batch_size=10)
+      out = model.evaluate(None, None, steps=3)
+
+      # test predict
+      with self.assertRaises(ValueError):
+        out = model.predict(None, batch_size=10)
+      out = model.predict(None, steps=3)
+      self.assertEqual(out.shape, (10 * 3, 4))
+
+      # Test multi-output model with no external data at all.
+      a = keras.Input(
+          tensor=keras.backend.variables_module.Variable(input_a_np,
+                                                         dtype='float32'))
+      a_1 = keras.layers.Dense(4, name='dense_1')(a)
+      a_2 = keras.layers.Dropout(0.5, name='dropout')(a_1)
+      model = keras.models.Model(a, [a_1, a_2])
+      model.add_loss(keras.backend.mean(a_2))
+
+      model.compile(optimizer='rmsprop',
+                    loss=None,
+                    metrics=['mean_squared_error'])
+
+      # test train_on_batch
+      out = model.train_on_batch(None, None)
+      out = model.test_on_batch(None, None)
+      out = model.predict_on_batch(None)
+
+      # test fit
+      with self.assertRaises(ValueError):
+        out = model.fit(None, None, epochs=1, batch_size=10)
+      out = model.fit(None, None, epochs=1, steps_per_epoch=1)
+
+      # test fit with validation data
+      out = model.fit(None, None, epochs=1,
+                      steps_per_epoch=2,
+                      validation_steps=2)
+
+      # test evaluate
+      with self.assertRaises(ValueError):
+        out = model.evaluate(None, None, batch_size=10)
+      out = model.evaluate(None, None, steps=3)
+
+      # test predict
+      with self.assertRaises(ValueError):
+        out = model.predict(None, batch_size=10, verbose=1)
+      out = model.predict(None, steps=3)
+      self.assertEqual(len(out), 2)
+      self.assertEqual(out[0].shape, (10 * 3, 4))
+      self.assertEqual(out[1].shape, (10 * 3, 4))
+
+  def test_target_tensors(self):
+    with self.test_session():
+      # single-output, as list
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(4, input_shape=(4,), name='dense'))
+      input_val = np.random.random((10, 4))
+      target_val = np.random.random((10, 4))
+      target = keras.backend.variable(target_val)
+      model.compile(optimizer='rmsprop', loss='mse', target_tensors=[target])
+      model.train_on_batch(input_val, None)
+
+      # single-output, as dict
+      model.compile(optimizer='rmsprop', loss='mse',
+                    target_tensors={'dense': target})
+      model.train_on_batch(input_val, None)
+
+      # test invalid arguments
+      with self.assertRaises(TypeError):
+        model.compile(optimizer='rmsprop', loss='mse',
+                      target_tensors=set())
+      with self.assertRaises(ValueError):
+        model.compile(optimizer='rmsprop', loss='mse',
+                      target_tensors=[target, target])
+      with self.assertRaises(ValueError):
+        model.compile(optimizer='rmsprop', loss='mse',
+                      target_tensors={'dense2': None})
+      with self.assertRaises(ValueError):
+        model.compile(optimizer='rmsprop', loss='mse',
+                      target_tensors=[target])
+        model.train_on_batch(input_val, target_val)
+
+      # multi-output, as list
+      input_val = np.random.random((10, 4))
+      target_val_a = np.random.random((10, 4))
+      target_val_b = np.random.random((10, 4))
+      target_a = keras.backend.variable(target_val_a)
+      target_b = keras.backend.variable(target_val_b)
+
+      inputs = keras.layers.Input(shape=(4,))
+      output_a = keras.layers.Dense(4, name='dense_a')(inputs)
+      output_b = keras.layers.Dense(4, name='dense_b')(inputs)
+      model = keras.models.Model(inputs, [output_a, output_b])
+      model.compile(optimizer='rmsprop', loss='mse',
+                    target_tensors=[target_a, target_b])
+      model.train_on_batch(input_val, None)
+
+      # multi-output, as dict
+      model.compile(optimizer='rmsprop', loss='mse',
+                    target_tensors={'dense_a': target_a,
+                                    'dense_b': target_b})
+      model.train_on_batch(input_val, None)
+
+      # test with sample weights
+      model.compile(optimizer='rmsprop', loss='mse',
+                    target_tensors=[target_a, target_b])
+      model.train_on_batch(input_val, None,
+                           sample_weight={'dense_a': np.random.random((10,))})
+
+  def test_model_custom_target_tensors(self):
+    with self.test_session():
+      a = keras.Input(shape=(3,), name='input_a')
+      b = keras.Input(shape=(3,), name='input_b')
+
+      a_2 = keras.layers.Dense(4, name='dense_1')(a)
+      dp = keras.layers.Dropout(0.5, name='dropout')
+      b_2 = dp(b)
+
+      y = keras.backend.placeholder([10, 4], name='y')
+      y1 = keras.backend.placeholder([10, 3], name='y1')
+      y2 = keras.backend.placeholder([7, 5], name='y2')
+      model = keras.models.Model([a, b], [a_2, b_2])
+
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      loss_weights = [1., 0.5]
+
+      # test list of target tensors
+      with self.assertRaises(ValueError):
+        model.compile(optimizer, loss, metrics=[], loss_weights=loss_weights,
+                      sample_weight_mode=None, target_tensors=[y, y1, y2])
+      model.compile(optimizer, loss, metrics=[], loss_weights=loss_weights,
+                    sample_weight_mode=None, target_tensors=[y, y1])
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 3))
+
+      output_a_np = np.random.random((10, 4))
+      output_b_np = np.random.random((10, 3))
+
+      _ = model.train_on_batch([input_a_np, input_b_np],
+                               [output_a_np, output_b_np],
+                               {y: np.random.random((10, 4)),
+                                y1: np.random.random((10, 3))})
+      # test dictionary of target_tensors
+      with self.assertRaises(ValueError):
+        model.compile(optimizer, loss,
+                      metrics=[],
+                      loss_weights=loss_weights,
+                      sample_weight_mode=None,
+                      target_tensors={'does_not_exist': y2})
+      # test dictionary of target_tensors
+      model.compile(optimizer, loss,
+                    metrics=[],
+                    loss_weights=loss_weights,
+                    sample_weight_mode=None,
+                    target_tensors={'dense_1': y, 'dropout': y1})
+      _ = model.train_on_batch([input_a_np, input_b_np],
+                               [output_a_np, output_b_np],
+                               {y: np.random.random((10, 4)),
+                                y1: np.random.random((10, 3))})
+
+      # test with custom TF placeholder as target
+      pl_target_a = keras.backend.array_ops.placeholder('float32',
+                                                        shape=(None, 4))
+      model.compile(optimizer='rmsprop', loss='mse',
+                    target_tensors={'dense_1': pl_target_a})
+      model.train_on_batch([input_a_np, input_b_np],
+                           [output_a_np, output_b_np])
 
 
 if __name__ == '__main__':

@@ -118,14 +118,43 @@ class UnaryOpsTest(XLATestCase):
   def testFloatOps(self):
     for dtype in self.float_types:
       self._assertOpOutputMatchesExpected(
+          math_ops.acosh,
+          np.array([1, 2, 3, 4], dtype=dtype),
+          expected=np.array([0, 1.3169579, 1.76274717, 2.06343707],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.asinh,
+          np.array([1, 2, 3, 4], dtype=dtype),
+          expected=np.array([0.88137359, 1.44363548, 1.81844646, 2.09471255],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.atanh,
+          np.array([0.1, 0.2, 0.3, 0.4], dtype=dtype),
+          expected=np.array([0.10033535, 0.20273255, 0.3095196, 0.42364893],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           math_ops.ceil,
           np.array([[-1.7, 1.2]], dtype=dtype),
           expected=np.array([[-1, 2]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          math_ops.cosh,
+          np.array([1, 2, 3, 4], dtype=dtype),
+          expected=np.array([1.54308063, 3.76219569, 10.067662, 27.30823284],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           math_ops.exp,
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[0.36787945, 2.7182817]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.expm1,
+          np.array([[-1, 1]], dtype=dtype),
+          expected=np.array([[-0.63212056, 1.71828183]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           math_ops.floor,
@@ -198,9 +227,21 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array([0, 0, 0.5, 1, 1], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          math_ops.sinh,
+          np.array([1, 2, 3, 4], dtype=dtype),
+          expected=np.array([1.17520119, 3.62686041, 10.01787493, 27.2899172],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           math_ops.sqrt,
           np.array([[4, 9]], dtype=dtype),
           expected=np.array([[2, 3]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.tan,
+          np.array([1, 2, 3, 4], dtype=dtype),
+          expected=np.array([1.55740772, -2.18503986, -0.14254654, 1.15782128],
+                            dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           math_ops.tanh,

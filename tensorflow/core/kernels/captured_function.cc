@@ -59,8 +59,24 @@ Status CapturedFunction::Create(
     } else if (!s.ok()) {                                                      \
       return s;                                                                \
     }                                                                          \
-    TF_RETURN_IF_ERROR(device->resource_manager()->Create(                     \
-        input_handle.container(), input_handle.name(), resource));             \
+    ResourceType* already_created_resource;                                    \
+    /* Look up the resource in the this function's resource manager, in case   \
+     * it has already been created. */                                         \
+    s = device->resource_manager()->Lookup(input_handle.container(),           \
+                                           input_handle.name(),                \
+                                           &already_created_resource);         \
+    if (s.ok()) {                                                              \
+      CHECK_EQ(resource, already_created_resource);                            \
+      resource->Unref();                                                       \
+      already_created_resource->Unref();                                       \
+    } else {                                                                   \
+      if (errors::IsNotFound(s)) {                                             \
+        TF_RETURN_IF_ERROR(device->resource_manager()->Create(                 \
+            input_handle.container(), input_handle.name(), resource));         \
+      } else {                                                                 \
+        return s;                                                              \
+      }                                                                        \
+    }                                                                          \
     continue;                                                                  \
   }
 
@@ -105,8 +121,7 @@ Status CapturedFunction::Create(
 
 Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
                              gtl::ArraySlice<Tensor> args,
-                             std::vector<Tensor>* rets, const string& prefix) {
-  port::Tracing::TraceMe activity(prefix, "::Run");
+                             std::vector<Tensor>* rets) {
   Notification n;
   Status s;
   auto done_callback = [&n, &s](Status func_status) {
@@ -128,17 +143,15 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
 
 void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
                                 gtl::ArraySlice<Tensor> args,
-                                std::vector<Tensor>* rets, const string& prefix,
+                                std::vector<Tensor>* rets,
                                 FunctionLibraryRuntime::DoneCallback done) {
-  auto activity = new port::Tracing::TraceMe(prefix, "::RunAsync");
   auto c_mgr = new CancellationManager;
   f_opts.cancellation_manager = c_mgr;
   FunctionLibraryRuntime::DoneCallback wrapped_done = std::bind(
-      [activity, c_mgr](FunctionLibraryRuntime::DoneCallback done,
-                        // Begin unbound arguments.
-                        Status s) {
+      [c_mgr](FunctionLibraryRuntime::DoneCallback done,
+              // Begin unbound arguments.
+              Status s) {
         delete c_mgr;
-        delete activity;
         done(s);
       },
       std::move(done), std::placeholders::_1);

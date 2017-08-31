@@ -44,11 +44,6 @@ string GetTraceString(const CodeDef::Trace& trace) {
   } else {
     ntrace += ":" + trace.function().substr(0, 17) + "...";
   }
-  if (trace.line().length() < 20) {
-    ntrace += ":" + trace.line();
-  } else {
-    ntrace += ":" + trace.line().substr(0, 17) + "...";
-  }
   return ntrace;
 }
 
