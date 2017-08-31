@@ -387,6 +387,30 @@ public class TensorTest {
   }
 
   @Test
+  public void testNDimensionalStringTensor() {
+    byte[][][] matrix = new byte[4][3][];
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        matrix[i][j] = String.format("(%d, %d) = %d", i, j, i << j).getBytes(UTF_8);
+      }
+    }
+    try (Tensor t = Tensor.create(matrix)) {
+      assertEquals(DataType.STRING, t.dataType());
+      assertEquals(2, t.numDimensions());
+      assertArrayEquals(new long[] {4, 3}, t.shape());
+
+      byte[][][] got = t.copyTo(new byte[4][3][]);
+      assertEquals(4, got.length);
+      for (int i = 0; i < 4; ++i) {
+        assertEquals(String.format("%d", i), 3, got[i].length);
+        for (int j = 0; j < 3; ++j) {
+          assertArrayEquals(String.format("(%d, %d)", i, j), matrix[i][j], got[i][j]);
+        }
+      }
+    }
+  }
+
+  @Test
   public void failCreateOnMismatchedDimensions() {
     int[][][] invalid = new int[3][1][];
     for (int x = 0; x < invalid.length; ++x) {

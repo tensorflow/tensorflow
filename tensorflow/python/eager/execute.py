@@ -189,16 +189,11 @@ def args_to_matching_eager(l, default_dtype=None):
       break
 
   if dtype is None:
-    # TODO(josh11b): At the moment, I don't think this can fail, but at some
-    # point we likely should have some logic to prevent bad conversions.
-    dtype = default_dtype
-
-  if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
-      ret.append(ops.convert_to_tensor(t, dtype))
+      ret.append(ops.convert_to_tensor(t, dtype, preferred_dtype=default_dtype))
       if dtype is None:
         dtype = ret[-1].dtype
   else:

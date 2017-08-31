@@ -900,6 +900,93 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
+  Status HandleReduceWindow(HloInstruction* reduce_window,
+                            HloInstruction* operand, const Window& window,
+                            HloComputation* function) override {
+    TF_ASSIGN_OR_RETURN(
+        auto inferred_return_shape,
+        ShapeInference::InferReduceWindowShape(
+            /*operand_shape=*/reduce_window->operand(0)->shape(),
+            /*init_value=*/reduce_window->operand(1)->shape(), window,
+            /*to_apply_shape=*/function->ComputeProgramShape()));
+    TF_RET_CHECK(
+        ShapeUtil::Compatible(reduce_window->shape(), inferred_return_shape))
+        << "return shape is set to: "
+        << ShapeUtil::HumanStringWithLayout(reduce_window->shape())
+        << "but is inferred to be: "
+        << ShapeUtil::HumanStringWithLayout(inferred_return_shape);
+
+    const Literal& operand_literal =
+        parent_->GetEvaluatedLiteralFor(reduce_window->operand(0));
+    VLOG(3) << "HandleReduceWindow arg_literal: " << operand_literal.ToString();
+    const Literal& init_literal =
+        parent_->GetEvaluatedLiteralFor(reduce_window->operand(1));
+    VLOG(3) << "HandleReduceWindow init_literal: " << init_literal.ToString();
+    TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+    auto init_scalar = init_literal.Get<ReturnT>({});
+
+    auto result = Literal::CreateFromShape(reduce_window->shape());
+
+    // Creates a Shape object from window, for iteration below.
+    std::vector<int64> window_dimension_sizes;
+    for (const auto& window_dimension : window.dimensions()) {
+      window_dimension_sizes.push_back(window_dimension.size());
+    }
+    const Shape window_shape = ShapeUtil::MakeShape(
+        operand->shape().element_type(), window_dimension_sizes);
+
+    DimensionVector window_index(window.dimensions_size());
+    DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
+
+    // For each resulting dimension, calculate and assign computed value.
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> output_index) {
+          ReturnT result_val = init_scalar;
+
+          std::fill(window_index.begin(), window_index.end(), 0);
+          std::fill(operand_index.begin(), operand_index.end(), 0);
+
+          do {
+            // Set curr_val to 0 if out of bound (padded).
+            ReturnT curr_val = static_cast<ReturnT>(0);
+            bool out_of_bound = false;
+            for (int i = 0; i < operand_index.size(); ++i) {
+              operand_index[i] =
+                  output_index[i] * window.dimensions(i).stride() +
+                  window_index[i] - window.dimensions(i).padding_low();
+              if (operand_index[i] < 0 ||
+                  operand_index[i] >= operand_literal.shape().dimensions(i)) {
+                out_of_bound = true;
+                break;
+              }
+            }
+            if (!out_of_bound) {
+              curr_val = operand_literal.Get<ReturnT>(operand_index);
+            }
+            // Evaluate computation with specified literal operands.
+            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
+            const auto result_val_literal =
+                Literal::CreateR0<ReturnT>(result_val);
+            const std::vector<const Literal*> args = {curr_val_literal.get(),
+                                                      result_val_literal.get()};
+            // We need a new visitor for each evaluation, so that the same
+            // computation can be visited more than once (with different
+            // inputs).
+            HloEvaluator embedded_evaluator;
+            std::unique_ptr<Literal> computed_result =
+                embedded_evaluator.Evaluate(*function, args)
+                    .ConsumeValueOrDie();
+
+            result_val = computed_result->Get<ReturnT>({});
+          } while (IndexUtil::BumpIndices(window_shape, &window_index));
+
+          return result_val;
+        }));
+
+    parent_->evaluated_[reduce_window] = std::move(result);
+    return Status::OK();
+  };
+
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override {
     const Shape& shape = slice->shape();
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
@@ -1070,7 +1157,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   HloEvaluator* parent_;
-};
+};  // namespace xla
 
 HloEvaluator::HloEvaluator() {
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);

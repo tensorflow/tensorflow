@@ -308,7 +308,7 @@ class WhileConditionComputationMatcher : public MatcherBase {
         GetTaggedInstruction("gte.fusion_param.param0", tagged_instructions));
     CHECK_EQ(HloOpcode::kParameter, gte_fusion_param0->opcode());
     CHECK(gte_fusion_param0->IsFused());
-    if (gte_fusion_param0->fusion_instruction()->operand(
+    if (gte_fusion_param0->parent()->FusionInstruction()->operand(
             gte_fusion_param0->parameter_number()) !=
         computation_->parameter_instruction(0)) {
       return InvalidArgument("Could not match fusion param: %s",
@@ -469,7 +469,8 @@ class WhileBodyComputationMatcher : public MatcherBase {
         // Fusion parameter: lookup and compare with associated fusion operand.
         CHECK_EQ(HloOpcode::kParameter, inst->opcode());
         CHECK(inst->IsFused());
-        if (inst->fusion_instruction()->operand(inst->parameter_number()) !=
+        if (inst->parent()->FusionInstruction()->operand(
+                inst->parameter_number()) !=
             computation_->parameter_instruction(0)) {
           return InvalidArgument("Could not match fusion param: %s",
                                  inst->name().c_str());

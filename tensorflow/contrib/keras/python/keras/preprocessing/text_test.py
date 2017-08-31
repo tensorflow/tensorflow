@@ -33,6 +33,13 @@ class TestText(test.TestCase):
     self.assertLessEqual(np.max(encoded), 4)
     self.assertGreaterEqual(np.min(encoded), 0)
 
+    # Test on unicode.
+    text = u'The cat sat on the mat.'
+    encoded = keras.preprocessing.text.one_hot(text, 5)
+    self.assertEqual(len(encoded), 6)
+    self.assertLessEqual(np.max(encoded), 4)
+    self.assertGreaterEqual(np.min(encoded), 0)
+
   def test_tokenizer(self):
     texts = [
         'The cat sat on the mat.',
