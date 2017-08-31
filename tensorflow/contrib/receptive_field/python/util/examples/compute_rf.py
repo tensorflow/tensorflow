@@ -17,6 +17,10 @@
 For an example of usage, see accompanying file compute_rf.sh
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import sys
 

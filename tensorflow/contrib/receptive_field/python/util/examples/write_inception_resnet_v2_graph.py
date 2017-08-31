@@ -15,6 +15,10 @@
 """Simple script to write Inception-ResNet-v2 model to graph file.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import sys
 
