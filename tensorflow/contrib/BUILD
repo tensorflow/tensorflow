@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
+        "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hooks",
