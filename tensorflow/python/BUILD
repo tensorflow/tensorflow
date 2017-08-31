@@ -1766,6 +1766,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":array_ops_gen",
+        ":dtypes",
         ":framework_ops",
         ":resource_variable_ops_gen",
         ":tensor_shape",
@@ -1775,7 +1777,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/eager:tensor",
+        "//tensorflow/python/eager:tensor_node",
     ],
 )
 
