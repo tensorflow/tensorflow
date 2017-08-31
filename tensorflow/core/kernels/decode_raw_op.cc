@@ -105,6 +105,7 @@ REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);
+REGISTER(uint16);
 REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
