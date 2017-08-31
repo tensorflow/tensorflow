@@ -721,12 +721,12 @@ class EagerTensor(Tensor):
     return numpy_text
 
   def __str__(self):
-    return "tfe.Tensor(shape=%s, dtype=%s, numpy=%s)" % (self.shape,
-                                                         self.dtype.name,
-                                                         self._numpy_text())
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (self._numpy_text(),
+                                                  self.shape,
+                                                  self.dtype.name)
 
   def __repr__(self):
-    return "<tfe.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
+    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
         self._id, self.shape, self.dtype.name, self._numpy_text(is_repr=True))
 
   @staticmethod
