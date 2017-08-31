@@ -48,12 +48,13 @@ class ReadVariableOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
     ResourceHandle handle = HandleFromInput(ctx, 0);
-    OP_REQUIRES(
-        ctx, LookupResource(ctx, handle, &variable).ok(),
-        errors::NotFound("Attempted to read a nonexistent variable. "
-                         "This usually means that the variable was not "
-                         "initialized. Container: ",
-                         handle.container(), ", name: ", handle.name()));
+    const auto status = LookupResource(ctx, handle, &variable);
+    OP_REQUIRES(ctx, status.ok(),
+                errors::NotFound(
+                    "Error while reading resource variable ", handle.name(),
+                    " from Container: ", handle.container(),
+                    ". This could mean that the variable was not initialized. ",
+                    status.ToString()));
 
     core::ScopedUnref s(variable);
     // TODO(apassos): It's possible to do copy-on-write here instead of always
@@ -279,11 +280,11 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)                             \
-  REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")             \
-                              .Device(DEVICE_GPU)              \
-                              .TypeConstraint<type>("dtype")   \
-                              .HostMemory("resource"),         \
+#define REGISTER_GPU_KERNELS(type)                           \
+  REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")           \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("resource"),       \
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
@@ -450,11 +451,12 @@ class ResourceScatterUpdateOp : public OpKernel {
 
     // Check that we have enough index space
     const int64 N_big = indices.NumElements();
-    OP_REQUIRES(c, N_big <= std::numeric_limits<Index>::max(),
-                errors::InvalidArgument(
-                    "indices has too many elements for ",
-                    DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ",
-                    N_big, " > ", std::numeric_limits<Index>::max()));
+    OP_REQUIRES(
+        c, N_big <= std::numeric_limits<Index>::max(),
+        errors::InvalidArgument("indices has too many elements for ",
+                                DataTypeString(DataTypeToEnum<Index>::v()),
+                                " indexing: ", N_big, " > ",
+                                std::numeric_limits<Index>::max()));
     const Index N = static_cast<Index>(indices.NumElements());
     OP_REQUIRES(
         c, params->dim_size(0) <= std::numeric_limits<Index>::max(),

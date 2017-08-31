@@ -45,6 +45,8 @@ struct ItemConfig {
   bool apply_optimizations;
   // If true, does inlining.
   bool inline_functions;
+  // If non-empty, override the directory of asset paths.
+  string assets_directory_override;
 };
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.

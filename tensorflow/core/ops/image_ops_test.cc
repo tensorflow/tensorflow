@@ -101,6 +101,16 @@ TEST(ImageOpsTest, EncodeImage_ShapeFn) {
   }
 }
 
+TEST(ImageOpsTest, ExtractJpegShape_ShapeFn) {
+  ShapeInferenceTestOp op("ExtractJpegShape");
+
+  // Rank check.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
+
+  // Only specify input data. Output must be a 1-D tensor with 3 elements.
+  INFER_OK(op, "?", "[3]");
+}
+
 TEST(ImageOpsTest, Colorspace_ShapeFn) {
   for (const char* op_name : {"HSVToRGB", "RGBToHSV"}) {
     ShapeInferenceTestOp op(op_name);

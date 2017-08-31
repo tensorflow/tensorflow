@@ -125,6 +125,7 @@ include(nsync)
 include(protobuf)
 include(re2)
 include(cub)
+include(sqlite)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -142,6 +143,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${nsync_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
+    ${sqlite_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
@@ -159,6 +161,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     cub
     fft2d
     re2
+    sqlite_copy_headers_to_destination
 )
 
 include_directories(
@@ -180,6 +183,7 @@ include_directories(
     ${nsync_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
+    ${sqlite_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)

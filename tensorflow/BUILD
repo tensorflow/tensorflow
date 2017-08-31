@@ -9,6 +9,9 @@ licenses(["notice"])  # Apache 2.0
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
 ])
 
 # Config setting for determining if we are building for Android.

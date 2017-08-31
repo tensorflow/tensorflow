@@ -138,7 +138,10 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (IsEnter(node) || IsPlaceholder(node)) {
+  if (IsEnter(node) || IsExit(node) || IsPlaceholder(node)) {
+    return false;
+  }
+  if (node.device().find("SPU") != string::npos) {
     return false;
   }
   const OpDef* op_def = nullptr;

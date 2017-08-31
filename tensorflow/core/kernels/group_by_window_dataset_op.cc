@@ -171,7 +171,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Run(
-                  opts, next_input_element, &key_func_output, prefix()));
+                  opts, next_input_element, &key_func_output));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -259,8 +259,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
 
-        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
-            opts, args, &return_values, prefix()));
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_reduce_func_->Run(opts, args, &return_values));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_RESOURCE &&
