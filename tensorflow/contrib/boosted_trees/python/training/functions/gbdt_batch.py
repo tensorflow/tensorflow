@@ -261,6 +261,7 @@ class GradientBoostedDecisionTreeModel(object):
                examples_per_layer,
                learner_config,
                features,
+               logits_dimension,
                feature_columns=None):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
@@ -273,8 +274,8 @@ class GradientBoostedDecisionTreeModel(object):
         a tree layer. It can also be a function that computes the number of
         examples based on the depth of the layer that's being built.
       learner_config: A learner config.
-          print split, sorted_feature_names[split.feature_column]
       features: `dict` of `Tensor` objects.
+      logits_dimension: An int, the dimension of logits.
       feature_columns: A list of feature columns.
 
     Raises:
@@ -289,11 +290,39 @@ class GradientBoostedDecisionTreeModel(object):
     if learner_config.num_classes < 2:
       raise ValueError("Number of classes must be >=2")
 
+    self._logits_dimension = logits_dimension
     self._is_chief = is_chief
     self._num_ps_replicas = num_ps_replicas
     self._ensemble_handle = ensemble_handle
     self._center_bias = center_bias
     self._examples_per_layer = examples_per_layer
+
+    # Fill in the defaults.
+    if (learner_config.multi_class_strategy ==
+        learner_pb2.LearnerConfig.MULTI_CLASS_STRATEGY_UNSPECIFIED):
+      if logits_dimension == 1:
+        learner_config.multi_class_strategy = (
+            learner_pb2.LearnerConfig.TREE_PER_CLASS)
+      else:
+        learner_config.multi_class_strategy = (
+            learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
+
+    if (learner_config.growing_mode ==
+        learner_pb2.LearnerConfig.GROWING_MODE_UNSPECIFIED):
+      learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+
+    if (learner_config.pruning_mode ==
+        learner_pb2.LearnerConfig.PRUNING_MODE_UNSPECIFIED):
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.POST_PRUNE
+
+    if learner_config.constraints.max_tree_depth == 0:
+      # Use 6 as the default maximum depth.
+      learner_config.constraints.max_tree_depth = 6
+
+    tuner = learner_config.learning_rate_tuner.WhichOneof("tuner")
+    if not tuner:
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
