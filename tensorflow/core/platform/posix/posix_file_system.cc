@@ -18,6 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -274,6 +275,48 @@ Status PosixFileSystem::RenameFile(const string& src, const string& target) {
     result = IOError(src, errno);
   }
   return result;
+}
+
+Status PosixFileSystem::CopyFile(const string& src, const string& target) {
+#if defined(PLATFORM_WINDOWS)
+  return FileSystem::CopyFile(src, target);
+#else
+  string translated_src = TranslateName(src);
+  struct stat sbuf;
+  if (stat(translated_src.c_str(), &sbuf) != 0) {
+    return IOError(src, errno);
+  }
+  int src_fd = open64(translated_src.c_str(), O_RDONLY);
+  if (src_fd < 0) {
+    return IOError(src, errno);
+  }
+  string translated_target = TranslateName(target);
+  int target_fd =
+      open64(translated_target.c_str(), O_WRONLY | O_CREAT,
+             S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  if (target_fd < 0) {
+    close(src_fd);
+    return IOError(target, errno);
+  }
+  ssize_t rc = 0;
+  off_t offset = 0;
+  while (offset < sbuf.st_size) {
+    size_t chunk = (sbuf.st_size - offset) < SSIZE_MAX ? (sbuf.st_size - offset)
+                                                       : SSIZE_MAX;
+    rc = sendfile64(target_fd, src_fd, &offset, chunk);
+    if (rc <= 0) {
+      break;
+    }
+  }
+  close(target_fd);
+  close(src_fd);
+
+  Status result;
+  if (rc < 0) {
+    result = IOError(target, errno);
+  }
+  return result;
+#endif
 }
 
 }  // namespace tensorflow

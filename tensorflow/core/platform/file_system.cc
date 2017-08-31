@@ -33,6 +33,8 @@ namespace tensorflow {
 
 namespace {
 
+constexpr size_t kCopyFileBufferSize = 1024 * 1024;
+
 constexpr int kNumThreads = 8;
 
 // Run a function in parallel using a ThreadPool, but skip the ThreadPool
@@ -260,6 +262,52 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
     }
   }
   return Status::OK();
+}
+
+Status FileSystem::CopyFile(const string& src, const string& target) {
+  uint64 size;
+  Status s = GetFileSize(src, &size);
+  if (!s.ok()) {
+    return s;
+  }
+  std::unique_ptr<RandomAccessFile> src_file;
+  s = NewRandomAccessFile(src, &src_file);
+  if (!s.ok()) {
+    return s;
+  }
+  std::unique_ptr<WritableFile> target_file;
+  s = NewWritableFile(target, &target_file);
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint64 offset = 0;
+  while (offset < size) {
+    char scratch[kCopyFileBufferSize];
+    StringPiece result;
+    size_t chunk =
+        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
+    s = src_file->Read(offset, chunk, &result, scratch);
+    if (!s.ok()) {
+      return s;
+    }
+
+    s = target_file->Append(result);
+    if (!s.ok()) {
+      return s;
+    }
+
+    offset += chunk;
+  }
+  s = GetFileSize(src, &size);
+  if (!s.ok()) {
+    return s;
+  }
+  if (offset != size) {
+    return errors::Aborted("File ", src, " changed while reading: ", size,
+                           " vs. ", offset);
+  }
+  return target_file->Close();
 }
 
 }  // namespace tensorflow

@@ -110,10 +110,15 @@ void RecursivelyCreateDir(const string& dirname, TF_Status* out_status) {
   }
 }
 
-void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
+void CopyFile(const string& src, const string& target, bool overwrite,
               TF_Status* out_status) {
-  tensorflow::Status status = CopyFile(tensorflow::Env::Default(),
-                                       oldpath, newpath, overwrite);
+  // If overwrite is false and the target file exists then its an error.
+  if (!overwrite && tensorflow::Env::Default()->FileExists(target).ok()) {
+    TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
+    return;
+  }
+  tensorflow::Status status =
+      tensorflow::Env::Default()->CopyFile(src, target);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }

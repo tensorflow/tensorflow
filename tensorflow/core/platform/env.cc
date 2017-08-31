@@ -260,6 +260,60 @@ Status Env::RenameFile(const string& src, const string& target) {
   return src_fs->RenameFile(src, target);
 }
 
+Status Env::CopyFile(const string& src, const string& target) {
+  FileSystem* src_fs;
+  FileSystem* target_fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  if (src_fs == target_fs) {
+    return src_fs->CopyFile(src, target);
+  }
+
+  uint64 size;
+  Status s = GetFileSize(src, &size);
+  if (!s.ok()) {
+    return s;
+  }
+  std::unique_ptr<RandomAccessFile> src_file;
+  s = src_fs->NewRandomAccessFile(src, &src_file);
+  if (!s.ok()) {
+    return s;
+  }
+  std::unique_ptr<WritableFile> target_file;
+  s = target_fs->NewWritableFile(target, &target_file);
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint64 offset = 0;
+  while (offset < size) {
+    char scratch[kCopyFileBufferSize];
+    StringPiece result;
+    size_t chunk =
+        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
+    s = src_file->Read(offset, chunk, &result, scratch);
+    if (!s.ok()) {
+      return s;
+    }
+
+    s = target_file->Append(result);
+    if (!s.ok()) {
+      return s;
+    }
+
+    offset += chunk;
+  }
+  s = GetFileSize(src, &size);
+  if (!s.ok()) {
+    return s;
+  }
+  if (offset != size) {
+    return errors::Aborted("File ", src, " changed while reading: ", size,
+                           " vs. ", offset);
+  }
+  return target_file->Close();
+}
+
 string Env::GetExecutablePath() {
   char exe_path[PATH_MAX] = {0};
 #ifdef __APPLE__
@@ -361,57 +415,6 @@ Status WriteStringToFile(Env* env, const string& fname,
     s = file->Close();
   }
   return s;
-}
-
-Status CopyFile(Env* env, const string& oldpath, const string& newpath,
-                bool overwrite) {
-  // If overwrite is false and the newpath file exists then it's an error.
-  if (!overwrite && env->FileExists(newpath).ok()) {
-    return errors::AlreadyExists("file already exists");
-  }
-  uint64 file_size;
-  Status s = env->GetFileSize(oldpath, &file_size);
-  if (!s.ok()) {
-    return s;
-  }
-  std::unique_ptr<RandomAccessFile> oldfile;
-  s = env->NewRandomAccessFile(oldpath, &oldfile);
-  if (!s.ok()) {
-    return s;
-  }
-  std::unique_ptr<WritableFile> newfile;
-  s = env->NewWritableFile(newpath, &newfile);
-  if (!s.ok()) {
-    return s;
-  }
-
-  uint64 offset = 0;
-  while (offset < file_size) {
-    char scratch[kCopyFileBufferSize];
-    StringPiece result;
-    size_t chunk = offset + sizeof(scratch) < file_size ? sizeof(scratch)
-                                                        : file_size - offset;
-    s = oldfile->Read(offset, chunk, &result, scratch);
-    if (!s.ok()) {
-      return s;
-    }
-
-    s = newfile->Append(result);
-    if (!s.ok()) {
-      return s;
-    }
-
-    offset += chunk;
-  }
-  s = env->GetFileSize(oldpath, &file_size);
-  if (!s.ok()) {
-    return s;
-  }
-  if (offset != file_size) {
-    return errors::Aborted("File ", oldpath, " changed while reading: ",
-                           file_size, " vs. ", offset);
-  }
-  return newfile->Close();
 }
 
 // A ZeroCopyInputStream on a RandomAccessFile.
