@@ -280,6 +280,14 @@ class ShapeVerifier : public DfsHloVisitor {
   const std::function<int64(const Shape&)> shape_size_fn_;
 };
 
+string ComputationsToString(
+    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+  return tensorflow::str_util::Join(
+      computations, ",", [](string* s, const HloComputation* computation) {
+        s->append(computation->name());
+      });
+}
+
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
@@ -290,6 +298,17 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     for (const auto& instruction : computation->instructions()) {
       TF_RET_CHECK(instruction->parent() == computation.get());
       if (instruction->opcode() == HloOpcode::kFusion) {
+        TF_RET_CHECK(
+            ContainersEqual(instruction->called_computations(),
+                            {instruction->fused_instructions_computation()}))
+            << "Fusion HLO calls computations other than the "
+               "fused_instructions_computation: "
+            << instruction->ToString()
+            << " instruction->fused_instructions_computation(): "
+            << instruction->fused_instructions_computation()->ToString()
+            << " instruction->called_computations(): "
+            << ComputationsToString(instruction->called_computations());
+
         for (const auto& fused : instruction->fused_instructions()) {
           TF_RET_CHECK(fused->parent() ==
                        instruction->fused_instructions_computation())
