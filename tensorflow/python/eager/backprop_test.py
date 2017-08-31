@@ -85,7 +85,7 @@ class BackpropTest(test.TestCase):
         initial_value=tensor.Tensor(1.0), name='x')
 
     def fn():
-      tape.watch(x.handle)
+      tape.watch_variable(x)
       b = tensor.Tensor(2.0)
       c = math_ops.add(x.value(), b)
       return math_ops.add(c, tensor.Tensor(3.0))
