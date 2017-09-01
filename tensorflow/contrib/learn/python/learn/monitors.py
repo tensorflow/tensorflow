@@ -42,9 +42,6 @@ import time
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.estimator import estimator as core_estimator
@@ -54,7 +51,7 @@ from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
-from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util import tf_inspect
 
 
@@ -68,7 +65,7 @@ class BaseMonitor(object):
   to run exclusively on the elected chief worker.
   """
 
-  @deprecation.deprecated(
+  @deprecated(
       "2016-12-05",
       "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
