@@ -122,6 +122,7 @@ load(
     "tf_additional_gpu_tracer_cuda_deps",
     "tf_pyclif_proto_library",
     "tf_jspb_proto_library",
+    "tf_nano_proto_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -208,6 +209,15 @@ tf_proto_library(
 
 tf_jspb_proto_library(
     name = "protos_all_jspb_proto",
+    visibility = ["//visibility:public"],
+    deps = [":protos_all_cc"],
+)
+
+tf_nano_proto_library(
+    name = "protos_all_nano_proto",
+    field_style = "accessors",
+    generate_equals = 1,
+    generate_intdefs = 1,
     visibility = ["//visibility:public"],
     deps = [":protos_all_cc"],
 )
