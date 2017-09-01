@@ -597,15 +597,26 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     // If there are no elements to return, return a zero-element Tensor with
     // shape [0] + element_shape_
     if (num_indices == 0) {
-      OP_REQUIRES(ctx, element_shape_.IsFullyDefined(),
+      PartialTensorShape partial_empty_shape;
+      OP_REQUIRES(ctx, element_shape_.MergeWith(tensor_array->ElemShape(),
+                                                &partial_empty_shape).ok(),
+                  errors::InvalidArgument(
+                      "Attr element shape ", element_shape_.DebugString(),
+                      " is not compatible with TensorArray element shape ",
+                      tensor_array->ElemShape().DebugString()));
+
+      OP_REQUIRES(ctx, partial_empty_shape.IsFullyDefined(),
                   errors::Unimplemented(
                       "TensorArray has size zero, but element shape ",
-                      element_shape_.DebugString(),
+                      partial_empty_shape.DebugString(),
                       " is not fully defined. "
                       "Currently only static shapes are supported when packing "
                       "zero-size TensorArrays."));
+
       TensorShape empty_shape;
-      element_shape_.AsTensorShape(&empty_shape);
+      // We already checked that partial_empty_shape is fully defined,
+      // so we don't need to check the result of the following line.
+      partial_empty_shape.AsTensorShape(&empty_shape);
       empty_shape.InsertDim(0, 0);
       Tensor* empty_unused;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &empty_unused));
