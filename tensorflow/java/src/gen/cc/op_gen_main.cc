@@ -44,7 +44,7 @@ const char kUsageHeader[] =
     "'org.tensorflow.op.mylib' package and add them to the 'myLib()' operator\n"
     "group.\n\n"
     "Note that the operator group assigned to the generated wrappers is just "
-    "a annotation tag at this stage. Operations will not be available through\n"
+    "an annotation tag at this stage. Operations will not be available through\n"
     "the 'org.tensorflow.op.Ops' API as a group until the generated classes "
     "are compiled using an appropriate annotation processor.\n\n"
     "Finally, the '--base_package' overrides the default parent package "
