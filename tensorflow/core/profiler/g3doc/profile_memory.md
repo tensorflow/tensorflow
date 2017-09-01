@@ -1,4 +1,4 @@
-##Profile Memory
+## Profile Memory
 
 It is generally a good idea to visualize the memory usage in timeline.
 It allows you to see the memory consumption of each GPU over time.
