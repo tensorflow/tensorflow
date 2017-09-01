@@ -88,7 +88,17 @@ bool DecodeUnaryVariant(Variant* variant) {
   if (decode_fn == nullptr) {
     return false;
   }
-  return (*decode_fn)(variant);
+  const string type_name = variant->TypeName();
+  bool decoded = (*decode_fn)(variant);
+  if (!decoded) return false;
+  if (variant->TypeName() != type_name) {
+    LOG(ERROR) << "DecodeUnaryVariant: Variant type_name before decoding was: "
+               << type_name
+               << " but after decoding was: " << variant->TypeName()
+               << ".  Treating this as a failure.";
+    return false;
+  }
+  return true;
 }
 
 // Add some basic registrations for use by others, e.g., for testing.
@@ -101,15 +111,59 @@ string MaybeRemoveTFPrefix(const StringPiece& str) {
 }  // namespace
 
 #define REGISTER_VARIANT_DECODE_TYPE(T) \
-  REGISTER_UNARY_VARIANT_DECODE_FUNCTION(T, MaybeRemoveTFPrefix(TF_STR(T)));
+  REGISTER_UNARY_VARIANT_DECODE_FUNCTION(T, TF_STR(T));
 
 // No encode/decode registered for std::complex<> and Eigen::half
 // objects yet.
-TF_CALL_INTEGRAL_TYPES(REGISTER_VARIANT_DECODE_TYPE);
-TF_CALL_float(REGISTER_VARIANT_DECODE_TYPE);
-TF_CALL_double(REGISTER_VARIANT_DECODE_TYPE);
-TF_CALL_bool(REGISTER_VARIANT_DECODE_TYPE);
+REGISTER_VARIANT_DECODE_TYPE(int);
+REGISTER_VARIANT_DECODE_TYPE(float);
+REGISTER_VARIANT_DECODE_TYPE(bool);
+REGISTER_VARIANT_DECODE_TYPE(double);
 
 #undef REGISTER_VARIANT_DECODE_TYPE
+
+// Special casing ZerosLikeFn per device.
+UnaryVariantOpRegistry::VariantZerosLikeFn*
+UnaryVariantOpRegistry::GetZerosLikeFn(const string& device,
+                                       const string& type_name) {
+  auto found = zeros_like_fns.find(std::make_pair(device, type_name));
+  if (found == zeros_like_fns.end()) return nullptr;
+  return &found->second;
+}
+
+void UnaryVariantOpRegistry::RegisterZerosLikeFn(
+    const string& device, const string& type_name,
+    const VariantZerosLikeFn& zeros_like_fn) {
+  CHECK(!type_name.empty()) << "Need a valid name for UnaryVariantZerosLike";
+  VariantZerosLikeFn* existing = GetZerosLikeFn(device, type_name);
+  CHECK_EQ(existing, nullptr)
+      << "Unary VariantZerosLikeFn for type_name: " << type_name
+      << " already registered for device type: " << device;
+  zeros_like_fns.insert(
+      std::pair<std::pair<string, string>, VariantZerosLikeFn>(
+          std::make_pair(device, type_name), zeros_like_fn));
+}
+
+namespace {
+
+template <typename T>
+Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
+                                     T* t_out) {
+  *t_out = T(0);
+  return Status::OK();
+}
+}  // namespace
+
+#define REGISTER_VARIANT_ZEROS_LIKE_TYPE(T)   \
+  REGISTER_UNARY_VARIANT_ZEROS_LIKE_FUNCTION( \
+      DEVICE_CPU, T, TF_STR(T), ZerosLikeVariantPrimitiveType<T>);
+
+// No zeros_like registered for std::complex<> or Eigen::half objects yet.
+REGISTER_VARIANT_ZEROS_LIKE_TYPE(int);
+REGISTER_VARIANT_ZEROS_LIKE_TYPE(float);
+REGISTER_VARIANT_ZEROS_LIKE_TYPE(double);
+REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
+
+#undef REGISTER_VARIANT_ZEROS_LIKE_TYPE
 
 }  // namespace tensorflow
