@@ -8,11 +8,11 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 # Then, combine all those source files into a single archive (.srcjar).
 #
 # For example:
-#  tf_java_op_gen_srcjar("gen_sources", "gen_tool", [ "array_ops", "math_ops" ])
+#  tf_java_op_gen_srcjar("gen_sources", "gen_tool", "my.package", [ "array_ops", "math_ops" ])
 #
 # will create a genrule named "gen_sources" that first generate source files:
-#     ops/src/main/java/org/tensorflow/op/array/*.java
-#     ops/src/main/java/org/tensorflow/op/math/*.java
+#     ops/src/main/java/my/package/array/*.java
+#     ops/src/main/java/my/package/math/*.java
 #
 # and then archive those source files in:
 #     ops/gen_sources.srcjar
