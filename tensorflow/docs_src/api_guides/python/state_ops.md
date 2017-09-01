@@ -91,7 +91,6 @@ automatically by the optimizers in most cases.
 
 ### Read-only Lookup Tables
 
-*   @{tf.initialize_all_tables}
 *   @{tf.tables_initializer}
 
 
