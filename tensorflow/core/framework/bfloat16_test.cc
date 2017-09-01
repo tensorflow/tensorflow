@@ -23,7 +23,8 @@ namespace {
 
 TEST(Bfloat16Test, Simple) {
   bfloat16 a(12);
-  EXPECT_EQ(12, a.value);
+  // Floating point representation of 12: 0x41400000
+  EXPECT_EQ(0x4140, a.value);
 }
 
 TEST(Bfloat16Test, Conversion) {
