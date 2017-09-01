@@ -1260,14 +1260,15 @@ def _ReductionDims(x, axis, reduction_indices):
 
 def reduce_sum(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the sum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1280,7 +1281,7 @@ def reduce_sum(input_tensor,
   tf.reduce_sum(x)  # 6
   tf.reduce_sum(x, 0)  # [2, 2, 2]
   tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keep_dims=True)  # [[3], [3]]
+  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
   tf.reduce_sum(x, [0, 1])  # 6
   ```
 
@@ -1289,9 +1290,10 @@ def reduce_sum(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1300,24 +1302,33 @@ def reduce_sum(input_tensor,
   Equivalent to np.sum
   @end_compatibility
   """
+
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
+
   return gen_math_ops._sum(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def count_nonzero(input_tensor,
                   axis=None,
-                  keep_dims=False,
+                  keepdims=None,
                   dtype=dtypes.int64,
                   name=None,
-                  reduction_indices=None):
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes number of nonzero elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1334,7 +1345,7 @@ def count_nonzero(input_tensor,
   tf.count_nonzero(x)  # 3
   tf.count_nonzero(x, 0)  # [1, 2, 0]
   tf.count_nonzero(x, 1)  # [1, 2]
-  tf.count_nonzero(x, 1, keep_dims=True)  # [[1], [2]]
+  tf.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
   tf.count_nonzero(x, [0, 1])  # 3
   ```
 
@@ -1343,14 +1354,22 @@ def count_nonzero(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor (number of nonzero values).
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
+
   with ops.name_scope(name, "count_nonzero", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
     zero = input_tensor.dtype.as_numpy_dtype()
@@ -1359,21 +1378,22 @@ def count_nonzero(input_tensor,
             # int64 reduction happens on GPU
             to_int64(gen_math_ops.not_equal(input_tensor, zero)),
             axis=axis,
-            keep_dims=keep_dims,
+            keepdims=keepdims,
             reduction_indices=reduction_indices),
         dtype=dtype)
 
 
 def reduce_mean(input_tensor,
                 axis=None,
-                keep_dims=False,
+                keepdims=None,
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keep_dims=None):
   """Computes the mean of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1393,9 +1413,10 @@ def reduce_mean(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1404,23 +1425,30 @@ def reduce_mean(input_tensor,
   Equivalent to np.mean
   @end_compatibility
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   return gen_math_ops._mean(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def reduce_prod(input_tensor,
                 axis=None,
-                keep_dims=False,
+                keepdims=None,
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keep_dims=None):
   """Computes the product of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1431,9 +1459,10 @@ def reduce_prod(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1442,23 +1471,30 @@ def reduce_prod(input_tensor,
   Equivalent to np.prod
   @end_compatibility
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   return gen_math_ops._prod(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def reduce_min(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the minimum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1469,9 +1505,10 @@ def reduce_min(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1480,23 +1517,30 @@ def reduce_min(input_tensor,
   Equivalent to np.min
   @end_compatibility
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   return gen_math_ops._min(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def reduce_max(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the maximum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1507,9 +1551,10 @@ def reduce_max(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1518,23 +1563,30 @@ def reduce_max(input_tensor,
   Equivalent to np.max
   @end_compatibility
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   return gen_math_ops._max(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def reduce_all(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1554,9 +1606,10 @@ def reduce_all(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1565,23 +1618,30 @@ def reduce_all(input_tensor,
   Equivalent to np.all
   @end_compatibility
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   return gen_math_ops._all(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def reduce_any(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the "logical or" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1601,9 +1661,10 @@ def reduce_any(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1612,23 +1673,30 @@ def reduce_any(input_tensor,
   Equivalent to np.any
   @end_compatibility
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   return gen_math_ops._any(
       input_tensor,
       _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
+      keepdims,
       name=name)
 
 
 def reduce_logsumexp(input_tensor,
                      axis=None,
-                     keep_dims=False,
+                     keepdims=None,
                      name=None,
-                     reduction_indices=None):
+                     reduction_indices=None,
+                     keep_dims=None):
   """Computes log(sum(exp(elements across dimensions of a tensor))).
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1645,7 +1713,7 @@ def reduce_logsumexp(input_tensor,
   tf.reduce_logsumexp(x)  # log(6)
   tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
   tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
-  tf.reduce_logsumexp(x, 1, keep_dims=True)  # [[log(3)], [log(3)]]
+  tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
   tf.reduce_logsumexp(x, [0, 1])  # log(6)
   ```
 
@@ -1654,19 +1722,26 @@ def reduce_logsumexp(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
   """
+  if keep_dims is not None:
+    if keepdims is not None:
+      raise ValueError("Cannot specify both 'keep_dims' and 'keepdims'")
+    keepdims = keep_dims
+  if keepdims is None:
+    keepdims = False
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
         axis=axis,
         reduction_indices=reduction_indices,
-        keep_dims=True)
+        keepdims=True)
     my_max = array_ops.stop_gradient(
         array_ops.where(
             gen_math_ops.is_finite(raw_max),
@@ -1676,9 +1751,9 @@ def reduce_logsumexp(input_tensor,
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
             axis,
-            keep_dims=True,
+            keepdims=True,
             reduction_indices=reduction_indices)) + my_max
-    if not keep_dims:
+    if not keepdims:
       if isinstance(axis, int):
         axis = [axis]
       result = array_ops.squeeze(result, axis)
@@ -2343,7 +2418,7 @@ def reduced_shape(input_shape, axes):
     input_shape: 1-D Tensor, the shape of the Tensor being reduced.
     axes: 1-D Tensor, the reduction axes.
   Returns:
-    A 1-D Tensor, the output shape as if keep_dims were set to True.
+    A 1-D Tensor, the output shape as if keepdims were set to True.
   """
   # Example:
   # cast needed for SparseTensor reductions

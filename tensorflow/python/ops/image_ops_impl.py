@@ -1121,7 +1121,7 @@ def rgb_to_grayscale(images, name=None):
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
                                      rank_1,
-                                     keep_dims=True)
+                                     keepdims=True)
     gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 
