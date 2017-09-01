@@ -4665,6 +4665,8 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
+            "summary_interface.*",
+            "summary_kernels.*",
             "spectrogram_convert_test_data.cc",
             "sql_dataset_ops.cc",
             # Excluded due to experimental status:
@@ -5951,6 +5953,43 @@ tf_kernel_library(
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",
         ":zip_dataset_op",
+    ],
+)
+
+cc_library(
+    name = "summary_interface",
+    srcs = ["summary_interface.cc"],
+    hdrs = ["summary_interface.h"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_test(
+    name = "summary_interface_test",
+    srcs = ["summary_interface_test.cc"],
+    deps = [
+        ":summary_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_kernel_library(
+    name = "summary_kernels",
+    srcs = ["summary_kernels.cc"],
+    deps = [
+        ":summary_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:summary_ops_op_lib",
     ],
 )
 

@@ -336,6 +336,7 @@ filegroup(
         "//tensorflow/contrib/staging:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/stateless:all_files",
+        "//tensorflow/contrib/summary:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensor_forest/kernels/v4:all_files",

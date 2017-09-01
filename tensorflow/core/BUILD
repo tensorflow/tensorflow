@@ -566,6 +566,7 @@ tf_gen_op_libs(
         "state_ops",
         "stateless_random_ops",
         "string_ops",
+        "summary_ops",
         "training_ops",
     ],
 )
@@ -776,6 +777,7 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:string",
+        "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
     ] + tf_additional_cloud_kernel_deps() + if_not_windows([
