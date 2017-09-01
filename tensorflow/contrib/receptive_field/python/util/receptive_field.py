@@ -35,6 +35,10 @@ _UNCHANGED_RF_LAYER_OPS = [
     "VariableV2", "Sub", "Rsqrt", "ConcatV2"
 ]
 
+# Different ways in which padding modes may be spelled.
+_VALID_PADDING = ["VALID", b"VALID"]
+_SAME_PADDING = ["SAME", b"SAME"]
+
 
 def _stride_size(node):
   """Computes stride size given a TF node.
@@ -102,9 +106,9 @@ def _padding_size_conv_pool(node, kernel_size, stride):
   # depends on input size, we raise an exception.
   padding_attr = node.attr["padding"]
   logging.vlog(4, "padding_attr = %s", padding_attr)
-  if padding_attr.s == "VALID":
+  if padding_attr.s in _VALID_PADDING:
     padding = 0
-  elif padding_attr.s == "SAME":
+  elif padding_attr.s in _SAME_PADDING:
     if kernel_size == 1:
       padding = 0
     elif stride == 1:
@@ -118,7 +122,7 @@ def _padding_size_conv_pool(node, kernel_size, stride):
           "padding may be different depending on the input image "
           "dimensionality. In this case, alignment check will be skipped.")
   else:
-    raise ValueError("Invalid padding operation")
+    raise ValueError("Invalid padding operation %s" % padding_attr.s)
   return padding
 
 

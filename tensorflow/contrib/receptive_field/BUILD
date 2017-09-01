@@ -47,9 +47,6 @@ py_test(
     name = "receptive_field_test",
     srcs = ["python/util/receptive_field_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",  # see b/65254194
-    ],
     deps = [
         ":receptive_field_py",
         "//tensorflow/contrib/framework:framework_py",
