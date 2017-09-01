@@ -998,6 +998,20 @@ class PoolingTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  def _testMaxPoolGradValidPadding1_2(self, data_format, use_gpu):
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
+      self._ConstructAndTestGradient(
+          pool_func,
+          input_sizes=[1, 3, 3, 1],
+          output_sizes=[1, 2, 2, 1],
+          window_rows=1,
+          window_cols=1,
+          row_stride=2,
+          col_stride=2,
+          padding="VALID",
+          data_format=data_format,
+          use_gpu=use_gpu)
+
   def _testMaxPoolGradValidPadding2_2(self, data_format, use_gpu):
     for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
@@ -1022,6 +1036,20 @@ class PoolingTest(test.TestCase):
           window_cols=1,
           row_stride=1,
           col_stride=1,
+          padding="SAME",
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  def _testMaxPoolGradSamePadding1_2(self, data_format, use_gpu):
+    for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
+      self._ConstructAndTestGradient(
+          pool_func,
+          input_sizes=[2, 2, 4, 3],
+          output_sizes=[2, 1, 2, 3],
+          window_rows=1,
+          window_cols=1,
+          row_stride=2,
+          col_stride=2,
           padding="SAME",
           data_format=data_format,
           use_gpu=use_gpu)
@@ -1071,10 +1099,12 @@ class PoolingTest(test.TestCase):
   def testMaxPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradValidPadding1_1(data_format, use_gpu)
+      self._testMaxPoolGradValidPadding1_2(data_format, use_gpu)
       self._testMaxPoolGradValidPadding2_1_6(data_format, use_gpu)
       self._testMaxPoolGradValidPadding2_1_7(data_format, use_gpu)
       self._testMaxPoolGradValidPadding2_2(data_format, use_gpu)
       self._testMaxPoolGradSamePadding1_1(data_format, use_gpu)
+      self._testMaxPoolGradSamePadding1_2(data_format, use_gpu)
       self._testMaxPoolGradSamePadding2_1(data_format, use_gpu)
       self._testMaxPoolGradSamePadding2_2(data_format, use_gpu)
       self._testMaxPoolGradSamePadding3_1(data_format, use_gpu)
@@ -1497,9 +1527,11 @@ class PoolingTest(test.TestCase):
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
+      self._testAvgPoolGradValidPadding1_2(data_format, use_gpu)
       self._testAvgPoolGradValidPadding2_1(data_format, use_gpu)
       self._testAvgPoolGradValidPadding2_2(data_format, use_gpu)
       self._testAvgPoolGradSamePadding1_1(data_format, use_gpu)
+      self._testAvgPoolGradSamePadding1_2(data_format, use_gpu)
       self._testAvgPoolGradSamePadding2_1(data_format, use_gpu)
       self._testAvgPoolGradSamePadding2_2(data_format, use_gpu)
       self._testAvgPoolGradSamePadding3_1(data_format, use_gpu)
@@ -1513,6 +1545,19 @@ class PoolingTest(test.TestCase):
         window_cols=1,
         row_stride=1,
         col_stride=1,
+        padding="VALID",
+        data_format=data_format,
+        use_gpu=use_gpu)
+
+  def _testAvgPoolGradValidPadding1_2(self, data_format, use_gpu):
+    self._ConstructAndTestGradient(
+        nn_ops.avg_pool,
+        input_sizes=[2, 3, 3, 3],
+        output_sizes=[2, 2, 2, 3],
+        window_rows=1,
+        window_cols=1,
+        row_stride=2,
+        col_stride=2,
         padding="VALID",
         data_format=data_format,
         use_gpu=use_gpu)
@@ -1552,6 +1597,19 @@ class PoolingTest(test.TestCase):
         window_cols=1,
         row_stride=1,
         col_stride=1,
+        padding="SAME",
+        data_format=data_format,
+        use_gpu=use_gpu)
+
+  def _testAvgPoolGradSamePadding1_2(self, data_format, use_gpu):
+    self._ConstructAndTestGradient(
+        nn_ops.avg_pool,
+        input_sizes=[2, 2, 4, 3],
+        output_sizes=[2, 1, 2, 3],
+        window_rows=1,
+        window_cols=1,
+        row_stride=2,
+        col_stride=2,
         padding="SAME",
         data_format=data_format,
         use_gpu=use_gpu)
