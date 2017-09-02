@@ -769,14 +769,18 @@ class TensorBoard(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     if projector is not None:
-      logs = logs or {}  
+      logs = logs or {}
+      
       if self.validation_data and self.histogram_freq:
         if epoch % self.histogram_freq == 0:  
+          
           val_data = self.validation_data
           tensors = (
               self.model.inputs + self.model.targets + self.model.sample_weights)  
+          
           if self.model.uses_learning_phase:
             tensors += [K.learning_phase()]  
+            
           assert len(val_data) == len(tensors)
           val_size = val_data[0].shape[0]
           i = 0
@@ -793,9 +797,11 @@ class TensorBoard(Callback):
             summary_str = result[0]
             self.writer.add_summary(summary_str, epoch)
             i += self.batch_size  
+            
       if self.embeddings_freq and self.embeddings_ckpt_path:
         if epoch % self.embeddings_freq == 0:
           self.saver.save(self.sess, self.embeddings_ckpt_path, epoch)  
+          
       for name, value in logs.items():
         if name in ['batch', 'size']:
           continue
