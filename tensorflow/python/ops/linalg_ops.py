@@ -30,6 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated_args
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -422,7 +423,10 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 
 # pylint: disable=redefined-builtin
-def norm(tensor, ord='euclidean', axis=None, keepdims=None, name=None, keep_dims=None):
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
+def norm(tensor, ord='euclidean', axis=None, keepdims=None, name=None,
+         keep_dims=None):
   r"""Computes the norm of vectors, matrices, and tensors.
 
   This function can compute several different vector norms (the 1-norm, the
@@ -458,7 +462,6 @@ def norm(tensor, ord='euclidean', axis=None, keepdims=None, name=None, keep_dims
     keepdims: If True, the axis indicated in `axis` are kept with size 1.
       Otherwise, the dimensions in `axis` are removed from the output shape.
     name: The name of the op.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     output: A `Tensor` of the same type as tensor, containing the vector or

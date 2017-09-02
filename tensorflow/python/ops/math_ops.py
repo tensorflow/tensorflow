@@ -1258,6 +1258,8 @@ def _ReductionDims(x, axis, reduction_indices):
     return range(0, array_ops.rank(x))
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_sum(input_tensor,
                axis=None,
                keepdims=None,
@@ -1293,7 +1295,6 @@ def reduce_sum(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1317,6 +1318,8 @@ def reduce_sum(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def count_nonzero(input_tensor,
                   axis=None,
                   keepdims=None,
@@ -1358,7 +1361,6 @@ def count_nonzero(input_tensor,
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor (number of nonzero values).
@@ -1383,6 +1385,8 @@ def count_nonzero(input_tensor,
         dtype=dtype)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_mean(input_tensor,
                 axis=None,
                 keepdims=None,
@@ -1416,7 +1420,6 @@ def reduce_mean(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1438,6 +1441,8 @@ def reduce_mean(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_prod(input_tensor,
                 axis=None,
                 keepdims=None,
@@ -1462,7 +1467,6 @@ def reduce_prod(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1484,6 +1488,8 @@ def reduce_prod(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_min(input_tensor,
                axis=None,
                keepdims=None,
@@ -1508,7 +1514,6 @@ def reduce_min(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1530,6 +1535,8 @@ def reduce_min(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_max(input_tensor,
                axis=None,
                keepdims=None,
@@ -1554,7 +1561,6 @@ def reduce_max(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1576,6 +1582,8 @@ def reduce_max(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_all(input_tensor,
                axis=None,
                keepdims=None,
@@ -1609,7 +1617,6 @@ def reduce_all(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1631,6 +1638,8 @@ def reduce_all(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_any(input_tensor,
                axis=None,
                keepdims=None,
@@ -1664,7 +1673,6 @@ def reduce_any(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
@@ -1686,6 +1694,8 @@ def reduce_any(input_tensor,
       name=name)
 
 
+@deprecated_args(None, "keep_dims is deprecated, use keepdims instead",
+                 "keep_dims")
 def reduce_logsumexp(input_tensor,
                      axis=None,
                      keepdims=None,
@@ -1725,7 +1735,6 @@ def reduce_logsumexp(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated keyword argument that is now keepdims.
 
   Returns:
     The reduced tensor.
