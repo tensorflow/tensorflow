@@ -233,7 +233,7 @@ class BasicRNNCell(RNNCell):
   """The most basic RNN cell.
 
   Args:
-    num_units: int, The number of units in the LSTM cell.
+    num_units: int, The number of units in the RNN cell.
     activation: Nonlinearity to use.  Default: `tanh`.
     reuse: (optional) Python boolean describing whether to reuse variables
      in an existing scope.  If not `True`, and the existing scope already has
