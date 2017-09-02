@@ -784,7 +784,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
-        "//tensorflow/core/kernels:mkl_aggregate_ops",                                              
+        "//tensorflow/core/kernels:mkl_aggregate_ops",
     ]),
 )
 
