@@ -66,7 +66,6 @@ from tensorflow.contrib import staging
 from tensorflow.contrib import stat_summarizer
 from tensorflow.contrib import stateless
 from tensorflow.contrib import tensor_forest
-from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
 from tensorflow.contrib import tfprof
 from tensorflow.contrib import timeseries
