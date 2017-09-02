@@ -121,7 +121,14 @@ struct scalar_cast_op<float, ::tensorflow::bfloat16> {
   typedef ::tensorflow::bfloat16 result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const ::tensorflow::bfloat16 operator()(
       const float a) const {
-    return ::tensorflow::bfloat16(a);
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);  
+    return ::tensorflow::bfloat16(p[0]);  
+#else 
+    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");
+    const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);
+    return ::tensorflow::bfloat16(p[1]);
+#endif 
   }
 };
 
