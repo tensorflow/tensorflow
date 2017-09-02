@@ -165,8 +165,9 @@ def tf_copts():
       "-Iexternal/gemmlowp",
       "-Wno-sign-compare",
       "-fno-exceptions",
+      "-ftemplate-depth=900",
   ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
+      ["-mfpu=neon", "-fomit-frame-pointer"]) + if_linux_x86_64(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",
@@ -336,7 +337,26 @@ def tf_gen_op_wrappers_cc(name,
       visibility=[clean_dep("//tensorflow:internal")])
 
 
-# Invoke this rule in .../tensorflow/python to build the wrapper library.
+# Generates a Python library target wrapping the ops registered in "deps".
+#
+# Args:
+#   name: used as the name of the generated target and as a name component of
+#     the intermediate files.
+#   out: name of the python file created by this rule. If None, then
+#     "ops/gen_{name}.py" is used.
+#   hidden: Optional list of ops names to make private in the Python module.
+#     It is invalid to specify both "hidden" and "op_whitelist".
+#   visibility: passed to py_library.
+#   deps: list of dependencies for the generated target.
+#   require_shape_functions: leave this as False.
+#   hidden_file: optional file that contains a list of op names to make private
+#     in the generated Python module. Each op name should be on a line by
+#     itself. Lines that start with characters that are invalid op name
+#     starting characters are treated as comments and ignored.
+#   generated_target_name: name of the generated target (overrides the
+#     "name" arg)
+#   op_whitelist: if not empty, only op names in this list will be wrapped. It
+#     is invalid to specify both "hidden" and "op_whitelist".
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
@@ -344,7 +364,11 @@ def tf_gen_op_wrapper_py(name,
                          deps=[],
                          require_shape_functions=False,
                          hidden_file=None,
-                         generated_target_name=None):
+                         generated_target_name=None,
+                         op_whitelist=[]):
+  if (hidden or hidden_file) and op_whitelist:
+    fail('Cannot pass specify both hidden and op_whitelist.')
+
   # Construct a cc_binary containing the specified ops.
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
@@ -365,14 +389,16 @@ def tf_gen_op_wrapper_py(name,
     out = "ops/gen_" + name + ".py"
 
   if hidden:
-    # `hidden` is a list of op names to be hidden in the generated module.
-    native.genrule(
-        name=name + "_pygenrule",
-        outs=[out],
-        tools=[tool_name],
-        cmd=("$(location " + tool_name + ") " + ",".join(hidden) + " " +
-             ("1" if require_shape_functions else "0") + " > $@"))
-  elif hidden_file:
+    op_list_arg = ",".join(hidden)
+    op_list_is_whitelist = False
+  elif op_whitelist:
+    op_list_arg = ",".join(op_whitelist)
+    op_list_is_whitelist = True
+  else:
+    op_list_arg = "''"
+    op_list_is_whitelist = False
+
+  if hidden_file:
     # `hidden_file` is file containing a list of op names to be hidden in the
     # generated module.
     native.genrule(
@@ -383,13 +409,13 @@ def tf_gen_op_wrapper_py(name,
         cmd=("$(location " + tool_name + ") @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
   else:
-    # No ops should be hidden in the generated module.
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
         tools=[tool_name],
-        cmd=("$(location " + tool_name + ") " +
-             ("1" if require_shape_functions else "0") + " > $@"))
+        cmd=("$(location " + tool_name + ") " + op_list_arg + " " +
+             ("1" if require_shape_functions else "0") + " " +
+             ("1" if op_list_is_whitelist else "0") + " > $@"))
 
   # Make a py_library out of the generated python file.
   if not generated_target_name:
@@ -744,13 +770,13 @@ def _py_wrap_cc_impl(ctx):
     fail("Exactly one SWIG source file label must be specified.", "srcs")
   module_name = ctx.attr.module_name
   src = ctx.files.srcs[0]
-  inputs = set([src])
+  inputs = depset([src])
   inputs += ctx.files.swig_includes
   for dep in ctx.attr.deps:
     inputs += dep.cc.transitive_headers
   inputs += ctx.files._swiglib
   inputs += ctx.files.toolchain_deps
-  swig_include_dirs = set(_get_repository_roots(ctx, inputs))
+  swig_include_dirs = depset(_get_repository_roots(ctx, inputs))
   swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
   args = [
       "-c++", "-python", "-module", module_name, "-o", ctx.outputs.cc_out.path,
@@ -767,7 +793,7 @@ def _py_wrap_cc_impl(ctx):
       outputs=outputs,
       mnemonic="PythonSwig",
       progress_message="SWIGing " + src.path)
-  return struct(files=set(outputs))
+  return struct(files=depset(outputs))
 
 
 _py_wrap_cc = rule(
@@ -840,7 +866,7 @@ def _get_repository_roots(ctx, files):
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
-  outputs = set()
+  outputs = depset()
   for dep in ctx.attr.deps:
     outputs += dep.cc.transitive_headers
   return struct(files=outputs)
@@ -862,14 +888,34 @@ def transitive_hdrs(name, deps=[], **kwargs):
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
-def cc_header_only_library(name, deps=[], **kwargs):
+def cc_header_only_library(name, deps=[], includes=[], **kwargs):
   _transitive_hdrs(name=name + "_gather", deps=deps)
-  native.cc_library(name=name, hdrs=[":" + name + "_gather"], **kwargs)
+
+  # We could generalize the following, but rather than complicate things
+  # here, we'll do the minimal use case for now, and hope bazel comes up
+  # with a better solution before too long.  We'd expect it to compute
+  # the right include path by itself, but it doesn't, possibly because
+  # _transitive_hdrs lost some information about the include path.
+  if "@nsync//:nsync_headers" in deps:
+    # Buiding tensorflow from @org_tensorflow finds this two up.
+    nsynch = "../../external/nsync/public"
+    # Building tensorflow from elsewhere finds it four up.
+    # Note that native.repository_name() is not yet available in TF's Kokoro.
+    if REPOSITORY_NAME != "@":
+      nsynch = "../../" + nsynch
+    includes = includes[:]
+    includes.append(nsynch)
+
+  native.cc_library(name=name,
+                    hdrs=[":" + name + "_gather"],
+                    includes=includes,
+                    **kwargs)
 
 
 def tf_custom_op_library_additional_deps():
   return [
       "@protobuf_archive//:protobuf_headers",
+      "@nsync//:nsync_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
   ]
@@ -880,10 +926,10 @@ def tf_custom_op_library_additional_deps():
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
-  alldeps = set()
+  alldeps = depset()
   if hasattr(ctx.rule.attr, "deps"):
     for dep in ctx.rule.attr.deps:
-      alldeps = alldeps | set([dep.label])
+      alldeps = alldeps | depset([dep.label])
       if hasattr(dep, "tf_collected_deps"):
         alldeps = alldeps | dep.tf_collected_deps
   return struct(tf_collected_deps=alldeps)

@@ -153,8 +153,8 @@ float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
 }
 
 template <>
-uint8 FusionTest::ComputeElementwiseAnswer<uint8>(HloOpcode opcode,
-                                                  ArraySlice<float> xs) {
+bool FusionTest::ComputeElementwiseAnswer<bool>(HloOpcode opcode,
+                                                ArraySlice<float> xs) {
   switch (opcode) {
     case HloOpcode::kEq:
       return xs[0] == xs[1];
@@ -420,6 +420,113 @@ XLA_TEST_F(FusionTest, Reverse) {
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
+XLA_TEST_F(FusionTest, ReverseNegate) {
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3})));
+  auto reverse1 = builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(S32, {3}), const0, {0}));
+  auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {3}), HloOpcode::kNegate, reverse1));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, reverse1},
+                                HloInstruction::FusionKind::kLoop);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-3, -2, -1}),
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
+XLA_TEST_F(FusionTest, BroadcastNegate) {
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+  auto broadcast1 = builder.AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(S32, {2}), const0, {}));
+  auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, broadcast1));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, broadcast1},
+                                HloInstruction::FusionKind::kLoop);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-1, -1}),
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
+XLA_TEST_F(FusionTest, SliceNegate) {
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3, 4})));
+  auto slice1 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(S32, {2}), const0, {0}, {4}, {2}));
+  auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, slice1));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, slice1},
+                                HloInstruction::FusionKind::kLoop);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-1, -3}),
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
+XLA_TEST_F(FusionTest, DynamicSliceNegate) {
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3, 4})));
+  auto const1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1})));
+  auto dynamic_slice2 =
+      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+          ShapeUtil::MakeShape(S32, {2}), const0, const1, {2}));
+  auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, dynamic_slice2));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(
+          /*instructions_to_fuse=*/{negate3, dynamic_slice2},
+          HloInstruction::FusionKind::kLoop);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-2, -3}),
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
+XLA_TEST_F(FusionTest, ReshapeNegate) {
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3, 4})));
+  auto reshape1 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {2, 2}), const0));
+  auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {2, 2}), HloOpcode::kNegate, reshape1));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, reshape1},
+                                HloInstruction::FusionKind::kLoop);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR2<int32>({{-1, -2}, {-3, -4}}),
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
+// TODO(b/64070202): Investigate failure.
+XLA_TEST_F(FusionTest, DISABLED_ON_GPU(TransposeNegate)) {
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<int32>({{1, 2}, {3, 4}})));
+  auto transpose1 = builder.AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(S32, {2, 2}), const0, {1, 0}));
+  auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {2, 2}), HloOpcode::kNegate, transpose1));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, transpose1},
+                                HloInstruction::FusionKind::kLoop);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR2<int32>({{-1, -3}, {-2, -4}}),
+                               *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
 std::unique_ptr<HloComputation> MakeReduceTestComputation() {
   auto builder = HloComputation::Builder("add");
   auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -462,12 +569,12 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceImplicitBroadcast)) {
       ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
   auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kNegate, reduce2));
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, reduce2));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate3, reduce2},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-15}),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(-15),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
@@ -583,26 +690,24 @@ XLA_TEST_F(FusionTest, Maximum2D) {
   TestElementwise2D<float, 2>(HloOpcode::kMaximum);
 }
 
-XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<uint8, 2>(HloOpcode::kEq); }
+XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<bool, 2>(HloOpcode::kEq); }
 
 XLA_TEST_F(FusionTest, Inequal2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kNe);
+  TestElementwise2D<bool, 2>(HloOpcode::kNe);
 }
 
 XLA_TEST_F(FusionTest, Greater2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kGt);
+  TestElementwise2D<bool, 2>(HloOpcode::kGt);
 }
 
-XLA_TEST_F(FusionTest, Lesser2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kLt);
-}
+XLA_TEST_F(FusionTest, Lesser2D) { TestElementwise2D<bool, 2>(HloOpcode::kLt); }
 
 XLA_TEST_F(FusionTest, GreaterOrEqual2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kGe);
+  TestElementwise2D<bool, 2>(HloOpcode::kGe);
 }
 
 XLA_TEST_F(FusionTest, LesserOrEqual2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kLe);
+  TestElementwise2D<bool, 2>(HloOpcode::kLe);
 }
 
 XLA_TEST_F(FusionTest, Clamp2D) {

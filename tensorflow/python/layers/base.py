@@ -33,6 +33,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
@@ -83,6 +84,8 @@ class Layer(object):
     allowed_kwargs = {
         '_scope',
         '_reuse',
+        'input_shape',  # For compatibility with Keras `Sequential` model.
+        'batch_size',  # For compatibility with Keras `Sequential` model.
     }
     for kwarg in kwargs:
       if kwarg not in allowed_kwargs:
@@ -100,6 +103,8 @@ class Layer(object):
     self._per_input_updates = {}
     self.dtype = dtypes.as_dtype(dtype).name
     self.input_spec = None
+    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
+                                   or hasattr(self, 'compute_mask'))
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -123,6 +128,12 @@ class Layer(object):
       self._scope = next(vs.variable_scope(scope).gen)
     else:
       self._scope = None
+
+    # Set `batch_input_shape` attribute
+    # for compatibility with Keras `Sequential` model.
+    if 'input_shape' in kwargs:
+      batch_size = kwargs.get('batch_size')
+      self.batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
 
   @property
   def scope_name(self):
@@ -173,6 +184,8 @@ class Layer(object):
 
   @property
   def updates(self):
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.updates not supported in Eager mode.')
     return self._updates
 
   def add_update(self, updates, inputs=None):
@@ -194,7 +207,12 @@ class Layer(object):
         match the `inputs` argument passed to the `__call__` method at the time
         the updates are created. If `None` is passed, the updates are assumed
         to be unconditional, and will apply across all dataflows of the layer.
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.add_update not supported in Eager mode.')
     updates = _to_list(updates)
     if not updates:
       return
@@ -224,7 +242,12 @@ class Layer(object):
 
     Returns:
       List of update ops of the layer that depend on `inputs`.
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.get_updates_for not supported in Eager mode.')
     if inputs is not None:
       inputs = _to_list(inputs)
     if not inputs:
@@ -237,6 +260,8 @@ class Layer(object):
 
   @property
   def losses(self):
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.losses not supported in Eager mode.')
     return self._losses
 
   def add_loss(self, losses, inputs=None):
@@ -258,7 +283,12 @@ class Layer(object):
         the losses are created. If `None` is passed, the losses are assumed
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.add_loss not supported in Eager mode.')
     losses = _to_list(losses)
     if not losses:
       return
@@ -289,7 +319,12 @@ class Layer(object):
 
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.get_losses_for not supported in Eager mode.')
     if inputs is not None:
       inputs = _to_list(inputs)
     if not inputs:
@@ -351,7 +386,8 @@ class Layer(object):
             scope, default_name=self._base_name).gen)
 
   def add_variable(self, name, shape, dtype=None,
-                   initializer=None, regularizer=None, trainable=True):
+                   initializer=None, regularizer=None,
+                   trainable=True, constraint=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -363,23 +399,34 @@ class Layer(object):
       trainable: whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
+      constraint: constraint instance (callable).
 
     Returns:
       The created variable.
+
+    Raises:
+      RuntimeError: If called in Eager mode with regularizers.
     """
+    # Note that we currently don't support variable regularization in Eager
+    # mode. An alternative is for users to directly compute these losses before
+    # performing a backward pass.
+    if regularizer is not None and context.in_eager_mode():
+      raise RuntimeError('Variable regularization not supported in Eager mode.')
     if dtype is None:
       dtype = self.dtype
     existing_variables = set(tf_variables.global_variables())
 
     self._set_scope(None)
 
-    with vs.variable_scope(self._scope,
-                           reuse=self.built or self._reuse) as scope:
+    vs_reuse = ((self.built or self._reuse)
+                if context.in_graph_mode() else vs.AUTO_REUSE)
+    with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:
       with ops.name_scope(scope.original_name_scope):
         variable = vs.get_variable(name,
                                    shape=shape,
                                    initializer=initializer,
                                    dtype=dtypes.as_dtype(dtype),
+                                   constraint=constraint,
                                    trainable=trainable and self.trainable)
         if variable in existing_variables:
           return variable
@@ -435,29 +482,48 @@ class Layer(object):
     """
     self._set_scope(kwargs.pop('scope', None))
 
+    in_graph_mode = context.in_graph_mode()
     # Ensure the Layer, if being reused, is working with inputs from
     # the same graph as where it was created.
-    try:
-      ops._get_graph_from_inputs(nest.flatten(inputs), graph=self.graph)  # pylint: disable=protected-access
-    except ValueError as e:
-      raise ValueError('Input graph and Layer graph are not the same: %s' % e)
+    if in_graph_mode:
+      try:
+        ops._get_graph_from_inputs(nest.flatten(inputs), graph=self.graph)  # pylint: disable=protected-access
+      except ValueError as e:
+        raise ValueError('Input graph and Layer graph are not the same: %s' % e)
+      user_kwargs = copy.copy(kwargs)
 
     # Handle Keras mask propagation from previous layer to current layer.
-    previous_mask = _collect_previous_mask(inputs)
-    user_kwargs = copy.copy(kwargs)
-    if not _is_all_none(previous_mask):
-      # The previous layer generated a mask, which we should use as default
-      # for any "mask" argument in `call`.
-      if 'mask' in estimator_util.fn_args(self.call):
-        if 'mask' not in kwargs:
-          # If mask is explicitly passed to __call__,
-          # we should override the default mask.
-          kwargs['mask'] = previous_mask
+    previous_mask = None
+    if (not hasattr(self, '_compute_previous_mask') or
+        self._compute_previous_mask):
+      previous_mask = _collect_previous_mask(inputs)
+      if ('mask' in estimator_util.fn_args(self.call) and
+          'mask' not in kwargs and
+          not _is_all_none(previous_mask)):
+        # The previous layer generated a mask, and mask was not explicitly pass
+        # to __call__, hence we set previous_mask as the default value.
+        kwargs['mask'] = previous_mask
 
-    with vs.variable_scope(self._scope,
-                           reuse=self.built or self._reuse) as scope:
+    vs_reuse = ((self.built or self._reuse)
+                if context.in_graph_mode else vs.AUTO_REUSE)
+    with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
+          if not in_graph_mode:
+            # Activity regularization is unsupported in Eager mode.
+            if hasattr(self,
+                       'activity_regularizer') and self.activity_regularizer:
+              raise ValueError('activity_regularizer currently unsupported in '
+                               'Eager mode. Found an activity_regularizer in '
+                               '%s(%s).' % (self.__class__.__name__, self))
+            # TODO(agarwal): support _keras_history in Eager mode.
+            for x in _to_list(inputs):
+              if hasattr(x, '_keras_history'):
+                raise ValueError('_keras_history currently unsupported in '
+                                 'Eager mode. Found _keras_history in %s while '
+                                 'executing __call__ for %s(%s)' %
+                                 (x, self.__class_.__name__, self))
+
           # Check input assumptions set before layer building, e.g. input rank.
           self._assert_input_compatibility(inputs)
           input_list = nest.flatten(inputs)
@@ -469,24 +535,27 @@ class Layer(object):
         if 'scope' in estimator_util.fn_args(self.call):
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.
-        self._assert_input_compatibility(inputs)
+        if in_graph_mode:
+          self._assert_input_compatibility(inputs)
         outputs = self.call(inputs, *args, **kwargs)
 
         if outputs is None:
           raise ValueError('A layer\'s `call` method should return a Tensor '
                            'or a list of Tensors, not None.')
 
-        # Apply activity regularization.
-        # Note that it should be applied every time the layer creates a new
-        # output, since it is output-specific.
-        if hasattr(self, 'activity_regularizer') and self.activity_regularizer:
-          output_list = _to_list(outputs)
-          for output in output_list:
-            with ops.name_scope('ActivityRegularizer'):
-              activity_regularization = self.activity_regularizer(output)
-            self.add_loss(activity_regularization)
-            _add_elements_to_collection(
-                activity_regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+        if in_graph_mode:
+          # Apply activity regularization.
+          # Note that it should be applied every time the layer creates a new
+          # output, since it is output-specific.
+          if hasattr(self,
+                     'activity_regularizer') and self.activity_regularizer:
+            output_list = _to_list(outputs)
+            for output in output_list:
+              with ops.name_scope('ActivityRegularizer'):
+                activity_regularization = self.activity_regularizer(output)
+              self.add_loss(activity_regularization)
+              _add_elements_to_collection(activity_regularization,
+                                          ops.GraphKeys.REGULARIZATION_LOSSES)
 
         # Handle mask computation and propagation to the next layer.
         if hasattr(self, 'compute_mask'):
@@ -499,40 +568,42 @@ class Layer(object):
           else:
             outputs._keras_mask = output_mask  # pylint: disable=protected-access
 
-    # If all input tensors have history metadata,
-    # we update the output tensors
-    # with corresponding history metadata, thus eventually allowing to use
-    # these tensors to instantiate a Network.
-    if _have_all_keras_metadata(inputs):
-      # If the layer returns tensors from its inputs, unmodified,
-      # we copy them to avoid loss of tensor metadata.
-      output_ls = _to_list(outputs)
-      inputs_ls = _to_list(inputs)
-      output_ls_copy = []
-      for x in output_ls:
-        if x in inputs_ls:
-          with ops.name_scope(scope.original_name_scope):
-            x = array_ops.identity(x)
-        output_ls_copy.append(x)
-      if len(output_ls_copy) == 1:
-        outputs = output_ls_copy[0]
-      else:
-        outputs = output_ls_copy
+    if in_graph_mode:
+      # If all input tensors have history metadata,
+      # we update the output tensors
+      # with corresponding history metadata, thus eventually allowing to use
+      # these tensors to instantiate a Network.
+      if _have_all_keras_metadata(inputs):
+        # If the layer returns tensors from its inputs, unmodified,
+        # we copy them to avoid loss of tensor metadata.
+        output_ls = _to_list(outputs)
+        inputs_ls = _to_list(inputs)
+        output_ls_copy = []
+        for x in output_ls:
+          if x in inputs_ls:
+            with ops.name_scope(scope.original_name_scope):
+              x = array_ops.identity(x)
+          output_ls_copy.append(x)
+        if len(output_ls_copy) == 1:
+          outputs = output_ls_copy[0]
+        else:
+          outputs = output_ls_copy
 
-      # Add an inbound node to the layer, so it can keep track of this call.
-      # This updates the layer history of the output tensor(s).
-      self._add_inbound_node(
-          input_tensors=inputs,
-          output_tensors=outputs,
-          arguments=user_kwargs)
+        # Add an inbound node to the layer, so it can keep track of this call.
+        # This updates the layer history of the output tensor(s).
+        self._add_inbound_node(
+            input_tensors=inputs, output_tensors=outputs, arguments=user_kwargs)
 
-    # Update global default collections.
-    _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
+      # Update global default collections.
+      _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
+
     self.built = True
     return outputs
 
   @property
   def graph(self):
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.graph not supported in Eager mode.')
     return self._graph
 
   def __deepcopy__(self, memo):
@@ -579,6 +650,7 @@ class Layer(object):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
+    assert context.in_graph_mode()
     input_tensors = _to_list(input_tensors)
     output_tensors = _to_list(output_tensors)
 
@@ -631,9 +703,11 @@ class Layer(object):
         The layer's attribute `attr` at the node of index `node_index`.
 
     Raises:
-        RuntimeError: If the layer has no inbound nodes.
+        RuntimeError: If the layer has no inbound nodes, or if called in Eager
+        mode.
         ValueError: If the index provided does not match any node.
     """
+    assert context.in_graph_mode()
     if not self.inbound_nodes:
       raise RuntimeError('The layer has never been called '
                          'and thus has no defined ' + attr_name + '.')
@@ -659,7 +733,13 @@ class Layer(object):
     Returns:
         A shape tuple
         (or list of shape tuples if the layer has multiple inputs).
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          'Layer.get_input_shape_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'input_shapes',
                                              'input shape')
 
@@ -675,7 +755,13 @@ class Layer(object):
     Returns:
         A shape tuple
         (or list of shape tuples if the layer has multiple outputs).
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          'Layer.get_output_shape_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'output_shapes',
                                              'output shape')
 
@@ -690,7 +776,12 @@ class Layer(object):
 
     Returns:
         A tensor (or list of tensors if the layer has multiple inputs).
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.get_input_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'input_tensors',
                                              'input')
 
@@ -705,7 +796,12 @@ class Layer(object):
 
     Returns:
         A tensor (or list of tensors if the layer has multiple outputs).
+
+    Raises:
+      RuntimeError: If called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.get_output_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'output_tensors',
                                              'output')
 
@@ -722,7 +818,13 @@ class Layer(object):
     Raises:
         AttributeError: if the layer is connected to
         more than one incoming layers.
+
+    Raises:
+      RuntimeError: If called in Eager mode.
+      AttributeError: If no inbound nodes are found.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.input not supported in Eager mode.')
     if not self.inbound_nodes:
       raise AttributeError('Layer ' + self.name +
                            ' is not connected, no input to return.')
@@ -736,12 +838,15 @@ class Layer(object):
     i.e. if it is connected to one incoming layer.
 
     Returns:
-        Output tensor or list of output tensors.
+      Output tensor or list of output tensors.
 
     Raises:
-        AttributeError: if the layer is connected to
-        more than one incoming layers.
+      AttributeError: if the layer is connected to more than one incoming
+        layers.
+      RuntimeError: if called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.output not supported in Eager mode.')
     if not self.inbound_nodes:
       raise AttributeError('Layer ' + self.name + ' has no inbound nodes.')
     return self._get_node_attribute_at_index(0, 'output_tensors', 'output')
@@ -760,7 +865,10 @@ class Layer(object):
 
     Raises:
         AttributeError: if the layer has no defined input_shape.
+        RuntimeError: if called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.input_shape not supported in Eager mode.')
     if not self.inbound_nodes:
       raise AttributeError('The layer has never been called '
                            'and thus has no defined input shape.')
@@ -784,6 +892,27 @@ class Layer(object):
                            'Use `get_input_shape_at(node_index)` '
                            'instead.')
 
+  def count_params(self):
+    """Count the total number of scalars composing the weights.
+
+    Returns:
+        An integer count.
+
+    Raises:
+        ValueError: if the layer isn't yet built
+          (in which case its weights aren't yet defined).
+    """
+    if not self.built:
+      if self.__class__.__name__ == 'Sequential':
+        self.build()  # pylint: disable=no-value-for-parameter
+      else:
+        raise ValueError('You tried to call `count_params` on ' + self.name +
+                         ', but the layer isn\'t built. '
+                         'You can build it manually via: `' + self.name +
+                         '.build(batch_input_shape)`.')
+    weight_shapes = [w.get_shape().as_list() for w in self.weights]
+    return int(sum([np.prod(w) for w in weight_shapes]))
+
   @property
   def output_shape(self):
     """Retrieves the output shape(s) of a layer.
@@ -797,7 +926,10 @@ class Layer(object):
 
     Raises:
         AttributeError: if the layer has no defined output shape.
+        RuntimeError: if called in Eager mode.
     """
+    if context.in_eager_mode():
+      raise RuntimeError('Layer.output_shape not supported in Eager mode.')
     if not self.inbound_nodes:
       raise AttributeError('The layer has never been called '
                            'and thus has no defined output shape.')
@@ -813,13 +945,13 @@ class Layer(object):
             for shape in output_shapes
         ]
     else:
-      raise AttributeError('The layer "' + str(self.name) +
+      raise AttributeError('The layer "%s"'
                            ' has multiple inbound nodes, '
                            'with different output shapes. Hence '
                            'the notion of "output shape" is '
                            'ill-defined for the layer. '
                            'Use `get_output_shape_at(node_index)` '
-                           'instead.')
+                           'instead.' % self.name)
 
   def _assert_input_compatibility(self, inputs):
     """Checks compatibility between the layer and provided inputs.
@@ -865,8 +997,8 @@ class Layer(object):
         if ndim != spec.ndim:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
-                           'expected ndim=' + str(spec.ndim) + ', found ndim='
-                           + str(ndim) + '. Full shape received: ' +
+                           'expected ndim=' + str(spec.ndim) + ', found ndim=' +
+                           str(ndim) + '. Full shape received: ' +
                            str(x.get_shape().as_list()))
       if spec.max_ndim is not None:
         ndim = x.get_shape().ndims
@@ -1083,6 +1215,9 @@ class InputLayer(Layer):
       sparse: Boolean, whether the placeholder created
           is meant to be sparse.
       name: Name of the layer (string).
+
+    Raises:
+      RuntimeError: If created in Eager mode.
   """
 
   def __init__(self,
@@ -1092,6 +1227,8 @@ class InputLayer(Layer):
                input_tensor=None,
                sparse=False,
                name=None):
+    if context.in_eager_mode():
+      raise RuntimeError('InputLayer not supported in Eager mode.')
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
@@ -1116,6 +1253,14 @@ class InputLayer(Layer):
             shape=batch_input_shape,
             dtype=dtype,
             name=self.name)
+
+      # For compatibility with Keras API.
+      self.is_placeholder = True
+      self.batch_input_shape = batch_input_shape
+    else:
+      # For compatibility with Keras API.
+      self.is_placeholder = False
+      self.batch_input_shape = tuple(input_tensor.get_shape().as_list())
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
@@ -1170,7 +1315,12 @@ def Input(  # pylint: disable=invalid-name
   Returns:
       A tensor: either a new placeholder (with history metadata) or
       `tensor` (if passed), with added history metadata.
+
+  Raises:
+    RuntimeError: If called in Eager mode.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('Input not supported in Eager mode.')
   input_layer = InputLayer(
       input_shape=shape,
       batch_size=batch_size,
@@ -1228,9 +1378,15 @@ class Network(Layer):
   Methods:
     Network has the same methods as Layer. On top of it, it also has:
       - get_layer: retrieves a child layer by name or index in the graph.
+
+  Raises:
+    RuntimeError: If created in Eager mode.
   """
 
   def __init__(self, inputs, outputs, name=None):  # pylint: disable=super-init-not-called
+    # TODO(agarwal): Make Network work in Eager mode.
+    if context.in_eager_mode():
+      raise RuntimeError('Network not supported in Eager mode.')
     # Set layer name and scope
     if isinstance(name, vs.VariableScope):
       base_name = name.name
@@ -1242,6 +1398,8 @@ class Network(Layer):
       self.name = _unique_layer_name(base_name)
     self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
     self._base_name = base_name
+    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
+                                   or hasattr(self, 'compute_mask'))
 
     # This acts just like the `trainable` attribute of any layer instance.
     # It does not affect users of the underlying layers, only users of the
@@ -1993,6 +2151,10 @@ def _to_list(x):
 
 
 def _add_elements_to_collection(elements, collection_list):
+  if context.in_eager_mode():
+    raise RuntimeError('Using collections from Layers not supported in Eager '
+                       'mode. Tried to add %s to %s' % (elements,
+                                                        collection_list))
   elements = _to_list(elements)
   collection_list = _to_list(collection_list)
   for name in collection_list:
@@ -2061,6 +2223,7 @@ def _collect_previous_mask(input_tensors):
   if len(masks) == 1:
     return masks[0]
   return masks
+
 
 # A global dictionary mapping graph objects to an index of counters used
 # for various layer names in each graph.

@@ -54,6 +54,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
     return DefaultAction(hlo);
   }
 
+  Status HandleBatchNormInference(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
   Status HandleBatchNormGrad(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }

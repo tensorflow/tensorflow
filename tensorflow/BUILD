@@ -9,6 +9,9 @@ licenses(["notice"])  # Apache 2.0
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
 ])
 
 # Config setting for determining if we are building for Android.
@@ -286,6 +289,7 @@ filegroup(
         "//tensorflow/contrib/data/python/util:all_files",
         "//tensorflow/contrib/decision_trees/proto:all_files",
         "//tensorflow/contrib/distributions:all_files",
+        "//tensorflow/contrib/eager/python:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
@@ -315,6 +319,7 @@ filegroup(
         "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
+        "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
@@ -385,6 +390,7 @@ filegroup(
         "//tensorflow/examples/label_image:all_files",
         "//tensorflow/examples/learn:all_files",
         "//tensorflow/examples/saved_model:all_files",
+        "//tensorflow/examples/speech_commands:all_files",
         "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
@@ -395,6 +401,7 @@ filegroup(
         "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
+        "//tensorflow/python/eager:all_files",
         "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/feature_column:all_files",
         "//tensorflow/python/kernel_tests:all_files",
@@ -469,6 +476,7 @@ cc_binary(
         "//tensorflow/c:c_api",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -478,6 +486,7 @@ cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",

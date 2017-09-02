@@ -27,10 +27,11 @@ message RewriterConfig {
 
   // Optimize tensor layouts
   bool optimize_tensor_layout = 1;
-  // Fold constants (default is OFF)
+  // Fold constants (default is ON)
   Toggle constant_folding = 3;
-
-  // If true, don't remove unecessary ops from the graph
+  // Arithmetic optimizations (default is OFF)
+  Toggle arithmetic_optimization = 7;
+  // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
 
   enum MemOptType {

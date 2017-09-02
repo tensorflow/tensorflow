@@ -2473,7 +2473,7 @@ class _IndicatorColumn(_DenseColumn,
       weighted_column = sparse_ops.sparse_merge(
           sp_ids=id_tensor,
           sp_values=weight_tensor,
-          vocab_size=self._variable_shape[-1])
+          vocab_size=int(self._variable_shape[-1]))
       return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(

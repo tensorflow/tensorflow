@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,8 +54,11 @@ def _SumGrad(op, grad):
         return [array_ops.tile(grad, input_shape), None]
 
   input_shape = array_ops.shape(op.inputs[0])
-  output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-  tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
+  # TODO(apassos) remove this once device placement for eager ops makes more
+  # sense.
+  with ops.colocate_with(input_shape):
+    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+    tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
   grad = array_ops.reshape(grad, output_shape_kept_dims)
   return [array_ops.tile(grad, tile_scaling), None]
 
@@ -94,8 +98,13 @@ def _MeanGrad(op, grad):
   sum_grad = _SumGrad(op, grad)[0]
   input_shape = array_ops.shape(op.inputs[0])
   output_shape = array_ops.shape(op.outputs[0])
-  factor = _safe_shape_div(
-      math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
+  # TODO(apassos) remove this device hackery as eager copy to device becomes
+  # more seamless.
+  with ops.colocate_with(input_shape):
+    factor = _safe_shape_div(
+        math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
+  if context.in_eager_mode():
+    factor = factor._copy(device_name=sum_grad.device)  # pylint: disable=protected-access
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
 
@@ -741,6 +750,12 @@ def _FloorDivGrad(_, unused_grad):
   return None, None
 
 
+@ops.RegisterGradient("FloorMod")
+def _FloorModGrad(_, unused_grad):
+  """The gradient for the FloorMod operator."""
+  return None, None
+
+
 @ops.RegisterGradient("TruncateDiv")
 def _TruncateDivGrad(_, unused_grad):
   return None, None
@@ -894,7 +909,7 @@ def _SparseMatMulGrad(op, grad):
       op.inputs[0]: op.get_attr("a_is_sparse"),
       op.inputs[1]: op.get_attr("b_is_sparse"),
       # Use heuristic to figure out if grad might be sparse
-      grad: (grad.op.type == "ReluGrad")
+      grad: context.in_graph_mode() and (grad.op.type == "ReluGrad")
   }
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):
@@ -1012,6 +1027,19 @@ def _ImagGrad(_, grad):
   """Returns 'grad' as the imaginary part and set the real part 0."""
   zero = constant_op.constant(0, dtype=grad.dtype)
   return math_ops.complex(zero, grad)
+
+
+@ops.RegisterGradient("Angle")
+def _AngleGrad(op, grad):
+  """Returns -grad / (Im(x) + iRe(x))"""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    re = math_ops.real(x)
+    im = math_ops.imag(x)
+    z = math_ops.reciprocal(math_ops.complex(im, re))
+    zero = constant_op.constant(0, dtype=grad.dtype)
+    complex_grad = math_ops.complex(grad, zero)
+    return -complex_grad * z
 
 
 @ops.RegisterGradient("Conj")

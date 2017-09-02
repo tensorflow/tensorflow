@@ -29,7 +29,9 @@ tf_kernel_library(
         "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
+        "gather_op.cc",
         "identity_op.cc",
+        "is_finite_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
@@ -67,6 +69,8 @@ tf_kernel_library(
     ],
     hdrs = [
         "cwise_ops.h",
+        "gather_op.h",
+        "gather_op_helpers.h",
         "reduction_ops.h",
     ],
     deps = [
@@ -121,7 +125,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = [
-        "gather_op.cc",
         "index_ops.cc",
     ],
     deps = [
@@ -142,56 +145,54 @@ tf_kernel_library(
     ],
 )
 
-tf_kernel_library(
+cc_library(
     name = "gather_op_kernel_float_int32",
     srcs = ["gather_op_kernel_float_int32.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:gather_functor_hdr",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "gather_op_kernel_float_int64",
     srcs = ["gather_op_kernel_float_int64.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:gather_functor_hdr",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

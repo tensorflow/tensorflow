@@ -588,7 +588,7 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
   for (int i = 0; i < n; i++) {
     BaseGPUDevice* gpu_device;
     TF_RETURN_IF_ERROR(CreateGPUDevice(options,
-                                       strings::StrCat(name_prefix, "/gpu:", i),
+                                       strings::StrCat(name_prefix, "/device:GPU:", i),
                                        valid_gpu_ids[i], &gpu_device));
     TF_RETURN_IF_ERROR(gpu_device->Init(options));
     devices->push_back(gpu_device);
@@ -671,7 +671,10 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   }
 
   int64 total_memory, available_memory;
-  CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
+  if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
+    return errors::Unknown(
+        strings::StrCat("Failed to query available memory for GPU ", gpu_id));
+  }
 
   int64 allocated_memory;
   double config_memory_fraction =
@@ -1049,7 +1052,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     size_t new_id = ids->size();
     ids->push_back(visible_gpu_id);
 
-    LOG(INFO) << "Creating TensorFlow device (/gpu:" << new_id << ") -> "
+    LOG(INFO) << "Creating TensorFlow device (/device:GPU:" << new_id << ") -> "
               << "(" << GetShortDeviceDescription(visible_gpu_id, desc) << ")";
   }
 

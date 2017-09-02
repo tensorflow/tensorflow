@@ -80,12 +80,31 @@ public final class Tensor<T> implements AutoCloseable {
    * Tensor<TFInt32> x = Tensor.create(twoD, TFInt32.class);
    * }</pre>
    *
-   * If the underlying object is a byte array, it can represent either a string or a uint8 tensor. The
-   * argument {@code type} decides which is created.
+   * {@link types.TFString} typed Tensors are multi-dimensional arrays of
+   * arbitrary byte sequences, so can be initialized from arrays of
+   * {@code byte[]} elements. For example:
    *
-   * @param obj The object to convert to a Tensor<T>. Note that whether the
-   * it is compatible with the type T is not checked by the type system. For 
-   * type-safe creation of tensors, use {@link op.Tensors}.
+   * <pre>{@code
+   * // Valid: A TFString tensor.
+   * Tensor<TFString> s = Tensor.create(new byte[]{1, 2, 3}, TFString.class);
+   *
+   * // Java Strings will need to be encoded into a byte-sequence.
+   * String mystring = "foo";
+   * Tensor<TFString> s = Tensor.create(mystring.getBytes("UTF-8"), TFString.class);
+   *
+   * // Valid: Matrix of TFString tensors.
+   * // Each element might have a different length.
+   * byte[][][] matrix = new byte[2][2][];
+   * matrix[0][0] = "this".getBytes("UTF-8");
+   * matrix[0][1] = "is".getBytes("UTF-8");
+   * matrix[1][0] = "a".getBytes("UTF-8");
+   * matrix[1][1] = "matrix".getBytes("UTF-8");
+   * Tensor<TFString> m = Tensor.create(matrix, TFString.class);
+   * }</pre>
+   *
+   * @param obj The object to convert to a Tensor<T>. Note that whether the it
+   *     is compatible with the type T is not checked by the type system. For
+   *     type-safe creation of tensors, use {@link op.Tensors}.
    *
    * @param type The class object representing the type T.
    *
@@ -95,11 +114,25 @@ public final class Tensor<T> implements AutoCloseable {
    * @see org.tensorflow.op.Tensors
    */
   public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
-  	DataType dt1 = dataTypeOf(obj);
   	DataType dt2 = Types.dataType(type);
-  	if (!dt1.equals(dt2) && !(dt1 == DataType.STRING && dt2 == DataType.UINT8))
-  		throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dt1 + ")");
-  	return create(obj, dt2);
+    if (!objectCompatWithType(obj, dt2)) {
+  		throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dataTypeOf(obj) + ")");
+    }
+    return create(obj, dt2);
+  }
+
+  /** Returns whether {@code obj} can be used as a data source
+   *  for a tensor of type {@code type}.
+   *
+   * @param obj The object containing source data.
+   *
+   * @param type The class object for the expected TensorFlow type.
+   */
+  private static boolean objectCompatWithType(Object obj, DataType dt) {
+  	DataType dto = dataTypeOf(obj);
+  	if (dto.equals(dt)) return true;
+    if (dto == DataType.STRING && dt == DataType.UINT8) return true;
+    return false;
   }
   
   /**
@@ -134,10 +167,7 @@ public final class Tensor<T> implements AutoCloseable {
       t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy, byteSize);
       setValue(t.nativeHandle, obj);
     } else if (t.shapeCopy.length != 0) {
-      throw new UnsupportedOperationException(
-          String.format(
-              "non-scalar String tensors are not supported yet (version %s). Please file a feature request at https://github.com/tensorflow/tensorflow/issues/new",
-              TensorFlow.version()));
+      t.nativeHandle = allocateNonScalarBytes(t.shapeCopy, (Object[]) obj);
     } else {
       t.nativeHandle = allocateScalarBytes((byte[]) obj);
     }
@@ -221,7 +251,8 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param <T> the tensor element type
    * @param type the tensor element type, represented as a class object.
@@ -413,9 +444,9 @@ public final class Tensor<T> implements AutoCloseable {
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
    * <p>For non-scalar tensors, this method copies the contents of the underlying tensor to a Java
-   * array. For scalar tensors, use one of {@link #floatValue()}, {@link #doubleValue()}, {@link
-   * #intValue()}, {@link #longValue()} or {@link #booleanValue()} instead. The type and shape of
-   * {@code dst} must be compatible with the tensor. For example:
+   * array. For scalar tensors, use one of {@link #bytesValue()}, {@link #floatValue()}, {@link
+   * #doubleValue()}, {@link #intValue()}, {@link #longValue()} or {@link #booleanValue()} instead.
+   * The type and shape of {@code dst} must be compatible with the tensor. For example:
    *
    * <pre>{@code
    * int matrix[2][2] = {{1,2},{3,4}};
@@ -613,10 +644,17 @@ public final class Tensor<T> implements AutoCloseable {
     throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
   }
 
+  private static void throwExceptionIfNotByteOfByteArrays(Object array) {
+    if (!array.getClass().getName().equals("[[B")) {
+      throw new IllegalArgumentException(
+          "object cannot be converted to a Tensor as it includes an array with null elements");
+    }
+  }
+
   /**
    * The default TensorFlow data type that Java object o corresponds to. Some Java objects
-   * represent more than one TensorFlow data type; for example, 'byte' corresponds
-   * to both {@code uint8} and {@code string}, with the latter being the default interpretation.
+   * represent more than one TensorFlow data type; for example, 'byte' can represent
+   * both {@code uint8} and {@code string}, with the latter being the default interpretation.
    */
   private static DataType dataTypeOf(Object o) {
     if (o.getClass().isArray()) {
@@ -625,6 +663,10 @@ public final class Tensor<T> implements AutoCloseable {
       }
       // byte[] is a DataType.STRING scalar.
       Object e = Array.get(o, 0);
+      if (e == null) {
+        throwExceptionIfNotByteOfByteArrays(o);
+        return DataType.STRING;
+      }
       if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
         return DataType.STRING;
       }
@@ -647,9 +689,11 @@ public final class Tensor<T> implements AutoCloseable {
 
   private static int numDimensions(Object o) {
     if (o.getClass().isArray()) {
-      // byte[] is a DataType.STRING scalar.
       Object e = Array.get(o, 0);
-      if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
+      if (e == null) {
+        throwExceptionIfNotByteOfByteArrays(o);
+        return 1;
+      } else if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
         return 0;
       }
       return 1 + numDimensions(e);
@@ -674,11 +718,12 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   private void throwExceptionIfTypeIsIncompatible(Object o) {
-    if (numDimensions(o) != numDimensions()) {
+    final int rank = numDimensions();
+    final int oRank = numDimensions(o);
+    if (oRank != rank) {
       throw new IllegalArgumentException(
           String.format(
-              "cannot copy Tensor with %d dimensions into an object with %d",
-              numDimensions(), numDimensions(o)));
+              "cannot copy Tensor with %d dimensions into an object with %d", rank, oRank));
     }
     if (dataTypeOf(o) != dtype) {
       throw new IllegalArgumentException(
@@ -686,7 +731,7 @@ public final class Tensor<T> implements AutoCloseable {
               "cannot copy Tensor with DataType %s into an object of type %s",
               dtype.toString(), o.getClass().getName()));
     }
-    long[] oShape = new long[numDimensions()];
+    long[] oShape = new long[rank];
     fillShape(o, 0, oShape);
     for (int i = 0; i < oShape.length; ++i) {
       if (oShape[i] != shape()[i]) {
@@ -701,6 +746,8 @@ public final class Tensor<T> implements AutoCloseable {
   private static native long allocate(int dtype, long[] shape, long byteSize);
 
   private static native long allocateScalarBytes(byte[] value);
+
+  private static native long allocateNonScalarBytes(long[] shape, Object[] value);
 
   private static native void delete(long handle);
 

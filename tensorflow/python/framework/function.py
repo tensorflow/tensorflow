@@ -584,7 +584,7 @@ class _FuncGraph(ops.Graph):
   _FuncGraph overrides ops.Graph's create_op() so that we can keep
   track of all inputs into every op created inside the function.  If
   any input is from other graphs, we keep track of it in self.capture
-  and substitue the input with a place holder.
+  and substitute the input with a place holder.
 
   Each captured input's corresponding place holder is converted into a
   function argument and the caller passes in the captured tensor.
@@ -835,8 +835,14 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
     attrs["_XlaSeparateCompiledGradients"] = attr_value_pb2.AttrValue(
         b=bool(separate_compiled_gradients))
-    attrs["_XlaScope"] = attr_value_pb2.AttrValue(
-        s=("function_%s" % func_name).encode())
+    # Forward _XlaScope from enclosing context (if set), otherwise create new.
+    # pylint: disable=protected-access
+    if "_XlaScope" in ops.get_default_graph()._attr_scope_map:
+      attrs["_XlaScope"] = ops.get_default_graph()._attr_scope_map["_XlaScope"]
+    else:
+      attrs["_XlaScope"] = attr_value_pb2.AttrValue(
+          s=("function_%s" % func_name).encode())
+    # pylint: enable=protected-access
 
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())

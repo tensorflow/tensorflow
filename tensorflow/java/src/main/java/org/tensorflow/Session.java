@@ -239,7 +239,8 @@ public final class Session implements AutoCloseable {
      * <p>TODO(ashankar): Reconsider the return type here. Two things in particular: (a) Make it
      * easier for the caller to cleanup (perhaps returning something like AutoCloseableList in
      * SessionTest.java), and (b) Evaluate whether the return value should be a list, or maybe a
-     * {@code Map<Output, Tensor>}?
+     * {@code Map<Output, Tensor>}? TODO(andrewmyers): It would also be good if whatever is
+     * returned here made it easier to extract output tensors in a type-safe way.
      */
     public List<Tensor<?>> run() {
       return runHelper(false).outputs;

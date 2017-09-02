@@ -34,6 +34,7 @@ import org.tensorflow.types.TFFloat;
 import org.tensorflow.types.TFDouble;
 import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFString;
+import org.tensorflow.types.TFUInt8;
 import org.tensorflow.types.TFInt64;
 import org.tensorflow.types.TFBool;
 
@@ -391,6 +392,44 @@ public class TensorTest {
       assertArrayEquals(fourD, t.copyTo(got));
     }
   }
+
+  @Test
+  public void testNDimensionalStringTensor() {
+    byte[][][] matrix = new byte[4][3][];
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        matrix[i][j] = String.format("(%d, %d) = %d", i, j, i << j).getBytes(UTF_8);
+      }
+    }
+    try (Tensor<TFString> t = Tensor.create(matrix)) {
+      assertEquals(DataType.STRING, t.dataType());
+      assertEquals(2, t.numDimensions());
+      assertArrayEquals(new long[] {4, 3}, t.shape());
+
+      byte[][][] got = t.copyTo(new byte[4][3][]);
+      assertEquals(4, got.length);
+      for (int i = 0; i < 4; ++i) {
+        assertEquals(String.format("%d", i), 3, got[i].length);
+        for (int j = 0; j < 3; ++j) {
+          assertArrayEquals(String.format("(%d, %d)", i, j), matrix[i][j], got[i][j]);
+        }
+      }
+    }
+  }
+  
+  @Test
+  public void testUInt8Tensor() {
+  	byte[] vector = new byte[] { 1, 2, 3, 4 };
+  	try (Tensor<TFUInt8> t = Tensor.create(vector, TFUInt8.class)) {
+  		assertEquals(DataType.UINT8, t.dataType());
+  		assertEquals(1, t.numDimensions());
+  		assertArrayEquals(new long[] {4}, t.shape());
+  		
+  		byte[] got = t.copyTo(new byte[4]);
+  		assertEquals(got, vector);
+  	}
+  }
+  
 
   @Test
   public void failCreateOnMismatchedDimensions() {

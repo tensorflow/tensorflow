@@ -458,6 +458,28 @@ contents: 0-D. JPEG-encoded image.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ExtractJpegShape")
+    .Input("contents: string")
+    .Output("image_shape: output_type")
+    .Attr("output_type: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Vector(3));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Extract the shape information of a JPEG-encoded image.
+
+This op only parses the image header, so it is much faster than DecodeJpeg.
+
+contents: 0-D. The JPEG-encoded image.
+image_shape: 1-D. The image shape with format [height, width, channels].
+output_type: (Optional) The output type of the operation (int32 or int64).
+    Defaults to int32.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("AdjustContrast")
     .Input("images: T")
     .Input("contrast_factor: float")

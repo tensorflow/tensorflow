@@ -64,8 +64,10 @@ class ShuffleDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Shuffle")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -84,13 +86,13 @@ class ShuffleDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()),
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             generator_(&parent_generator_) {
-        buffer_.reserve(dataset->buffer_size_);
-        int64 seed = dataset->seed_;
-        int64 seed2 = dataset->seed2_;
+        buffer_.reserve(params.dataset->buffer_size_);
+        int64 seed = params.dataset->seed_;
+        int64 seed2 = params.dataset->seed2_;
         if (seed == 0 && seed2 == 0) {
           // If both seeds are unspecified, use completely random seeds.
           seed = random::New64();
@@ -99,15 +101,16 @@ class ShuffleDatasetOp : public UnaryDatasetOpKernel {
         parent_generator_ = random::PhiloxRandom(seed, seed2);
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         int64 start_micros = ctx->env()->NowMicros();
         int64 num_log_entries = 0;
         while (!end_of_input_sequence_ &&
                buffer_.size() < dataset()->buffer_size_) {
           if (ctx->env()->NowMicros() >
-              (num_log_entries * kLogIntervalMicros) + start_micros) {
+              ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
             num_log_entries++;
             LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
                       << buffer_.size() << " of " << dataset()->buffer_size_;

@@ -39,6 +39,7 @@ from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.platform import app
 from tensorflow.python.saved_model import loader
+from tensorflow.python.tools import saved_model_utils
 
 
 def _show_tag_sets(saved_model_dir):
@@ -124,7 +125,8 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key):
         ','. For tag-set contains multiple tags, all tags must be passed in.
     signature_def_key: A SignatureDef key string.
   """
-  meta_graph_def = get_meta_graph_def(saved_model_dir, tag_set)
+  meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
+                                                        tag_set)
   inputs_tensor_info = _get_inputs_tensor_info_from_meta_graph_def(
       meta_graph_def, signature_def_key)
   outputs_tensor_info = _get_outputs_tensor_info_from_meta_graph_def(
@@ -184,9 +186,10 @@ def _show_all(saved_model_dir):
 
 
 def get_meta_graph_def(saved_model_dir, tag_set):
-  """Gets MetaGraphDef from SavedModel.
+  """DEPRECATED: Use saved_model_utils.get_meta_graph_def instead.
 
-  Returns the MetaGraphDef for the given tag-set and SavedModel directory.
+  Gets MetaGraphDef from SavedModel. Returns the MetaGraphDef for the given
+  tag-set and SavedModel directory.
 
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect or execute.
@@ -201,14 +204,7 @@ def get_meta_graph_def(saved_model_dir, tag_set):
   Returns:
     A MetaGraphDef corresponding to the tag-set.
   """
-  saved_model = reader.read_saved_model(saved_model_dir)
-  set_of_tags = set(tag_set.split(','))
-  for meta_graph_def in saved_model.meta_graphs:
-    if set(meta_graph_def.meta_info_def.tags) == set_of_tags:
-      return meta_graph_def
-
-  raise RuntimeError('MetaGraphDef associated with tag-set ' + tag_set +
-                     ' could not be found in SavedModel')
+  return saved_model_utils.get_meta_graph_def(saved_model_dir, tag_set)
 
 
 def get_signature_def_map(saved_model_dir, tag_set):
@@ -226,7 +222,7 @@ def get_signature_def_map(saved_model_dir, tag_set):
   Returns:
     A SignatureDef map that maps from string keys to SignatureDefs.
   """
-  meta_graph = get_meta_graph_def(saved_model_dir, tag_set)
+  meta_graph = saved_model_utils.get_meta_graph_def(saved_model_dir, tag_set)
   return meta_graph.signature_def
 
 
@@ -260,7 +256,8 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
     enabled.
   """
   # Get a list of output tensor names.
-  meta_graph_def = get_meta_graph_def(saved_model_dir, tag_set)
+  meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
+                                                        tag_set)
 
   # Re-create feed_dict based on input tensor name instead of key as session.run
   # uses tensor name.
@@ -646,8 +643,8 @@ def create_parser():
 def main():
   parser = create_parser()
   args = parser.parse_args()
-  if not hasattr(args.func):
-    parser.error("too few arguments")
+  if not hasattr(args, 'func'):
+    parser.error('too few arguments')
   args.func(args)
 
 

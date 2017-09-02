@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,6 +38,8 @@ from tensorflow.python.util import nest
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
+  if context.in_eager_mode():
+    return v
   if v.op.type == "VarHandleOp":
     for var in variables.trainable_variables():
       if (isinstance(var, resource_variable_ops.ResourceVariable)
@@ -66,6 +69,8 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
+  if context.in_eager_mode():
+    return var._shared_name  # pylint: disable=protected-access
   return (var.op.graph, var.op.name)
 
 
@@ -169,6 +174,8 @@ class _StreamingModelPortProcessor(_OptimizableVariable):
 
 def _get_processor(v):
   """The processor of v."""
+  if context.in_eager_mode():
+    return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
@@ -473,7 +480,9 @@ class Optimizer(object):
           continue
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
-        with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
+        # TODO(apassos): figure out how to get the variable name here.
+        scope_name = var.op.name if context.in_graph_mode() else ""
+        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)

@@ -696,8 +696,15 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,4,4]", "[d0_0,d0_1,3,2]");
 
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C test
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,4,6,4]");
+  INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,?,?,4]");
+  INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,?,?,4]");
+  INFER_ERROR("Dimension must be 4 but is 3", op, "[2,5,7,11,3]");
+
   // Invalid rank for input
-  INFER_ERROR("must be rank 4", op, "[4,4]");
+  INFER_ERROR("must be at least rank 4", op, "[4,4]");
 }
 
 TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
@@ -725,6 +732,13 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   // depth 3 stride, 1x1x1 filter, NCHW
   set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,7,5,5]", "[d0_0,3,5,5]");
+
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C tests
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "SAME", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8]");
 }
 
 TEST(CommonShapeFnsTest, Pool3DShapeTest) {

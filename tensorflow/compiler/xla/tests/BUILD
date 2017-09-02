@@ -179,22 +179,43 @@ cc_library(
 )
 
 cc_library(
+    name = "llvm_irgen_test_base",
+    testonly = True,
+    srcs = ["llvm_irgen_test_base.cc"],
+    hdrs = ["llvm_irgen_test_base.h"],
+    deps = [
+        ":codegen_test_base",
+        ":filecheck",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "codegen_test_base",
     testonly = True,
     srcs = ["codegen_test_base.cc"],
     hdrs = ["codegen_test_base.h"],
+    deps = [
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+cc_library(
+    name = "filecheck",
+    testonly = True,
+    srcs = ["filecheck.cc"],
+    hdrs = ["filecheck.h"],
     data = [
         "@llvm//:FileCheck",
     ],
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/service:backend",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
@@ -878,6 +899,7 @@ xla_test_library(
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -1308,6 +1330,26 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "llvm_compiler_test",
+    srcs = ["llvm_compiler_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+        "cpu_parallel",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@llvm//:core",
     ],
 )
 

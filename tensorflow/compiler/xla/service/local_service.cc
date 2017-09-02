@@ -54,23 +54,19 @@ namespace xla {
   }
 
   BackendOptions backend_options;
-  backend_options.set_platform(platform)
-      .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
+  backend_options.set_platform(platform).set_intra_op_parallelism_threads(
+      options.intra_op_parallelism_threads());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
                       Backend::CreateBackend(backend_options));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
-  std::unique_ptr<LocalService> service(new LocalService(
-      options, std::move(backend), std::move(compute_constant_backend)));
+  std::unique_ptr<LocalService> service(
+      new LocalService(options, std::move(backend)));
   return std::move(service);
 }
 
 LocalService::LocalService(const ServiceOptions& options,
-                           std::unique_ptr<Backend> execute_backend,
-                           std::unique_ptr<Backend> compute_constant_backend)
-    : Service(options, std::move(execute_backend),
-              std::move(compute_constant_backend)) {}
+                           std::unique_ptr<Backend> execute_backend)
+    : Service(options, std::move(execute_backend)) {}
 
 namespace {
 // Returns the space required to allocate a shape. If
@@ -161,7 +157,6 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   std::vector<perftools::gputools::DeviceMemoryBase> argument_buffers(
       argument_layouts.size());
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         /*executable_for_compute_constant=*/false,
                          argument_buffers, execute_backend_.get(), executor);
 }
 

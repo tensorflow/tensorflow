@@ -7,8 +7,8 @@ supported device types are `CPU` and `GPU`. They are represented as `strings`.
 For example:
 
 *   `"/cpu:0"`: The CPU of your machine.
-*   `"/gpu:0"`: The GPU of your machine, if you have one.
-*   `"/gpu:1"`: The second GPU of your machine, etc.
+*   `"/device:GPU:0"`: The GPU of your machine, if you have one.
+*   `"/device:GPU:1"`: The second GPU of your machine, etc.
 
 If a TensorFlow operation has both CPU and GPU implementations, the GPU devices
 will be given priority when the operation is assigned to a device. For example,
@@ -35,11 +35,11 @@ You should see the following output:
 
 ```
 Device mapping:
-/job:localhost/replica:0/task:0/gpu:0 -> device: 0, name: Tesla K40c, pci bus
+/job:localhost/replica:0/task:0/device:GPU:0 -> device: 0, name: Tesla K40c, pci bus
 id: 0000:05:00.0
-b: /job:localhost/replica:0/task:0/gpu:0
-a: /job:localhost/replica:0/task:0/gpu:0
-MatMul: /job:localhost/replica:0/task:0/gpu:0
+b: /job:localhost/replica:0/task:0/device:GPU:0
+a: /job:localhost/replica:0/task:0/device:GPU:0
+MatMul: /job:localhost/replica:0/task:0/device:GPU:0
 [[ 22.  28.]
  [ 49.  64.]]
 
@@ -71,11 +71,11 @@ example) and automatically copy tensors between devices if required.
 
 ```
 Device mapping:
-/job:localhost/replica:0/task:0/gpu:0 -> device: 0, name: Tesla K40c, pci bus
+/job:localhost/replica:0/task:0/device:GPU:0 -> device: 0, name: Tesla K40c, pci bus
 id: 0000:05:00.0
 b: /job:localhost/replica:0/task:0/cpu:0
 a: /job:localhost/replica:0/task:0/cpu:0
-MatMul: /job:localhost/replica:0/task:0/gpu:0
+MatMul: /job:localhost/replica:0/task:0/device:GPU:0
 [[ 22.  28.]
  [ 49.  64.]]
 ```
@@ -83,7 +83,7 @@ MatMul: /job:localhost/replica:0/task:0/gpu:0
 ## Allowing GPU memory growth
 
 By default, TensorFlow maps nearly all of the GPU memory of all GPUs (subject to
-[`CUDA_VISIBLE_DEVICES`](http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars))
+[`CUDA_VISIBLE_DEVICES`](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars))
 visible to the process. This is done to more efficiently use the relatively
 precious GPU memory resources on the devices by reducing [memory
 fragmentation](https://en.wikipedia.org/wiki/Fragmentation_\(computing\)).
@@ -127,7 +127,7 @@ to specify the preference explicitly:
 
 ```python
 # Creates a graph.
-with tf.device('/gpu:2'):
+with tf.device('/device:GPU:2'):
   a = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3], name='a')
   b = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2], name='b')
   c = tf.matmul(a, b)
@@ -142,9 +142,9 @@ If the device you have specified does not exist, you will get
 
 ```
 InvalidArgumentError: Invalid argument: Cannot assign a device to node 'b':
-Could not satisfy explicit device specification '/gpu:2'
+Could not satisfy explicit device specification '/device:GPU:2'
    [[Node: b = Const[dtype=DT_FLOAT, value=Tensor<type: float shape: [3,2]
-   values: 1 2 3...>, _device="/gpu:2"]()]]
+   values: 1 2 3...>, _device="/device:GPU:2"]()]]
 ```
 
 If you would like TensorFlow to automatically choose an existing and supported
@@ -154,7 +154,7 @@ the session.
 
 ```python
 # Creates a graph.
-with tf.device('/gpu:2'):
+with tf.device('/device:GPU:2'):
   a = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3], name='a')
   b = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2], name='b')
   c = tf.matmul(a, b)
@@ -175,7 +175,7 @@ For example:
 ```
 # Creates a graph.
 c = []
-for d in ['/gpu:2', '/gpu:3']:
+for d in ['/device:GPU:2', '/device:GPU:3']:
   with tf.device(d):
     a = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
     b = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2])
@@ -192,20 +192,20 @@ You will see the following output.
 
 ```
 Device mapping:
-/job:localhost/replica:0/task:0/gpu:0 -> device: 0, name: Tesla K20m, pci bus
+/job:localhost/replica:0/task:0/device:GPU:0 -> device: 0, name: Tesla K20m, pci bus
 id: 0000:02:00.0
-/job:localhost/replica:0/task:0/gpu:1 -> device: 1, name: Tesla K20m, pci bus
+/job:localhost/replica:0/task:0/device:GPU:1 -> device: 1, name: Tesla K20m, pci bus
 id: 0000:03:00.0
-/job:localhost/replica:0/task:0/gpu:2 -> device: 2, name: Tesla K20m, pci bus
+/job:localhost/replica:0/task:0/device:GPU:2 -> device: 2, name: Tesla K20m, pci bus
 id: 0000:83:00.0
-/job:localhost/replica:0/task:0/gpu:3 -> device: 3, name: Tesla K20m, pci bus
+/job:localhost/replica:0/task:0/device:GPU:3 -> device: 3, name: Tesla K20m, pci bus
 id: 0000:84:00.0
-Const_3: /job:localhost/replica:0/task:0/gpu:3
-Const_2: /job:localhost/replica:0/task:0/gpu:3
-MatMul_1: /job:localhost/replica:0/task:0/gpu:3
-Const_1: /job:localhost/replica:0/task:0/gpu:2
-Const: /job:localhost/replica:0/task:0/gpu:2
-MatMul: /job:localhost/replica:0/task:0/gpu:2
+Const_3: /job:localhost/replica:0/task:0/device:GPU:3
+Const_2: /job:localhost/replica:0/task:0/device:GPU:3
+MatMul_1: /job:localhost/replica:0/task:0/device:GPU:3
+Const_1: /job:localhost/replica:0/task:0/device:GPU:2
+Const: /job:localhost/replica:0/task:0/device:GPU:2
+MatMul: /job:localhost/replica:0/task:0/device:GPU:2
 AddN: /job:localhost/replica:0/task:0/cpu:0
 [[  44.   56.]
  [  98.  128.]]

@@ -22,9 +22,13 @@ import errno
 import os
 import platform
 import re
-import site
 import subprocess
 import sys
+
+try:
+  from shutil import which
+except ImportError:
+  from distutils.spawn import find_executable as which
 
 _TF_BAZELRC = '.tf_configure.bazelrc'
 _DEFAULT_CUDA_VERSION = '8.0'
@@ -52,6 +56,10 @@ def is_macos():
 
 def is_ppc64le():
   return platform.machine() == 'ppc64le'
+
+
+def is_cygwin():
+  return platform.system().startswith('CYGWIN_NT')
 
 
 def get_input(question):
@@ -122,25 +130,37 @@ def write_action_env_to_bazelrc(var_name, var):
   write_to_bazelrc('build --action_env %s="%s"' % (var_name, str(var)))
 
 
-def run_shell(cmd):
-  return subprocess.check_output(cmd, shell=True).decode('UTF-8').strip()
+def run_shell(cmd, allow_non_zero=False):
+  if allow_non_zero:
+    try:
+      output = subprocess.check_output(cmd)
+    except subprocess.CalledProcessError as e:
+      output = e.output
+  else:
+    output = subprocess.check_output(cmd)
+  return output.decode('UTF-8').strip()
 
 
 def cygpath(path):
   """Convert path from posix to windows."""
-  return run_shell('cygpath  -m "%s"' % path)
+  return os.path.abspath(path).replace('\\', '/')
 
 
-def get_python_path(environ_cp):
+def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
   python_paths = []
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
-    library_paths = site.getsitepackages()
-  except AttributeError:
-    from distutils.sysconfig import get_python_lib  # pylint: disable=g-import-not-at-top
-    library_paths = [get_python_lib()]
+    library_paths = run_shell(
+        [python_bin_path, '-c',
+         'import site; print("\\n".join(site.getsitepackages()))']).split("\n")
+  except subprocess.CalledProcessError:
+    library_paths = [run_shell(
+        [python_bin_path, '-c',
+         'from distutils.sysconfig import get_python_lib;'
+         'print(get_python_lib())'])]
+
   all_paths = set(python_paths + library_paths)
 
   paths = []
@@ -148,6 +168,11 @@ def get_python_path(environ_cp):
     if os.path.isdir(path):
       paths.append(path)
   return paths
+
+
+def get_python_major_version(python_bin_path):
+  """Get the python major version."""
+  return run_shell([python_bin_path, '-c', 'import sys; print(sys.version[0])'])
 
 
 def setup_python(environ_cp, bazel_version):
@@ -161,8 +186,8 @@ def setup_python(environ_cp, bazel_version):
         environ_cp, 'PYTHON_BIN_PATH', ask_python_bin_path,
         default_python_bin_path)
     # Check if the path is valid
-    if (os.path.isfile(python_bin_path) and os.access(
-        python_bin_path, os.X_OK)) or (os.path.isdir(python_bin_path)):
+    if os.path.isfile(python_bin_path) and os.access(
+        python_bin_path, os.X_OK):
       break
     elif not os.path.exists(python_bin_path):
       print('Invalid python path: %s cannot be found.' % python_bin_path)
@@ -170,27 +195,31 @@ def setup_python(environ_cp, bazel_version):
       print('%s is not executable.  Is it the python binary?' % python_bin_path)
     environ_cp['PYTHON_BIN_PATH'] = ''
 
+  # Convert python path to Windows style before checking lib and version
+  if is_windows() or is_cygwin():
+    python_bin_path = cygpath(python_bin_path)
+
   # Get PYTHON_LIB_PATH
   python_lib_path = environ_cp.get('PYTHON_LIB_PATH')
   if not python_lib_path:
-    python_lib_paths = get_python_path(environ_cp)
+    python_lib_paths = get_python_path(environ_cp, python_bin_path)
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
       python_lib_path = python_lib_paths[0]
     else:
-      print('Found possible Python library paths:\n%s' %
-            '\n'.join(python_lib_paths))
+      print('Found possible Python library paths:\n  %s' %
+            '\n  '.join(python_lib_paths))
       default_python_lib_path = python_lib_paths[0]
       python_lib_path = get_input(
-          'Please input the desired Python library path to use.  Default is %s'
-          % python_lib_paths[0])
+          'Please input the desired Python library path to use.  '
+          'Default is [%s]\n' % python_lib_paths[0])
       if not python_lib_path:
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  python_major_version = sys.version_info[0]
+  python_major_version = get_python_major_version(python_bin_path)
+
   # Convert python path to Windows style before writing into bazel.rc
-  if is_windows():
-    python_bin_path = cygpath(python_bin_path)
+  if is_windows() or is_cygwin():
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -412,11 +441,10 @@ def check_bazel_version(min_version):
   Returns:
     The bazel version detected.
   """
-  try:
-    curr_version = run_shell('bazel --batch version')
-  except subprocess.CalledProcessError:
+  if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)
+  curr_version = run_shell(['bazel', '--batch', 'version'])
 
   for line in curr_version.split('\n'):
     if 'Build label: ' in line:
@@ -432,7 +460,7 @@ def check_bazel_version(min_version):
     print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
 
-  print("You have bazel %s installed." % curr_version)
+  print('You have bazel %s installed.' % curr_version)
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
@@ -501,6 +529,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
   var = environ_cp.get(var_name)
   if not var:
     var = get_input(ask_for_var)
+    print('\n')
   if not var:
     var = var_default
   return var
@@ -508,7 +537,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = run_shell('which clang || true')
+  default_clang_path = which('clang') or ''
   ask_clang_path = ('Please specify which clang should be used as device and '
                     'host compiler. [Default is %s]: ') % default_clang_path
 
@@ -531,12 +560,12 @@ def set_clang_cuda_compiler_path(environ_cp):
 
 def set_gcc_host_compiler_path(environ_cp):
   """Set GCC_HOST_COMPILER_PATH."""
-  default_gcc_host_compiler_path = run_shell('which gcc || true')
+  default_gcc_host_compiler_path = which('gcc') or ''
   cuda_bin_symlink = '%s/bin/gcc' % environ_cp.get('CUDA_TOOLKIT_PATH')
 
   if os.path.islink(cuda_bin_symlink):
     # os.readlink is only available in linux
-    default_gcc_host_compiler_path = run_shell('readlink %s' % cuda_bin_symlink)
+    default_gcc_host_compiler_path = os.path.realpath(cuda_bin_symlink)
 
   ask_gcc_path = (
       'Please specify which gcc should be used by nvcc as the '
@@ -571,7 +600,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Find out where the CUDA toolkit is installed
     default_cuda_path = _DEFAULT_CUDA_PATH
-    if is_windows():
+    if is_windows() or is_cygwin():
       default_cuda_path = cygpath(
           environ_cp.get('CUDA_PATH', _DEFAULT_CUDA_PATH_WIN))
     elif is_linux():
@@ -612,7 +641,7 @@ def set_tf_cuda_version(environ_cp):
 def set_tf_cunn_version(environ_cp):
   """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
   ask_cudnn_version = (
-      '"Please specify the cuDNN version you want to use. '
+      'Please specify the cuDNN version you want to use. '
       '[Leave empty to default to cuDNN %s.0]: ') % _DEFAULT_CUDNN_VERSION
 
   while True:
@@ -631,7 +660,7 @@ def set_tf_cunn_version(environ_cp):
     # unusable. Going through one more level of expansion to handle that.
     cudnn_install_path = os.path.realpath(
         os.path.expanduser(cudnn_install_path))
-    if is_windows():
+    if is_windows() or is_cygwin():
       cudnn_install_path = cygpath(cudnn_install_path)
 
     if is_windows():
@@ -653,12 +682,10 @@ def set_tf_cunn_version(environ_cp):
 
     # Try another alternative for Linux
     if is_linux():
-      if subprocess.call(['which', 'ldconfig']):
-        ldconfig_bin = '/sbin/ldconfig'
-      else:
-        ldconfig_bin = 'ldconfig'
-      cudnn_path_from_ldconfig = run_shell(
-          r'%s -p | sed -n "s/.*libcudnn.so .* => \(.*\)/\\1/p"' % ldconfig_bin)
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+      cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
+                                           cudnn_path_from_ldconfig).group(1)
       if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
         cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
         break
@@ -691,11 +718,15 @@ def get_native_cuda_compute_capabilities(environ_cp):
   """
   device_query_bin = os.path.join(
       environ_cp.get('CUDA_TOOLKIT_PATH'), 'extras/demo_suite/deviceQuery')
-  cmd = (r'"%s" | grep "Capability" | grep -o "[0-9]*\.[0-9]*" | sed '
-         '":a;{N;s/\\n/,/};ba"') % device_query_bin
-  try:
-    output = run_shell(cmd)
-  except subprocess.CalledProcessError:
+  if os.path.isfile(device_query_bin) and os.access(device_query_bin, os.X_OK):
+    try:
+      output = run_shell(device_query_bin).split('\n')
+      pattern = re.compile('[0-9]*\\.[0-9]*')
+      output = [pattern.search(x) for x in output if 'Capability' in x]
+      output = ','.join(x.group() for x in output if x is not None)
+    except subprocess.CalledProcessError:
+      output = ''
+  else:
     output = ''
   return output
 
@@ -726,9 +757,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     # Check whether all capabilities from the input is valid
     all_valid = True
     for compute_capability in tf_cuda_compute_capabilities.split(','):
-      if not re.match('[0-9]+.[0-9]+', compute_capability):
+      m = re.match('[0-9]+.[0-9]+', compute_capability)
+      if not m:
         print('Invalid compute capability: ' % compute_capability)
         all_valid = False
+      else:
+        ver = int(m.group(0).split('.')[0])
+        if ver < 3:
+          print('Only compute capabilities 3.0 or higher are supported.')
+          all_valid = False
 
     if all_valid:
       break
@@ -770,7 +807,7 @@ def set_other_cuda_vars(environ_cp):
 
 def set_host_cxx_compiler(environ_cp):
   """Set HOST_CXX_COMPILER."""
-  default_cxx_host_compiler = run_shell('which g++ || true')
+  default_cxx_host_compiler = which('g++') or ''
   ask_cxx_host_compiler = (
       'Please specify which C++ compiler should be used as'
       ' the host C++ compiler. [Default is %s]: ') % default_cxx_host_compiler
@@ -793,7 +830,7 @@ def set_host_cxx_compiler(environ_cp):
 
 def set_host_c_compiler(environ_cp):
   """Set HOST_C_COMPILER."""
-  default_c_host_compiler = run_shell('which gcc || true')
+  default_c_host_compiler = which('gcc') or ''
   ask_c_host_compiler = (
       'Please specify which C compiler should be used as the'
       ' host C compiler. [Default is %s]: ') % default_c_host_compiler
@@ -847,9 +884,9 @@ def set_computecpp_toolkit_path(environ_cp):
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
-  cmd = ('dirname $(dirname $(which mpirun)) || dirname $(dirname $(which '
-         'mpiexec))  || true')
-  default_mpi_home = run_shell(cmd)
+  default_mpi_home = which('mpirun') or which('mpiexec') or ''
+  default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
+
   ask_mpi_home = ('Please specify the MPI toolkit folder. [Default is %s]: '
                  ) % default_mpi_home
   while True:
@@ -902,7 +939,6 @@ def set_other_mpi_vars(environ_cp):
 
 
 def set_mkl():
-  write_to_bazelrc('build:mkl --define with_mkl_support=true')
   write_to_bazelrc('build:mkl --define using_mkl=true')
   write_to_bazelrc('build:mkl -c opt')
   write_to_bazelrc('build:mkl --copt="-DEIGEN_USE_VML"')

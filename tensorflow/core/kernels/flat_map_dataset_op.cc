@@ -73,13 +73,16 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::FlatMap")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
       return output_types_;
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return output_shapes_;
     }
@@ -89,12 +92,13 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
           if (current_element_iterator_) {
@@ -123,12 +127,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
           FunctionLibraryRuntime::Options opts;
           opts.runner = ctx->runner();
-          // Choose a step ID that is guaranteed not to clash with any
-          // Session-generated step ID. DirectSession only generates
-          // non-negative step IDs (contiguous, starting from 0), and
-          // MasterSession generates 56-bit random step IDs whose MSB
-          // is always 0, so a negative random step ID should suffice.
-          opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+          opts.step_id = CapturedFunction::generate_step_id();
           ScopedStepContainer step_container(
               opts.step_id, [this, ctx](const string& name) {
                 dataset()
@@ -171,7 +170,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
           // Create an iterator for the dataset that was returned by
           // `f`. This transfers ownership of the dataset to the
           // iterator, so we can delete it from the resource manager.
-          current_element_iterator_ = returned_dataset->MakeIterator();
+          current_element_iterator_ = returned_dataset->MakeIterator(
+              strings::StrCat(prefix(), "[", element_index_++, "]"));
           TF_RETURN_IF_ERROR(
               dataset()
                   ->captured_func_->resource_manager()
@@ -182,6 +182,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
+      size_t element_index_ GUARDED_BY(mu_) = 0;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
     };

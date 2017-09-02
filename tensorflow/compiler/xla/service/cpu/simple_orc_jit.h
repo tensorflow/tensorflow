@@ -57,14 +57,17 @@ class SimpleOrcJIT {
   // generator.
   // The |optimize_for_size| parameter specifies that the code generator should
   // optimize to reduce code size, potentially at the cost of performance.
+  // The |disable_expensive_passes| parameter will disable certain optimization
+  // passes
   // The |pre_optimization_hook| is invoked on the module before any IR
   // level optimizations are applied.
   // The |post_optimization_hook| is invoked on the module after all IR
   // level optimizations are applied.
   SimpleOrcJIT(const llvm::TargetOptions& target_options,
                llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-               CompilerFunctor::ModuleHook pre_optimization_hook,
-               CompilerFunctor::ModuleHook post_optimization_hook);
+               bool enable_fast_math, bool disable_expensive_passes,
+               LLVMCompiler::ModuleHook pre_optimization_hook,
+               LLVMCompiler::ModuleHook post_optimization_hook);
 
   // Data layout this JIT was created with.
   const llvm::DataLayout& data_layout() const { return data_layout_; }

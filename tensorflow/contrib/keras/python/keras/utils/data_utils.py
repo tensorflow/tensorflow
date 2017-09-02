@@ -368,6 +368,12 @@ class Sequence(object):
     """
     raise NotImplementedError
 
+  @abstractmethod
+  def on_epoch_end(self):
+    """Method called at the end of every epoch.
+    """
+    raise NotImplementedError
+
 
 def get_index(ds, i):
   """Quick fix for Python2, otherwise, it cannot be pickled.
@@ -453,15 +459,16 @@ class OrderedEnqueuer(SequenceEnqueuer):
       use_multiprocessing: use multiprocessing if True, otherwise threading
       scheduling: Sequential querying of datas if 'sequential', random
         otherwise.
+      shuffle: Whether to shuffle the data at the beginning of each epoch.
   """
 
   def __init__(self,
                sequence,
                use_multiprocessing=False,
-               scheduling='sequential'):
+               shuffle=False):
     self.sequence = sequence
     self.use_multiprocessing = use_multiprocessing
-    self.scheduling = scheduling
+    self.shuffle = shuffle
     self.workers = 0
     self.executor = None
     self.queue = None
@@ -493,7 +500,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
     """Submits requests to the executor and queues the `Future` objects."""
     sequence = list(range(len(self.sequence)))
     while True:
-      if self.scheduling is not 'sequential':
+      if self.shuffle:
         random.shuffle(sequence)
       for i in sequence:
         if self.stop_signal.is_set():
@@ -501,6 +508,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
         self.queue.put(
             self.executor.apply_async(get_index, (self.sequence, i)),
             block=True)
+      self.sequence.on_epoch_end()
 
   def get(self):
     """Creates a generator to extract data from the queue.

@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -37,6 +39,15 @@ using Int = Wrapper<int>;
 using Float = Wrapper<float>;
 
 }  // end namespace
+
+TEST(VariantTest, Int) {
+  Variant x;
+  EXPECT_EQ(x.get<void>(), nullptr);
+  x = 3;
+  EXPECT_NE(x.get<void>(), nullptr);
+  EXPECT_EQ(*x.get<int>(), 3);
+  EXPECT_EQ(x.TypeName(), "int");
+}
 
 TEST(VariantTest, Basic) {
   Variant x;
@@ -162,6 +173,7 @@ TEST(VariantTest, TensorListTest) {
   x = vec;
 
   EXPECT_EQ(x.TypeName(), "TensorList");
+  EXPECT_EQ(x.DebugString(), "Variant<type: TensorList value: ?>");
   const TensorList& stored_vec = *x.get<TensorList>();
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(stored_vec.vec[i].flat<int>()(0), i);
@@ -176,12 +188,30 @@ TEST(VariantTest, TensorListTest) {
   Variant y = TensorList();
   y.Decode(serialized);
 
-  const TensorList& decoded_vec = *x.get<TensorList>();
+  const TensorList& decoded_vec = *y.get<TensorList>();
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(decoded_vec.vec[i].flat<int>()(0), i);
   }
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(decoded_vec.vec[i + 4].flat<float>()(0), 2 * i);
+  }
+
+  VariantTensorDataProto data;
+  serialized.ToProto(&data);
+  const Variant y_unknown = data;
+  EXPECT_EQ(y_unknown.TypeName(), "TensorList");
+  EXPECT_EQ(y_unknown.TypeId(), MakeTypeIndex<VariantTensorDataProto>());
+  EXPECT_EQ(y_unknown.DebugString(),
+            strings::StrCat(
+                "Variant<type: TensorList value: ", data.DebugString(), ">"));
+
+  TensorList unknown_decoded_vec;
+  EXPECT_TRUE(y_unknown.MaybeDecodeAndCopy(&unknown_decoded_vec));
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(unknown_decoded_vec.vec[i].flat<int>()(0), i);
+  }
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(unknown_decoded_vec.vec[i + 4].flat<float>()(0), 2 * i);
   }
 }
 
@@ -205,6 +235,7 @@ TEST(VariantTest, PodUpdate) {
   Variant x = Pod{10, 20.f};
   EXPECT_NE(x.get<Pod>(), nullptr);
   EXPECT_EQ(x.TypeName(), "POD");
+  EXPECT_EQ(x.DebugString(), "Variant<type: POD value: ?>");
 
   x.get<Pod>()->x += x.get<Pod>()->y;
   EXPECT_EQ(x.get<Pod>()->x, 30);
@@ -244,6 +275,9 @@ TEST(VariantTest, EncodeDecodeTensor) {
 
   Variant y = Tensor();
   y.Decode(serialized);
+  EXPECT_EQ(y.DebugString(),
+            "Variant<type: tensorflow::Tensor value: Tensor<type: int32 shape: "
+            "[] values: 42>>");
   EXPECT_EQ(x.get<Tensor>()->flat<int>()(0), y.get<Tensor>()->flat<int>()(0));
 }
 

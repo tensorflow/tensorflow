@@ -383,6 +383,32 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testCaptureSameResourceMultipleTimes(self):
+    elements = np.random.randint(100, size=[200])
+    queue = data_flow_ops.FIFOQueue(
+        200, dtypes.int64, shapes=[], shared_name="shared_queue")
+    queue_2 = data_flow_ops.FIFOQueue(
+        200, dtypes.int64, shapes=[], shared_name="shared_queue")
+
+    enqueue_op = queue.enqueue_many(elements)
+    close_op = queue.close()
+
+    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(-1)
+                .map(lambda _: (queue.dequeue(), queue_2.dequeue()))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(enqueue_op)
+      sess.run(close_op)
+      sess.run(init_op)
+      for i in range(100):
+        self.assertEqual(sorted([elements[i * 2], elements[i * 2 + 1]]),
+                         sorted(sess.run(get_next)))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
@@ -525,6 +551,41 @@ class MapDatasetTest(test.TestCase):
           self.assertEqual(i * i, sess.run(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
+
+  def testReturnList(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: [x, constant_op.constant(37.0)])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testMultiOutputPyFunc(self):
+    # The `tf.py_func()` op returns a list of tensors for its outputs.
+    def _map_fn(x_tensor):
+      def _map_py_func(x):
+        return x, np.array(37.0, dtype=np.float64)
+      return script_ops.py_func(
+          _map_py_func, [x_tensor], [dtypes.int64, dtypes.float64])
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_map_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, 37.0), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
 
 if __name__ == "__main__":

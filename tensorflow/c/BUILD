@@ -61,6 +61,7 @@ tf_cuda_library(
             "//tensorflow/cc:ops",
             "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:scope_internal",
+            "//tensorflow/cc:while_loop",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
@@ -85,6 +86,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api",
+        ":c_api_internal",
         "//tensorflow/core:lib",
     ],
 )

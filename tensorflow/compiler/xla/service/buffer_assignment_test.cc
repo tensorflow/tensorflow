@@ -415,7 +415,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
          id < buffer_liveness.points_to_analysis().num_logical_buffers();
          id++) {
       auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
-      buffer->set_color(LogicalBuffer::Color(color++));
+      buffer.set_color(LogicalBuffer::Color(color++));
     }
     return Status::OK();
   };
@@ -473,15 +473,15 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
          id++) {
       auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
       const auto& aliases =
-          buffer_liveness.points_to_analysis().GetBufferAliases(*buffer);
+          buffer_liveness.points_to_analysis().GetBufferAliases(buffer);
       for (const auto& alias : aliases) {
         if (alias.instruction()->opcode() == HloOpcode::kAdd ||
             alias.instruction()->opcode() == HloOpcode::kMultiply) {
-          buffer->set_color(LogicalBuffer::Color(1));
+          buffer.set_color(LogicalBuffer::Color(1));
         }
       }
-      if (!buffer->has_color()) {
-        buffer->set_color(LogicalBuffer::Color(0));
+      if (!buffer.has_color()) {
+        buffer.set_color(LogicalBuffer::Color(0));
       }
     }
     return Status::OK();
