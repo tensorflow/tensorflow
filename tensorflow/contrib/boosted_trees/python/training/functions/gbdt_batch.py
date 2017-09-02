@@ -407,75 +407,81 @@ class GradientBoostedDecisionTreeModel(object):
                              local_stamp), _refresh_local_ensemble_fn,
           lambda: (control_flow_ops.no_op(), ensemble_stamp))
 
-      # Once updated, Use the the local model for prediction.
+      # Once updated, use the local model for prediction.
       with ops.control_dependencies([refresh_local_ensemble]):
         ensemble_stats = training_ops.tree_ensemble_stats(
             local_ensemble_handle, ensemble_stamp)
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
         # We don't need dropout info - we can always restore it based on the
         # seed.
-        predictions, predictions_no_dropout, _ = (
-            prediction_ops.gradient_trees_prediction(
-                local_ensemble_handle,
-                seed,
-                self._dense_floats,
-                self._sparse_float_indices,
-                self._sparse_float_values,
-                self._sparse_float_shapes,
-                self._sparse_int_indices,
-                self._sparse_int_values,
-                self._sparse_int_shapes,
-                learner_config=self._learner_config_serialized,
-                apply_dropout=apply_dropout,
-                apply_averaging=apply_averaging,
-                use_locking=False,
-                center_bias=self._center_bias,
-                reduce_dim=self._reduce_dim))
-        partition_ids = prediction_ops.gradient_trees_partition_examples(
-            local_ensemble_handle,
-            self._dense_floats,
-            self._sparse_float_indices,
-            self._sparse_float_values,
-            self._sparse_float_shapes,
-            self._sparse_int_indices,
-            self._sparse_int_values,
-            self._sparse_int_shapes,
-            use_locking=False)
+        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
+        # Make sure ensemble stats run. This will check that the ensemble has
+        # the right stamp.
+        with ops.control_dependencies(ensemble_stats):
+          predictions, predictions_no_dropout, _ = (
+              prediction_ops.gradient_trees_prediction(
+                  local_ensemble_handle,
+                  seed,
+                  self._dense_floats,
+                  self._sparse_float_indices,
+                  self._sparse_float_values,
+                  self._sparse_float_shapes,
+                  self._sparse_int_indices,
+                  self._sparse_int_values,
+                  self._sparse_int_shapes,
+                  learner_config=self._learner_config_serialized,
+                  apply_dropout=apply_dropout,
+                  apply_averaging=apply_averaging,
+                  use_locking=True,
+                  center_bias=self._center_bias,
+                  reduce_dim=self._reduce_dim))
+          partition_ids = prediction_ops.gradient_trees_partition_examples(
+              local_ensemble_handle,
+              self._dense_floats,
+              self._sparse_float_indices,
+              self._sparse_float_values,
+              self._sparse_float_shapes,
+              self._sparse_int_indices,
+              self._sparse_int_values,
+              self._sparse_int_shapes,
+              use_locking=True)
 
     else:
       with ops.device(self._ensemble_handle.device):
         ensemble_stats = training_ops.tree_ensemble_stats(
             self._ensemble_handle, ensemble_stamp)
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
         # We don't need dropout info - we can always restore it based on the
         # seed.
-        predictions, predictions_no_dropout, _ = (
-            prediction_ops.gradient_trees_prediction(
-                self._ensemble_handle,
-                seed,
-                self._dense_floats,
-                self._sparse_float_indices,
-                self._sparse_float_values,
-                self._sparse_float_shapes,
-                self._sparse_int_indices,
-                self._sparse_int_values,
-                self._sparse_int_shapes,
-                learner_config=self._learner_config_serialized,
-                apply_dropout=apply_dropout,
-                apply_averaging=apply_averaging,
-                use_locking=False,
-                center_bias=self._center_bias,
-                reduce_dim=self._reduce_dim))
-        partition_ids = prediction_ops.gradient_trees_partition_examples(
-            self._ensemble_handle,
-            self._dense_floats,
-            self._sparse_float_indices,
-            self._sparse_float_values,
-            self._sparse_float_shapes,
-            self._sparse_int_indices,
-            self._sparse_int_values,
-            self._sparse_int_shapes,
-            use_locking=False)
+        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
+        # Make sure ensemble stats run. This will check that the ensemble has
+        # the right stamp.
+        with ops.control_dependencies(ensemble_stats):
+          predictions, predictions_no_dropout, _ = (
+              prediction_ops.gradient_trees_prediction(
+                  self._ensemble_handle,
+                  seed,
+                  self._dense_floats,
+                  self._sparse_float_indices,
+                  self._sparse_float_values,
+                  self._sparse_float_shapes,
+                  self._sparse_int_indices,
+                  self._sparse_int_values,
+                  self._sparse_int_shapes,
+                  learner_config=self._learner_config_serialized,
+                  apply_dropout=apply_dropout,
+                  apply_averaging=apply_averaging,
+                  use_locking=True,
+                  center_bias=self._center_bias,
+                  reduce_dim=self._reduce_dim))
+          partition_ids = prediction_ops.gradient_trees_partition_examples(
+              self._ensemble_handle,
+              self._dense_floats,
+              self._sparse_float_indices,
+              self._sparse_float_values,
+              self._sparse_float_shapes,
+              self._sparse_int_indices,
+              self._sparse_int_values,
+              self._sparse_int_shapes,
+              use_locking=True)
 
     return _make_predictions_dict(ensemble_stamp, predictions,
                                   predictions_no_dropout, partition_ids,
