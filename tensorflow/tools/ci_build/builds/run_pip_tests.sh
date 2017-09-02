@@ -86,8 +86,7 @@ BAZEL_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS}"
 
 BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
-  //${PIP_TEST_PREFIX}/tensorflow/python/... \
-  -//${PIP_TEST_PREFIX}/tensorflow/contrib/tensorboard/..."
+  //${PIP_TEST_PREFIX}/tensorflow/python/..."
 
 # Clean the bazel cache
 bazel clean

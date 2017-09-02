@@ -33,7 +33,6 @@ PY_TEST_QUERY = """bazel query 'deps(\
   kind(py_test,\
   //tensorflow/python/... \
   + //tensorflow/contrib/... \
-  - //tensorflow/contrib/tensorboard/... \
   - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'"""
 
 # Hard-coded blacklist of files if not included in pip package
