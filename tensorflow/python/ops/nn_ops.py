@@ -36,6 +36,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated_args
 
 
 # Aliases for some automatically-generated names.
@@ -1643,6 +1644,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   return output
 
 
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax(logits, axis=None, name=None, dim=None):
   """Computes softmax activations.
 
@@ -1656,7 +1658,6 @@ def softmax(logits, axis=None, name=None, dim=None):
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
-    dim: Deprecated keyword argument that is now axis.
 
   Returns:
     A `Tensor`. Has the same type and shape as `logits`.
@@ -1674,6 +1675,7 @@ def softmax(logits, axis=None, name=None, dim=None):
   return _softmax(logits, gen_nn_ops._softmax, axis, name)
 
 
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
   """Computes log softmax activations.
 
@@ -1687,7 +1689,6 @@ def log_softmax(logits, axis=None, name=None, dim=None):
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
-    dim: Deprecated keyword argument that is now axis.
 
   Returns:
     A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
