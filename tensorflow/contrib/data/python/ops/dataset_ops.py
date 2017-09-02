@@ -2460,7 +2460,7 @@ def rejection_resample(dataset,
       shapes and types defined by `dataset.output_shapes` and
       `dataset.output_types`) to a scalar `tf.int32` tensor.  Values should
       be in `[0, num_classes)`.
-    target_dist: A floating point type tensor, shaped `[num_classes].
+    target_dist: A floating point type tensor, shaped `[num_classes]`.
     initial_dist: (Optional.)  A floating point type tensor, shaped
       `[num_classes]`.  If not provided, the true class distribution is
       estimated live in a streaming fashion.
