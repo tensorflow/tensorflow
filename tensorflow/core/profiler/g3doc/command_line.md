@@ -51,7 +51,7 @@ It defines _checkpoint_variable op type. It also provides checkpointed tensors' 
 Note: this feature is not well maintained now.
 
 
-###Start `tfprof`
+### Start `tfprof`
 
 #### Build `tfprof`
 
@@ -140,9 +140,9 @@ tfprof>
 -output
 ```
 
-###Examples
+### Examples
 
-####Profile Python Time
+#### Profile Python Time
 ```shell
 # Requires --graph_path --op_log_path
 tfprof> code -max_depth 1000 -show_name_regexes .*model_analyzer.*py.* -select micros -account_type_regexes .* -order_by micros
