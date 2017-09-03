@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from math import ceil
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -55,7 +56,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     dim_index: An interger index of concat_dim or axis parameter in op.inputs.
 
   Returns:
-    Tensors represending the partial gradients with respect to each input
+    Tensors representing the partial gradients with respect to each input
     of the op.
 
   Raises:
@@ -82,12 +83,12 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     fully_known = True
     for x in inputs:
       input_shape = array_ops.shape(x)
-      if not isinstance(input_shape,
-                        ops.Tensor) or input_shape.op.type != "Const":
-        fully_known = False
-        break
-      else:
-        sizes.append(input_shape)
+      if context.in_graph_mode():
+        if not isinstance(input_shape,
+                          ops.Tensor) or input_shape.op.type != "Const":
+          fully_known = False
+          break
+      sizes.append(input_shape)
 
     if fully_known:
       return sizes
@@ -354,9 +355,15 @@ def _PreventGradientGrad(op, _):
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
   # params can be large, so colocate the shape calculation with it.
+  #
+  # params can be very large for sparse model, array_ops.shape raises
+  # exception on the Windows platform when any dimension is larger than
+  # int32. params_shape is not used in optimizer apply_sparse gradients,
+  # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params)
+    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
+    params_shape = math_ops.to_int32(params_shape)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
@@ -365,6 +372,71 @@ def _GatherGrad(op, grad):
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return [ops.IndexedSlices(values, indices, params_shape), None]
+
+
+@ops.RegisterGradient("GatherV2")
+def _GatherV2Grad(op, grad):
+  """Gradient for GatherV2 op."""
+  # params can be large, so colocate the shape calculation with it.
+  #
+  # params can be very large for sparse model, array_ops.shape raises
+  # exception on the Windows platform when any dimension is larger than
+  # int32. params_shape is not used in optimizer apply_sparse gradients,
+  # so it's fine to convert it back to int32 regardless of truncation.
+  params = op.inputs[0]
+  with ops.colocate_with(params):
+    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
+    params_shape = math_ops.to_int32(params_shape)
+
+  indices = op.inputs[1]
+  indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
+  axis = op.inputs[2]
+  axis_static = tensor_util.constant_value(axis)
+
+  # For axis 0 gathers, build an appropriately shaped IndexedSlices.
+  if axis_static == 0:
+    if context.in_eager_mode():
+      params_tail_shape = params_shape.as_cpu_tensor()[1:]
+    else:
+      params_tail_shape = params_shape[1:]
+    values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
+    values = array_ops.reshape(grad, values_shape)
+    indices = array_ops.reshape(indices, indices_size)
+    return [ops.IndexedSlices(values, indices, params_shape), None, None]
+
+  outer_shape = params_shape[:axis]
+  outer_dims = array_ops.size(outer_shape)
+  inner_shape = params_shape[axis:][1:]
+  inner_dims = array_ops.size(inner_shape)
+
+  outer_axes_indices = math_ops.range(outer_dims)
+  inner_axes_indices = math_ops.range(outer_dims + 1,
+                                      outer_dims + 1 + inner_dims)
+
+  values_shape = array_ops.concat([outer_shape, indices_size, inner_shape], 0)
+  values = array_ops.reshape(grad, values_shape)
+  indices = array_ops.reshape(indices, indices_size)
+
+  # We need to sum up every slice `values[..., i, ....]` corresponding to
+  # `params[..., indices[i], ...]`. Since `unsorted_segment_sum` does not
+  # support an axis parameter, we transpose the gather dimension to the front,
+  # then use `unsorted_segment_sum` to build a
+  # [gather_axis, outer_axes, inner_axes] tensor with all the gradients
+  # affecting each index in `gather_axis` summed up.
+  transpose_dims = array_ops.concat(
+      [[outer_dims], outer_axes_indices, inner_axes_indices], 0)
+  values_transpose = array_ops.transpose(values, transpose_dims)
+  num_segments = params_shape[axis]
+
+  params_grad = math_ops.unsorted_segment_sum(
+      values_transpose, indices, num_segments)
+
+  # Inverts the above transpose by moving dimension 0 back to its original
+  # position.
+  invert_transpose_dims = array_ops.concat(
+      [outer_axes_indices + 1, [0], inner_axes_indices], 0)
+  params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
+  return [params_grad, None, None]
 
 
 @ops.RegisterGradient("GatherNd")
@@ -391,6 +463,11 @@ def _IdGrad(_, grad):
 
 @ops.RegisterGradient("RefIdentity")
 def _RefIdGrad(_, grad):
+  return grad
+
+
+@ops.RegisterGradient("IdentityN")
+def _IdNGrad(_, *grad):
   return grad
 
 
@@ -457,14 +534,14 @@ def _TileGrad(op, grad):
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
-  input_grad.set_shape(op.inputs[0].get_shape())
+  if context.in_graph_mode():
+    input_grad.set_shape(op.inputs[0].get_shape())
   return [input_grad, None]
 
 
 ops.NotDifferentiable("BroadcastGradientArgs")
 
 
-@ops.RegisterGradient("Pad")
 def _PadGrad(op, grad):
   """Gradient for Pad."""
   # Pad introduces values around the original tensor, so the gradient function
@@ -477,7 +554,14 @@ def _PadGrad(op, grad):
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
   sizes = array_ops.shape(x)
-  return array_ops.slice(grad, begin, sizes), None
+  x_grad = array_ops.slice(grad, begin, sizes)
+  if len(op.inputs) == 3:
+    return x_grad, None, None
+  else:
+    return x_grad, None
+
+ops.RegisterGradient("Pad")(_PadGrad)
+ops.RegisterGradient("PadV2")(_PadGrad)
 
 
 # ReverseSequence is just a permutation.  The gradient permutes back.
@@ -580,6 +664,12 @@ def _QuantizeAndDequantizeV2Grad(_, grad):
   return [grad, None, None]
 
 
+@ops.RegisterGradient("QuantizeAndDequantizeV3")
+def _QuantizeAndDequantizeV3Grad(_, grad):
+  # Only propagate the gradient for the unquantized input.
+  return [grad, None, None, None]
+
+
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
 
@@ -664,3 +754,10 @@ def _ScatterNdGrad(op, grad):
   indices = op.inputs[0]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [None, updates_grad, None]
+
+
+@ops.RegisterGradient("ScatterNdNonAliasingAdd")
+def _ScatterNdNonAliasingAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  return [grad, None, updates_grad]

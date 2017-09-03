@@ -38,6 +38,7 @@ See the @{$python/contrib.learn} guide.
 @@LinearEstimator
 @@LinearRegressor
 @@LogisticRegressor
+@@StateSavingRnnEstimator
 @@SVM
 @@SKCompat
 
@@ -72,6 +73,10 @@ See the @{$python/contrib.learn} guide.
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features
+@@read_keyed_batch_examples
+@@read_keyed_batch_examples_shared_queue
+@@read_keyed_batch_features
+@@read_keyed_batch_features_shared_queue
 
 @@InputFnOps
 @@ProblemType
@@ -87,9 +92,11 @@ from __future__ import print_function
 from tensorflow.contrib.learn.python.learn import *
 # pylint: enable=wildcard-import
 
+from tensorflow.contrib.learn.python.learn import learn_runner_lib as learn_runner
+
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['datasets', 'head', 'io', 'models',
+_allowed_symbols = ['datasets', 'head', 'io', 'learn_runner', 'models',
                     'monitors', 'NotFittedError', 'ops', 'preprocessing',
                     'utils', 'graph_actions']
 

@@ -206,7 +206,8 @@ def random_uniform(shape,
     maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
       the range of random values to generate.  Defaults to 1 if `dtype` is
       floating point.
-    dtype: The type of the output: `float32`, `float64`, `int32`, or `int64`.
+    dtype: The type of the output: 'float16`, `float32`, `float64`, `int32`,
+      or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
       See @{tf.set_random_seed}
       for behavior.
@@ -219,6 +220,9 @@ def random_uniform(shape,
     ValueError: If `dtype` is integral and `maxval` is not specified.
   """
   dtype = dtypes.as_dtype(dtype)
+  if dtype not in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+                   dtypes.int64):
+    raise ValueError("Invalid dtype %r" % dtype)
   if maxval is None:
     if dtype.is_integer:
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
@@ -300,7 +304,8 @@ def random_crop(value, size, seed=None, name=None):
     shape = array_ops.shape(value)
     check = control_flow_ops.Assert(
         math_ops.reduce_all(shape >= size),
-        ["Need value.shape >= size, got ", shape, size])
+        ["Need value.shape >= size, got ", shape, size],
+        summarize=1000)
     shape = control_flow_ops.with_dependencies([check], shape)
     limit = shape - size + 1
     offset = random_uniform(
@@ -324,7 +329,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
 
   Args:
     logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
-      `[i, :]` represents the unnormalized log probabilities for all classes.
+      `[i, :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
       See

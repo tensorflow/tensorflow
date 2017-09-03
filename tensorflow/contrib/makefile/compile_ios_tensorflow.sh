@@ -20,7 +20,7 @@ source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
 function less_than_required_version() {
-  echo $1 | (IFS=. read major minor micro
+  echo $1 | (IFS=. read -r major minor micro
     if [ $major -ne $2 ]; then
       [ $major -lt $2 ]
     elif [ $minor -ne $3 ]; then
@@ -31,7 +31,11 @@ function less_than_required_version() {
   )
 }
 
-ACTUAL_XCODE_VERSION=`xcodebuild -version | head -n 1 | sed 's/Xcode //'`
+if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
+    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+fi
+
+ACTUAL_XCODE_VERSION=$(xcodebuild -version | head -n 1 | sed 's/Xcode //')
 REQUIRED_XCODE_VERSION=7.3.0
 if less_than_required_version $ACTUAL_XCODE_VERSION 7 3 0
 then
@@ -44,7 +48,7 @@ LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core
 
 make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1" 
+TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1"
 if [ $? -ne 0 ]
 then
   echo "armv7 compilation failed."

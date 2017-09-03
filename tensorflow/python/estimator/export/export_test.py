@@ -28,12 +28,10 @@ from tensorflow.core.example import example_pb2
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -42,6 +40,69 @@ from tensorflow.python.saved_model import signature_def_utils
 
 
 class ExportTest(test_util.TensorFlowTestCase):
+
+  def test_serving_input_receiver_constructor(self):
+    """Tests that no errors are raised when input is expected."""
+    features = {
+        "feature0": constant_op.constant([0]),
+        u"feature1": constant_op.constant([1]),
+        "feature2": sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+    }
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+    export.ServingInputReceiver(features, receiver_tensors)
+
+  def test_serving_input_receiver_features_invalid(self):
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+
+    with self.assertRaisesRegexp(ValueError, "features must be defined"):
+      export.ServingInputReceiver(
+          features=None,
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(ValueError, "feature keys must be strings"):
+      export.ServingInputReceiver(
+          features={1: constant_op.constant([1])},
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(
+        ValueError, "feature feature1 must be a Tensor or SparseTensor"):
+      export.ServingInputReceiver(
+          features={"feature1": [1]},
+          receiver_tensors=receiver_tensors)
+
+  def test_serving_input_receiver_receiver_tensors_invalid(self):
+    features = {
+        "feature0": constant_op.constant([0]),
+        u"feature1": constant_op.constant([1]),
+        "feature2": sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+    }
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensors must be defined"):
+      export.ServingInputReceiver(
+          features=features,
+          receiver_tensors=None)
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensors keys must be strings"):
+      export.ServingInputReceiver(
+          features=features,
+          receiver_tensors={
+              1: array_ops.placeholder(dtypes.string, name="example0")})
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensor example1 must be a Tensor"):
+      export.ServingInputReceiver(
+          features=features,
+          receiver_tensors={"example1": [1]})
 
   def test_single_feature_single_receiver(self):
     feature = constant_op.constant(5)
@@ -171,8 +232,8 @@ class ExportTest(test_util.TensorFlowTestCase):
                                                              output_2, None),
         "head-3":
             signature_def_utils.predict_signature_def({
-                "input": receiver_tensor
-            }, {"output": output_3})
+                "receiver": receiver_tensor
+            }, {"some_output_3": output_3})
     }
 
     self.assertDictEqual(expected_signature_defs, signature_defs)

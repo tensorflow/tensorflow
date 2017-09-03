@@ -21,6 +21,8 @@ from __future__ import print_function
 import contextlib
 
 import numpy as np
+from scipy import stats
+
 from tensorflow.contrib import distributions
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -43,6 +45,28 @@ def _swap_first_last_axes(array):
   rank = len(array.shape)
   transpose = [rank - 1] + list(range(0, rank - 1))
   return array.transpose(transpose)
+
+
+def _mixture_stddev_np(pi_vector, mu_vector, sigma_vector):
+  """Computes the standard deviation of a univariate mixture distribution.
+
+  Acts upon `np.array`s (not `tf.Tensor`s).
+
+  Args:
+    pi_vector: A `np.array` of mixture weights. Shape `[batch, components]`.
+    mu_vector: A `np.array` of means. Shape `[batch, components]`
+    sigma_vector: A `np.array` of stddevs. Shape `[batch, components]`.
+
+  Returns:
+    A `np.array` containing the batch of standard deviations.
+  """
+  pi_vector = np.expand_dims(pi_vector, axis=1)
+  mean_wa = np.matmul(pi_vector, np.expand_dims(mu_vector, axis=2))
+  var_wa = np.matmul(pi_vector, np.expand_dims(sigma_vector**2, axis=2))
+  mid_term = np.matmul(pi_vector, np.expand_dims(mu_vector**2, axis=2))
+  mixture_variance = (
+      np.squeeze(var_wa) + np.squeeze(mid_term) - np.squeeze(mean_wa**2))
+  return np.sqrt(mixture_variance)
 
 
 @contextlib.contextmanager
@@ -247,6 +271,106 @@ class MixtureTest(test.TestCase):
             [c_p * m for (c_p, m) in zip(cat_probs_value, dist_means_value)])
 
         self.assertAllClose(true_mean, mean_value)
+
+  def testStddevShapeUnivariate(self):
+    num_components = 2
+    # This is the same shape test which is done in 'testMeanUnivariate'.
+    with self.test_session() as sess:
+      for batch_shape in ((), (2,), (2, 3)):
+        dist = make_univariate_mixture(
+            batch_shape=batch_shape, num_components=num_components)
+        dev = dist.stddev()
+        self.assertEqual(batch_shape, dev.get_shape())
+
+        cat_probs = nn_ops.softmax(dist.cat.logits)
+        dist_devs = [d.stddev() for d in dist.components]
+        dist_means = [d.mean() for d in dist.components]
+
+        res = sess.run([dev, cat_probs, dist_devs, dist_means])
+        dev_value, cat_probs_values, dist_devs_values, dist_means_values = res
+        # Manual computation of stddev.
+        batch_shape_res = cat_probs_values.shape[:-1]
+        event_shape_res = dist_devs_values[0].shape[len(batch_shape_res):]
+        stacked_mean_res = np.stack(dist_means_values, -1)
+        stacked_dev_res = np.stack(dist_devs_values, -1)
+
+        # Broadcast cat probs over event dimensions.
+        for _ in range(len(event_shape_res)):
+          cat_probs_values = np.expand_dims(cat_probs_values, len(batch_shape))
+        cat_probs_values = cat_probs_values + np.zeros_like(stacked_dev_res)  # pylint: disable=g-no-augmented-assignment
+
+        # Perform stddev computation on a flattened batch.
+        flat_batch_manual_dev = _mixture_stddev_np(
+            np.reshape(cat_probs_values, [-1, num_components]),
+            np.reshape(stacked_mean_res, [-1, num_components]),
+            np.reshape(stacked_dev_res, [-1, num_components]))
+
+        # Reshape to full shape.
+        full_shape_res = list(batch_shape_res) + list(event_shape_res)
+        manual_dev = np.reshape(flat_batch_manual_dev, full_shape_res)
+        self.assertEqual(batch_shape, dev_value.shape)
+        self.assertAllClose(manual_dev, dev_value)
+
+  def testStddevShapeMultivariate(self):
+    num_components = 2
+
+    # This is the same shape test which is done in 'testMeanMultivariate'.
+    with self.test_session() as sess:
+      for batch_shape in ((), (2,), (2, 3)):
+        dist = make_multivariate_mixture(
+            batch_shape=batch_shape,
+            num_components=num_components,
+            event_shape=(4,))
+        dev = dist.stddev()
+        self.assertEqual(batch_shape + (4,), dev.get_shape())
+
+        cat_probs = nn_ops.softmax(dist.cat.logits)
+        dist_devs = [d.stddev() for d in dist.components]
+        dist_means = [d.mean() for d in dist.components]
+
+        res = sess.run([dev, cat_probs, dist_devs, dist_means])
+        dev_value, cat_probs_values, dist_devs_values, dist_means_values = res
+        # Manual computation of stddev.
+        batch_shape_res = cat_probs_values.shape[:-1]
+        event_shape_res = dist_devs_values[0].shape[len(batch_shape_res):]
+        stacked_mean_res = np.stack(dist_means_values, -1)
+        stacked_dev_res = np.stack(dist_devs_values, -1)
+
+        # Broadcast cat probs over event dimensions.
+        for _ in range(len(event_shape_res)):
+          cat_probs_values = np.expand_dims(cat_probs_values, len(batch_shape))
+        cat_probs_values = cat_probs_values + np.zeros_like(stacked_dev_res)  # pylint: disable=g-no-augmented-assignment
+
+        # Perform stddev computation on a flattened batch.
+        flat_batch_manual_dev = _mixture_stddev_np(
+            np.reshape(cat_probs_values, [-1, num_components]),
+            np.reshape(stacked_mean_res, [-1, num_components]),
+            np.reshape(stacked_dev_res, [-1, num_components]))
+
+        # Reshape to full shape.
+        full_shape_res = list(batch_shape_res) + list(event_shape_res)
+        manual_dev = np.reshape(flat_batch_manual_dev, full_shape_res)
+        self.assertEqual(tuple(full_shape_res), dev_value.shape)
+        self.assertAllClose(manual_dev, dev_value)
+
+  def testSpecificStddevValue(self):
+    cat_probs = np.array([0.5, 0.5])
+    component_means = np.array([-10, 0.1])
+    component_devs = np.array([0.05, 2.33])
+    ground_truth_stddev = 5.3120805
+
+    mixture_dist = distributions_py.Mixture(
+        cat=distributions_py.Categorical(probs=cat_probs),
+        components=[
+            distributions_py.Normal(loc=component_means[0],
+                                    scale=component_devs[0]),
+            distributions_py.Normal(loc=component_means[1],
+                                    scale=component_devs[1]),
+        ])
+    mix_dev = mixture_dist.stddev()
+    with self.test_session() as sess:
+      actual_stddev = sess.run(mix_dev)
+    self.assertAllClose(actual_stddev, ground_truth_stddev)
 
   def testProbScalarUnivariate(self):
     with self.test_session() as sess:
@@ -523,6 +647,104 @@ class MixtureTest(test.TestCase):
 
         self.assertAllClose(true_entropy_lower_bound, entropy_lower_bound_value)
 
+  def testCdfScalarUnivariate(self):
+    """Tests CDF against scipy for a mixture of seven gaussians."""
+    # Construct a mixture of gaussians with seven components.
+    n_components = 7
+
+    # pre-softmax mixture probabilities.
+    mixture_weight_logits = np.random.uniform(
+        low=-1, high=1, size=(n_components,)).astype(np.float32)
+
+    def _scalar_univariate_softmax(x):
+      e_x = np.exp(x - np.max(x))
+      return e_x / e_x.sum()
+
+    # Construct the distributions_py.Mixture object.
+    mixture_weights = _scalar_univariate_softmax(mixture_weight_logits)
+    means = [np.random.uniform(low=-10, high=10, size=()).astype(np.float32)
+             for _ in range(n_components)]
+    sigmas = [np.ones(shape=(), dtype=np.float32) for _ in range(n_components)]
+    cat_tf = distributions_py.Categorical(probs=mixture_weights)
+    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+                     for (mu, sigma) in zip(means, sigmas)]
+    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+
+    x_tensor = array_ops.placeholder(shape=(), dtype=dtypes.float32)
+
+    # These are two test cases to verify.
+    xs_to_check = [
+        np.array(1.0, dtype=np.float32),
+        np.array(np.random.randn()).astype(np.float32)
+    ]
+
+    # Carry out the test for both d.cdf and exp(d.log_cdf).
+    x_cdf_tf = mixture_tf.cdf(x_tensor)
+    x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
+
+    with self.test_session() as sess:
+      for x_feed in xs_to_check:
+        x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
+            [x_cdf_tf, x_log_cdf_tf], feed_dict={x_tensor: x_feed})
+
+        # Compute the cdf with scipy.
+        scipy_component_cdfs = [stats.norm.cdf(x=x_feed, loc=mu, scale=sigma)
+                                for (mu, sigma) in zip(means, sigmas)]
+        scipy_cdf_result = np.dot(mixture_weights,
+                                  np.array(scipy_component_cdfs))
+        self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
+        self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
+
+  def testCdfBatchUnivariate(self):
+    """Tests against scipy for a (batch of) mixture(s) of seven gaussians."""
+    n_components = 7
+    batch_size = 5
+    mixture_weight_logits = np.random.uniform(
+        low=-1, high=1, size=(batch_size, n_components)).astype(np.float32)
+
+    def _batch_univariate_softmax(x):
+      e_x = np.exp(x)
+      e_x_sum = np.expand_dims(np.sum(e_x, axis=1), axis=1)
+      return e_x / np.tile(e_x_sum, reps=[1, x.shape[1]])
+
+    psize = (batch_size,)
+    mixture_weights = _batch_univariate_softmax(mixture_weight_logits)
+    means = [np.random.uniform(low=-10, high=10, size=psize).astype(np.float32)
+             for _ in range(n_components)]
+    sigmas = [np.ones(shape=psize, dtype=np.float32)
+              for _ in range(n_components)]
+    cat_tf = distributions_py.Categorical(probs=mixture_weights)
+    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+                     for (mu, sigma) in zip(means, sigmas)]
+    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+
+    x_tensor = array_ops.placeholder(shape=psize, dtype=dtypes.float32)
+    xs_to_check = [
+        np.array([1.0, 5.9, -3, 0.0, 0.0], dtype=np.float32),
+        np.random.randn(batch_size).astype(np.float32)
+    ]
+
+    x_cdf_tf = mixture_tf.cdf(x_tensor)
+    x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
+
+    with self.test_session() as sess:
+      for x_feed in xs_to_check:
+        x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
+            [x_cdf_tf, x_log_cdf_tf],
+            feed_dict={x_tensor: x_feed})
+
+        # Compute the cdf with scipy.
+        scipy_component_cdfs = [stats.norm.cdf(x=x_feed, loc=mu, scale=sigma)
+                                for (mu, sigma) in zip(means, sigmas)]
+        weights_and_cdfs = zip(np.transpose(mixture_weights, axes=[1, 0]),
+                               scipy_component_cdfs)
+        final_cdf_probs_per_component = [
+            np.multiply(c_p_value, d_cdf_value)
+            for (c_p_value, d_cdf_value) in weights_and_cdfs]
+        scipy_cdf_result = np.sum(final_cdf_probs_per_component, axis=0)
+        self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
+        self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
+
 
 class MixtureBenchmark(test.Benchmark):
 
@@ -534,7 +756,7 @@ class MixtureBenchmark(test.Benchmark):
     np.random.seed(127)
     with session.Session(config=config, graph=ops.Graph()) as sess:
       random_seed.set_random_seed(0)
-      with ops.device("/gpu:0" if use_gpu else "/cpu:0"):
+      with ops.device("/device:GPU:0" if use_gpu else "/cpu:0"):
         mixture = create_distribution(
             num_components=num_components,
             batch_size=batch_size,

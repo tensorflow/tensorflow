@@ -28,7 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
@@ -67,17 +67,17 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   with graph.as_default():
     with tf_session.Session('') as session:
       variables.local_variables_initializer()
-      data_flow_ops.tables_initializer()
+      lookup_ops.tables_initializer()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
-      export.init(init_op=control_flow_ops.group(
-          variables.local_variables_initializer(),
-          data_flow_ops.tables_initializer()),
-                  default_graph_signature=default_graph_signature,
-                  named_graph_signatures=named_graph_signatures,
-                  assets_collection=ops.get_collection(
-                      ops.GraphKeys.ASSET_FILEPATHS))
+      export.init(
+          init_op=control_flow_ops.group(
+              variables.local_variables_initializer(),
+              lookup_ops.tables_initializer()),
+          default_graph_signature=default_graph_signature,
+          named_graph_signatures=named_graph_signatures,
+          assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
       return export.export(export_dir, contrib_variables.get_global_step(),
                            session, exports_to_keep=exports_to_keep)
 
@@ -89,7 +89,7 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
 def generic_signature_fn(examples, unused_features, predictions):
   """Creates generic signature from given examples and predictions.
 
-  This is needed for backward compatibility with default behaviour of
+  This is needed for backward compatibility with default behavior of
   export_estimator.
 
   Args:

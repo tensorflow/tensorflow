@@ -32,10 +32,11 @@ Status SwitchShape(InferenceContext* c) {
   c->set_output(1, out);
 
   // Handle resource shape / dtype.
-  c->set_output_handle_shape(0, c->input_handle_shape(0));
-  c->set_output_handle_shape(1, c->input_handle_shape(0));
-  c->set_output_handle_dtype(0, c->input_handle_dtype(0));
-  c->set_output_handle_dtype(1, c->input_handle_dtype(0));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+    c->set_output_handle_shapes_and_types(1, *handle_data);
+  }
   return Status::OK();
 }
 }  // namespace
@@ -159,7 +160,7 @@ Forwards the value of an available tensor from `inputs` to `output`.
 `Merge` waits for at least one of the tensors in `inputs` to become available.
 It is usually combined with `Switch` to implement branching.
 
-`Merge` forwards the first tensor for become available to `output`, and sets
+`Merge` forwards the first tensor to become available to `output`, and sets
 `value_index` to its index in `inputs`.
 
 inputs: The input tensors, exactly one of which will become available.
@@ -200,8 +201,17 @@ REGISTER_OP("Enter")
       c->set_output(0, c->UnknownShape());
 
       // Handle resource shape / dtype, if present.
-      c->set_output_handle_shape(0, c->input_handle_shape(0));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      } else {
+        // Otherwise, propagate shape if output is a constant.
+        bool is_constant;
+        TF_RETURN_IF_ERROR(c->GetAttr("is_constant", &is_constant));
+        if (is_constant) {
+          c->set_output(0, c->input(0));
+        }
+      }
 
       return Status::OK();
     })
@@ -331,7 +341,10 @@ REGISTER_OP("Abort")
     .Attr("exit_without_error: bool = false")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
-Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal.
+Raise a exception to abort the process when called.
+
+If exit_without_error is true, the process will exit normally,
+otherwise it will exit with a SIGABORT signal.
 
 Returns nothing but an exception.
 

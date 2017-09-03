@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -201,32 +202,158 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
-Status Conv2DShape(shape_inference::InferenceContext* c) {
-  ShapeHandle input_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+// input, filter, bias, output
+Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c) {
+  TF_RETURN_IF_ERROR(Conv2DShape(c));
+
+  ShapeHandle bias_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &bias_shape));
+  DimensionHandle bias_dim = c->Dim(bias_shape, 0);
+
   ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &filter_shape));
+  DimensionHandle output_depth_dim = c->Dim(filter_shape, 3);
 
-  string data_format;
-  Status s = c->GetAttr("data_format", &data_format);
+  int64 output_depth_dim_val = c->Value(output_depth_dim);
+  int64 bias_dim_val = c->Value(bias_dim);
 
+  if (output_depth_dim_val != bias_dim_val) {
+    return errors::InvalidArgument(
+        "Output depth dimension (", output_depth_dim_val,
+        ") and bias dimension (", bias_dim_val, ") do not match.");
+  }
+
+  return Status::OK();
+}
+
+Status CheckFormatConstraintsOnShape(const TensorFormat tensor_format,
+                                     const ShapeHandle shape_handle,
+                                     const string& tensor_name,
+                                     shape_inference::InferenceContext* c) {
+  if (tensor_format == FORMAT_NCHW_VECT_C) {
+    // Check that the vect dim has size 4.
+    const int num_dims = c->Rank(shape_handle);
+    DimensionHandle vect_dim = c->Dim(
+        shape_handle, GetTensorInnerFeatureDimIndex(num_dims, tensor_format));
+    DimensionHandle unused_vect_dim;
+    TF_RETURN_IF_ERROR(c->WithValue(vect_dim, 4, &unused_vect_dim));
+  }
+
+  return Status::OK();
+}
+
+// Returns a new shape with the specified dims arranged in the specified
+// format. The returned value is owned by this context.
+// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
+Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
+                           const std::vector<DimensionOrConstant>& spatial,
+                           DimensionOrConstant C, ShapeHandle* out,
+                           shape_inference::InferenceContext* c) {
+  const int num_dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
+  std::vector<DimensionHandle> dims_actual(num_dims);
+  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = c->MakeDim(N);
+  int outer_c_index = GetTensorFeatureDimIndex(num_dims, format);
+  dims_actual[outer_c_index] = c->MakeDim(C);
+  if (format == FORMAT_NCHW_VECT_C) {
+    dims_actual[GetTensorInnerFeatureDimIndex(num_dims, format)] =
+        c->MakeDim(4);
+  }
+  for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
+    dims_actual[GetTensorSpatialDimIndex(num_dims, format, spatial_dim)] =
+        c->MakeDim(spatial[spatial_dim]);
+  }
+  *out = c->MakeShape(dims_actual);
+  return Status::OK();
+}
+
+Status DimensionsFromShape(ShapeHandle shape, TensorFormat format,
+                           DimensionHandle* batch_dim,
+                           gtl::MutableArraySlice<DimensionHandle> spatial_dims,
+                           DimensionHandle* filter_dim,
+                           InferenceContext* context) {
+  const int32 rank = GetTensorDimsFromSpatialDims(spatial_dims.size(), format);
+  // Batch.
+  *batch_dim = context->Dim(shape, GetTensorBatchDimIndex(rank, format));
+  // Spatial.
+  for (int spatial_dim_index = 0; spatial_dim_index < spatial_dims.size();
+       ++spatial_dim_index) {
+    spatial_dims[spatial_dim_index] = context->Dim(
+        shape, GetTensorSpatialDimIndex(rank, format, spatial_dim_index));
+  }
+  // Channel.
+  *filter_dim = context->Dim(shape, GetTensorFeatureDimIndex(rank, format));
+  if (format == FORMAT_NCHW_VECT_C) {
+    TF_RETURN_IF_ERROR(context->Multiply(
+        *filter_dim,
+        context->Dim(shape, GetTensorInnerFeatureDimIndex(rank, format)),
+        filter_dim));
+  }
+  return Status::OK();
+}
+
+Status ShapeFromDimensions(DimensionHandle batch_dim,
+                           gtl::ArraySlice<DimensionHandle> spatial_dims,
+                           DimensionHandle filter_dim, TensorFormat format,
+                           InferenceContext* context, ShapeHandle* shape) {
+  const int32 rank = GetTensorDimsFromSpatialDims(spatial_dims.size(), format);
+  std::vector<DimensionHandle> out_dims(rank);
+
+  // Batch.
+  out_dims[tensorflow::GetTensorBatchDimIndex(rank, format)] = batch_dim;
+  // Spatial.
+  for (int spatial_dim_index = 0; spatial_dim_index < spatial_dims.size();
+       ++spatial_dim_index) {
+    out_dims[tensorflow::GetTensorSpatialDimIndex(
+        rank, format, spatial_dim_index)] = spatial_dims[spatial_dim_index];
+  }
+  // Channel.
+  if (format == tensorflow::FORMAT_NCHW_VECT_C) {
+    // When format is NCHW_VECT_C, factor the feature map count
+    // into the outer feature count and the inner feature count (=4).
+    TF_RETURN_IF_ERROR(context->Divide(
+        filter_dim, 4, /*evenly_divisible=*/true,
+        &out_dims[tensorflow::GetTensorFeatureDimIndex(rank, format)]));
+    out_dims[GetTensorInnerFeatureDimIndex(rank, format)] = context->MakeDim(4);
+  } else {
+    out_dims[tensorflow::GetTensorFeatureDimIndex(rank, format)] = filter_dim;
+  }
+
+  *shape = context->MakeShape(out_dims);
+  return tensorflow::Status::OK();
+}
+
+Status Conv2DShape(shape_inference::InferenceContext* c) {
+  string data_format_str;
+  Status s = c->GetAttr("data_format", &data_format_str);
+  if (!s.ok()) {
+    data_format_str = "NHWC";
+  }
+
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
+  }
+
+  const int rank = GetTensorDimsFromSpatialDims(2, data_format);
+  ShapeHandle input_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input_shape));
+  // The filter rank should match the input (4 for NCHW, 5 for NCHW_VECT_C).
+  ShapeHandle filter_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &filter_shape));
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
 
+  // strides.size() should be 4 (NCHW) even if the input is 5 (NCHW_VECT_C).
   if (strides.size() != 4) {
-    return errors::InvalidArgument(
-        "Conv2D requires the stride attribute to contain 4 values, but got: ",
-        strides.size());
+    return errors::InvalidArgument("Conv2D on data format ", data_format_str,
+                                   " requires the stride attribute to contain"
+                                   " 4 values, but got: ",
+                                   strides.size());
   }
 
   int32 stride_rows, stride_cols;
-
-  if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference
-    auto dim = [&](char dimension) {
-      return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
-    };
-    input_shape = c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('C')}});
+  if (data_format == FORMAT_NCHW || data_format == FORMAT_NCHW_VECT_C) {
     stride_rows = strides[2];
     stride_cols = strides[3];
   } else {
@@ -234,35 +361,52 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
     stride_cols = strides[2];
   }
 
-  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
-  DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
-  DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
-  DimensionHandle filter_rows_dim = c->Dim(filter_shape, 0);
-  DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
-  DimensionHandle output_depth_dim = c->Dim(filter_shape, 3);
+  DimensionHandle batch_size_dim;
+  DimensionHandle input_depth_dim;
+  gtl::InlinedVector<DimensionHandle, 2> input_spatial_dims(2);
+  TF_RETURN_IF_ERROR(DimensionsFromShape(input_shape, data_format,
+                                         &batch_size_dim, &input_spatial_dims,
+                                         &input_depth_dim, c));
 
+  DimensionHandle output_depth_dim, filter_rows_dim, filter_cols_dim,
+      filter_input_depth_dim;
+  // If the input format is NCHW_VECT_C, the filter format is assumed to be
+  // OIHW_VECT_I, otherwise it is assumed to be HWIO.
+  if (data_format == FORMAT_NCHW_VECT_C) {
+    output_depth_dim = c->Dim(filter_shape, 0);
+    TF_RETURN_IF_ERROR(c->Multiply(c->Dim(filter_shape, 1),
+                                   c->Dim(filter_shape, 4),
+                                   &filter_input_depth_dim));
+    filter_rows_dim = c->Dim(filter_shape, 2);
+    filter_cols_dim = c->Dim(filter_shape, 3);
+  } else {
+    filter_rows_dim = c->Dim(filter_shape, 0);
+    filter_cols_dim = c->Dim(filter_shape, 1);
+    filter_input_depth_dim = c->Dim(filter_shape, 2);
+    output_depth_dim = c->Dim(filter_shape, 3);
+  }
+
+  // Check that the input tensor and the filter tensor agree on the input
+  // channel count.
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(
-      c->Merge(c->Dim(input_shape, 3), c->Dim(filter_shape, 2), &unused));
+      c->Merge(input_depth_dim, filter_input_depth_dim, &unused));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
   DimensionHandle output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, filter_rows_dim, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(c, input_spatial_dims[0],
+                                                   filter_rows_dim, stride_rows,
+                                                   padding, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(c, input_spatial_dims[1],
+                                                   filter_cols_dim, stride_cols,
+                                                   padding, &output_cols));
 
   ShapeHandle output_shape;
-  if (data_format == "NCHW") {
-    output_shape = c->MakeShape(
-        {batch_size_dim, output_depth_dim, output_rows, output_cols});
-  } else {
-    output_shape = c->MakeShape(
-        {batch_size_dim, output_rows, output_cols, output_depth_dim});
-  }
-
+  TF_RETURN_IF_ERROR(
+      ShapeFromDimensions(batch_size_dim, {output_rows, output_cols},
+                          output_depth_dim, data_format, c, &output_shape));
   c->set_output(0, output_shape);
   return Status::OK();
 }
@@ -361,7 +505,8 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   int32 stride_rows;
   int32 stride_cols;
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference
+    // Canonicalize input shape to NHWC so the shape inference code below can
+    // process it.
     input_shape =
         c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
                        c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
@@ -415,17 +560,25 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
 
 Status AvgPoolShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 4, &input_shape));
 
-  string data_format;
-  Status s = c->GetAttr("data_format", &data_format);
+  string data_format_str;
+  TensorFormat data_format;
+  Status s = c->GetAttr("data_format", &data_format_str);
+  if (s.ok()) {
+    FormatFromString(data_format_str, &data_format);
+  } else {
+    data_format = FORMAT_NHWC;
+  }
+
+  TF_RETURN_IF_ERROR(
+      CheckFormatConstraintsOnShape(data_format, input_shape, "input", c));
 
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 4) {
     return errors::InvalidArgument(
-        "AvgPool requires the stride attribute to contain 4 values, but "
-        "got: ",
+        "AvgPool requires the stride attribute to contain 4 values, but got: ",
         strides.size());
   }
 
@@ -437,30 +590,20 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
         kernel_sizes.size());
   }
 
-  int32 stride_rows, stride_cols;
-  int32 kernel_rows, kernel_cols;
+  int32 stride_rows = GetTensorDim(strides, data_format, 'H');
+  int32 stride_cols = GetTensorDim(strides, data_format, 'W');
+  int32 kernel_rows = GetTensorDim(kernel_sizes, data_format, 'H');
+  int32 kernel_cols = GetTensorDim(kernel_sizes, data_format, 'W');
 
-  if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference.
-    auto dim = [&](char dimension) {
-      return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
-    };
-    input_shape = c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('C')}});
-    stride_rows = strides[2];
-    stride_cols = strides[3];
-    kernel_rows = kernel_sizes[2];
-    kernel_cols = kernel_sizes[3];
-  } else {
-    stride_rows = strides[1];
-    stride_cols = strides[2];
-    kernel_rows = kernel_sizes[1];
-    kernel_cols = kernel_sizes[2];
-  }
-
-  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
-  DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
-  DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
-  DimensionHandle output_depth_dim = c->Dim(input_shape, 3);
+  constexpr int num_spatial_dims = 2;
+  DimensionHandle batch_size_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
+  DimensionHandle in_rows_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'H'));
+  DimensionHandle in_cols_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'W'));
+  DimensionHandle depth_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'C'));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
@@ -476,31 +619,34 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
       c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
 
   ShapeHandle output_shape;
-  if (data_format == "NCHW") {
-    output_shape = c->MakeShape(
-        {batch_size_dim, output_depth_dim, output_rows, output_cols});
-  } else {
-    output_shape = c->MakeShape(
-        {batch_size_dim, output_rows, output_cols, output_depth_dim});
-  }
-
+  TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
+                                         {output_rows, output_cols}, depth_dim,
+                                         &output_shape, c));
   c->set_output(0, output_shape);
   return Status::OK();
 }
 
 Status MaxPoolShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 4, &input_shape));
 
-  string data_format;
-  Status s = c->GetAttr("data_format", &data_format);
+  string data_format_str;
+  TensorFormat data_format;
+  Status s = c->GetAttr("data_format", &data_format_str);
+  if (s.ok()) {
+    FormatFromString(data_format_str, &data_format);
+  } else {
+    data_format = FORMAT_NHWC;
+  }
+
+  TF_RETURN_IF_ERROR(
+      CheckFormatConstraintsOnShape(data_format, input_shape, "input", c));
 
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 4) {
     return errors::InvalidArgument(
-        "MaxPool requires the stride attribute to contain 4 values, but "
-        "got: ",
+        "MaxPool requires the stride attribute to contain 4 values, but got: ",
         strides.size());
   }
 
@@ -512,11 +658,103 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
         kernel_sizes.size());
   }
 
+  int32 stride_depth = GetTensorDim(strides, data_format, 'C');
+  int32 stride_rows = GetTensorDim(strides, data_format, 'H');
+  int32 stride_cols = GetTensorDim(strides, data_format, 'W');
+  int32 kernel_depth = GetTensorDim(kernel_sizes, data_format, 'C');
+  int32 kernel_rows = GetTensorDim(kernel_sizes, data_format, 'H');
+  int32 kernel_cols = GetTensorDim(kernel_sizes, data_format, 'W');
+
+  constexpr int num_spatial_dims = 2;
+  DimensionHandle batch_size_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
+  DimensionHandle in_rows_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'H'));
+  DimensionHandle in_cols_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'W'));
+  DimensionHandle in_depth_dim = c->Dim(
+      input_shape, GetTensorDimIndex<num_spatial_dims>(data_format, 'C'));
+
+  Padding padding;
+  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+
+  ShapeHandle output_shape;
+  DimensionHandle output_rows, output_cols, output_depth;
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
+      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
+      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
+      c, in_depth_dim, kernel_depth, stride_depth, padding, &output_depth));
+
+  TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
+                                         {output_rows, output_cols},
+                                         output_depth, &output_shape, c));
+
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs) {
+  ShapeHandle input_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+
+  string data_format;
+  Status s = c->GetAttr("data_format", &data_format);
+
+  std::vector<int32> kernel_sizes;
+  std::vector<int32> strides;
+
+  if (c->num_inputs() + 2 == num_inputs) {
+    TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
+
+    TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  } else {
+    // Verify shape of ksize and strides input.
+    ShapeHandle size;
+    DimensionHandle unused;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 2), 1, &size));
+    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(size, 0), 4, &unused));
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &size));
+    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(size, 0), 4, &unused));
+
+    const Tensor* kernel_sizes_tensor = c->input_tensor(c->num_inputs() - 2);
+    if (kernel_sizes_tensor == nullptr) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    }
+    kernel_sizes.resize(kernel_sizes_tensor->shape().num_elements());
+    auto kernel_sizes_vec = kernel_sizes_tensor->flat<int32>();
+    std::copy_n(&kernel_sizes_vec(0), kernel_sizes.size(), kernel_sizes.begin());
+
+    const Tensor* strides_tensor = c->input_tensor(c->num_inputs() - 1);
+    if (strides_tensor == nullptr) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    }
+    strides.resize(strides_tensor->shape().num_elements());
+    auto strides_vec = strides_tensor->flat<int32>();
+    std::copy_n(&strides_vec(0), strides.size(), strides.begin());
+  }
+
+  if (strides.size() != 4) {
+    return errors::InvalidArgument(
+        "MaxPool requires the stride attribute to contain 4 values, but "
+        "got: ",
+        strides.size());
+  }
+  if (kernel_sizes.size() != 4) {
+    return errors::InvalidArgument(
+        "MaxPool requires the ksize attribute to contain 4 values, but got: ",
+        kernel_sizes.size());
+  }
+
   int32 stride_rows, stride_cols, stride_depth;
   int32 kernel_rows, kernel_cols, kernel_depth;
 
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference.
+    // Canonicalize input shape to NHWC so the shape inference code below can
+    // process it.
     auto dim = [&](char dimension) {
       return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
     };
@@ -746,6 +984,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;
+    dims.reserve(rank);
     for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
     c->set_output(0, c->MakeShape(dims));
     return Status::OK();
@@ -873,6 +1112,13 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status RandomShape(shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape) {
   // Validate ranks.
@@ -914,5 +1160,67 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
   return Status::OK();
 }
 
+Status ScatterNdUpdateShape(InferenceContext* c) {
+  ShapeHandle input_shape = c->input(0);
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
+
+  if (c->Value(c->NumElements(input_shape)) == 0 &&
+      (c->Value(c->NumElements(indices_shape)) > 0 ||
+       c->Value(c->NumElements(updates_shape)) > 0)) {
+    return errors::InvalidArgument(
+        "Indices and updates specified for empty output shape");
+  }
+
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+    const int64 num_outer_dims = c->Rank(indices_shape) - 1;
+    const DimensionHandle index_size = c->Dim(indices_shape, -1);
+
+    // We can only do more validation if the last dimension of indices
+    // is a known value.
+    if (c->ValueKnown(index_size)) {
+      const int64 ix = c->Value(index_size);
+      ShapeHandle unused;
+      ShapeHandle prefix_indices;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(indices_shape, 0, num_outer_dims, &prefix_indices));
+      ShapeHandle prefix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, 0, num_outer_dims, &prefix_updates));
+
+      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The outer ", num_outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", num_outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+
+      ShapeHandle input_suffix;
+      TF_RETURN_IF_ERROR(c->Subshape(input_shape, ix, &input_suffix));
+      ShapeHandle suffix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, num_outer_dims, &suffix_updates));
+      s = c->Merge(input_suffix, suffix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The inner ", c->Rank(input_shape) - ix,
+            " dimensions of input.shape=", c->DebugString(input_shape),
+            " must match the inner ", c->Rank(updates_shape) - num_outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+    }
+  }
+
+  c->set_output(0, input_shape);
+  return Status::OK();
+}
+
 }  // namespace shape_inference
+
 }  // namespace tensorflow

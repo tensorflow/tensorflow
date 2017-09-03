@@ -43,9 +43,9 @@ Status PackGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
   int N;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "N", &N));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "N", &N));
   int axis;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "axis", &axis));
 
   grad_outputs->reserve(N);
   auto grad_op = Unstack(scope, grad_inputs[0], N, Unstack::Axis(axis));
@@ -60,7 +60,7 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   int axis;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "axis", &axis));
   grad_outputs->push_back(Stack(scope, grad_inputs, Stack::Axis(axis)));
   return scope.status();
 }
@@ -99,6 +99,17 @@ Status QuantizeAndDequantizeV2Grad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantizeV2", QuantizeAndDequantizeV2Grad);
+
+Status QuantizeAndDequantizeV3Grad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("QuantizeAndDequantizeV3", QuantizeAndDequantizeV3Grad);
 
 Status SplitGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
@@ -162,7 +173,7 @@ Status CheckNumericsGrad(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
   string message;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "message", &message));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "message", &message));
   string err_msg = strings::StrCat(
       "Not a number (NaN) or infinity (Inf) values detected in gradient. ",
       message);
@@ -215,9 +226,9 @@ Status ReverseSequenceGrad(const Scope& scope, const Operation& op,
                            std::vector<Output>* grad_outputs) {
   auto seq_lengths = op.input(1);
   int batch_dim;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "batch_dim", &batch_dim));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "batch_dim", &batch_dim));
   int seq_dim;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "seq_dim", &seq_dim));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "seq_dim", &seq_dim));
   grad_outputs->push_back(
       ReverseSequence(scope, grad_inputs[0], seq_lengths, seq_dim,
                       ReverseSequence::BatchDim(batch_dim)));
@@ -247,6 +258,18 @@ Status ScatterNdGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ScatterNd", ScatterNdGrad);
 
+Status ScatterNdNonAliasingAddGrad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  auto indices = op.input(1);
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(GatherNd(scope, grad_inputs[0], indices));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("ScatterNdNonAliasingAdd", ScatterNdNonAliasingAddGrad);
+
+template <bool IsPadV2>
 Status PadGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {
@@ -259,15 +282,21 @@ Status PadGrad(const Scope& scope, const Operation& op,
   auto begin = Reshape(scope, pad_before, {-1});
   grad_outputs->push_back(Slice(scope, grad_inputs[0], begin, Shape(scope, x)));
   grad_outputs->push_back(NoGradient());
+  // PadV2 adds a "constant_values" input.
+  if (IsPadV2) {
+    grad_outputs->push_back(NoGradient());
+  }
   return scope.status();
 }
-REGISTER_GRADIENT_OP("Pad", PadGrad);
+REGISTER_GRADIENT_OP("Pad", PadGrad<false>);
+REGISTER_GRADIENT_OP("PadV2", PadGrad<true>);
 
 Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   int block_size;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(
       BatchToSpace(scope, grad_inputs[0], op.input(1), block_size));
   grad_outputs->push_back(NoGradient());
@@ -290,7 +319,8 @@ Status BatchToSpaceGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   int block_size;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(
       SpaceToBatch(scope, grad_inputs[0], op.input(1), block_size));
   grad_outputs->push_back(NoGradient());
@@ -313,7 +343,8 @@ Status SpaceToDepthGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   int block_size;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(DepthToSpace(scope, grad_inputs[0], block_size));
   return scope.status();
 }
@@ -323,7 +354,8 @@ Status DepthToSpaceGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   int block_size;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(SpaceToDepth(scope, grad_inputs[0], block_size));
   return scope.status();
 }
@@ -333,7 +365,7 @@ Status MirrorPadGrad(const Scope& scope, const Operation& op,
                      const std::vector<Output>& grad_inputs,
                      std::vector<Output>* grad_outputs) {
   string mode;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "mode", &mode));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(tensorflow::ops::internal::MirrorPadGrad(
       scope, grad_inputs[0], op.input(1), mode));
   grad_outputs->push_back(NoGradient());
@@ -346,7 +378,7 @@ Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
   string mode;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "mode", &mode));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(MirrorPad(scope, grad_inputs[0], op.input(1), mode));
   grad_outputs->push_back(NoGradient());
   return scope.status();

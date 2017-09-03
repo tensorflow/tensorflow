@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -43,7 +44,7 @@ public class TensorTest {
     boolean[] bools = {true, false, true, false};
     long[] bools_shape = {4};
     byte[] bools_ = TestUtil.bool2byte(bools);
-    byte[] strings = "test".getBytes();
+    byte[] strings = "test".getBytes(UTF_8);
     long[] strings_shape = {};
     byte[] strings_; // raw TF_STRING
     try (Tensor t = Tensor.create(strings)) {
@@ -386,6 +387,30 @@ public class TensorTest {
   }
 
   @Test
+  public void testNDimensionalStringTensor() {
+    byte[][][] matrix = new byte[4][3][];
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        matrix[i][j] = String.format("(%d, %d) = %d", i, j, i << j).getBytes(UTF_8);
+      }
+    }
+    try (Tensor t = Tensor.create(matrix)) {
+      assertEquals(DataType.STRING, t.dataType());
+      assertEquals(2, t.numDimensions());
+      assertArrayEquals(new long[] {4, 3}, t.shape());
+
+      byte[][][] got = t.copyTo(new byte[4][3][]);
+      assertEquals(4, got.length);
+      for (int i = 0; i < 4; ++i) {
+        assertEquals(String.format("%d", i), 3, got[i].length);
+        for (int j = 0; j < 3; ++j) {
+          assertArrayEquals(String.format("(%d, %d)", i, j), matrix[i][j], got[i][j]);
+        }
+      }
+    }
+  }
+
+  @Test
   public void failCreateOnMismatchedDimensions() {
     int[][][] invalid = new int[3][1][];
     for (int x = 0; x < invalid.length; ++x) {
@@ -471,7 +496,7 @@ public class TensorTest {
   @Test
   public void fromHandle() {
     // fromHandle is a package-visible method intended for use when the C TF_Tensor object has been
-    // created indepdently of the Java code. In practice, two Tensor instances MUST NOT have the
+    // created independently of the Java code. In practice, two Tensor instances MUST NOT have the
     // same native handle.
     //
     // An exception is made for this test, where the pitfalls of this is avoided by not calling

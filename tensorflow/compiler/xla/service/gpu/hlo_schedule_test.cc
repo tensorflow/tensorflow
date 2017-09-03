@@ -69,14 +69,14 @@ TEST_F(HloScheduleTest, SequentialMatMul) {
   HloInstruction* dot2 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, dot1, z));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(dot2));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(dot2));
 
-  std::unique_ptr<StreamAssignment> streams = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
   EXPECT_EQ(streams->StreamNumberForHlo(*dot1),
             streams->StreamNumberForHlo(*dot2));
 
-  auto schedule = BuildHloSchedule(module, *streams);
+  auto schedule = BuildHloSchedule(*module, *streams);
   // Remove parameters, which are unordered.
   EXPECT_EQ(RemoveHlo(schedule->ThunkLaunchOrder(), {x, y, z}),
             HloVec({dot1, dot2}));
@@ -129,16 +129,16 @@ TEST_F(HloScheduleTest, SequentialAdd) {
   HloInstruction* add3 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(add3));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(add3));
 
-  std::unique_ptr<StreamAssignment> streams = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
   EXPECT_EQ(streams->StreamNumberForHlo(*add1),
             streams->StreamNumberForHlo(*add2));
   EXPECT_EQ(streams->StreamNumberForHlo(*add1),
             streams->StreamNumberForHlo(*add3));
 
-  auto schedule = BuildHloSchedule(module, *streams);
+  auto schedule = BuildHloSchedule(*module, *streams);
   // Remove parameters, which are unordered.
   EXPECT_EQ(RemoveHlo(schedule->ThunkLaunchOrder(), {x, y, z}),
             HloVec({add1, add2, add3}));
@@ -199,14 +199,14 @@ TEST_F(HloScheduleTest, ConcurrentMatMul) {
   HloInstruction* add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, dot1, dot2));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(add));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(add));
 
-  std::unique_ptr<StreamAssignment> streams = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
   EXPECT_NE(streams->StreamNumberForHlo(*dot1),
             streams->StreamNumberForHlo(*dot2));
 
-  auto schedule = BuildHloSchedule(module, *streams);
+  auto schedule = BuildHloSchedule(*module, *streams);
   // Remove parameters, which are unordered.
   HloVec thunk_launch_order = RemoveHlo(schedule->ThunkLaunchOrder(), {x, y});
   EXPECT_TRUE(thunk_launch_order == HloVec({dot1, dot2, add}) ||
@@ -254,6 +254,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
   //      d40      -- layer 4
   HloComputation::Builder builder("entry_computation");
   std::vector<HloInstruction*> params;
+  params.reserve(6);
   for (int i = 0; i < 6; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
         i, f32_2x2_, /*name=*/tensorflow::strings::Printf("param%d", i))));
@@ -277,10 +278,10 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
   HloInstruction* d40 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d30, d31));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(d40));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(d40));
 
-  std::unique_ptr<StreamAssignment> streams = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
   // The two dots on layer 1 are concurrent.
   EXPECT_NE(streams->StreamNumberForHlo(*d10),
             streams->StreamNumberForHlo(*d11));
@@ -297,7 +298,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
 
   // We don't check the thunk launch order, since there are many valid total
   // orders, and it's annoying to express.
-  auto schedule = BuildHloSchedule(module, *streams);
+  auto schedule = BuildHloSchedule(*module, *streams);
 
   auto order = schedule->ConsumeHloOrdering();
   const HloVec all_params(
@@ -392,3 +393,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
 
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

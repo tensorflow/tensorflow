@@ -71,6 +71,23 @@ struct MatrixSetDiag {
   }
 };
 
+template <typename Device>
+struct MatrixSetDiag<Device, bool> {
+  EIGEN_ALWAYS_INLINE static void Compute(const Device& d,
+                                          TTypes<bool, 3>::ConstTensor input,
+                                          TTypes<bool, 2>::ConstTensor diag,
+                                          TTypes<bool>::Scalar scratch,
+                                          TTypes<bool, 3>::Tensor output) {
+    output.device(d) = input;
+    generator::OverwriteDiagGenerator<bool> generator(diag, output);
+    // Use all() to force the generation to aggregate to the scalar
+    // output scratch.  This in turn forces each element of the
+    // generator to execute.  The side effect of the execution is to
+    // update the diagonal components of output with diag.
+    scratch.device(d) = diag.generate(generator).all();
+  }
+};
+
 }  // namespace functor
 
 }  // namespace tensorflow

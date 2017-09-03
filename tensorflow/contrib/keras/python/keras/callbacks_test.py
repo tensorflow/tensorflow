@@ -35,6 +35,11 @@ try:
 except ImportError:
   h5py = None
 
+try:
+  import requests  # pylint:disable=g-import-not-at-top
+except ImportError:
+  requests = None
+
 
 TRAIN_SAMPLES = 10
 TEST_SAMPLES = 10
@@ -158,6 +163,24 @@ class KerasCallbacksTest(test.TestCase):
       assert os.path.exists(filepath)
       os.remove(filepath)
 
+      # Case: metric not available.
+      cbks = [
+          keras.callbacks.ModelCheckpoint(
+              filepath,
+              monitor='unknown',
+              save_best_only=True)
+      ]
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=1,
+          verbose=0)
+      # File won't be written.
+      assert not os.path.exists(filepath)
+
       # case 5
       save_best_only = False
       period = 2
@@ -179,7 +202,7 @@ class KerasCallbacksTest(test.TestCase):
           validation_data=(x_test, y_test),
           callbacks=cbks,
           epochs=4,
-          verbose=0)
+          verbose=1)
       assert os.path.exists(filepath.format(epoch=1))
       assert os.path.exists(filepath.format(epoch=3))
       os.remove(filepath.format(epoch=1))
@@ -187,9 +210,16 @@ class KerasCallbacksTest(test.TestCase):
       assert not os.path.exists(filepath.format(epoch=0))
       assert not os.path.exists(filepath.format(epoch=2))
 
+      # Invalid use: this will raise a warning but not an Exception.
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          mode='unknown')
+
   def test_EarlyStopping(self):
     with self.test_session():
-      np.random.seed(1337)
+      np.random.seed(123)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
           test_samples=TEST_SAMPLES,
@@ -206,37 +236,28 @@ class KerasCallbacksTest(test.TestCase):
           loss='categorical_crossentropy',
           optimizer='rmsprop',
           metrics=['accuracy'])
-      mode = 'max'
-      monitor = 'val_acc'
-      patience = 0
-      cbks = [
-          keras.callbacks.EarlyStopping(
-              patience=patience, monitor=monitor, mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=20,
-          verbose=0)
 
-      mode = 'auto'
-      monitor = 'val_acc'
-      patience = 2
-      cbks = [
-          keras.callbacks.EarlyStopping(
-              patience=patience, monitor=monitor, mode=mode)
+      cases = [
+          ('max', 'val_acc'),
+          ('min', 'val_loss'),
+          ('auto', 'val_acc'),
+          ('auto', 'loss'),
+          ('unknown', 'unknown')
       ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=20,
-          verbose=0)
+      for mode, monitor in cases:
+        patience = 0
+        cbks = [
+            keras.callbacks.EarlyStopping(
+                patience=patience, monitor=monitor, mode=mode)
+        ]
+        model.fit(
+            x_train,
+            y_train,
+            batch_size=BATCH_SIZE,
+            validation_data=(x_test, y_test),
+            callbacks=cbks,
+            epochs=5,
+            verbose=0)
 
   def test_EarlyStopping_reuse(self):
     with self.test_session():
@@ -259,6 +280,14 @@ class KerasCallbacksTest(test.TestCase):
       model.set_weights(weights)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0)
     assert len(hist.epoch) >= patience
+
+  def test_RemoteMonitor(self):
+    if requests is None:
+      return
+
+    monitor = keras.callbacks.RemoteMonitor()
+    # This will raise a warning since the default address in unreachable:
+    monitor.on_epoch_end(0, logs={'loss': 0.})
 
   def test_LearningRateScheduler(self):
     with self.test_session():
@@ -318,7 +347,6 @@ class KerasCallbacksTest(test.TestCase):
         return model
 
       model = make_model()
-
       # This should reduce the LR after the first epoch (due to high epsilon).
       cbks = [
           keras.callbacks.ReduceLROnPlateau(
@@ -336,28 +364,10 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=5,
           verbose=0)
-      assert np.allclose(
+      self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)),
           0.01,
-          atol=keras.backend.epsilon())
-
-      model = make_model()
-      cbks = [
-          keras.callbacks.ReduceLROnPlateau(
-              monitor='val_loss', factor=0.1, epsilon=0, patience=1, cooldown=5)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=5,
-          verbose=0)
-      assert np.allclose(
-          float(keras.backend.get_value(model.optimizer.lr)),
-          0.1,
-          atol=keras.backend.epsilon())
+          atol=1e-4)
 
   def test_CSVLogger(self):
     with self.test_session():
@@ -436,6 +446,90 @@ class KerasCallbacksTest(test.TestCase):
 
       os.remove(filepath)
 
+  def test_stop_training_csv(self):
+    # Test that using the CSVLogger callback with the TerminateOnNaN callback
+    # does not result in invalid CSVs.
+    np.random.seed(1337)
+    tmpdir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, tmpdir)
+
+    with self.test_session():
+      fp = os.path.join(tmpdir, 'test.csv')
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=TRAIN_SAMPLES,
+          test_samples=TEST_SAMPLES,
+          input_shape=(INPUT_DIM,),
+          num_classes=NUM_CLASSES)
+
+      y_test = keras.utils.to_categorical(y_test)
+      y_train = keras.utils.to_categorical(y_train)
+      cbks = [keras.callbacks.TerminateOnNaN(), keras.callbacks.CSVLogger(fp)]
+      model = keras.models.Sequential()
+      for _ in range(5):
+        model.add(keras.layers.Dense(2, input_dim=INPUT_DIM, activation='relu'))
+      model.add(keras.layers.Dense(NUM_CLASSES, activation='linear'))
+      model.compile(loss='mean_squared_error',
+                    optimizer='rmsprop')
+
+      def data_generator():
+        i = 0
+        max_batch_index = len(x_train) // BATCH_SIZE
+        tot = 0
+        while 1:
+          if tot > 3 * len(x_train):
+            yield (np.ones([BATCH_SIZE, INPUT_DIM]) * np.nan,
+                   np.ones([BATCH_SIZE, NUM_CLASSES]) * np.nan)
+          else:
+            yield (x_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE],
+                   y_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE])
+          i += 1
+          tot += 1
+          i %= max_batch_index
+
+      history = model.fit_generator(data_generator(),
+                                    len(x_train) // BATCH_SIZE,
+                                    validation_data=(x_test, y_test),
+                                    callbacks=cbks,
+                                    epochs=20)
+      loss = history.history['loss']
+      assert len(loss) > 1
+      assert loss[-1] == np.inf or np.isnan(loss[-1])
+
+      values = []
+      with open(fp) as f:
+        for x in csv.reader(f):
+          values.append(x)
+      assert 'nan' in values[-1], 'The last epoch was not logged.'
+
+  def test_TerminateOnNaN(self):
+    np.random.seed(1337)
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+
+    y_test = keras.utils.to_categorical(y_test)
+    y_train = keras.utils.to_categorical(y_train)
+    cbks = [keras.callbacks.TerminateOnNaN()]
+    model = keras.models.Sequential()
+    initializer = keras.initializers.Constant(value=1e5)
+    for _ in range(5):
+      model.add(keras.layers.Dense(2,
+                                   input_dim=INPUT_DIM,
+                                   activation='relu',
+                                   kernel_initializer=initializer))
+    model.add(keras.layers.Dense(NUM_CLASSES))
+    model.compile(loss='mean_squared_error',
+                  optimizer='rmsprop')
+
+    history = model.fit(x_train, y_train, batch_size=BATCH_SIZE,
+                        validation_data=(x_test, y_test),
+                        callbacks=cbks, epochs=20)
+    loss = history.history['loss']
+    assert len(loss) == 1
+    assert loss[0] == np.inf
+
   def test_TensorBoard(self):
     np.random.seed(1337)
 
@@ -479,7 +573,9 @@ class KerasCallbacksTest(test.TestCase):
           metrics=['accuracy'])
 
       tsb = keras.callbacks.TensorBoard(
-          log_dir=temp_dir, histogram_freq=1, write_images=True)
+          log_dir=temp_dir, histogram_freq=1, write_images=True,
+          write_grads=True, embeddings_freq=1,
+          embeddings_layer_names=['dense_1'], batch_size=5)
       cbks = [tsb]
 
       # fit with validation data
@@ -532,6 +628,150 @@ class KerasCallbacksTest(test.TestCase):
       model.fit_generator(
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)
+
+  def test_TensorBoard_histogram_freq_must_have_validation_data(self):
+    np.random.seed(1337)
+    tmpdir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, tmpdir)
+
+    with self.test_session():
+      filepath = os.path.join(tmpdir, 'logs')
+
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=TRAIN_SAMPLES,
+          test_samples=TEST_SAMPLES,
+          input_shape=(INPUT_DIM,),
+          num_classes=NUM_CLASSES)
+      y_test = keras.utils.to_categorical(y_test)
+      y_train = keras.utils.to_categorical(y_train)
+
+      def data_generator(train):
+        if train:
+          max_batch_index = len(x_train) // BATCH_SIZE
+        else:
+          max_batch_index = len(x_test) // BATCH_SIZE
+        i = 0
+        while 1:
+          if train:
+            # simulate multi-input/output models
+            yield (x_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE],
+                   y_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE])
+          else:
+            yield (x_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE],
+                   y_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE])
+          i += 1
+          i %= max_batch_index
+
+      inp = keras.Input((INPUT_DIM,))
+      hidden = keras.layers.Dense(2, activation='relu')(inp)
+      hidden = keras.layers.Dropout(0.1)(hidden)
+      output = keras.layers.Dense(NUM_CLASSES, activation='softmax')(hidden)
+      model = keras.models.Model(inputs=inp, outputs=output)
+      model.compile(loss='categorical_crossentropy',
+                    optimizer='sgd',
+                    metrics=['accuracy'])
+
+      # we must generate new callbacks for each test, as they aren't stateless
+      def callbacks_factory(histogram_freq):
+        return [keras.callbacks.TensorBoard(
+            log_dir=filepath,
+            histogram_freq=histogram_freq,
+            write_images=True, write_grads=True,
+            embeddings_freq=1,
+            embeddings_layer_names=['dense_1'],
+            batch_size=5)]
+
+      # fit w/o validation data should raise ValueError if histogram_freq > 0
+      with self.assertRaises(ValueError):
+        model.fit(x_train, y_train, batch_size=BATCH_SIZE,
+                  callbacks=callbacks_factory(histogram_freq=1), epochs=3)
+
+      # fit generator without validation data should raise ValueError if
+      # histogram_freq > 0
+      with self.assertRaises(ValueError):
+        model.fit_generator(data_generator(True), len(x_train), epochs=2,
+                            callbacks=callbacks_factory(histogram_freq=1))
+
+      # fit generator with validation data generator should raise ValueError if
+      # histogram_freq > 0
+      with self.assertRaises(ValueError):
+        model.fit_generator(data_generator(True), len(x_train), epochs=2,
+                            validation_data=data_generator(False),
+                            validation_steps=1,
+                            callbacks=callbacks_factory(histogram_freq=1))
+
+  def test_TensorBoard_multi_input_output(self):
+    np.random.seed(1337)
+    tmpdir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, tmpdir)
+
+    with self.test_session():
+      filepath = os.path.join(tmpdir, 'logs')
+
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=TRAIN_SAMPLES,
+          test_samples=TEST_SAMPLES,
+          input_shape=(INPUT_DIM,),
+          num_classes=NUM_CLASSES)
+      y_test = keras.utils.to_categorical(y_test)
+      y_train = keras.utils.to_categorical(y_train)
+
+      def data_generator(train):
+        if train:
+          max_batch_index = len(x_train) // BATCH_SIZE
+        else:
+          max_batch_index = len(x_test) // BATCH_SIZE
+        i = 0
+        while 1:
+          if train:
+            # simulate multi-input/output models
+            yield ([x_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2,
+                   [y_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2)
+          else:
+            yield ([x_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2,
+                   [y_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2)
+          i += 1
+          i %= max_batch_index
+
+      inp1 = keras.Input((INPUT_DIM,))
+      inp2 = keras.Input((INPUT_DIM,))
+      inp = keras.layers.add([inp1, inp2])
+      hidden = keras.layers.Dense(2, activation='relu')(inp)
+      hidden = keras.layers.Dropout(0.1)(hidden)
+      output1 = keras.layers.Dense(NUM_CLASSES, activation='softmax')(hidden)
+      output2 = keras.layers.Dense(NUM_CLASSES, activation='softmax')(hidden)
+      model = keras.models.Model([inp1, inp2], [output1, output2])
+      model.compile(loss='categorical_crossentropy',
+                    optimizer='sgd',
+                    metrics=['accuracy'])
+
+      # we must generate new callbacks for each test, as they aren't stateless
+      def callbacks_factory(histogram_freq):
+        return [keras.callbacks.TensorBoard(log_dir=filepath,
+                                            histogram_freq=histogram_freq,
+                                            write_images=True, write_grads=True,
+                                            embeddings_freq=1,
+                                            embeddings_layer_names=['dense_1'],
+                                            batch_size=5)]
+
+      # fit without validation data
+      model.fit([x_train] * 2, [y_train] * 2, batch_size=BATCH_SIZE,
+                callbacks=callbacks_factory(histogram_freq=0), epochs=3)
+
+      # fit with validation data and accuracy
+      model.fit([x_train] * 2, [y_train] * 2, batch_size=BATCH_SIZE,
+                validation_data=([x_test] * 2, [y_test] * 2),
+                callbacks=callbacks_factory(histogram_freq=1), epochs=2)
+
+      # fit generator without validation data
+      model.fit_generator(data_generator(True), len(x_train), epochs=2,
+                          callbacks=callbacks_factory(histogram_freq=0))
+
+      # fit generator with validation data and accuracy
+      model.fit_generator(data_generator(True), len(x_train), epochs=2,
+                          validation_data=([x_test] * 2, [y_test] * 2),
+                          callbacks=callbacks_factory(histogram_freq=1))
+      assert os.path.isdir(filepath)
 
   def test_LambdaCallback(self):
     with self.test_session():

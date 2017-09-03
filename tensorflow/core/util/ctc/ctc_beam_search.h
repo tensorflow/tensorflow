@@ -310,13 +310,15 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
         c.newp.total = c.newp.label;
 
         if (is_candidate(c.newp)) {
-          BeamEntry* bottom = leaves_.peek_bottom();
-          leaves_.push(&c);
+          // Before adding the new node to the beam, check if the beam
+          // is already at maximum width.
           if (leaves_.size() == beam_width_) {
             // Bottom is no longer in the beam search.  Reset
             // its probability; signal it's no longer in the beam search.
+            BeamEntry* bottom = leaves_.peek_bottom();
             bottom->newp.Reset();
           }
+          leaves_.push(&c);
         } else {
           // Deactivate child (signal it's not in the beam)
           c.oldp.Reset();

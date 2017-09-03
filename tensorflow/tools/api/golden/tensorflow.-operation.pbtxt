@@ -1,0 +1,69 @@
+path: "tensorflow.Operation"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.ops.Operation\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "control_inputs"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "device"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inputs"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "node_def"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "op_def"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "outputs"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "traceback"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "traceback_with_start_lines"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "type"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'node_def\', \'g\', \'inputs\', \'output_types\', \'control_inputs\', \'input_types\', \'original_op\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "colocation_groups"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_attr"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'feed_dict\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "values"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

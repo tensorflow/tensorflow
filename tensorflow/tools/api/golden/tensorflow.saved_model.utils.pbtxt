@@ -1,0 +1,11 @@
+path: "tensorflow.saved_model.utils"
+tf_module {
+  member_method {
+    name: "build_tensor_info"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tensor_from_tensor_info"
+    argspec: "args=[\'tensor_info\', \'graph\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

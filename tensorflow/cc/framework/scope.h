@@ -167,7 +167,8 @@ class Scope {
 
   // START_SKIP_DOXYGEN
 
-  /// Update the builder with properties accumulated in this scope.
+  /// Update the builder with properties accumulated in this scope. Does not set
+  /// status().
   // TODO(skyewm): NodeBuilder is not part of public API
   void UpdateBuilder(NodeBuilder* builder) const;
   // END_SKIP_DOXYGEN
@@ -199,15 +200,31 @@ class Scope {
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.
   Status ToGraph(Graph* g) const;
+
+  // Calls AddNode() using this scope's ShapeRefiner. This exists in the public
+  // API to prevent custom op wrappers from needing access to shape_refiner.h or
+  // scope_internal.h.
+  // TODO(skyewm): remove this from public API
+  Status DoShapeInference(Node* node) const;
+
+  // Creates a new root scope that causes all DoShapeInference() calls to return
+  // Status::OK() (on the returned scope and any subscopes). Used for testing.
+  // TODO(skyewm): fix tests that still require this and eventually remove, or
+  // at least remove from public API
+  static Scope DisabledShapeInferenceScope();
   // END_SKIP_DOXYGEN
 
   const std::vector<Operation>& control_deps() const;
 
- private:
+  // START_SKIP_DOXYGEN
   class Impl;
-  std::unique_ptr<Impl> impl_;
   Impl* impl() { return impl_.get(); }
   const Impl* impl() const { return impl_.get(); }
+  // END_SKIP_DOXYGEN
+
+ private:
+  friend class InternalScope;
+  std::unique_ptr<Impl> impl_;
   explicit Scope(Impl*);
 };
 

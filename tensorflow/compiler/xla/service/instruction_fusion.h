@@ -66,11 +66,36 @@ class InstructionFusion : public HloPassInterface {
   virtual HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
                                                 const HloInstruction* consumer);
 
+  // Fuses producer into consumer.
+  virtual HloInstruction* Fuse(HloInstruction* producer,
+                               HloInstruction* consumer);
+
+  // An "effectively unary" operation is one that has one "large"
+  // input with the others being negligible in terms of memory usage.
+  // We use "has a smaller true rank than the output" as a heuristic
+  // for "negligible" memory usage.
+  bool EffectivelyUnary(HloInstruction* hlo);
+
+  // Returns true if fusing producer into consumer would cause producer to be
+  // duplicated. This is the case if producer has uses other than consumer.
+  bool FusionWouldDuplicate(const HloInstruction& producer,
+                            const HloInstruction& consumer) {
+    return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
+  }
+
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
+  HloModule* module_;
 
  private:
-  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
+  // The set of producers whose consumers we cannot fuse into.
+  using DoNotFuseSet = std::unordered_set<HloInstruction*>;
+
+  // Whether or not we can fuse consumer into original_producer on all paths
+  // from the producer to the consumer where nodes are HLOs and edges are uses.
+  bool CanFuseOnAllPaths(const HloReachabilityMap& reachability_map,
+                         HloInstruction* producer, HloInstruction* consumer,
+                         DoNotFuseSet* do_not_fuse);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.

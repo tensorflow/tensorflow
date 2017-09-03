@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -66,7 +65,7 @@ class DummyOp : public OpKernel {
 class FakeDevice : public Device {
  private:
   explicit FakeDevice(const DeviceAttributes& device_attributes)
-      : Device(nullptr, device_attributes, nullptr) {}
+      : Device(nullptr, device_attributes) {}
 
  public:
   Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
@@ -237,7 +236,7 @@ class SimplePlacerTest : public ::testing::Test {
 
   Status ReferenceTestHelper(const string& variable_op_type,
                              const string& assign_op_type,
-                             DeviceType expected_device_type);
+                             const DeviceType& expected_device_type);
 };
 
 #define EXPECT_COLOCATED(g, name_a, name_b)                         \
@@ -500,9 +499,9 @@ TEST_F(SimplePlacerTest, TestAssignedGpuDeviceToCpuDevice) {
 // Build a graph containing a Variable op of "variable_op_type" and an
 // Assign op of "assign_op_type", and expect all of the ops to be
 // placed on a device of type "expected_device_type".
-Status SimplePlacerTest::ReferenceTestHelper(const string& variable_op_type,
-                                             const string& assign_op_type,
-                                             DeviceType expected_device_type) {
+Status SimplePlacerTest::ReferenceTestHelper(
+    const string& variable_op_type, const string& assign_op_type,
+    const DeviceType& expected_device_type) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -939,10 +938,7 @@ TEST_F(SimplePlacerTest, TestUnknownDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains(
-              "Could not satisfy explicit device specification '/job:foo'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("/job:foo"));
 }
 
 // Test that placement fails when the combination of partial
@@ -957,10 +953,7 @@ TEST_F(SimplePlacerTest, TestUnknownMergedDevice) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains(
-              "Could not satisfy explicit device specification '/job:foo'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("/job:foo"));
 }
 
 // Test that placement fails when the previously-assigned device for a
@@ -1107,10 +1100,7 @@ TEST_F(SimplePlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   SessionOptions options;
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Could not satisfy explicit "
-                            "device specification "
-                            "'/device:fakegpu:11'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("/device:fakegpu:11"));
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1127,10 +1117,7 @@ TEST_F(SimplePlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
   SessionOptions options;
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Could not satisfy explicit "
-                            "device specification "
-                            "'/device:fakecpu:0'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("/device:fakecpu:0"));
   EXPECT_TRUE(
       StringPiece(s.error_message())
           .contains("no supported kernel for fakecpu devices is available"));
@@ -1151,12 +1138,9 @@ TEST_F(SimplePlacerTest, TestNonExistentDevice) {
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
-  EXPECT_TRUE(
-      StringPiece(s.error_message())
-          .contains("Could not satisfy explicit device specification "
-                    "'/job:foo/replica:17' "
-                    "because no devices matching that specification are "
-                    "registered in this process"));
+  EXPECT_TRUE(StringPiece(s.error_message())
+                  .contains("was explicitly assigned to /job:foo/replica:17 "
+                            "but available devices"));
 }
 
 TEST_F(SimplePlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {

@@ -72,16 +72,19 @@ class LocallyConnectedLayersTest(test.TestCase):
           keras.backend.variable(np.ones((num_samples, num_steps, input_dim))))
       self.assertEqual(len(layer.losses), 3)
 
+    k_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
     kwargs = {
         'filters': filters,
         'kernel_size': filter_length,
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
     }
     with self.test_session():
       layer = keras.layers.LocallyConnected1D(**kwargs)
       layer.build((num_samples, num_steps, input_dim))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_locallyconnected_2d(self):
     num_samples = 8
@@ -149,16 +152,19 @@ class LocallyConnectedLayersTest(test.TestCase):
               np.ones((num_samples, num_row, num_col, stack_size))))
       self.assertEqual(len(layer.losses), 3)
 
+    k_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
     kwargs = {
         'filters': filters,
         'kernel_size': 3,
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
     }
     with self.test_session():
       layer = keras.layers.LocallyConnected2D(**kwargs)
       layer.build((num_samples, num_row, num_col, stack_size))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
 
 if __name__ == '__main__':

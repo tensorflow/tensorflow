@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
-#include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -66,14 +65,6 @@ limitations under the License.
 
 extern bool FLAGS_check_gpu_leaks;
 bool FLAGS_prefer_cubin_to_ptx = true;
-
-namespace perftools {
-namespace gputools {
-namespace rng {
-class RngSupport;
-}  // namespace rng
-}  // namespace gputools
-}  // namespace perftools
 
 namespace perftools {
 namespace gputools {
@@ -855,7 +846,7 @@ void *CUDAExecutor::CudaContextHack() { return context_; }
 
 CudaContext* CUDAExecutor::cuda_context() { return context_; }
 
-// Attemps to read the NUMA node corresponding to the GPU device's PCI bus out
+// Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.
 //
 // For anything more complicated/prod-focused than this, you'll likely want to

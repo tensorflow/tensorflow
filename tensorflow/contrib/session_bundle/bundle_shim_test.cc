@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"

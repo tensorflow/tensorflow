@@ -7,9 +7,11 @@ tensorflow/core/protobuf/saver.pb.cc
 tensorflow/core/protobuf/queue_runner.pb.cc
 tensorflow/core/protobuf/named_tensor.pb.cc
 tensorflow/core/protobuf/meta_graph.pb.cc
+tensorflow/core/protobuf/cluster.pb.cc
 tensorflow/core/protobuf/config.pb.cc
 tensorflow/core/protobuf/rewriter_config.pb.cc
 tensorflow/core/protobuf/debug.pb.cc
+tensorflow/core/protobuf/device_properties.pb.cc
 tensorflow/core/lib/core/error_codes.pb.cc
 tensorflow/core/framework/versions.pb.cc
 tensorflow/core/framework/variable.pb.cc
@@ -35,3 +37,4 @@ tensorflow/core/framework/attr_value.pb.cc
 tensorflow/core/framework/allocation_description.pb.cc
 tensorflow/core/example/feature.pb.cc
 tensorflow/core/example/example.pb.cc
+tensorflow/core/grappler/costs/op_performance_data.pb.cc

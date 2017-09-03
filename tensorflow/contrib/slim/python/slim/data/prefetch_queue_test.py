@@ -25,6 +25,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -148,6 +150,63 @@ class PrefetchQueueTest(test.TestCase):
           np.sort(np.concatenate(value_counter)),
           np.arange(0, num_batches * batch_size))
       # Reached the limit.
+      with self.assertRaises(errors_impl.OutOfRangeError):
+        sess.run(batches)
+      for thread in threads:
+        thread.join()
+
+  def testDynamicPad_failure(self):
+    with ops.Graph().as_default():
+      variable_tensor = array_ops.placeholder(dtypes.int32, shape=[None, 3])
+      with self.assertRaisesRegexp(ValueError, 'shapes must be fully defined'):
+        prefetch_queue.prefetch_queue([variable_tensor])
+
+  def testDynamicPad(self):
+    with self.test_session() as sess:
+      # Create 3 tensors of variable but compatible shapes.
+      var_shape = [None, 2]
+      p1 = constant_op.constant([[1, 2], [3, 4]])
+      p1.set_shape(var_shape)
+      p2 = constant_op.constant([[5, 6], [7, 8], [9, 10]])
+      p2.set_shape(var_shape)
+      p3 = constant_op.constant([[11, 12]])
+      p3.set_shape(var_shape)
+      batch = [p1, p2, p3]
+      batch_size = len(batch)
+
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      examples = variables.Variable(zero64)
+      counter = examples.count_up_to(batch_size)
+
+      # Create a PaddingFIFOQueue to enqueue these tensors.
+      q = data_flow_ops.PaddingFIFOQueue(
+          capacity=10, dtypes=[dtypes.int32], shapes=[var_shape])
+      for tensor in [p1, p2, p3]:
+        q.enqueue([tensor]).run()
+
+      # Dequeue from the queue and batch them using batch().
+      batches = input_lib.batch([q.dequeue(), counter], batch_size=batch_size,
+                                num_threads=1, dynamic_pad=True)
+      self.assertEqual([batch_size, None, 2], batches[0].shape.as_list())
+
+      # Finally, assemble them into prefetch_queue with dynamic_pad.
+      batcher = prefetch_queue.prefetch_queue(batches, dynamic_pad=True)
+      batches = batcher.dequeue()
+      self.assertEqual([batch_size, None, 2], batches[0].shape.as_list())
+
+      variables.global_variables_initializer().run()
+      threads = queue_runner_impl.start_queue_runners()
+
+      values, _ = sess.run(batches)
+      # We enqueued 3 tensors of [None, 2] shapes, so using dynamic_pad
+      # they should be padded to the fixed size [3, 3, 2], where 3
+      # is the maximum length of the batch.
+      self.assertTrue(np.array_equal(
+          np.array([[[1, 2], [3, 4], [0, 0]],
+                    [[5, 6], [7, 8], [9, 10]],
+                    [[11, 12], [0, 0], [0, 0]]]),
+          values))
+
       with self.assertRaises(errors_impl.OutOfRangeError):
         sess.run(batches)
       for thread in threads:

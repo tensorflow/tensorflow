@@ -34,7 +34,7 @@ MNIST is a classic problem in machine learning. The problem is to look at
 greyscale 28x28 pixel images of handwritten digits and determine which digit
 the image represents, for all the digits from zero to nine.
 
-![MNIST Digits](../../images/mnist_digits.png "MNIST Digits")
+![MNIST Digits](https://www.tensorflow.org/images/mnist_digits.png "MNIST Digits")
 
 For more information, refer to [Yann LeCun's MNIST page](http://yann.lecun.com/exdb/mnist/)
 or [Chris Olah's visualizations of MNIST](http://colah.github.io/posts/2014-10-Visualizing-MNIST/).
@@ -82,7 +82,7 @@ After creating placeholders for the data, the graph is built from the
 `mnist.py` file according to a 3-stage pattern: `inference()`, `loss()`, and
 `training()`.
 
-1.  `inference()` - Builds the graph as far as is required for running
+1.  `inference()` - Builds the graph as far as required for running
 the network forward to make predictions.
 1.  `loss()` - Adds to the inference graph the ops required to generate
 loss.
@@ -90,7 +90,7 @@ loss.
 and apply gradients.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/mnist_subgraph.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/mnist_subgraph.png">
 </div>
 
 ### Inference
@@ -384,7 +384,7 @@ summary_writer.add_summary(summary_str, step)
 When the events files are written, TensorBoard may be run against the training
 folder to display the values from the summaries.
 
-![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")
+![MNIST TensorBoard](https://www.tensorflow.org/images/mnist_tensorboard.png "MNIST TensorBoard")
 
 **NOTE**: For more info about how to build and run Tensorboard, please see the accompanying tutorial @{$summaries_and_tensorboard$Tensorboard: Visualizing Learning}.
 

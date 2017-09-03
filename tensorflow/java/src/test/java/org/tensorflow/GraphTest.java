@@ -16,7 +16,12 @@ limitations under the License.
 package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+import java.util.HashSet;
+import java.util.Iterator;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -47,7 +52,7 @@ public class GraphTest {
 
   // Helper function whose implementation is based on knowledge of how
   // TestUtil.transpose_A_times_X is implemented.
-  private void validateImportedGraph(Graph g, String prefix) {
+  private static void validateImportedGraph(Graph g, String prefix) {
     Operation op = g.operation(prefix + "A");
     assertNotNull(op);
     assertEquals(prefix + "A", op.name());
@@ -68,6 +73,34 @@ public class GraphTest {
     assertEquals("MatMul", op.type());
     assertEquals(1, op.numOutputs());
     assertEquals(op, op.output(0).op());
+  }
+
+  @Test
+  public void iterateOverOperations() {
+    try (Graph g = new Graph()) {
+      Iterator<Operation> iterator = g.operations();
+      HashSet<Operation> operations;
+
+      assertFalse(iterator.hasNext());
+
+      operations = new HashSet<>();
+      operations.add(TestUtil.constant(g, "Const-A", Float.valueOf(1.0f)).op());
+      operations.add(TestUtil.constant(g, "Const-B", Integer.valueOf(23)).op());
+      operations.add(TestUtil.constant(g, "Const-C", Double.valueOf(1.618)).op());
+
+      iterator = g.operations();
+
+      assertTrue(iterator.hasNext());
+      assertTrue(operations.remove(iterator.next()));
+
+      assertTrue(iterator.hasNext());
+      assertTrue(operations.remove(iterator.next()));
+
+      assertTrue(iterator.hasNext());
+      assertTrue(operations.remove(iterator.next()));
+
+      assertFalse(iterator.hasNext());
+    }
   }
 
   @Test

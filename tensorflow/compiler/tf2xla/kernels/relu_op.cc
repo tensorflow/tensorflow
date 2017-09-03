@@ -31,7 +31,7 @@ class ReluOp : public XlaOpKernel {
  public:
   explicit ReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Computes the max of the scalar input x and 0.
-  void Compile(XlaOpKernelContext* ctx) {
+  void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* builder = ctx->builder();
     auto zero = XlaHelpers::Zero(builder, input_type(0));
     ctx->SetOutput(0, builder->Max(zero, ctx->Input(0)));
@@ -42,7 +42,7 @@ class Relu6Op : public XlaOpKernel {
  public:
   explicit Relu6Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Clamp the scalar input between 0 and 6.
-  void Compile(XlaOpKernelContext* ctx) {
+  void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* builder = ctx->builder();
     auto zero = XlaHelpers::Zero(builder, input_type(0));
     auto six = XlaHelpers::IntegerLiteral(builder, input_type(0), 6);
@@ -55,7 +55,7 @@ class ReluGradOp : public XlaOpKernel {
   explicit ReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
   // otherwise return 0.
-  void Compile(XlaOpKernelContext* ctx) {
+  void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* b = ctx->builder();
     const TensorShape shape = ctx->InputShape(0);
     const auto zero =
@@ -70,7 +70,7 @@ class Relu6GradOp : public XlaOpKernel {
   explicit Relu6GradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
   // otherwise return 0.
-  void Compile(XlaOpKernelContext* ctx) {
+  void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* b = ctx->builder();
     const TensorShape shape = ctx->InputShape(0);
     const auto zero =

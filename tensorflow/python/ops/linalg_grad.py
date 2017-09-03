@@ -39,8 +39,7 @@ def _MatrixInverseGrad(op, grad):
   """Gradient for MatrixInverse."""
   ainv = op.outputs[0]
   return -math_ops.matmul(
-      ainv, math_ops.matmul(
-          grad, ainv, adjoint_b=True), adjoint_a=True)
+      ainv, math_ops.matmul(grad, ainv, adjoint_b=True), adjoint_a=True)
 
 
 @ops.RegisterGradient("MatrixDeterminant")
@@ -49,15 +48,36 @@ def _MatrixDeterminantGrad(op, grad):
   a = op.inputs[0]
   c = op.outputs[0]
   a_adj_inv = linalg_ops.matrix_inverse(a, adjoint=True)
-  multipliers = array_ops.reshape(
-      grad * c, array_ops.concat([array_ops.shape(c), [1, 1]], 0))
+  multipliers = array_ops.reshape(grad * c,
+                                  array_ops.concat([array_ops.shape(c), [1, 1]],
+                                                   0))
   return multipliers * a_adj_inv
 
 
 @ops.RegisterGradient("Cholesky")
 def _CholeskyGrad(op, grad):
   """Gradient for Cholesky."""
-  return linalg_ops.cholesky_grad(op.outputs[0], grad)
+
+  # Gradient is l^{-H} @ ((l^{H} @ grad) * (tril(ones)-1/2*eye)) @ l^{-1}
+  l = op.outputs[0]
+  num_rows = array_ops.shape(l)[-1]
+  batch_shape = array_ops.shape(l)[:-2]
+  l_inverse = linalg_ops.matrix_triangular_solve(l,
+                                                 linalg_ops.eye(
+                                                     num_rows,
+                                                     batch_shape=batch_shape,
+                                                     dtype=l.dtype))
+
+  middle = math_ops.matmul(l, grad, adjoint_a=True)
+  middle = array_ops.matrix_set_diag(middle,
+                                     0.5 * array_ops.matrix_diag_part(middle))
+  middle = array_ops.matrix_band_part(middle, -1, 0)
+
+  grad_a = math_ops.matmul(
+      math_ops.matmul(l_inverse, middle, adjoint_a=True), l_inverse)
+
+  grad_a += math_ops.conj(array_ops.matrix_transpose(grad_a))
+  return grad_a * 0.5
 
 
 @ops.RegisterGradient("MatrixSolve")
@@ -95,15 +115,12 @@ def _MatrixSolveLsGrad(op, grad):
     """
     a = op.inputs[0]
     b = op.inputs[1]
-    l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
     x = op.outputs[0]
-    a_shape = array_ops.shape(a)
-    batch_shape = a_shape[:-2]
-    n = a_shape[-1]
-
-    identity = linalg_ops.eye(n, batch_shape=batch_shape, dtype=a.dtype)
-    gramian = math_ops.matmul(a, a, adjoint_a=True) + l2_regularizer * identity
-    chol = linalg_ops.cholesky(gramian)
+    l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
+    # pylint: disable=protected-access
+    chol = linalg_ops._RegularizedGramianCholesky(
+        a, l2_regularizer=l2_regularizer, first_kind=True)
+    # pylint: enable=protected-access
     # Temporary z = (A^T * A + lambda * I)^{-1} * grad.
     z = linalg_ops.cholesky_solve(chol, grad)
     xzt = math_ops.matmul(x, z, adjoint_b=True)
@@ -124,13 +141,10 @@ def _MatrixSolveLsGrad(op, grad):
     a = op.inputs[0]
     b = op.inputs[1]
     l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
-    a_shape = array_ops.shape(a)
-    batch_shape = a_shape[:-2]
-    m = a_shape[-2]
-
-    identity = linalg_ops.eye(m, batch_shape=batch_shape, dtype=a.dtype)
-    gramian = math_ops.matmul(a, a, adjoint_b=True) + l2_regularizer * identity
-    chol = linalg_ops.cholesky(gramian)
+    # pylint: disable=protected-access
+    chol = linalg_ops._RegularizedGramianCholesky(
+        a, l2_regularizer=l2_regularizer, first_kind=False)
+    # pylint: enable=protected-access
     grad_b = linalg_ops.cholesky_solve(chol, math_ops.matmul(a, grad))
     # Temporary tmp = (A * A^T + lambda * I)^{-1} * B.
     tmp = linalg_ops.cholesky_solve(chol, b)
@@ -183,11 +197,12 @@ def _MatrixTriangularSolveGrad(op, grad):
 def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
   """Gradient for SelfAdjointEigV2."""
   e = op.outputs[0]
-  v = op.outputs[1]
+  compute_v = op.get_attr("compute_v")
   # a = op.inputs[0], which satisfies
   # a[...,:,:] * v[...,:,i] = e[...,i] * v[...,i]
-  with ops.control_dependencies([grad_e.op, grad_v.op]):
-    if grad_v is not None:
+  with ops.control_dependencies([grad_e, grad_v]):
+    if compute_v:
+      v = op.outputs[1]
       # Construct the matrix f(i,j) = (i != j ? 1 / (e_i - e_j) : 0).
       # Notice that because of the term involving f, the gradient becomes
       # infinite (or NaN in practice) when eigenvalues are not unique.
@@ -201,18 +216,21 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
       grad_a = math_ops.matmul(
           v,
           math_ops.matmul(
-              array_ops.matrix_diag(grad_e) + f * math_ops.matmul(
-                  v, grad_v, adjoint_a=True),
+              array_ops.matrix_diag(grad_e) +
+              f * math_ops.matmul(v, grad_v, adjoint_a=True),
               v,
               adjoint_b=True))
     else:
-      grad_a = math_ops.matmul(
-          v, math_ops.matmul(
-              array_ops.matrix_diag(grad_e), v, adjoint_b=True))
+      _, v = linalg_ops.self_adjoint_eig(op.inputs[0])
+      grad_a = math_ops.matmul(v,
+                               math_ops.matmul(
+                                   array_ops.matrix_diag(grad_e),
+                                   v,
+                                   adjoint_b=True))
     # The forward op only depends on the lower triangular part of a, so here we
     # symmetrize and take the lower triangle
     grad_a = array_ops.matrix_band_part(
-        grad_a + array_ops.matrix_transpose(grad_a), -1, 0)
+        grad_a + math_ops.conj(array_ops.matrix_transpose(grad_a)), -1, 0)
     grad_a = array_ops.matrix_set_diag(grad_a,
                                        0.5 * array_ops.matrix_diag_part(grad_a))
     return grad_a

@@ -23,8 +23,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #include <algorithm>
 #include <vector>
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -42,6 +40,8 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 
 namespace tensorflow {
 
@@ -202,7 +202,7 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
     mkl_out_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                              mklOutputShape.GetMklLayout())) /
                          sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &in_backprop, mkl_out_shape,
+    AllocateOutputSetMklShape(context, 0, &in_backprop, mkl_out_shape,
                               mklOutputShape);
 
     mkl_context.conv_res[dnnResourceDiffSrc] =
@@ -295,7 +295,7 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
         dnnDelete_F32(mkl_convert_filter);
       } else {
         // If we do not need any layout conversion for filter, then
-        // we direclty assign input filter to resources[].
+        // we directly assign input filter to resources[].
         conv_res[dnnResourceFilter] =
             static_cast<void*>(const_cast<T*>(filter.flat<T>().data()));
       }
@@ -341,11 +341,11 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
   TensorFormat data_format;
 };
 
-#define REGISTER_MKL_CPU_KERNELS(T)                                       \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropInput")                  \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_MKL_CPU_KERNELS(T)                                 \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")           \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DCustomBackpropInputOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);

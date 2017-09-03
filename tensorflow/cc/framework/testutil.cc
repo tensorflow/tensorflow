@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/testutil.h"
 
+#include <utility>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/default_device.h"
@@ -30,7 +32,7 @@ void GetTensors(const Scope& scope, OutputList tensors,
 
 void GetTensor(const Scope& scope, Output tensor, Tensor* out) {
   std::vector<Tensor> outputs;
-  GetTensors(scope, {tensor}, &outputs);
+  GetTensors(scope, {std::move(tensor)}, &outputs);
   *out = outputs[0];
 }
 

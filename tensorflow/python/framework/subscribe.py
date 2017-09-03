@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import re
 
 from tensorflow.python.framework import ops
@@ -132,10 +133,16 @@ def _subscribe_new(tensor, side_effects, control_cache):
     consumer_op._update_input(index, out)  # pylint: disable=protected-access
 
   for consumer_op in update_control_input:
-    consumer_op._control_inputs.remove(tensor.op)  # pylint: disable=protected-access
-    consumer_op._control_inputs.append(out.op)  # pylint: disable=protected-access
-    consumer_op._recompute_node_def()  # pylint: disable=protected-access
-
+    # If an op has more than one output and two or more of its output tensors
+    # are subscribed at the same time, we remove the control dependency from
+    # the original op only once and we add the dependencies to all the
+    # new identities.
+    # pylint: disable=protected-access
+    if tensor.op in consumer_op._control_inputs:
+      consumer_op._control_inputs.remove(tensor.op)
+    consumer_op._control_inputs.append(out.op)
+    consumer_op._recompute_node_def()
+    # pylint: enable=protected-access
   return out
 
 
@@ -244,6 +251,58 @@ def _subscribe(tensor, side_effects, control_cache):
   return _subscribe_new(tensor, side_effects, control_cache)
 
 
+@contextlib.contextmanager
+def _preserve_control_flow_context(tensor):
+  """Preserve the control flow context for the given tensor.
+
+  Sets the graph context to the tensor's context so that side effect ops are
+  added under the same context.
+
+  This is needed when subscribing to tensors defined within a conditional
+  block or a while loop. In these cases we need that the side-effect ops
+  are created within the same control flow context as that of the tensor
+  they are attached to.
+
+  Args:
+    tensor: tensor whose context should be preserved.
+
+  Yields:
+    None
+  """
+
+  # pylint: disable=protected-access
+  context = tensor.op._get_control_flow_context()
+  # pylint: enable=protected-access
+  if context:
+    context.Enter()
+  try:
+    yield
+  finally:
+    if context:
+      context.Exit()
+
+
+def _scoped_subscribe(tensor, side_effects, control_cache):
+  """Helper method that subscribes a single tensor to a list of side_effects.
+
+  This is a thin wrapper around `_subscribe` and ensures that the side effect
+  ops are added within the same device and control flow context of the
+  subscribed tensor.
+
+  Args:
+    tensor: The `tf.Tensor` to be subscribed.
+    side_effects: List of side_effect functions, see subscribe for details.
+    control_cache: `_ControlOutputCache` helper to get control_outputs faster.
+  Returns:
+    The modified replacement to the passed in tensor which triggers the side
+    effects or the given tensor, if it was already been subscribed.
+  """
+
+  with ops.device(tensor.device):
+    with _preserve_control_flow_context(tensor):
+      return _subscribe(tensor, side_effects, control_cache)
+
+
 def subscribe(tensors, side_effects):
   """Subscribe to a tensor.
 
@@ -276,7 +335,7 @@ def subscribe(tensors, side_effects):
     Subscribed tensors, which are identity copies of the passed in tensors
       in the same passed in structure, but the graph has been modified
       such that these are downstream of the control dependencies for
-      the side effect graphs. Use these functionally equivelant tensors
+      the side effect graphs. Use these functionally equivalent tensors
       instead of the passed in tensors for further construction or running.
   """
   if not hasattr(side_effects, '__iter__'):
@@ -284,5 +343,5 @@ def subscribe(tensors, side_effects):
 
   control_outputs = _ControlOutputCache()
   result = _recursive_apply(
-      tensors, lambda t: _subscribe(t, side_effects, control_outputs))
+      tensors, lambda t: _scoped_subscribe(t, side_effects, control_outputs))
   return result

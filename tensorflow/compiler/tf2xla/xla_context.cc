@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -50,6 +52,10 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   // outlive the JIT compilation.
   context->Unref();
   return *context;
+}
+
+/* static */ XlaContext& XlaContext::Get(const XlaOpKernelContext* ctx) {
+  return Get(ctx->op_kernel_context());
 }
 
 void XlaContext::set_args(std::vector<Argument> args) {
@@ -123,26 +129,18 @@ void XlaContext::AddSideEffects() {
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateVariable(int variable_id, string name, DataType type,
-                                  const xla::ComputationDataHandle& handle) {
-  auto result = variables_.emplace(variable_id, Variable());
-  if (!result.second) {
-    return errors::InvalidArgument("Duplicate ID ", variable_id,
-                                   " for variable ", name);
-  }
-  Variable& var = result.first->second;
-  var.name = std::move(name);
-  var.type = type;
-  var.initial_value = var.value = handle;
-  return Status::OK();
-}
-
-Status XlaContext::GetVariable(int variable_id, Variable** variable) {
-  auto it = variables_.find(variable_id);
-  if (it == variables_.end()) {
-    return errors::InvalidArgument("Unknown variable ID ", variable_id);
-  }
-  *variable = &it->second;
+Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
+                                  string name, DataType type,
+                                  const xla::ComputationDataHandle& handle,
+                                  XlaResource** resource) {
+  resources_.emplace_back(new XlaResource);
+  *resource = resources_.back().get();
+  XlaResource& r = **resource;
+  r.kind = kind;
+  r.arg_num = arg_num;
+  r.name = std::move(name);
+  r.type = type;
+  r.initial_value = r.value = handle;
   return Status::OK();
 }
 
@@ -170,22 +168,6 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     b.Add(x, y);
-    return b.Build().ConsumeValueOrDie();
-  });
-}
-
-const xla::Computation* XlaContext::GetOrCreateSigmoid(const DataType type) {
-  return LookupOrCreate(type, &sigmoid_func_, [this, type] {
-    const string type_string = DataTypeString(type);
-    VLOG(1) << "Building Sigmoid() for " << type_string;
-    xla::ComputationBuilder b(builder()->client(),
-                              "sigmoid<" + type_string + ">");
-    xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto one = b.ConstantLiteral(xla::LiteralUtil::One(xla_type));
-    auto minus_one = b.Neg(one);
-    b.Div(one, b.Add(b.Exp(b.Mul(x, minus_one)), one));
     return b.Build().ConsumeValueOrDie();
   });
 }

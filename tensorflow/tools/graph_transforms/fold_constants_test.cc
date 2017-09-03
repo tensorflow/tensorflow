@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -69,12 +71,47 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&placeholder_tensor, 1.0f);
     TestConstantFolding(graph_def,
                         {{"placeholder_expect_remains", placeholder_tensor}},
-                        {"output_expect_remains"});
+                        {}, {"output_expect_remains"});
   }
 
-  void TestConstantFolding(const GraphDef graph_def,
+  void TestOpExclusionAdd() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    const int width = 100;
+
+    Tensor a_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&a_data, 1.0f);
+    Output a_const =
+        Const(root.WithOpName("a_expect_remains"), Input::Initializer(a_data));
+
+    Tensor b_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&b_data, 1.0f);
+    Output b_const =
+        Const(root.WithOpName("b_expect_remains"), Input::Initializer(b_data));
+
+    Output add = Add(root.WithOpName("add_expect_remains"), a_const, b_const);
+
+    Output placeholder =
+        Placeholder(root.WithOpName("placeholder_expect_remains"), DT_FLOAT);
+
+    Output mul =
+        Mul(root.WithOpName("output_expect_remains"), add, placeholder);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    Tensor placeholder_tensor(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&placeholder_tensor, 1.0f);
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains", placeholder_tensor}},
+                        {"Add"}, {"output_expect_remains"});
+  }
+
+  void TestConstantFolding(const GraphDef& graph_def,
                            std::vector<std::pair<string, Tensor> > inputs,
-                           std::vector<string> outputs) {
+                           std::vector<string> excluded_ops,
+                           const std::vector<string>& outputs) {
     std::unique_ptr<tensorflow::Session> unfolded_session(
         tensorflow::NewSession(tensorflow::SessionOptions()));
     TF_ASSERT_OK(unfolded_session->Create(graph_def));
@@ -87,6 +124,7 @@ class ConstantFoldingTest : public ::testing::Test {
       context.input_names.push_back(input.first);
     }
     context.output_names = outputs;
+    context.params["exclude_op"] = std::move(excluded_ops);
     TF_ASSERT_OK(
         graph_transforms::FoldConstants(graph_def, context, &folded_graph_def));
 
@@ -202,6 +240,8 @@ class ConstantFoldingTest : public ::testing::Test {
 };
 
 TEST_F(ConstantFoldingTest, TestSimpleAdd) { TestSimpleAdd(); }
+
+TEST_F(ConstantFoldingTest, TestOpExclusionAdd) { TestOpExclusionAdd(); }
 
 TEST_F(ConstantFoldingTest, TestReplaceSendRecvs) { TestReplaceSendRecvs(); }
 

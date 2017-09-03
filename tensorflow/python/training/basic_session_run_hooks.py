@@ -40,27 +40,67 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
-class SecondOrStepTimer(object):
+class _HookTimer(object):
+  """Base timer for determining when Hooks should trigger.
+
+  Should not be instantiated directly.
+  """
+
+  def __init__(self):
+    pass
+
+  def reset(self):
+    """Resets the timer."""
+    pass
+
+  def should_trigger_for_step(self, step):
+    """Return true if the timer should trigger for the specified step."""
+    raise NotImplementedError
+
+  def update_last_triggered_step(self, step):
+    """Update the last triggered time and step number.
+
+    Args:
+      step: The current step.
+
+    Returns:
+      A pair `(elapsed_time, elapsed_steps)`, where `elapsed_time` is the number
+      of seconds between the current trigger and the last one (a float), and
+      `elapsed_steps` is the number of steps between the current trigger and
+      the last one. Both values will be set to `None` on the first trigger.
+    """
+    raise NotImplementedError
+
+  def last_triggered_step(self):
+    """Returns the last triggered time step or None if never triggered."""
+    raise NotImplementedError
+
+
+class SecondOrStepTimer(_HookTimer):
   """Timer that triggers at most once every N seconds or once every N steps.
   """
 
   def __init__(self, every_secs=None, every_steps=None):
+    self.reset()
     self._every_secs = every_secs
     self._every_steps = every_steps
-    self._last_triggered_step = None
-    self._last_triggered_time = None
 
     if self._every_secs is None and self._every_steps is None:
       raise ValueError("Either every_secs or every_steps should be provided.")
     if (self._every_secs is not None) and (self._every_steps is not None):
       raise ValueError("Can not provide both every_secs and every_steps.")
+
+    super(SecondOrStepTimer, self).__init__()
+
+  def reset(self):
+    self._last_triggered_step = None
+    self._last_triggered_time = None
 
   def should_trigger_for_step(self, step):
     """Return true if the timer should trigger for the specified step.
@@ -90,17 +130,6 @@ class SecondOrStepTimer(object):
     return False
 
   def update_last_triggered_step(self, step):
-    """Update the last triggered time and step number.
-
-    Args:
-      step: The current step.
-
-    Returns:
-      A pair `(elapsed_time, elapsed_steps)`, where `elapsed_time` is the number
-      of seconds between the current trigger and the last one (a float), and
-      `elapsed_steps` is the number of steps between the current trigger and
-      the last one. Both values will be set to `None` on the first trigger.
-    """
     current_time = time.time()
     if self._last_triggered_time is None:
       elapsed_secs = None
@@ -117,14 +146,37 @@ class SecondOrStepTimer(object):
     return self._last_triggered_step
 
 
-class LoggingTensorHook(session_run_hook.SessionRunHook):
-  """Prints the given tensors once every N local steps or once every N seconds.
+class NeverTriggerTimer(_HookTimer):
+  """Timer that never triggers."""
 
-  The tensors will be printed to the log, with `INFO` severity.
+  def should_trigger_for_step(self, step):
+    _ = step
+    return False
+
+  def update_last_triggered_step(self, step):
+    _ = step
+    return (None, None)
+
+  def last_triggered_step(self):
+    return None
+
+
+class LoggingTensorHook(session_run_hook.SessionRunHook):
+  """Prints the given tensors every N local steps, every N seconds, or at end.
+
+  The tensors will be printed to the log, with `INFO` severity. If you are not
+  seeing the logs, you might want to add the following line after your imports:
+  
+  ```python
+    tf.logging.set_verbosity(tf.logging.INFO)
+  ```
+
+  Note that if `at_end` is True, `tensors` should not include any tensor
+  whose evaluation produces a side effect such as consuming additional inputs.
   """
 
   def __init__(self, tensors, every_n_iter=None, every_n_secs=None,
-               formatter=None):
+               at_end=False, formatter=None):
     """Initializes a `LoggingTensorHook`.
 
     Args:
@@ -135,15 +187,21 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       every_n_secs: `int` or `float`, print the values of `tensors` once every N
           seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
           provided.
+      at_end: `bool` specifying whether to print the values of `tensors` at the
+          end of the run.
       formatter: function, takes dict of `tag`->`Tensor` and returns a string.
           If `None` uses default printing all tensors.
 
     Raises:
       ValueError: if `every_n_iter` is non-positive.
     """
-    if (every_n_iter is None) == (every_n_secs is None):
+    only_log_at_end = (
+        at_end and (every_n_iter is None) and (every_n_secs is None))
+    if (not only_log_at_end and
+        (every_n_iter is None) == (every_n_secs is None)):
       raise ValueError(
-          "exactly one of every_n_iter and every_n_secs must be provided.")
+          "either at_end and/or exactly one of every_n_iter and every_n_secs "
+          "must be provided.")
     if every_n_iter is not None and every_n_iter <= 0:
       raise ValueError("invalid every_n_iter=%s." % every_n_iter)
     if not isinstance(tensors, dict):
@@ -153,10 +211,13 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       self._tag_order = tensors.keys()
     self._tensors = tensors
     self._formatter = formatter
-    self._timer = SecondOrStepTimer(every_secs=every_n_secs,
-                                    every_steps=every_n_iter)
+    self._timer = (
+        NeverTriggerTimer() if only_log_at_end else
+        SecondOrStepTimer(every_secs=every_n_secs, every_steps=every_n_iter))
+    self._log_at_end = at_end
 
   def begin(self):
+    self._timer.reset()
     self._iter_count = 0
     # Convert names to tensors if given
     self._current_tensors = {tag: _as_graph_element(tensor)
@@ -169,24 +230,33 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     else:
       return None
 
+  def _log_tensors(self, tensor_values):
+    original = np.get_printoptions()
+    np.set_printoptions(suppress=True)
+    elapsed_secs, _ = self._timer.update_last_triggered_step(self._iter_count)
+    if self._formatter:
+      logging.info(self._formatter(tensor_values))
+    else:
+      stats = []
+      for tag in self._tag_order:
+        stats.append("%s = %s" % (tag, tensor_values[tag]))
+      if elapsed_secs is not None:
+        logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
+      else:
+        logging.info("%s", ", ".join(stats))
+    np.set_printoptions(**original)
+
   def after_run(self, run_context, run_values):
     _ = run_context
     if self._should_trigger:
-      original = np.get_printoptions()
-      np.set_printoptions(suppress=True)
-      elapsed_secs, _ = self._timer.update_last_triggered_step(self._iter_count)
-      if self._formatter:
-        logging.info(self._formatter(run_values.results))
-      else:
-        stats = []
-        for tag in self._tag_order:
-          stats.append("%s = %s" % (tag, run_values.results[tag]))
-        if elapsed_secs is not None:
-          logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
-        else:
-          logging.info("%s", ", ".join(stats))
-      np.set_printoptions(**original)
+      self._log_tensors(run_values.results)
+
     self._iter_count += 1
+
+  def end(self, session):
+    if self._log_at_end:
+      values = session.run(self._current_tensors)
+      self._log_tensors(values)
 
 
 class StopAtStepHook(session_run_hook.SessionRunHook):
@@ -223,13 +293,16 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
     if self._global_step_tensor is None:
       raise RuntimeError("Global step should be created to use StopAtStepHook.")
 
+  def after_create_session(self, session, coord):
+    if self._last_step is None:
+      global_step = session.run(self._global_step_tensor)
+      self._last_step = global_step + self._num_steps
+
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):
     global_step = run_values.results
-    if self._last_step is None:
-      self._last_step = global_step + self._num_steps - 1
     if global_step >= self._last_step:
       run_context.request_stop()
 
@@ -318,13 +391,11 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
-      ValueError: Exactly one of saver or scaffold should be set.
+      ValueError: At most one of saver or scaffold should be set.
     """
     logging.info("Create CheckpointSaverHook.")
     if saver is not None and scaffold is not None:
       raise ValueError("You cannot provide both saver and scaffold.")
-    if saver is None and scaffold is None:
-      saver = saver_lib._get_saver_or_default()  # pylint: disable=protected-access
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
@@ -395,7 +466,22 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       return self._saver
     elif self._scaffold is not None:
       return self._scaffold.saver
-    return None
+
+    # Get saver from the SAVERS collection if present.
+    collection_key = ops.GraphKeys.SAVERS
+    savers = ops.get_collection(collection_key)
+    if not savers:
+      raise RuntimeError(
+          "No items in collection {}. Please add a saver to the collection "
+          "or provide a saver or scaffold.".format(collection_key))
+    elif len(savers) > 1:
+      raise RuntimeError(
+          "More than one item in collection {}. "
+          "Please indicate which one to use by passing it to the constructor.".
+          format(collection_key))
+
+    self._saver = savers[0]
+    return savers[0]
 
 
 class StepCounterHook(session_run_hook.SessionRunHook):

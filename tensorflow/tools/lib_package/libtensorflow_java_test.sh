@@ -18,7 +18,7 @@ set -ex
 
 # Sanity test for the binary artifacts for the TensorFlow Java API.
 # - Unarchive
-# - Compile a trivial Java file that excercises the Java API and underlying
+# - Compile a trivial Java file that exercises the Java API and underlying
 #   native library.
 # - Run it
 
@@ -29,7 +29,7 @@ TAR="${TAR}"
 
 [ -z "${JAVA}" ] && JAVA="java"
 [ -z "${JAVAC}" ] && JAVAC="javac"
-[ -z "${TAR}"] && TAR="tar"
+[ -z "${TAR}" ] && TAR="tar"
 
 # bazel tests run with ${PWD} set to the root of the bazel workspace
 TARFILE="${PWD}/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz"

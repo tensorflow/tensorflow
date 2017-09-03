@@ -74,8 +74,10 @@ class TestAllocator : public StreamExecutorMemoryAllocator {
 // A base class for tests which exercise the LocalClient interface.
 class LocalClientTestBase : public ::testing::Test {
  protected:
+  struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(
       perftools::gputools::Platform* platform = nullptr);
+  virtual ~LocalClientTestBase();
 
   static TestAllocator* GetOrCreateAllocator(
       perftools::gputools::Platform* platform);
@@ -142,6 +144,8 @@ class LocalClientTestBase : public ::testing::Test {
   TransferManager* transfer_manager_;
 
   LocalClient* local_client_;
+
+  std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 };
 
 }  // namespace xla

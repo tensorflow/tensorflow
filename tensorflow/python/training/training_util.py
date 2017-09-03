@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
@@ -55,6 +56,8 @@ def global_step(sess, global_step_tensor):
   Returns:
     The global step value.
   """
+  if context.in_eager_mode():
+    return int(global_step_tensor.numpy())
   return int(sess.run(global_step_tensor))
 
 

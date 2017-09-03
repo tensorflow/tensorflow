@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 ########################################################
 # tf_core_kernels library
 ########################################################
@@ -26,6 +40,33 @@ endif(tensorflow_BUILD_ALL_KERNELS)
 
 if(tensorflow_BUILD_CONTRIB_KERNELS)
   set(tf_contrib_kernels_srcs
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/ensemble_optimizer_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/model_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/prediction_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/quantile_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/split_handler_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/stats_accumulator_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/training_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/batch_features.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/dropout_utils.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/examples_iterable.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/parallel_for.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/sparse_column_iterable.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/tensor_utils.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/common/partitioners/example_partitioner.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/bias-feature-column-handler.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/categorical-feature-column-handler.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/dense-quantized-feature-column-handler.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/models/multiple_additive_trees.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/trees/decision_tree.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/model_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/prediction_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/quantile_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/training_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/wals_solver_ops.cc"
@@ -33,29 +74,28 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc"
       #"${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/decode_audio_op.cc"
       #"${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/encode_audio_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/bucketization_kernel.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/zero_initializer_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/sparse_feature_cross_kernel.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/bucketization_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/ops/nearest_neighbor_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/resampler_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/resampler/ops/resampler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/ops/tensor_forest_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/best_splits_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/count_extremely_random_stats_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/finished_nodes_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/grow_tree_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/reinterpret_string_to_float_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/sample_inputs_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/scatter_add_ndim_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_predictions_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_utils.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/update_fertile_slots_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/hard_routing_function_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/k_feature_gradient_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/k_feature_routing_function_op.cc"
@@ -65,6 +105,13 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/stochastic_hard_routing_gradient_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/unpack_path_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/text/kernels/skip_gram_kernels.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/text/ops/skip_gram_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/cross_replica_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/infeed_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/outfeed_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/replication_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/tpu_configuration_ops.cc"
     )
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)
@@ -83,10 +130,13 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.h"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.cc"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*test_utils.h"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*test_utils.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*main.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/fuzzing/*"
    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/*"
-   "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute*.cc"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_rewriter_transform*.cc"
 )
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 
@@ -96,19 +146,31 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
-      # no in tensorflow.dll - comes from .so
+      "${tensorflow_source_dir}/tensorflow/core/kernels/neon/*"
+      # not in core - those are loaded dynamically as dll
+      "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/ops/nearest_neighbor_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/resampler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
+      # temporarily disable nccl (nccl itself needs to be ported to windows first)
+      "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
 endif(WIN32)
 
 file(GLOB_RECURSE tf_core_gpu_kernels_srcs
-   "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
-   "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/zero_initializer_op_gpu.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/*.cu.cc"
 )
 
 if(WIN32 AND tensorflow_ENABLE_GPU)

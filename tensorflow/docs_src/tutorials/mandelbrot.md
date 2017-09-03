@@ -109,7 +109,7 @@ Let's see what we've got.
 DisplayFractal(ns.eval())
 ```
 
-![jpeg](../images/mandelbrot_output.jpg)
+![jpeg](https://www.tensorflow.org/images/mandelbrot_output.jpg)
 
 Not bad!
 

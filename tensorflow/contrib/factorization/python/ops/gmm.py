@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 
 from tensorflow.contrib import framework
@@ -27,10 +28,13 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops as logging
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.control_flow_ops import with_dependencies
+from tensorflow.python.training import session_run_hook
 
 
 def _streaming_sum(scalar_tensor):
@@ -38,6 +42,29 @@ def _streaming_sum(scalar_tensor):
   sum_metric = framework.local_variable(constant_op.constant(0.0))
   sum_update = sum_metric.assign_add(scalar_tensor)
   return sum_metric, sum_update
+
+
+class _InitializeClustersHook(session_run_hook.SessionRunHook):
+  """Initializes clusters or waits for cluster initialization."""
+
+  def __init__(self, init_op, is_initialized_op, is_chief):
+    self._init_op = init_op
+    self._is_chief = is_chief
+    self._is_initialized_op = is_initialized_op
+
+  def after_create_session(self, session, _):
+    assert self._init_op.graph == ops.get_default_graph()
+    assert self._is_initialized_op.graph == self._init_op.graph
+    while True:
+      try:
+        if session.run(self._is_initialized_op):
+          break
+        elif self._is_chief:
+          session.run(self._init_op)
+        else:
+          time.sleep(1)
+      except RuntimeError as e:
+        logging.info(e)
 
 
 class GMM(estimator.Estimator):
@@ -128,16 +155,23 @@ class GMM(estimator.Estimator):
   def _model_builder(self):
     """Creates a model function."""
 
-    def _model_fn(features, labels, mode):
+    def _model_fn(features, labels, mode, config):
       """Model function."""
       assert labels is None, labels
-      (all_scores, model_predictions, losses, training_op) = gmm_ops.gmm(
-          self._parse_tensor_or_dict(features), self._training_initial_clusters,
-          self._num_clusters, self._random_seed, self._covariance_type,
-          self._params)
+      (all_scores,
+       model_predictions,
+       losses, training_op,
+       init_op,
+       is_initialized) = gmm_ops.gmm(self._parse_tensor_or_dict(features),
+                                     self._training_initial_clusters,
+                                     self._num_clusters, self._random_seed,
+                                     self._covariance_type,
+                                     self._params)
       incr_step = state_ops.assign_add(variables.get_global_step(), 1)
       loss = math_ops.reduce_sum(losses)
       training_op = with_dependencies([training_op, incr_step], loss)
+      training_hooks = [_InitializeClustersHook(
+          init_op, is_initialized, config.is_chief)]
       predictions = {
           GMM.ALL_SCORES: all_scores[0],
           GMM.ASSIGNMENTS: model_predictions[0][0],
@@ -147,6 +181,7 @@ class GMM(estimator.Estimator):
       }
       return model_fn_lib.ModelFnOps(mode=mode, predictions=predictions,
                                      eval_metric_ops=eval_metric_ops,
-                                     loss=loss, train_op=training_op)
+                                     loss=loss, train_op=training_op,
+                                     training_hooks=training_hooks)
 
     return _model_fn

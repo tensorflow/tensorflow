@@ -211,7 +211,7 @@ class Im2ColConvFunctor {
         ++warning_count;
         LOG(WARNING)
             << "For kernel '" << context->op_kernel().name() << "' from input '"
-            << context->op_kernel().def().input(0)
+            << context->op_kernel().requested_input(0)
             << "': Zero is not representable in the quantized range used by the"
             << " input. This means QuantizedConv2d has to fall back to a slow"
             << " implementation, since the border of zero values can't be"
@@ -233,9 +233,9 @@ class Im2ColConvFunctor {
     int filter_top_offset;
     if (padding == VALID) {
       filter_left_offset =
-          ((output_width - 1) * stride + filter_width - input_width) / 2;
+          ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
       filter_top_offset =
-          ((output_height - 1) * stride + filter_height - input_height) / 2;
+          ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
     } else {
       filter_left_offset =
           ((output_width - 1) * stride + filter_width - input_width) / 2;
@@ -381,7 +381,7 @@ class Im2ColConvFunctor {
       if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
           std::is_same<T2, quint8>() && std::is_same<T3, qint32>() &&
           (output_offset == 0) && (output_mult == 1) && (output_shift == 0) &&
-          (transpose_c == false)) {
+          (transpose_c == false) && (k <= 2048)) {
         meta::QuantizedGemm(context, transpose_a, transpose_b, im2col_buffer,
                             filter_data, chunk_output_data, m, n, k,
                             -input_offset, -filter_offset, lda, ldb, ldc);

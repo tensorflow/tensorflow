@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-
-#include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
@@ -114,8 +112,8 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_MATCH(status.error_message(),
-               testing::ContainsRegex("cannot copy layout from shape"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("cannot copy layout from shape"));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
@@ -133,8 +131,8 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_MATCH(status.error_message(),
-               testing::ContainsRegex("cannot copy layout from shape"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("cannot copy layout from shape"));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
@@ -145,9 +143,10 @@ TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_MATCH(status.error_message(),
-               testing::ContainsRegex("layout minor_to_major field contains .* "
-                                      "elements, but shape is rank"));
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::ContainsRegex("layout minor_to_major field contains .* "
+                               "elements, but shape is rank"));
 }
 
 TEST_F(LayoutUtilTest, ClearLayoutTuple) {
@@ -210,13 +209,6 @@ TEST_F(LayoutUtilTest, IsPadded) {
 }
 
 TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
-  // Test that LayoutUtil returns expected layouts when the xla_default_layout
-  // flag is set to kMajorToMinor.
-  legacy_flags::LayoutUtilFlags* flags = legacy_flags::GetLayoutUtilFlags();
-  flags->xla_default_layout = xla::legacy_flags::DefaultLayout{
-      .dimension_order =
-          legacy_flags::DefaultLayout::DimensionOrder::kMajorToMinor};
-
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({1, 0}),
                                 LayoutUtil::GetDefaultLayoutForR2()));
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({2, 1, 0}),
@@ -225,26 +217,6 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
                                 LayoutUtil::GetDefaultLayoutForR4()));
   EXPECT_TRUE(
       LayoutUtil::Equal(LayoutUtil::MakeLayout({4, 3, 2, 1, 0}),
-                        LayoutUtil::GetDefaultLayoutForShape(
-                            ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
-}
-
-TEST_F(LayoutUtilTest, DefaultLayoutGettersMinorToMajor) {
-  // Test that LayoutUtil returns expected layouts when the xla_default_layout
-  // flag is set to kMinorToMajor.
-  legacy_flags::LayoutUtilFlags* flags = legacy_flags::GetLayoutUtilFlags();
-  flags->xla_default_layout = xla::legacy_flags::DefaultLayout{
-      .dimension_order =
-          legacy_flags::DefaultLayout::DimensionOrder::kMinorToMajor};
-
-  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1}),
-                                LayoutUtil::GetDefaultLayoutForR2()));
-  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2}),
-                                LayoutUtil::GetDefaultLayoutForR3()));
-  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2, 3}),
-                                LayoutUtil::GetDefaultLayoutForR4()));
-  EXPECT_TRUE(
-      LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2, 3, 4}),
                         LayoutUtil::GetDefaultLayoutForShape(
                             ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
 }

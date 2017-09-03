@@ -24,11 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -52,20 +54,22 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
 // Make sure we don't recurse infinitely on recursive functions.
 const int kMaxRecursionDepth = 10;
 
-bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
-                      int depth, FunctionLibraryRuntime* lib_runtime);
+bool IsCompilableCall(const NodeDef& call_def,
+                      const DeviceType& jit_device_type, int depth,
+                      FunctionLibraryRuntime* lib_runtime);
 
-// Tests whether 'while_def' is a completely compilable loop.
+// Tests whether 'while_node' is a completely compilable loop.
 // Every operator in the condition and body functions must be compilable for a
 // while loop to be compilable.
-bool IsCompilableWhile(const NodeDef& while_def, DeviceType jit_device_type,
-                       int depth, FunctionLibraryRuntime* lib_runtime) {
-  VLOG(2) << "Loop marking: " << while_def.op();
+bool IsCompilableWhile(const Node& while_node,
+                       const DeviceType& jit_device_type, int depth,
+                       FunctionLibraryRuntime* lib_runtime) {
+  VLOG(2) << "Loop marking: " << while_node.type_string();
 
   const NameAttrList* name_attr;
   NodeDef call;
   Status status;
-  status = GetNodeAttr(while_def, "cond", &name_attr);
+  status = GetNodeAttr(while_node.attrs(), "cond", &name_attr);
   if (!status.ok()) {
     VLOG(2) << "Missing 'cond' attribute on While node.";
     return false;
@@ -78,7 +82,7 @@ bool IsCompilableWhile(const NodeDef& while_def, DeviceType jit_device_type,
     VLOG(2) << "Can't compile loop condition: " << cond_func;
     return false;
   }
-  status = GetNodeAttr(while_def, "body", &name_attr);
+  status = GetNodeAttr(while_node.attrs(), "body", &name_attr);
   if (!status.ok()) {
     VLOG(2) << "Missing 'body' attribute on While node.";
     return false;
@@ -98,8 +102,9 @@ bool IsCompilableWhile(const NodeDef& while_def, DeviceType jit_device_type,
 // Tests whether 'call_def' is a call to a completely compilable function.
 // Every operator in the function must be compilable for a function to be
 // compilable.
-bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
-                      int depth, FunctionLibraryRuntime* lib_runtime) {
+bool IsCompilableCall(const NodeDef& call_def,
+                      const DeviceType& jit_device_type, int depth,
+                      FunctionLibraryRuntime* lib_runtime) {
   VLOG(2) << "Function marking: " << call_def.op();
 
   if (depth > kMaxRecursionDepth) {
@@ -109,7 +114,7 @@ bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
 
   FunctionLibraryRuntime::Handle handle;
   Status status =
-      lib_runtime->Instantiate(call_def.op(), call_def.attr(), &handle);
+      lib_runtime->Instantiate(call_def.op(), AttrSlice(call_def), &handle);
   if (!status.ok()) {
     VLOG(2) << "Could not instantiate " << call_def.op() << ": " << status;
     return false;
@@ -129,13 +134,12 @@ bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
     return false;
   }
 
-  for (Node* node : fbody->graph->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
-    if (node->def().op() == "_Arg" || node->def().op() == "_Retval") continue;
-    if (node->def().op() == "While") {
+  for (Node* node : fbody->graph->op_nodes()) {
+    if (node->type_string() == "_Arg" || node->type_string() == "_Retval")
+      continue;
+    if (node->type_string() == "While") {
       // Handle functional While loop (not in open source build).
-      return IsCompilableWhile(node->def(), jit_device_type, depth + 1,
-                               lib_runtime);
+      return IsCompilableWhile(*node, jit_device_type, depth + 1, lib_runtime);
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, depth + 1,
@@ -159,10 +163,12 @@ Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
-// Does `node` have a DT_RESOURCE typed argument?
-bool HasResourceArgument(const Node& node) {
+// Tests whether `node` has a DT_RESOURCE typed input or output.
+bool HasResourceInputOrOutput(const Node& node) {
   return std::find(node.input_types().begin(), node.input_types().end(),
-                   DT_RESOURCE) != node.input_types().end();
+                   DT_RESOURCE) != node.input_types().end() ||
+         std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
 }
 
 Status FindCompilationCandidates(
@@ -170,12 +176,13 @@ Status FindCompilationCandidates(
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
     std::unordered_set<Node*>* candidates) {
   OptimizerOptions opts;
-  std::unique_ptr<FunctionLibraryRuntime> lib_runtime(NewFunctionLibraryRuntime(
-      nullptr, env, nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
+                                        flib_def, opts));
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
-  for (Node* node : graph.nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
-
+  for (Node* node : graph.op_nodes()) {
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(node->assigned_device_name(), &device_type));
@@ -187,19 +194,19 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
+        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
-              << ": " << node->def().op();
+              << ": " << node->type_string();
       continue;
     }
-    if (!registration->compile_resource_ops && HasResourceArgument(*node)) {
-      VLOG(2) << "Compilation rejected node: resource argument " << node->name()
-              << ": " << node->def().op();
+    if (!registration->compile_resource_ops &&
+        HasResourceInputOrOutput(*node)) {
+      VLOG(2) << "Compilation rejected node: resource input/output "
+              << node->name() << ": " << node->type_string();
       continue;
     }
-    if (node->def().op() == "While" &&
-        !IsCompilableWhile(node->def(), jit_device_type, 0,
-                           lib_runtime.get())) {
+    if (node->type_string() == "While" &&
+        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
     candidates->insert(node);
@@ -207,69 +214,11 @@ Status FindCompilationCandidates(
   return Status::OK();
 }
 
-// Union-Find data structure used to compute clusters. We use our own
-// implementation because we want one key feature: when merging clusters, we
-// need to know which value becomes the representative of the merged clusters.
-// We use the representatives to name nodes in a cycle detection graph, and we
-// need to control which node is named.
-// TODO(phawkins): consider merging this code with union-find implementations
-// in Tensorflow, e.g., in SimplePlacer.
-class Cluster {
- public:
-  Cluster();
-
-  int Size() { return FindRoot()->size_; }
-
-  // Merges this cluster with 'other'. This cluster's representative becomes
-  // the representative of the merged cluster; the representative of 'other'
-  // is ignored.
-  void Merge(Cluster* other);
-
-  // Each cluster has an associated integer 'representative', initialized to -1
-  // by default.
-  int GetRepresentative() { return FindRoot()->representative_; }
-  void SetRepresentative(int representative) {
-    FindRoot()->representative_ = representative;
-  }
-
- private:
-  // Finds the root element of the cluster. Performs path compression.
-  Cluster* FindRoot();
-
-  int representative_;
-  int rank_;
-  int size_;  // Size of the cluster.
-  Cluster* parent_;
+struct Cluster {
+  // Identifies the node that represents this cluster in the cycle detection
+  // graph.
+  int representative = -1;
 };
-
-Cluster::Cluster()
-    : representative_(-1), rank_(0), size_(1), parent_(nullptr) {}
-
-void Cluster::Merge(Cluster* other) {
-  Cluster* a = FindRoot();
-  Cluster* b = other->FindRoot();
-  if (a == b) return;
-  if (a->rank_ > b->rank_) {
-    b->parent_ = a;
-    a->size_ += b->size_;
-    return;
-  }
-
-  a->parent_ = b;
-  if (a->rank_ == b->rank_) {
-    b->rank_++;
-  }
-  b->representative_ = a->representative_;
-  b->size_ += a->size_;
-}
-
-Cluster* Cluster::FindRoot() {
-  if (!parent_) return this;
-  // Path compression: update intermediate nodes to point to the root of the
-  // equivalence class.
-  parent_ = parent_->FindRoot();
-  return parent_;
-}
 
 }  // anonymous namespace
 
@@ -311,15 +260,20 @@ Status MarkForCompilationPass::Run(
                                              &registration)) {
       return false;
     }
+
+    // Don't compile control trigger nodes. We won't preserve their deadness
+    // semantics correctly, so it's safest not to compile them.
+    if (node->IsControlTrigger()) return false;
+
     // If this device requires a JIT, we must say yes.
     if (registration->requires_compilation) return true;
 
     // If there is a _XlaCompile annotation, use its value.
     bool compile = false;
-    Status status = GetNodeAttr(node->def(), kXlaCompileAttr, &compile);
+    Status status = GetNodeAttr(node->attrs(), kXlaCompileAttr, &compile);
     if (status.ok()) return compile;
 
-    status = fld->GetAttr(node->def(), kXlaCompileAttr, &compile);
+    status = fld->GetAttr(*node, kXlaCompileAttr, &compile);
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
@@ -433,10 +387,11 @@ Status MarkForCompilationPass::RunImpl(
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative
   // names the node in the 'cycles' graph that represents the cluster.
-  std::vector<Cluster> clusters(graph->num_node_ids());
-  std::deque<Cluster*> worklist;
+  std::vector<UnionFind<Cluster>> clusters(graph->num_node_ids());
+  std::deque<UnionFind<Cluster>*> worklist;
   for (Node* node : compilation_candidates) {
-    clusters[node->id()].SetRepresentative(node->id());
+    Cluster& cluster = clusters[node->id()].Get();
+    cluster.representative = node->id();
     worklist.push_back(&clusters[node->id()]);
   }
 
@@ -446,7 +401,7 @@ Status MarkForCompilationPass::RunImpl(
   // Repeatedly contract edges between clusters that are on the same device,
   // provided the contraction would not create a cycle.
   while (!worklist.empty()) {
-    int from = worklist.front()->GetRepresentative();
+    int from = worklist.front()->Get().representative;
     worklist.pop_front();
 
     Node* node_from = graph->FindNodeId(from);
@@ -482,8 +437,8 @@ Status MarkForCompilationPass::RunImpl(
       // all nodes marked with _XlaCompile=true to also have a
       // _XlaScope property set (and raise an error otherwise); but
       // for now we don't do this.
-      if (GetNodeAttr(node_from->def(), kXlaScopeAttr, &from_scope).ok() &&
-          GetNodeAttr(node_to->def(), kXlaScopeAttr, &to_scope).ok() &&
+      if (GetNodeAttr(node_from->attrs(), kXlaScopeAttr, &from_scope).ok() &&
+          GetNodeAttr(node_to->attrs(), kXlaScopeAttr, &to_scope).ok() &&
           from_scope != to_scope) {
         continue;
       }
@@ -519,7 +474,7 @@ Status MarkForCompilationPass::RunImpl(
   // Count the number of elements in each cluster.
   std::vector<int> cluster_sizes(graph->num_node_ids());
   for (const Node* n : compilation_candidates) {
-    int cluster = clusters[n->id()].GetRepresentative();
+    int cluster = clusters[n->id()].Get().representative;
     cluster_sizes[cluster]++;
   }
 
@@ -533,15 +488,14 @@ Status MarkForCompilationPass::RunImpl(
   //   if compilation is enabled, otherwise there will be no such candidates).
   const int min_cluster_size = flags->tf_xla_min_cluster_size;
   for (Node* n : compilation_candidates) {
-    int cluster = clusters[n->id()].GetRepresentative();
+    int cluster = clusters[n->id()].Get().representative;
 
     // Compile if the user marked this node _XlaCompile=true
     bool compile_attr = false;
     bool marked_for_compilation = false;
-    if (GetNodeAttr(n->def(), kXlaCompileAttr, &compile_attr).ok()) {
+    if (GetNodeAttr(n->attrs(), kXlaCompileAttr, &compile_attr).ok()) {
       marked_for_compilation = compile_attr;
-    } else if (options.flib_def
-                   ->GetAttr(n->def(), kXlaCompileAttr, &compile_attr)
+    } else if (options.flib_def->GetAttr(*n, kXlaCompileAttr, &compile_attr)
                    .ok()) {
       marked_for_compilation = compile_attr;
     }

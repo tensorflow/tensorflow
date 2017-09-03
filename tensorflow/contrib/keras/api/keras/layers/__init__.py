@@ -36,6 +36,7 @@ from tensorflow.contrib.keras.python.keras.layers.convolutional import Conv1D
 from tensorflow.contrib.keras.python.keras.layers.convolutional import Conv2D
 from tensorflow.contrib.keras.python.keras.layers.convolutional import Conv3D
 from tensorflow.contrib.keras.python.keras.layers.convolutional import Conv2DTranspose
+from tensorflow.contrib.keras.python.keras.layers.convolutional import Conv3DTranspose
 from tensorflow.contrib.keras.python.keras.layers.convolutional import SeparableConv2D
 
 # Convolution layer aliases.
@@ -43,6 +44,7 @@ from tensorflow.contrib.keras.python.keras.layers.convolutional import Convoluti
 from tensorflow.contrib.keras.python.keras.layers.convolutional import Convolution2D
 from tensorflow.contrib.keras.python.keras.layers.convolutional import Convolution3D
 from tensorflow.contrib.keras.python.keras.layers.convolutional import Convolution2DTranspose
+from tensorflow.contrib.keras.python.keras.layers.convolutional import Convolution3DTranspose
 from tensorflow.contrib.keras.python.keras.layers.convolutional import SeparableConvolution2D
 
 # Image processing layers.
@@ -96,6 +98,7 @@ from tensorflow.contrib.keras.python.keras.layers.merge import concatenate
 from tensorflow.contrib.keras.python.keras.layers.merge import dot
 
 # Noise layers.
+from tensorflow.contrib.keras.python.keras.layers.noise import AlphaDropout
 from tensorflow.contrib.keras.python.keras.layers.noise import GaussianNoise
 from tensorflow.contrib.keras.python.keras.layers.noise import GaussianDropout
 
@@ -134,6 +137,11 @@ from tensorflow.contrib.keras.python.keras.layers.pooling import GlobalMaxPool3D
 from tensorflow.contrib.keras.python.keras.layers.recurrent import SimpleRNN
 from tensorflow.contrib.keras.python.keras.layers.recurrent import GRU
 from tensorflow.contrib.keras.python.keras.layers.recurrent import LSTM
+
+# Wrapper functions
+from tensorflow.contrib.keras.python.keras.layers.wrappers import Wrapper 
+from tensorflow.contrib.keras.python.keras.layers.wrappers import Bidirectional 
+from tensorflow.contrib.keras.python.keras.layers.wrappers import TimeDistributed
 
 del absolute_import
 del division

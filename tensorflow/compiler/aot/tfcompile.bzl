@@ -27,6 +27,15 @@ def tf_library(name, graph, config,
                deps=None, tags=None):
   """Runs tfcompile to compile a TensorFlow graph into executable code.
 
+  Given an invocation of tf_library(name="foo", ...), generates the following
+  build targets:
+    foo:           A cc_library containing the generated header and computation.
+    foo_test:      A cc_test with simple tests and benchmarks. Only created if
+                   gen_test=True.
+    foo_benchmark: A cc_binary that runs a minimal-dependency benchmark, useful
+                   for mobile devices or other platforms that can't compile the
+                   full test libraries. Only created if gen_benchmark=True.
+
   Args:
     name: The name of the build rule.
     graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt' it
@@ -169,6 +178,9 @@ def tf_library(name, graph, config,
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
           "//tensorflow/compiler/aot:runtime",
           "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_neon",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_sse4_1",
           "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
           "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
           "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
@@ -279,8 +291,11 @@ def target_llvm_triple():
   # TODO(toddw): Add target_triple for other targets.  For details see:
   # http://llvm.org/docs/doxygen/html/Triple_8h_source.html
   return select({
+      "//tensorflow:android_armeabi": "armv5-none-android",
       "//tensorflow:android_arm": "armv7-none-android",
       "//tensorflow:android_arm64": "aarch64-none-android",
       "//tensorflow:android_x86": "i686-none-android",
+      "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
+      "//tensorflow:darwin": "x86_64-none-darwin",
       "//conditions:default": "x86_64-pc-linux",
   })

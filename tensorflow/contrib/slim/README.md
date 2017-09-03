@@ -352,7 +352,7 @@ we can both ensure that each layer uses the same values and simplify the code:
 ```
 
 As the example illustrates, the use of arg_scope makes the code cleaner,
-simpler and easier to maintain. Notice that while argument values are specifed
+simpler and easier to maintain. Notice that while argument values are specified
 in the arg_scope, they can be overwritten locally. In particular, while
 the padding argument has been set to 'SAME', the second convolution overrides
 it with the value of 'VALID'.
@@ -447,7 +447,7 @@ vgg = tf.contrib.slim.nets.vgg
 images, labels = ...
 
 # Create the model.
-predictions = vgg.vgg16(images)
+predictions, _ = vgg.vgg_16(images)
 
 # Define the loss functions and get the total loss.
 loss = slim.losses.softmax_cross_entropy(predictions, labels)
@@ -775,7 +775,7 @@ images, labels = LoadTestData(...)
 predictions = MyModel(images)
 
 mae_value_op, mae_update_op = slim.metrics.streaming_mean_absolute_error(predictions, labels)
-mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels, labels)
+mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels)
 pl_value_op, pl_update_op = slim.metrics.percentage_less(mean_relative_errors, 0.3)
 ```
 
@@ -836,7 +836,7 @@ with tf.Session() as sess:
   for batch_id in range(num_batches):
     sess.run(names_to_updates.values())
 
-  metric_values = sess.run(name_to_values.values())
+  metric_values = sess.run(names_to_values.values())
   for metric, value in zip(names_to_values.keys(), metric_values):
     print('Metric %s has value: %f' % (metric, value))
 ```

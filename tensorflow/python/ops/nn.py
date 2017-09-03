@@ -22,11 +22,13 @@ See the @{$python/nn} guide.
 @@relu6
 @@crelu
 @@elu
+@@selu
 @@softplus
 @@softsign
 @@dropout
 @@bias_add
 @@sigmoid
+@@log_sigmoid
 @@tanh
 @@convolution
 @@conv2d
@@ -77,6 +79,9 @@ See the @{$python/nn} guide.
 @@dynamic_rnn
 @@bidirectional_dynamic_rnn
 @@raw_rnn
+@@static_rnn
+@@static_state_saving_rnn
+@@static_bidirectional_rnn
 @@ctc_loss
 @@ctc_greedy_decoder
 @@ctc_beam_search_decoder
@@ -112,14 +117,15 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
-# pylint: disable=wildcard-import
+# pylint: disable=wildcard-import,unused-import
 from tensorflow.python.ops.ctc_ops import *
 from tensorflow.python.ops.nn_impl import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
 from tensorflow.python.ops.rnn import *
-# pylint: enable=wildcard-import
+from tensorflow.python.ops import rnn_cell
+# pylint: enable=wildcard-import,unused-import
 
 
 # TODO(cwhipkey): sigmoid and tanh should not be exposed from tf.nn.
@@ -134,6 +140,7 @@ _allowed_symbols = [
     "lrn",  # Excluded in gen_docs_combined.
     "relu_layer",  # Excluded in gen_docs_combined.
     "xw_plus_b",  # Excluded in gen_docs_combined.
+    "rnn_cell",  # rnn_cell is a submodule of tf.nn.
 ]
 
 remove_undocumented(__name__, _allowed_symbols,

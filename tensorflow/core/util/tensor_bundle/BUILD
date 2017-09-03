@@ -1,5 +1,5 @@
 # Description:
-# Tensor bundle: a module to efficiently serialize and deserialize tensors.
+#   Tensor bundle: a module to efficiently serialize and deserialize tensors.
 
 package(
     default_visibility = ["//visibility:public"],
@@ -7,11 +7,16 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
+    "if_not_windows",
+    "tf_copts",
+)
 
-# To be exported to tensorflow/core:android_srcs.
+# To be exported to tensorflow/core:mobile_srcs.
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "naming.cc",
         "naming.h",
@@ -20,22 +25,32 @@ filegroup(
     ],
 )
 
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+)
+
 cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
-    copts = tf_copts() + ["-Wno-sign-compare"],
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":naming",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_header_only_library(
+    name = "tensor_bundle_headers_lib",
+    features = ["-parse_headers"],  # Transitively pulls in Eigen headers
+    deps = [":tensor_bundle"],
 )
 
 cc_library(
@@ -47,6 +62,7 @@ cc_library(
 
 cc_test(
     name = "tensor_bundle_test",
+    size = "small",
     srcs = ["tensor_bundle_test.cc"],
     deps = [
         ":tensor_bundle",

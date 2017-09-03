@@ -52,13 +52,13 @@ ADD . /var/tf-k8s
 # Download MNIST data for tests
 RUN mkdir -p /tmp/mnist-data
 RUN curl -o /tmp/mnist-data/train-labels-idx1-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/train-labels-idx1-ubyte.gz
 RUN curl -o /tmp/mnist-data/train-images-idx3-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz
 RUN curl -o /tmp/mnist-data/t10k-labels-idx1-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/t10k-labels-idx1-ubyte.gz
 RUN curl -o /tmp/mnist-data/t10k-images-idx3-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz
+    https://storage.googleapis.com/cvdf-datasets/mnist/t10k-images-idx3-ubyte.gz
 
 # Download Census data for Wide & Deep test
 RUN mkdir -p /tmp/census-data

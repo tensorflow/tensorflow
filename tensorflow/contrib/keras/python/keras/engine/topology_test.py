@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import shutil
+
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
@@ -29,6 +32,11 @@ try:
   import yaml  # pylint:disable=g-import-not-at-top
 except ImportError:
   yaml = None
+
+try:
+  import h5py  # pylint:disable=g-import-not-at-top
+except ImportError:
+  h5py = None
 
 
 class TopologyConstructionTest(test.TestCase):
@@ -92,6 +100,41 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(model.trainable_weights, [])
     self.assertListEqual(model.non_trainable_weights, weights)
 
+  def test_weight_loading(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3)(a)
+      b = keras.layers.Dense(1)(x)
+      model = keras.models.Model(a, b)
+
+      x = np.random.random((3, 2))
+      ref_y = model.predict(x)
+      weights = model.get_weights()
+      model.set_weights(weights)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
+      with self.assertRaises(ValueError):
+        model.set_weights(weights[1:])
+      with self.assertRaises(ValueError):
+        model.set_weights(weights[::-1])
+
+      if h5py is None:
+        return  # Skip rest of test if H5py isn't available.
+
+      temp_dir = self.get_temp_dir()
+      self.addCleanup(shutil.rmtree, temp_dir)
+
+      h5_path = os.path.join(temp_dir, 'test.h5')
+      model.save_weights(h5_path)
+      model.load_weights(h5_path)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
+      model.load_weights(h5_path, by_name=True)
+      y = model.predict(x)
+      self.assertAllClose(ref_y, y)
+
   def test_learning_phase(self):
     with self.test_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
@@ -154,6 +197,11 @@ class TopologyConstructionTest(test.TestCase):
     a = keras.layers.Input(shape=(32,), name='input_a')
     b = keras.layers.Input(shape=(32,), name='input_b')
 
+    with self.assertRaises(ValueError):
+      _ = keras.layers.Input(shape=(32,), batch_shape=(10, 32))
+    with self.assertRaises(ValueError):
+      _ = keras.layers.Input(shape=(32,), unknwon_kwarg=None)
+
     self.assertListEqual(a.get_shape().as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history
     b_layer, _, _ = b._keras_history
@@ -164,11 +212,9 @@ class TopologyConstructionTest(test.TestCase):
 
     self.assertListEqual(node.inbound_layers, [])
     self.assertListEqual(node.input_tensors, [a])
-    self.assertListEqual(node.input_masks, [None])
     self.assertListEqual(node.input_shapes, [(None, 32)])
     self.assertListEqual(node.output_tensors, [a])
     self.assertListEqual(node.output_shapes, [(None, 32)])
-    self.assertListEqual(node.output_masks, [None])
 
     dense = keras.layers.Dense(16, name='dense_1')
     a_2 = dense(a)
@@ -189,21 +235,8 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(test_layer.kernel.get_shape().as_list(), [32, 16])
     self.assertEqual(test_layer.input, a)
     self.assertEqual(test_layer.output, a_test)
-    self.assertEqual(test_layer.input_mask, None)
-    self.assertEqual(test_layer.output_mask, None)
     self.assertEqual(test_layer.input_shape, (None, 32))
     self.assertEqual(test_layer.output_shape, (None, 16))
-
-    # pylint: disable=pointless-statement
-    with self.assertRaises(Exception):
-      dense.input
-    with self.assertRaises(Exception):
-      dense.output
-    with self.assertRaises(Exception):
-      dense.input_mask
-    with self.assertRaises(Exception):
-      dense.output_mask
-    # pylint: enable=pointless-statement
 
     self.assertEqual(dense.get_input_at(0), a)
     self.assertEqual(dense.get_input_at(1), b)
@@ -256,9 +289,9 @@ class TopologyConstructionTest(test.TestCase):
       # ordering of same-level layers is not fixed
       self.assertListEqual([l.name for l in model.layers][2:],
                            ['dense_1', 'merge', 'dense_2', 'dense_3'])
-      self.assertListEqual([l.name for l in model.input_layers],
+      self.assertListEqual([l.name for l in model._input_layers],
                            ['input_a', 'input_b'])
-      self.assertListEqual([l.name for l in model.output_layers],
+      self.assertListEqual([l.name for l in model._output_layers],
                            ['dense_2', 'dense_3'])
 
       # actually run model
@@ -278,9 +311,9 @@ class TopologyConstructionTest(test.TestCase):
 
       self.assertListEqual([l.name for l in recreated_model.layers][2:],
                            ['dense_1', 'merge', 'dense_2', 'dense_3'])
-      self.assertListEqual([l.name for l in recreated_model.input_layers],
+      self.assertListEqual([l.name for l in recreated_model._input_layers],
                            ['input_a', 'input_b'])
-      self.assertListEqual([l.name for l in recreated_model.output_layers],
+      self.assertListEqual([l.name for l in recreated_model._output_layers],
                            ['dense_2', 'dense_3'])
 
       fn = keras.backend.function(recreated_model.inputs,
@@ -490,8 +523,8 @@ class TopologyConstructionTest(test.TestCase):
     m, n = model([j, k])
     tf_model = keras.models.Model([j, k], [m, n])
 
-    j_tf = array_ops.placeholder(dtype=dtypes.float32)
-    k_tf = array_ops.placeholder(dtype=dtypes.float32)
+    j_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
+    k_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
     m_tf, n_tf = tf_model([j_tf, k_tf])
     self.assertListEqual(m_tf.get_shape().as_list(), [None, 64])
     self.assertListEqual(n_tf.get_shape().as_list(), [None, 5])
@@ -507,6 +540,150 @@ class TopologyConstructionTest(test.TestCase):
     x = keras.layers.Input(tensor=x)
     keras.layers.Dense(2)(x)
 
+  def test_basic_masking(self):
+    a = keras.layers.Input(shape=(10, 32), name='input_a')
+    b = keras.layers.Masking()(a)
+    model = keras.models.Model(a, b)
+    self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
+
+  def test_weight_preprocessing(self):
+    input_dim = 3
+    output_dim = 3
+    size = 2
+    cases = [
+        [
+            (keras.layers.Bidirectional(keras.layers.SimpleRNN(2))),
+            [np.random.random((2, 1)), np.random.random((2, 1))],
+            (None, 3, 2),
+        ],
+        [
+            (keras.layers.TimeDistributed(keras.layers.Dense(1))),
+            [np.random.random((2, 1)), np.random.random((1,))],
+            (None, 3, 2),
+        ],
+        [
+            (keras.layers.Conv1D(output_dim, size, use_bias=False)),
+            [np.random.random((output_dim, input_dim, size, 1))],
+            (None, 4, input_dim),
+        ],
+        [
+            (keras.layers.Conv2D(output_dim, size,
+                                 use_bias=False, data_format='channels_first')),
+            [np.random.random((output_dim, input_dim, size, size))],
+            (None, input_dim, 4, 4),
+        ],
+        [
+            (keras.layers.Conv2DTranspose(output_dim, size,
+                                          use_bias=False,
+                                          data_format='channels_first')),
+            [np.random.random((output_dim, input_dim, size, size))],
+            (None, input_dim, 4, 4),
+        ],
+        [
+            (keras.layers.Conv2DTranspose(output_dim, size,
+                                          use_bias=False,
+                                          data_format='channels_last')),
+            [np.random.random((size, size, input_dim, output_dim))],
+            (None, 4, 4, input_dim),
+        ],
+        [
+            (keras.layers.Conv3D(output_dim, size,
+                                 use_bias=False, data_format='channels_first')),
+            [np.random.random((output_dim, input_dim, size, size, size))],
+            (None, input_dim, 4, 4, 4),
+        ],
+        [
+            (keras.layers.GRU(output_dim)),
+            [np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,))],
+            (None, 4, input_dim),
+        ],
+        [
+            (keras.layers.LSTM(output_dim)),
+            [np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,)),
+             np.random.random((input_dim, output_dim)),
+             np.random.random((output_dim, output_dim)),
+             np.random.random((output_dim,))],
+            (None, 4, input_dim),
+        ],
+    ]
+    for layer, weights, input_shape in cases:
+      layer.build(input_shape)
+      _ = keras.engine.topology.preprocess_weights_for_loading(
+          layer, weights, original_keras_version='1')
+
+    model = keras.models.Sequential([keras.layers.Dense(2, input_dim=2)])
+    _ = keras.engine.topology.preprocess_weights_for_loading(
+        model, model.weights, original_keras_version='1')
+
+    x = keras.Input((2,))
+    y = keras.layers.Dense(2)(x)
+    model = keras.models.Model(x, y)
+    _ = keras.engine.topology.preprocess_weights_for_loading(
+        model, model.weights, original_keras_version='1')
+
+  def test_layer_sharing_at_heterogenous_depth(self):
+    with self.test_session():
+      x_val = np.random.random((10, 5))
+
+      x = keras.Input(shape=(5,))
+      a = keras.layers.Dense(5, name='A')
+      b = keras.layers.Dense(5, name='B')
+      output = a(b(a(b(x))))
+      m = keras.models.Model(x, output)
+
+      output_val = m.predict(x_val)
+
+      config = m.get_config()
+      weights = m.get_weights()
+
+      m2 = keras.models.Model.from_config(config)
+      m2.set_weights(weights)
+
+      output_val_2 = m2.predict(x_val)
+      self.assertAllClose(output_val, output_val_2, atol=1e-6)
+
+  def test_layer_sharing_at_heterogenous_depth_with_concat(self):
+    with self.test_session():
+      input_shape = (16, 9, 3)
+      input_layer = keras.Input(shape=input_shape)
+
+      a = keras.layers.Dense(3, name='dense_A')
+      b = keras.layers.Dense(3, name='dense_B')
+      c = keras.layers.Dense(3, name='dense_C')
+
+      x1 = b(a(input_layer))
+      x2 = a(c(input_layer))
+      output = keras.layers.concatenate([x1, x2])
+
+      m = keras.models.Model(inputs=input_layer, outputs=output)
+
+      x_val = np.random.random((10, 16, 9, 3))
+      output_val = m.predict(x_val)
+
+      config = m.get_config()
+      weights = m.get_weights()
+
+      m2 = keras.models.Model.from_config(config)
+      m2.set_weights(weights)
+
+      output_val_2 = m2.predict(x_val)
+      self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
 if __name__ == '__main__':
   test.main()

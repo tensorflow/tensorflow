@@ -4,14 +4,14 @@ When training a model, it’s often valuable to track and evaluate progress in
 real time. In this tutorial, you’ll learn how to use TensorFlow’s logging
 capabilities and the `Monitor` API to audit the in-progress training of a neural
 network classifier for categorizing irises. This tutorial builds on the code
-developed in @{$tflearn$tf.contrib.learn Quickstart} so if you
+developed in @{$estimator$tf.estimator Quickstart} so if you
 haven't yet completed that tutorial, you may want to explore it first,
 especially if you're looking for an intro/refresher on tf.contrib.learn basics.
 
 ## Setup {#setup}
 
 For this tutorial, you'll be building upon the following code from
-@{$tflearn$tf.contrib.learn Quickstart}:
+@{$estimator$tf.estimator Quickstart}:
 
 ```python
 from __future__ import absolute_import
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
 Copy the above code into a file, and download the corresponding
 [training](http://download.tensorflow.org/data/iris_training.csv) and
-@{tf.test} data sets to the same
+[test](http://download.tensorflow.org/data/iris_test.csv) data sets to the same
 directory.
 
 In the following sections, you'll progressively make updates to the above code
@@ -75,7 +75,7 @@ here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/monitors/iri
 
 ## Overview
 
-The @{$tflearn$tf.contrib.learn Quickstart tutorial} walked through
+The @{$estimator$tf.estimator Quickstart tutorial} walked through
 how to implement a neural net classifier to categorize iris examples into one of
 three species.
 
@@ -282,18 +282,15 @@ validation_metrics = {
     "accuracy":
         tf.contrib.learn.MetricSpec(
             metric_fn=tf.contrib.metrics.streaming_accuracy,
-            prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
-            CLASSES),
+            prediction_key=tf.contrib.learn.PredictionKey.CLASSES),
     "precision":
         tf.contrib.learn.MetricSpec(
             metric_fn=tf.contrib.metrics.streaming_precision,
-            prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
-            CLASSES),
+            prediction_key=tf.contrib.learn.PredictionKey.CLASSES),
     "recall":
         tf.contrib.learn.MetricSpec(
             metric_fn=tf.contrib.metrics.streaming_recall,
-            prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
-            CLASSES)
+            prediction_key=tf.contrib.learn.PredictionKey.CLASSES)
 }
 ```
 
@@ -404,6 +401,6 @@ Then navigate to `http://0.0.0.0:`*`<port_number>`* in your browser, where
 If you click on the accuracy field, you'll see an image like the following,
 which shows accuracy plotted against step count:
 
-![Accuracy over step count in TensorBoard](../images/validation_monitor_tensorboard_accuracy.png "Accuracy over step count in TensorBoard")
+![Accuracy over step count in TensorBoard](https://www.tensorflow.org/images/validation_monitor_tensorboard_accuracy.png "Accuracy over step count in TensorBoard")
 
 For more on using TensorBoard, see @{$summaries_and_tensorboard$TensorBoard: Visualizing Learning} and @{$graph_viz$TensorBoard: Graph Visualization}.

@@ -117,6 +117,12 @@ class LaunchConv2DOp<CPUDevice, T> {
               const Tensor& input, const Tensor& filter, int row_stride,
               int col_stride, const Eigen::PaddingType& padding, Tensor* output,
               TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC) {
+      ctx->SetStatus(
+          errors::Unimplemented("Generic conv implementation only supports "
+                                "NHWC tensor format for now."));
+      return;
+    }
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
                                         col_stride, padding, output,
                                         data_format);
@@ -222,7 +228,7 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
     desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE_OVERWRITE;
     desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
 
     if (!CanUseXsmmConv2D(desc, data_format)) {
@@ -662,7 +668,8 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmType> algorithms;
-    CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
+    CHECK(stream->parent()->GetConvolveAlgorithms(
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -691,17 +698,18 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
         }
       }
     }
-    OP_REQUIRES(
-        ctx,
-        best_result.is_valid() && best_result.algorithm() != kDefaultAlgorithm,
-        errors::NotFound("No algorithm worked!"));
+    // TODO(yangzihao): refactor the profile result checking code into a common
+    // utility function.
     OP_REQUIRES(ctx,
-                best_result_no_scratch.is_valid() &&
-                    best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                errors::NotFound("No algorithm without scratch worked!"));
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_algorithm_no_scratch(
-        best_result_no_scratch.algorithm());
+                best_result.is_valid() || best_result_no_scratch.is_valid(),
+                errors::NotFound("No algorithm worked!"));
+    if (best_result.is_valid()) {
+      algorithm_config.set_algorithm(best_result.algorithm());
+    }
+    if (best_result_no_scratch.is_valid()) {
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+    }
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 

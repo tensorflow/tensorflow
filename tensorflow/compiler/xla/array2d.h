@@ -45,11 +45,15 @@ class Array2D {
 
   // Creates an array of dimensions n1 x n2, uninitialized values.
   Array2D(const int64 n1, const int64 n2)
-      : n1_(n1), n2_(n2), values_(n1 * n2) {}
+      : n1_(n1), n2_(n2), values_(new T[n1 * n2]()) {
+    Fill(T());
+  }
 
   // Creates an array of dimensions n1 x n2, initialized to value.
   Array2D(const int64 n1, const int64 n2, const T value)
-      : n1_(n1), n2_(n2), values_(n1 * n2, value) {}
+      : n1_(n1), n2_(n2), values_(new T[n1 * n2]()) {
+    Fill(value);
+  }
 
   // Creates an array from the given nested initializer list. The outer
   // initializer list is the first dimension; the inner is the second dimension.
@@ -65,16 +69,30 @@ class Array2D {
     }
   }
 
-  T& operator()(const int64 n1, const int64 n2) {
-    CHECK_LT(n1, n1_);
-    CHECK_LT(n2, n2_);
-    return values_[n1 * n2_ + n2];
+  Array2D(const Array2D<T>& other) : Array2D(other.n1(), other.n2()) {
+    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
+              &values_[0]);
   }
 
-  const T& operator()(const int64 n1, const int64 n2) const {
-    CHECK_LT(n1, n1_);
-    CHECK_LT(n2, n2_);
-    return values_[n1 * n2_ + n2];
+  Array2D<T>& operator=(const Array2D<T>& other) {
+    n1_ = other.n1();
+    n2_ = other.n2();
+    values_.reset(new T[num_elements()]);
+    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
+              &values_[0]);
+    return *this;
+  }
+
+  T& operator()(const int64 i1, const int64 i2) {
+    CHECK_LT(i1, n1_);
+    CHECK_LT(i2, n2_);
+    return values_[i1 * n2_ + i2];
+  }
+
+  const T& operator()(const int64 i1, const int64 i2) const {
+    CHECK_LT(i1, n1_);
+    CHECK_LT(i2, n2_);
+    return values_[i1 * n2_ + i2];
   }
 
   // Access to the array's dimensions. height() and width() provide the
@@ -84,15 +102,15 @@ class Array2D {
   int64 n2() const { return n2_; }
   int64 height() const { return n1_; }
   int64 width() const { return n2_; }
-  int64 num_elements() const { return values_.size(); }
+  int64 num_elements() const { return n1_ * n2_; }
 
   // Low-level accessor for stuff like memcmp, handle with care. Returns pointer
   // to the underlying storage of the array (similarly to std::vector::data()).
-  T* data() const { return const_cast<Array2D*>(this)->values_.data(); }
+  T* data() const { return const_cast<Array2D*>(this)->values_.get(); }
 
   // Fills the array with the given value.
   void Fill(const T& value) {
-    std::fill(values_.begin(), values_.end(), value);
+    std::fill(&values_[0], &values_[0] + num_elements(), value);
   }
 
   // Applies f to all cells in this array, in row-major order.
@@ -124,8 +142,8 @@ class Array2D {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean,
                                                   static_cast<double>(value));
-    for (auto& v : values_) {
-      v = static_cast<T>(distribution(g));
+    for (int64 i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<T>(distribution(g));
     }
   }
 
@@ -150,7 +168,7 @@ class Array2D {
  private:
   int64 n1_;
   int64 n2_;
-  std::vector<T> values_;
+  std::unique_ptr<T[]> values_;
 };
 
 // Returns a linspace-populated Array2D in the range [from, to] (inclusive)

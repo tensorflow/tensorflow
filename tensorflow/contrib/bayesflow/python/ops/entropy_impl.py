@@ -84,8 +84,9 @@ def elbo_ratio(log_p,
   KL[q || p] = E[ Log[q(Z)] - Log[p(Z)] ]
   ```
 
-  Note that if `p` is a `Distribution`, then `distributions.kl(q, p)` may be
-  defined and available as an exact result.
+  Note that if `p` is a `Distribution`, then
+  `distributions.kl_divergence(q, p)` may be defined and available as an
+  exact result.
 
   #### ELBO
 
@@ -194,8 +195,9 @@ def entropy_shannon(p,
     # Sample path
     if entropy is None:
       logging.info('Using sampled entropy(p:%s)', p)
-      entropy = -1. * monte_carlo.expectation(
-          p.log_prob, p, z=z, n=n, seed=seed)
+      if z is None:
+        z = p.sample(n, seed=seed)
+      entropy = -monte_carlo.expectation(p.log_prob, z)
 
     return entropy
 

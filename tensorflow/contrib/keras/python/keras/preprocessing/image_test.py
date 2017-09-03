@@ -78,6 +78,11 @@ class TestImage(test.TestCase):
           cval=0.5,
           horizontal_flip=True,
           vertical_flip=True)
+      # Basic test before fit
+      x = np.random.random((32, 10, 10, 3))
+      generator.flow(x)
+
+      # Fit
       generator.fit(images, augment=True)
 
       for x, _ in generator.flow(
@@ -95,26 +100,27 @@ class TestImage(test.TestCase):
         samplewise_std_normalization=True,
         zca_whitening=True,
         data_format='channels_last')
+
     # Test fit with invalid data
     with self.assertRaises(ValueError):
       x = np.random.random((3, 10, 10))
       generator.fit(x)
-    with self.assertRaises(ValueError):
-      x = np.random.random((32, 3, 10, 10))
-      generator.fit(x)
-    with self.assertRaises(ValueError):
-      x = np.random.random((32, 10, 10, 5))
-      generator.fit(x)
     # Test flow with invalid data
     with self.assertRaises(ValueError):
-      x = np.random.random((32, 10, 10, 5))
-      generator.flow(np.arange(x.shape[0]))
+      generator.flow(np.arange(5))
+    # Invalid number of channels: will work but raise a warning
+    x = np.random.random((32, 10, 10, 5))
+    generator.flow(x)
+
     with self.assertRaises(ValueError):
-      x = np.random.random((32, 10, 10))
-      generator.flow(np.arange(x.shape[0]))
+      generator = keras.preprocessing.image.ImageDataGenerator(
+          data_format='unknown')
+
+    generator = keras.preprocessing.image.ImageDataGenerator(
+        zoom_range=(2, 2))
     with self.assertRaises(ValueError):
-      x = np.random.random((32, 3, 10, 10))
-      generator.flow(np.arange(x.shape[0]))
+      generator = keras.preprocessing.image.ImageDataGenerator(
+          zoom_range=(2, 2, 2))
 
   def test_image_data_generator_fit(self):
     generator = keras.preprocessing.image.ImageDataGenerator(
@@ -181,6 +187,12 @@ class TestImage(test.TestCase):
         im.save(os.path.join(temp_dir, filename))
         count += 1
 
+    # Test image loading util
+    fname = os.path.join(temp_dir, filenames[0])
+    _ = keras.preprocessing.image.load_img(fname)
+    _ = keras.preprocessing.image.load_img(fname, grayscale=True)
+    _ = keras.preprocessing.image.load_img(fname, target_size=(10, 10))
+
     # create iterator
     generator = keras.preprocessing.image.ImageDataGenerator()
     dir_iterator = generator.flow_from_directory(temp_dir)
@@ -189,6 +201,7 @@ class TestImage(test.TestCase):
     self.assertEqual(len(dir_iterator.class_indices), num_classes)
     self.assertEqual(len(dir_iterator.classes), count)
     self.assertEqual(sorted(dir_iterator.filenames), sorted(filenames))
+    _ = dir_iterator.next()
 
   def test_img_utils(self):
     if PIL is None:
@@ -225,6 +238,16 @@ class TestImage(test.TestCase):
     self.assertEqual(img.size, (width, height))
     x = keras.preprocessing.image.img_to_array(img, data_format='channels_last')
     self.assertEqual(x.shape, (height, width, 1))
+
+  def test_img_transforms(self):
+    x = np.random.random((3, 200, 200))
+    _ = keras.preprocessing.image.random_rotation(x, 20)
+    _ = keras.preprocessing.image.random_shift(x, 0.2, 0.2)
+    _ = keras.preprocessing.image.random_shear(x, 2.)
+    _ = keras.preprocessing.image.random_zoom(x, (0.5, 0.5))
+    with self.assertRaises(ValueError):
+      keras.preprocessing.image.random_zoom(x, (0, 0, 0))
+    _ = keras.preprocessing.image.random_channel_shift(x, 2.)
 
 
 if __name__ == '__main__':

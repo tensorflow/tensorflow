@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/crop_and_resize_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -137,8 +137,8 @@ class CropAndResizeOp : public OpKernel {
     CheckValidBoxInd<Device>(context, box_ind_data, batch);
 
     bool status = functor::CropAndResize<Device, T>()(
-        context->eigen_device<Device>(), image_data, boxes_data, box_ind_data,
-        extrapolation_value_, crops_data);
+        context, image_data, boxes_data, box_ind_data, extrapolation_value_,
+        crops_data);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launch CropAndResizeKernel."));
@@ -153,7 +153,8 @@ class CropAndResizeOp : public OpKernel {
 namespace functor {
 template <typename T>
 struct CropAndResize<CPUDevice, T> {
-  bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
+  bool operator()(const OpKernelContext* context,
+                  typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   float extrapolation_value,
@@ -167,69 +168,90 @@ struct CropAndResize<CPUDevice, T> {
     const int crop_width = crops.dimension(2);
     const int depth = crops.dimension(3);
 
-    for (int b = 0; b < num_boxes; ++b) {
-      const float y1 = boxes(b, 0);
-      const float x1 = boxes(b, 1);
-      const float y2 = boxes(b, 2);
-      const float x2 = boxes(b, 3);
+    // Sharding across boxes.
+    auto CropAndResizePerBox = [&](int start_box, int limit_box) {
+      for (int b = start_box; b < limit_box; ++b) {
+        const float y1 = boxes(b, 0);
+        const float x1 = boxes(b, 1);
+        const float y2 = boxes(b, 2);
+        const float x2 = boxes(b, 3);
 
-      const int32 b_in = box_ind(b);
-      if (b_in < 0 || b_in >= batch) {
-        continue;
-      }
-
-      const float height_scale =
-          (crop_height > 1) ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
-                            : 0;
-      const float width_scale =
-          (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
-                           : 0;
-
-      for (int y = 0; y < crop_height; ++y) {
-        const float in_y = (crop_height > 1)
-                               ? y1 * (image_height - 1) + y * height_scale
-                               : 0.5 * (y1 + y2) * (image_height - 1);
-        if (in_y < 0 || in_y > image_height - 1) {
-          for (int x = 0; x < crop_width; ++x) {
-            for (int d = 0; d < depth; ++d) {
-              crops(b, y, x, d) = extrapolation_value;
-            }
-          }
+        const int32 b_in = box_ind(b);
+        if (b_in < 0 || b_in >= batch) {
           continue;
         }
-        const int top_y_index = floorf(in_y);
-        const int bottom_y_index = ceilf(in_y);
-        const float y_lerp = in_y - top_y_index;
 
-        for (int x = 0; x < crop_width; ++x) {
-          const float in_x = (crop_width > 1)
-                                 ? x1 * (image_width - 1) + x * width_scale
-                                 : 0.5 * (x1 + x2) * (image_width - 1);
-          if (in_x < 0 || in_x > image_width - 1) {
-            for (int d = 0; d < depth; ++d) {
-              crops(b, y, x, d) = extrapolation_value;
+        const float height_scale =
+            (crop_height > 1)
+                ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
+                : 0;
+        const float width_scale =
+            (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
+                             : 0;
+
+        for (int y = 0; y < crop_height; ++y) {
+          const float in_y = (crop_height > 1)
+                                 ? y1 * (image_height - 1) + y * height_scale
+                                 : 0.5 * (y1 + y2) * (image_height - 1);
+          if (in_y < 0 || in_y > image_height - 1) {
+            for (int x = 0; x < crop_width; ++x) {
+              for (int d = 0; d < depth; ++d) {
+                crops(b, y, x, d) = extrapolation_value;
+              }
             }
             continue;
           }
-          const int left_x_index = floorf(in_x);
-          const int right_x_index = ceilf(in_x);
-          const float x_lerp = in_x - left_x_index;
+          const int top_y_index = floorf(in_y);
+          const int bottom_y_index = ceilf(in_y);
+          const float y_lerp = in_y - top_y_index;
 
-          for (int d = 0; d < depth; ++d) {
-            const float top_left(image(b_in, top_y_index, left_x_index, d));
-            const float top_right(image(b_in, top_y_index, right_x_index, d));
-            const float bottom_left(
-                image(b_in, bottom_y_index, left_x_index, d));
-            const float bottom_right(
-                image(b_in, bottom_y_index, right_x_index, d));
-            const float top = top_left + (top_right - top_left) * x_lerp;
-            const float bottom =
-                bottom_left + (bottom_right - bottom_left) * x_lerp;
-            crops(b, y, x, d) = top + (bottom - top) * y_lerp;
+          for (int x = 0; x < crop_width; ++x) {
+            const float in_x = (crop_width > 1)
+                                   ? x1 * (image_width - 1) + x * width_scale
+                                   : 0.5 * (x1 + x2) * (image_width - 1);
+            if (in_x < 0 || in_x > image_width - 1) {
+              for (int d = 0; d < depth; ++d) {
+                crops(b, y, x, d) = extrapolation_value;
+              }
+              continue;
+            }
+            const int left_x_index = floorf(in_x);
+            const int right_x_index = ceilf(in_x);
+            const float x_lerp = in_x - left_x_index;
+
+            for (int d = 0; d < depth; ++d) {
+              const float top_left(static_cast<float>(
+                  image(b_in, top_y_index, left_x_index, d)));
+              const float top_right(static_cast<float>(
+                  image(b_in, top_y_index, right_x_index, d)));
+              const float bottom_left(static_cast<float>(
+                  image(b_in, bottom_y_index, left_x_index, d)));
+              const float bottom_right(static_cast<float>(
+                  image(b_in, bottom_y_index, right_x_index, d)));
+              const float top = top_left + (top_right - top_left) * x_lerp;
+              const float bottom =
+                  bottom_left + (bottom_right - bottom_left) * x_lerp;
+              crops(b, y, x, d) = top + (bottom - top) * y_lerp;
+            }
           }
         }
       }
-    }
+    };
+
+    // A rough estimation of the cost for each cropped box.
+    const double cost_per_pixel =
+        depth * (Eigen::TensorOpCost::AddCost<float>() * 6 +
+                 Eigen::TensorOpCost::MulCost<float>() * 3 +
+                 Eigen::TensorOpCost::CastCost<T, float>() * 4) +
+        (Eigen::TensorOpCost::AddCost<float>() * 2 +
+         Eigen::TensorOpCost::AddCost<float>() * 3);
+    const double cost_per_box = crop_height * crop_width * cost_per_pixel;
+
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *(context->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, num_boxes,
+          cost_per_box, CropAndResizePerBox);
+
     return true;
   }
 };
@@ -545,12 +567,14 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
           const float x_lerp = in_x - left_x_index;
 
           for (int d = 0; d < depth; ++d) {
-            const float top_left(image(b_in, top_y_index, left_x_index, d));
-            const float top_right(image(b_in, top_y_index, right_x_index, d));
-            const float bottom_left(
-                image(b_in, bottom_y_index, left_x_index, d));
-            const float bottom_right(
-                image(b_in, bottom_y_index, right_x_index, d));
+            const float top_left(
+                static_cast<float>(image(b_in, top_y_index, left_x_index, d)));
+            const float top_right(
+                static_cast<float>(image(b_in, top_y_index, right_x_index, d)));
+            const float bottom_left(static_cast<float>(
+                image(b_in, bottom_y_index, left_x_index, d)));
+            const float bottom_right(static_cast<float>(
+                image(b_in, bottom_y_index, right_x_index, d)));
             // Compute the image gradient.
             float image_grad_y = (1 - x_lerp) * (bottom_left - top_left) +
                                  x_lerp * (bottom_right - top_right);
@@ -606,18 +630,25 @@ inline void CheckValidBoxInd<CPUDevice>(
                               .HostMemory("crop_size"),            \
                           CropAndResizeOp<CPUDevice, T>);          \
                                                                    \
-  REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradImage")           \
-                              .Device(DEVICE_CPU)                  \
-                              .TypeConstraint<T>("T")              \
-                              .HostMemory("image_size"),           \
-                          CropAndResizeGradImageOp<CPUDevice, T>); \
-                                                                   \
   REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradBoxes")           \
                               .Device(DEVICE_CPU)                  \
                               .TypeConstraint<T>("T"),             \
                           CropAndResizeGradBoxesOp<CPUDevice, T>);
 
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+
+#define REGISTER_KERNEL(T)                               \
+  REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradImage") \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<T>("T")    \
+                              .HostMemory("image_size"), \
+                          CropAndResizeGradImageOp<CPUDevice, T>);
+
+TF_CALL_half(REGISTER_KERNEL);
 TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
@@ -685,7 +716,7 @@ inline void CheckValidBoxInd<GPUDevice>(
                               .TypeConstraint<T>("T"),             \
                           CropAndResizeGradBoxesOp<GPUDevice, T>);
 
-TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 

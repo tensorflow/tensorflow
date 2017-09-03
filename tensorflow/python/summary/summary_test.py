@@ -19,11 +19,9 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from google.protobuf import json_format
-
 from tensorflow.core.framework import summary_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -45,6 +43,29 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(len(values), 1)
     self.assertEqual(values[0].tag, 'outer/inner')
     self.assertEqual(values[0].simple_value, 3.0)
+
+  def testScalarSummaryWithFamily(self):
+    with self.test_session() as s:
+      i = constant_op.constant(7)
+      with ops.name_scope('outer'):
+        im1 = summary_lib.scalar('inner', i, family='family')
+        self.assertEquals(im1.op.name, 'outer/family/inner')
+        im2 = summary_lib.scalar('inner', i, family='family')
+        self.assertEquals(im2.op.name, 'outer/family/inner_1')
+      sm1, sm2 = s.run([im1, im2])
+    summary = summary_pb2.Summary()
+
+    summary.ParseFromString(sm1)
+    values = summary.value
+    self.assertEqual(len(values), 1)
+    self.assertEqual(values[0].tag, 'family/outer/family/inner')
+    self.assertEqual(values[0].simple_value, 7.0)
+
+    summary.ParseFromString(sm2)
+    values = summary.value
+    self.assertEqual(len(values), 1)
+    self.assertEqual(values[0].tag, 'family/outer/family/inner_1')
+    self.assertEqual(values[0].simple_value, 7.0)
 
   def testSummarizingVariable(self):
     with self.test_session() as s:
@@ -75,6 +96,22 @@ class ScalarSummaryTest(test.TestCase):
     expected = sorted('outer/inner/image/{}'.format(i) for i in xrange(3))
     self.assertEqual(tags, expected)
 
+  def testImageSummaryWithFamily(self):
+    with self.test_session() as s:
+      i = array_ops.ones((5, 2, 3, 1))
+      with ops.name_scope('outer'):
+        im = summary_lib.image('inner', i, max_outputs=3, family='family')
+        self.assertEquals(im.op.name, 'outer/family/inner')
+      summary_str = s.run(im)
+    summary = summary_pb2.Summary()
+    summary.ParseFromString(summary_str)
+    values = summary.value
+    self.assertEqual(len(values), 3)
+    tags = sorted(v.tag for v in values)
+    expected = sorted('family/outer/family/inner/image/{}'.format(i)
+                      for i in xrange(3))
+    self.assertEqual(tags, expected)
+
   def testHistogramSummary(self):
     with self.test_session() as s:
       i = array_ops.ones((5, 4, 4, 3))
@@ -86,6 +123,48 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(len(summary.value), 1)
     self.assertEqual(summary.value[0].tag, 'outer/inner')
 
+  def testHistogramSummaryWithFamily(self):
+    with self.test_session() as s:
+      i = array_ops.ones((5, 4, 4, 3))
+      with ops.name_scope('outer'):
+        summ_op = summary_lib.histogram('inner', i, family='family')
+        self.assertEquals(summ_op.op.name, 'outer/family/inner')
+      summary_str = s.run(summ_op)
+    summary = summary_pb2.Summary()
+    summary.ParseFromString(summary_str)
+    self.assertEqual(len(summary.value), 1)
+    self.assertEqual(summary.value[0].tag, 'family/outer/family/inner')
+
+  def testAudioSummary(self):
+    with self.test_session() as s:
+      i = array_ops.ones((5, 3, 4))
+      with ops.name_scope('outer'):
+        aud = summary_lib.audio('inner', i, 0.2, max_outputs=3)
+      summary_str = s.run(aud)
+    summary = summary_pb2.Summary()
+    summary.ParseFromString(summary_str)
+    values = summary.value
+    self.assertEqual(len(values), 3)
+    tags = sorted(v.tag for v in values)
+    expected = sorted('outer/inner/audio/{}'.format(i) for i in xrange(3))
+    self.assertEqual(tags, expected)
+
+  def testAudioSummaryWithFamily(self):
+    with self.test_session() as s:
+      i = array_ops.ones((5, 3, 4))
+      with ops.name_scope('outer'):
+        aud = summary_lib.audio('inner', i, 0.2, max_outputs=3, family='family')
+        self.assertEquals(aud.op.name, 'outer/family/inner')
+      summary_str = s.run(aud)
+    summary = summary_pb2.Summary()
+    summary.ParseFromString(summary_str)
+    values = summary.value
+    self.assertEqual(len(values), 3)
+    tags = sorted(v.tag for v in values)
+    expected = sorted('family/outer/family/inner/audio/{}'.format(i)
+                      for i in xrange(3))
+    self.assertEqual(tags, expected)
+
   def testSummaryNameConversion(self):
     c = constant_op.constant(3)
     s = summary_lib.scalar('name with spaces', c)
@@ -96,6 +175,34 @@ class ScalarSummaryTest(test.TestCase):
 
     s3 = summary_lib.scalar('/name/with/leading/slash', c)
     self.assertEqual(s3.op.name, 'name/with/leading/slash')
+
+  def testSummaryWithFamilyMetaGraphExport(self):
+    with ops.name_scope('outer'):
+      i = constant_op.constant(11)
+      summ = summary_lib.scalar('inner', i)
+      self.assertEquals(summ.op.name, 'outer/inner')
+      summ_f = summary_lib.scalar('inner', i, family='family')
+      self.assertEquals(summ_f.op.name, 'outer/family/inner')
+
+    metagraph_def, _ = meta_graph.export_scoped_meta_graph(export_scope='outer')
+
+    with ops.Graph().as_default() as g:
+      meta_graph.import_scoped_meta_graph(metagraph_def, graph=g,
+                                          import_scope='new_outer')
+      # The summaries should exist, but with outer scope renamed.
+      new_summ = g.get_tensor_by_name('new_outer/inner:0')
+      new_summ_f = g.get_tensor_by_name('new_outer/family/inner:0')
+
+      # However, the tags are unaffected.
+      with self.test_session() as s:
+        new_summ_str, new_summ_f_str = s.run([new_summ, new_summ_f])
+        new_summ_pb = summary_pb2.Summary()
+        new_summ_pb.ParseFromString(new_summ_str)
+        self.assertEquals('outer/inner', new_summ_pb.value[0].tag)
+        new_summ_f_pb = summary_pb2.Summary()
+        new_summ_f_pb.ParseFromString(new_summ_f_str)
+        self.assertEquals('family/outer/family/inner',
+                          new_summ_f_pb.value[0].tag)
 
 
 if __name__ == '__main__':

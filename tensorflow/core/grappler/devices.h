@@ -29,6 +29,10 @@ namespace grappler {
 // than 8.
 int GetNumAvailableGPUs();
 
+// Maximum amount of gpu memory available per gpu. gpu_id must be in the range
+// [0, num_available_gpu)
+int64 AvailableGPUMemory(int gpu_id);
+
 // Get the number of logical CPU cores (aka hyperthreads) available.
 int GetNumAvailableLogicalCPUCores();
 

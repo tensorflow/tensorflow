@@ -238,9 +238,11 @@ class ReductionOp : public OpKernel {
     if (ctx->track_allocations()) {
       // The temporary memory becomes the output memory.
       if (ctx->allocate_on_host(alloc_attr)) {
-        ctx->record_host_temp_memory_size(-out.AllocatedBytes());
+        ctx->record_host_temp_memory_size(
+            -static_cast<int64>(out.AllocatedBytes()));
       } else {
-        ctx->record_device_temp_memory_size(-out.AllocatedBytes());
+        ctx->record_device_temp_memory_size(
+            -static_cast<int64>(out.AllocatedBytes()));
       }
     }
     ctx->set_output(0, out);
@@ -276,31 +278,6 @@ struct ReduceFunctor<CPUDevice, Reducer>
 template <typename Reducer>
 struct ReduceFunctor<SYCLDevice, Reducer>
         : ReduceFunctorBase<SYCLDevice, Reducer>{};
-
-template <typename T>
-struct ReduceFunctor<SYCLDevice, Eigen::internal::MeanReducer<T> > {
-  template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const SYCLDevice& d, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MeanReducer<T>& reducer) {
-    typedef typename IN_T::Index Index;
-    // Eigen sum reductions are much faster on GPU than mean reductions:
-    // Simply trigger them by computing the sum of the weighted inputs.
-    Index num_coeffs_to_reduce = 1;
-    for (int i = 0; i < Eigen::internal::array_size<ReductionAxes>::value;
-         ++i) {
-      num_coeffs_to_reduce *= in.dimension(reduction_axes[i]);
-    }
-    T scale = T(1.0) / num_coeffs_to_reduce;
-    out.device(d) = (in * scale).sum(reduction_axes);
-  }
-
-  template <typename OUT_T>
-  static void FillIdentity(const SYCLDevice& d, OUT_T out,
-                           const Eigen::internal::MeanReducer<T>& reducer) {
-    FillIdentityEigenImpl(d, out, reducer);
-  }
-};
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace functor

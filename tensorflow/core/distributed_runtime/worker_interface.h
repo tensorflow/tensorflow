@@ -113,6 +113,11 @@ class WorkerInterface {
     return CallAndWait(&ME::GetStatusAsync, request, response);
   }
 
+  Status CreateWorkerSession(const CreateWorkerSessionRequest* request,
+                             CreateWorkerSessionResponse* response) {
+    return CallAndWait(&ME::CreateWorkerSessionAsync, request, response);
+  }
+
   Status RegisterGraph(const RegisterGraphRequest* request,
                        RegisterGraphResponse* response) {
     return CallAndWait(&ME::RegisterGraphAsync, request, response);

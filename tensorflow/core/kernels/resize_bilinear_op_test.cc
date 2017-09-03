@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -194,7 +193,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinearRandom2x2To1x1) {
   ResizeBilinearBaseline(input->tensor<float, 4>(),
                          expected->tensor<float, 4>());
   EXPECT_EQ(input->flat<float>()(0), output->flat<float>()(0));
-  test::ExpectTensorEqual<float>(*expected.get(), *output);
+  test::ExpectTensorEqual<float>(*expected, *output);
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To1x1) {

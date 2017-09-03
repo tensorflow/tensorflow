@@ -95,6 +95,21 @@ func TestMultipleGeneratedOps(t *testing.T) {
 	}
 }
 
+func TestScopeWithGraph(t *testing.T) {
+	s1 := NewScope()
+	Const(s1, "hello")
+	graph, err := s1.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s2 := NewScopeWithGraph(graph)
+	Const(s2.SubScope("addition"), "world")
+	if err := s2.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func Example() {
 	// This example creates a Graph that multiplies a constant matrix with
 	// a matrix to be provided during graph execution (via

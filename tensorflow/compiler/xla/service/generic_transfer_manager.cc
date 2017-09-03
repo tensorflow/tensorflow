@@ -82,13 +82,12 @@ Status GenericTransferManager::TransferLiteralFromDevice(
   }
 
   *literal->mutable_shape() = device_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
+  literal->Reserve(ShapeUtil::ElementsIn(device_shape));
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(
       executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
-      /*destination=*/LiteralUtil::MutableInternalData(literal)));
+      /*destination=*/literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(
-        LiteralUtil::Relayout(*literal, literal_shape.layout()).get());
+    literal->Swap(literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -152,27 +151,34 @@ Status GenericTransferManager::TransferLiteralToDevice(
         tuple_elements_on_device.data(), destination);
   }
 
-  return TransferBufferToDevice(
-      executor, /*size=*/GetByteSizeRequirement(shape),
-      /*source=*/LiteralUtil::InternalData(literal), destination);
+  return TransferBufferToDevice(executor,
+                                /*size=*/GetByteSizeRequirement(shape),
+                                /*source=*/literal.InternalData(), destination);
 }
 
 Status GenericTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const Literal& literal) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+  return Unimplemented("Generic transfer to Infeed");
+}
+
+Status GenericTransferManager::TransferBufferToInfeed(
+    perftools::gputools::StreamExecutor* executor, int64 size,
+    const void* source) {
+  return Unimplemented("Generic transfer to Infeed");
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(
     perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
-  return Unimplemented("Outfeed is not supported on CPU/GPU (b/30467474)");
+  return Unimplemented(
+      "Outfeed is not supported on this platform (b/30467474)");
 }
 
 Status GenericTransferManager::ResetDevices(
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-        executors) {
+    /*executors*/) {
   return Unimplemented(
-      "Device reset is not yet supported on CPU and GPU (b/30481585)");
+      "Device reset is not yet supported on this platform (b/30481585)");
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
@@ -180,14 +186,3 @@ int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
 }
 
 }  // namespace xla
-
-static xla::TransferManager* CreateGenericTransferManager() {
-  return new xla::GenericTransferManager(se::cuda::kCudaPlatformId);
-}
-
-static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
-                                                CreateGenericTransferManager);
-  return true;
-}
-static bool module_initialized = InitModule();

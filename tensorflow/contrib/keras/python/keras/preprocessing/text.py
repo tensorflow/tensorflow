@@ -20,14 +20,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import OrderedDict
+from hashlib import md5
 import string
 import sys
-import warnings
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 from six.moves import zip  # pylint: disable=redefined-builtin
-
 
 if sys.version_info < (3,):
   maketrans = string.maketrans
@@ -39,7 +39,7 @@ def text_to_word_sequence(text,
                           filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                           lower=True,
                           split=' '):
-  """Converts a text to a sequence of word indices.
+  """Converts a text to a sequence of words (or tokens).
 
   Arguments:
       text: Input text (string).
@@ -48,11 +48,17 @@ def text_to_word_sequence(text,
       split: Sentence split marker (string).
 
   Returns:
-      A list of integer word indices.
+      A list of words (or tokens).
   """
   if lower:
     text = text.lower()
-  text = text.translate(maketrans(filters, split * len(filters)))
+
+  if sys.version_info < (3,) and isinstance(text, unicode):
+    translate_map = dict((ord(c), unicode(split)) for c in filters)
+  else:
+    translate_map = maketrans(filters, split * len(filters))
+
+  text = text.translate(translate_map)
   seq = text.split(split)
   return [i for i in seq if i]
 
@@ -62,8 +68,45 @@ def one_hot(text,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
             lower=True,
             split=' '):
+  return hashing_trick(
+      text, n, hash_function=hash, filters=filters, lower=lower, split=split)
+
+
+def hashing_trick(text,
+                  n,
+                  hash_function=None,
+                  filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
+                  lower=True,
+                  split=' '):
+  """Converts a text to a sequence of indexes in a fixed-size hashing space.
+
+  Arguments:
+      text: Input text (string).
+      n: Dimension of the hashing space.
+      hash_function: if `None` uses python `hash` function, can be 'md5' or
+          any function that takes in input a string and returns a int.
+          Note that `hash` is not a stable hashing function, so
+          it is not consistent across different runs, while 'md5'
+          is a stable hashing function.
+      filters: Sequence of characters to filter out.
+      lower: Whether to convert the input to lowercase.
+      split: Sentence split marker (string).
+
+  Returns:
+      A list of integer word indices (unicity non-guaranteed).
+
+  `0` is a reserved index that won't be assigned to any word.
+
+  Two or more words may be assigned to the same index, due to possible
+  collisions by the hashing function.
+  """
+  if hash_function is None:
+    hash_function = hash
+  elif hash_function == 'md5':
+    hash_function = lambda w: int(md5(w.encode()).hexdigest(), 16)
+
   seq = text_to_word_sequence(text, filters=filters, lower=lower, split=split)
-  return [(abs(hash(w)) % (n - 1) + 1) for w in seq]
+  return [(hash_function(w) % (n - 1) + 1) for w in seq]
 
 
 class Tokenizer(object):
@@ -83,7 +126,7 @@ class Tokenizer(object):
           tabs and line breaks, minus the `'` character.
       lower: boolean. Whether to convert the texts to lowercase.
       split: character or string to use for token splitting.
-      char_level: if True, every character will be treated as a word.
+      char_level: if True, every character will be treated as a token.
 
   By default, all punctuation is removed, turning the texts into
   space-separated sequences of words
@@ -98,17 +141,8 @@ class Tokenizer(object):
                filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                lower=True,
                split=' ',
-               char_level=False,
-               **kwargs):
-    # Legacy support
-    if 'nb_words' in kwargs:
-      warnings.warn('The `nb_words` argument in `Tokenizer` '
-                    'has been renamed `num_words`.')
-      num_words = kwargs.pop('nb_words')
-    if kwargs:
-      raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
-
-    self.word_counts = {}
+               char_level=False):
+    self.word_counts = OrderedDict()
     self.word_docs = {}
     self.filters = filters
     self.split = split
@@ -280,8 +314,8 @@ class Tokenizer(object):
           # Use weighting scheme 2 in
           # https://en.wikipedia.org/wiki/Tf%E2%80%93idf
           tf = 1 + np.log(c)
-          idf = np.log(1 + self.document_count / (1 + self.index_docs.get(j, 0)
-                                                 ))
+          idf = np.log(1 + self.document_count /
+                       (1 + self.index_docs.get(j, 0)))
           x[i][j] = tf * idf
         else:
           raise ValueError('Unknown vectorization mode:', mode)
