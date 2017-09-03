@@ -27,6 +27,9 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
   switch (inst->opcode()) {
     case HloOpcode::kParameter:
     {
+      if (ShapeUtil::IsTuple(inst->shape())) {
+        tuple_stack.push_back(-1);
+      }
       break;
     }
     case HloOpcode::kAdd:
