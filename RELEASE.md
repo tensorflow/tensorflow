@@ -46,7 +46,7 @@ See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/
   * Display feed values with the `print_feed` or `pf` command and clickable links in the curses UI.
   * Runtime profiler at the op level and the Python source line level with the `run -p` command.
 * Initial release of the statistical distribution library `tf.distributions`.
-* GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
+* GPU kernels and speed improvements for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
 * Added `tf.contrib.signal`, a library for signal processing primitives.
 * Added `tf.contrib.resampler`, containing CPU and GPU ops for differentiable resampling of images.
