@@ -65,7 +65,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return x.name
+      return compat.as_str(x.name)
   return ""
 
 

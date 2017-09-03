@@ -888,6 +888,16 @@ TEST_F(OpTest, Any) {
   });
 }
 
+TEST_F(OpTest, ApproximateEqual) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ApproximateEqual")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Asinh) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -1662,11 +1672,9 @@ TEST_F(OpTest, GreaterEqual) {
 
 TEST_F(OpTest, L2Loss) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
-    // TODO(b/31644876): scalars currently crash.
-    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("L2Loss")
-                                             .RandomInput(type, RandomDims(1))
-                                             .Attr("T", type));
+    DataType type = DT_FLOAT;
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("L2Loss").RandomInput(type).Attr("T", type));
   });
 }
 
@@ -2165,6 +2173,15 @@ TEST_F(OpTest, Reciprocal) {
   });
 }
 
+TEST_F(OpTest, ReciprocalGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ReciprocalGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
 TEST_F(OpTest, Relu) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -2247,6 +2264,13 @@ TEST_F(OpTest, ReverseV2) {
                                              .RandomInput(type, data_dims)
                                              .Input(indices)
                                              .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Rint) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Rint").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -2396,6 +2420,23 @@ TEST_F(OpTest, SoftplusGrad) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SoftplusGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Softsign) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Softsign").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, SoftsignGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SoftsignGrad")
                                              .RandomInput(DT_FLOAT, dims)
                                              .RandomInput(DT_FLOAT, dims)
                                              .Attr("T", DT_FLOAT));
