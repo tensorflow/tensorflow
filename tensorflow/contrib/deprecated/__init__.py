@@ -28,22 +28,22 @@ tf.merge_all_summaries -> tf.summary.merge_all
 ```
 
 We think this API is cleaner and will improve long-term discoverability and
-clarity of the TensorFlow API. We however, also took the opportunity to make an
+clarity of the TensorFlow API. But we also took the opportunity to make an
 important change to how summary "tags" work. The "tag" of a summary is the
 string that is associated with the output data, i.e. the key for organizing the
 generated protobufs.
 
 Previously, the tag was allowed to be any unique string; it had no relation
 to the summary op generating it, and no relation to the TensorFlow name system.
-This behavior greatly complicates the reusability of the code that would add 
+This behavior made it very difficult to write reusable  that would add 
 summary ops to the graph. If you had a function to add summary ops, you would
-need to pass in a namescope, manually, to that function to create deduplicated
+need to pass in a `tf.name_scope`, manually, to that function to create deduplicated
 tags. Otherwise your program would fail with a runtime error due to tag
 collision.
 
 The new summary APIs under tf.summary throw away the "tag" as an independent
 concept; instead, the first argument is the node name. So summary tags now 
-automatically inherit the surrounding TF namescope, and automatically
+automatically inherit the surrounding `tf.name_scope`, and automatically
 are deduplicated if there is a conflict. Now however, the only allowed
 characters are alphanumerics, underscores, and forward slashes. To make
 migration easier, the new APIs automatically convert illegal characters to
