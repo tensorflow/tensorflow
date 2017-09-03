@@ -30,9 +30,12 @@
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
 
 namespace tensorflow {
 namespace {
@@ -148,7 +151,12 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   // This callback checks that all batch items in all calls were processed
   // successfully and passes status to the info_checker_callback accordingly.
   auto wrapped_info_checker_callback =
-      [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
+      [](OpKernelContext* context,
+         std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+             info_checker_callback,
+         std::vector<HostLapackInfo> host_lapack_infos) {
+        auto stream = context->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
@@ -166,8 +174,10 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         }
         info_checker_callback(status, host_lapack_infos);
       };
+
   auto cb =
-      std::bind(wrapped_info_checker_callback, std::move(host_lapack_infos));
+      std::bind(wrapped_info_checker_callback, context_,
+                std::move(info_checker_callback), std::move(host_lapack_infos));
   auto stream = context_->op_device_context()->stream();
   context_->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
       stream, std::move(cb));

@@ -261,6 +261,7 @@ class GradientBoostedDecisionTreeModel(object):
                examples_per_layer,
                learner_config,
                features,
+               logits_dimension,
                feature_columns=None):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
@@ -273,8 +274,8 @@ class GradientBoostedDecisionTreeModel(object):
         a tree layer. It can also be a function that computes the number of
         examples based on the depth of the layer that's being built.
       learner_config: A learner config.
-          print split, sorted_feature_names[split.feature_column]
       features: `dict` of `Tensor` objects.
+      logits_dimension: An int, the dimension of logits.
       feature_columns: A list of feature columns.
 
     Raises:
@@ -289,11 +290,39 @@ class GradientBoostedDecisionTreeModel(object):
     if learner_config.num_classes < 2:
       raise ValueError("Number of classes must be >=2")
 
+    self._logits_dimension = logits_dimension
     self._is_chief = is_chief
     self._num_ps_replicas = num_ps_replicas
     self._ensemble_handle = ensemble_handle
     self._center_bias = center_bias
     self._examples_per_layer = examples_per_layer
+
+    # Fill in the defaults.
+    if (learner_config.multi_class_strategy ==
+        learner_pb2.LearnerConfig.MULTI_CLASS_STRATEGY_UNSPECIFIED):
+      if logits_dimension == 1:
+        learner_config.multi_class_strategy = (
+            learner_pb2.LearnerConfig.TREE_PER_CLASS)
+      else:
+        learner_config.multi_class_strategy = (
+            learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
+
+    if (learner_config.growing_mode ==
+        learner_pb2.LearnerConfig.GROWING_MODE_UNSPECIFIED):
+      learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+
+    if (learner_config.pruning_mode ==
+        learner_pb2.LearnerConfig.PRUNING_MODE_UNSPECIFIED):
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.POST_PRUNE
+
+    if learner_config.constraints.max_tree_depth == 0:
+      # Use 6 as the default maximum depth.
+      learner_config.constraints.max_tree_depth = 6
+
+    tuner = learner_config.learning_rate_tuner.WhichOneof("tuner")
+    if not tuner:
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
@@ -378,75 +407,81 @@ class GradientBoostedDecisionTreeModel(object):
                              local_stamp), _refresh_local_ensemble_fn,
           lambda: (control_flow_ops.no_op(), ensemble_stamp))
 
-      # Once updated, Use the the local model for prediction.
+      # Once updated, use the local model for prediction.
       with ops.control_dependencies([refresh_local_ensemble]):
         ensemble_stats = training_ops.tree_ensemble_stats(
             local_ensemble_handle, ensemble_stamp)
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
         # We don't need dropout info - we can always restore it based on the
         # seed.
-        predictions, predictions_no_dropout, _ = (
-            prediction_ops.gradient_trees_prediction(
-                local_ensemble_handle,
-                seed,
-                self._dense_floats,
-                self._sparse_float_indices,
-                self._sparse_float_values,
-                self._sparse_float_shapes,
-                self._sparse_int_indices,
-                self._sparse_int_values,
-                self._sparse_int_shapes,
-                learner_config=self._learner_config_serialized,
-                apply_dropout=apply_dropout,
-                apply_averaging=apply_averaging,
-                use_locking=False,
-                center_bias=self._center_bias,
-                reduce_dim=self._reduce_dim))
-        partition_ids = prediction_ops.gradient_trees_partition_examples(
-            local_ensemble_handle,
-            self._dense_floats,
-            self._sparse_float_indices,
-            self._sparse_float_values,
-            self._sparse_float_shapes,
-            self._sparse_int_indices,
-            self._sparse_int_values,
-            self._sparse_int_shapes,
-            use_locking=False)
+        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
+        # Make sure ensemble stats run. This will check that the ensemble has
+        # the right stamp.
+        with ops.control_dependencies(ensemble_stats):
+          predictions, predictions_no_dropout, _ = (
+              prediction_ops.gradient_trees_prediction(
+                  local_ensemble_handle,
+                  seed,
+                  self._dense_floats,
+                  self._sparse_float_indices,
+                  self._sparse_float_values,
+                  self._sparse_float_shapes,
+                  self._sparse_int_indices,
+                  self._sparse_int_values,
+                  self._sparse_int_shapes,
+                  learner_config=self._learner_config_serialized,
+                  apply_dropout=apply_dropout,
+                  apply_averaging=apply_averaging,
+                  use_locking=True,
+                  center_bias=self._center_bias,
+                  reduce_dim=self._reduce_dim))
+          partition_ids = prediction_ops.gradient_trees_partition_examples(
+              local_ensemble_handle,
+              self._dense_floats,
+              self._sparse_float_indices,
+              self._sparse_float_values,
+              self._sparse_float_shapes,
+              self._sparse_int_indices,
+              self._sparse_int_values,
+              self._sparse_int_shapes,
+              use_locking=True)
 
     else:
       with ops.device(self._ensemble_handle.device):
         ensemble_stats = training_ops.tree_ensemble_stats(
             self._ensemble_handle, ensemble_stamp)
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
         # We don't need dropout info - we can always restore it based on the
         # seed.
-        predictions, predictions_no_dropout, _ = (
-            prediction_ops.gradient_trees_prediction(
-                self._ensemble_handle,
-                seed,
-                self._dense_floats,
-                self._sparse_float_indices,
-                self._sparse_float_values,
-                self._sparse_float_shapes,
-                self._sparse_int_indices,
-                self._sparse_int_values,
-                self._sparse_int_shapes,
-                learner_config=self._learner_config_serialized,
-                apply_dropout=apply_dropout,
-                apply_averaging=apply_averaging,
-                use_locking=False,
-                center_bias=self._center_bias,
-                reduce_dim=self._reduce_dim))
-        partition_ids = prediction_ops.gradient_trees_partition_examples(
-            self._ensemble_handle,
-            self._dense_floats,
-            self._sparse_float_indices,
-            self._sparse_float_values,
-            self._sparse_float_shapes,
-            self._sparse_int_indices,
-            self._sparse_int_values,
-            self._sparse_int_shapes,
-            use_locking=False)
+        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
+        # Make sure ensemble stats run. This will check that the ensemble has
+        # the right stamp.
+        with ops.control_dependencies(ensemble_stats):
+          predictions, predictions_no_dropout, _ = (
+              prediction_ops.gradient_trees_prediction(
+                  self._ensemble_handle,
+                  seed,
+                  self._dense_floats,
+                  self._sparse_float_indices,
+                  self._sparse_float_values,
+                  self._sparse_float_shapes,
+                  self._sparse_int_indices,
+                  self._sparse_int_values,
+                  self._sparse_int_shapes,
+                  learner_config=self._learner_config_serialized,
+                  apply_dropout=apply_dropout,
+                  apply_averaging=apply_averaging,
+                  use_locking=True,
+                  center_bias=self._center_bias,
+                  reduce_dim=self._reduce_dim))
+          partition_ids = prediction_ops.gradient_trees_partition_examples(
+              self._ensemble_handle,
+              self._dense_floats,
+              self._sparse_float_indices,
+              self._sparse_float_values,
+              self._sparse_float_shapes,
+              self._sparse_int_indices,
+              self._sparse_int_values,
+              self._sparse_int_shapes,
+              use_locking=True)
 
     return _make_predictions_dict(ensemble_stamp, predictions,
                                   predictions_no_dropout, partition_ids,

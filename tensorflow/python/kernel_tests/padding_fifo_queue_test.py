@@ -1191,6 +1191,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertEqual([50.0], dequeued_t.eval())
       self.assertEqual([60.0], dequeued_t.eval())
 
+      # Make sure the thread finishes before exiting.
+      thread.join()
+
   def testBlockingEnqueueBeforeClose(self):
     with self.test_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(4, dtypes_lib.float32, ((),))

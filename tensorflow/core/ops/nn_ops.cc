@@ -1945,7 +1945,7 @@ Computes softsign gradients for a softsign operation.
 
 gradients: The backpropagated gradients to the corresponding softsign operation.
 features: The features passed as input to the corresponding softsign operation.
-backprops: The gradients: `gradients / (1 + abs(-features)) ** 2`.
+backprops: The gradients: `gradients / (1 + abs(features)) ** 2`.
 )doc");
 
 // --------------------------------------------------------------------------

@@ -139,7 +139,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     features = {'x': np.array(((42.,),))}
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features=features,
           mode=model_fn.ModeKeys.EVAL,
@@ -889,7 +889,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     logits_2x1 = np.array(((45.,), (41.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': np.array(((42.,),))},
           mode=model_fn.ModeKeys.EVAL,
@@ -1692,7 +1692,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.EVAL,
@@ -1737,7 +1737,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.TRAIN,

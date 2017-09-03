@@ -373,6 +373,33 @@ def TF_Reset(target, containers=None, config=None):
     TF_DeleteSessionOptions(opts)
 %}
 
+// We use TF_GraphToFunction_wrapper instead of TF_GraphToFunction
+%ignore TF_GraphToFunction;
+// TF_GraphToFunction_wrapper does not use any Python methods and
+// does not require GIL to be held.
+%unignore TF_GraphToFunction_wrapper;
+
+// $input is a Python list of wrapped TF_Operations
+%typemap(in) (const std::vector<TF_Operation*>* opers)
+    (std::vector<TF_Operation*> opers) {
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, "$symname: expected list");
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      TF_Operation* oper_ptr;
+      SWIG_ConvertPtr(item, reinterpret_cast<void**>(&oper_ptr),
+                      $descriptor(TF_Operation*), 0);
+      opers.push_back(oper_ptr);
+    }
+    $1 = &opers;
+  } else {
+    $1 = nullptr;
+  }
+}
+
 %include "tensorflow/python/client/tf_session_helper.h"
 
 %unignoreall

@@ -709,7 +709,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
         } else {
           auto r = ir_builder_->CreateSub(q, p);
           auto leading_zeros = llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::ctlz, {r, ir_builder_->getInt1(1)},
+              llvm::Intrinsic::ctlz, {r, ir_builder_->getInt1(true)},
               {param_ir_type}, ir_builder_);
           auto in_block = ir_builder_->GetInsertBlock();
 
