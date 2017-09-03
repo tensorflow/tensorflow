@@ -51,7 +51,7 @@ from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
-from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 
 
@@ -65,7 +65,7 @@ class BaseMonitor(object):
   to run exclusively on the elected chief worker.
   """
 
-  @deprecated(
+  @deprecation.deprecated(
       "2016-12-05",
       "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
@@ -880,7 +880,7 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  @deprecated("2017-03-25",
+  @deprecation.deprecated("2017-03-25",
               "ExportMonitor is deprecated. Please pass an "
               "ExportStrategy to Experiment instead.")
   def __init__(self,
