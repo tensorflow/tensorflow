@@ -73,7 +73,6 @@ py_library(
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/stateless",
         "//tensorflow/contrib/tensor_forest:init_py",
-        "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",

@@ -346,7 +346,6 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensor_forest/kernels/v4:all_files",
         "//tensorflow/contrib/tensor_forest/proto:all_files",
-        "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof:all_files",
