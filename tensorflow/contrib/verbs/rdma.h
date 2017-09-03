@@ -239,8 +239,8 @@ class RdmaTensorBuffer : public RdmaBuffer {
 
  private:
   Rendezvous::DoneCallback getRecvTensorCallback(
-      const string& key_with_step_id, const string& key,
-      int64 step_id, const Rendezvous::ParsedKey& parsed);
+      const string& key_with_step_id, const string& key, int64 step_id,
+      const Rendezvous::ParsedKey& parsed);
 
   struct ReItem {
     Rendezvous::Args send_args;
@@ -248,11 +248,16 @@ class RdmaTensorBuffer : public RdmaBuffer {
     Tensor in;
     bool is_dead;
 
-    ReItem(const Rendezvous::Args& send_args_, const Rendezvous::Args& recv_args_, const Tensor& in_, bool is_dead_ ): send_args(send_args_), recv_args(recv_args_), in(in_), is_dead(is_dead_){
-      if (send_args.device_context){
+    ReItem(const Rendezvous::Args& send_args_,
+           const Rendezvous::Args& recv_args_, const Tensor& in_, bool is_dead_)
+        : send_args(send_args_),
+          recv_args(recv_args_),
+          in(in_),
+          is_dead(is_dead_) {
+      if (send_args.device_context) {
         send_args.device_context->Ref();
       }
-      if (recv_args.device_context){
+      if (recv_args.device_context) {
         recv_args.device_context->Ref();
       }
     }
