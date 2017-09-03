@@ -2260,6 +2260,33 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("Roll")
+    .Input("input: T")
+    .Input("shift: Tshift")
+    .Input("axis: Taxis")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshift: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns the rank of a tensor.
+
+This operation returns an integer representing the rank of `input`.
+
+For example:
+
+```
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+# shape of tensor 't' is [2, 2, 3]
+rank(t) ==> 3
+```
+
+**Note**: The rank of a tensor is not the same as the rank of a matrix. The rank
+of a tensor is the number of indices required to uniquely select each element
+of the tensor. Rank is also known as "order", "degree", or "ndims."
+)doc");
+// --------------------------------------------------------------------------
 REGISTER_OP("Size")
     .Input("input: T")
     .Output("output: out_type")

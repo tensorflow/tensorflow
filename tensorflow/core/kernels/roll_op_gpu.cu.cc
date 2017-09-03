@@ -3,8 +3,8 @@
 #define EIGEN_USE_GPU
 #define EIGEN_USE_THREADS
 
-#include "roll.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "roll_op.h"
 
 using namespace tensorflow;
 

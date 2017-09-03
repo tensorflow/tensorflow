@@ -591,6 +591,7 @@ cc_library(
         ":reshape_op",
         ":reverse_op",
         ":reverse_sequence_op",
+        ":roll_op",
         ":shape_ops",
         ":slice_op",
         ":split_op",
@@ -768,6 +769,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "reverse_sequence_op",
     prefix = "reverse_sequence_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "roll_op",
+    prefix = "roll_op",
     deps = ARRAY_DEPS,
 )
 
@@ -1264,6 +1271,25 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":reverse_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "roll_op_test",
+    size = "small",
+    srcs = ["roll_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":roll_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
