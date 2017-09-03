@@ -1248,7 +1248,8 @@ StatusOr<bool> HloRematerialization::Run(
                                 sequence->at(node.computation())));
         }
         return Status::OK();
-      }));
+      },
+      /*visit_unreachable_nodes=*/false));
 
   // The peak memory usage of the module equals the peak memory use of the entry
   // computation plus the output size of the computation. This is because the

@@ -73,8 +73,12 @@ XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
 XLAJIT_MAKE_UNARY(Expm1, b->Sub(b->Exp(x), XlaHelpers::One(b, input_type(0))));
 
 XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
-// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
+XLAJIT_MAKE_UNARY(IsFinite, b->IsFinite(x));
+XLAJIT_MAKE_UNARY(IsInf, b->Eq(b->Abs(x),
+                               XlaHelpers::FloatLiteral(
+                                   b, input_type(0),
+                                   std::numeric_limits<double>::infinity())));
+XLAJIT_MAKE_UNARY(IsNan, b->Ne(x, x));
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, b->Div(XlaHelpers::One(b, input_type(0)), x));
 XLAJIT_MAKE_UNARY(Reciprocal, b->Div(XlaHelpers::One(b, input_type(0)), x));
@@ -105,6 +109,12 @@ static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
                    b->Add(round_val, one), round_val);
 }
 
+XLAJIT_MAKE_UNARY(Rint, Round(b, input_type(0), x));
+XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
+
+XLAJIT_MAKE_UNARY(Rsqrt,
+                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
+
 // Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
 static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
                                           DataType dtype,
@@ -112,16 +122,19 @@ static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
   auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
   return b->Add(half, b->Mul(half, b->Tanh(b->Mul(half, x))));
 }
-
-XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
-XLAJIT_MAKE_UNARY(Rsqrt,
-                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
 XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(b, input_type(0), x));
+
+// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
 XLAJIT_MAKE_UNARY(Sinh,
                   b->Mul(b->Sub(b->Exp(x), b->Exp(b->Neg(x))),
                          XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Softplus,
                   b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
+// softsign(x) = x / (abs(x) + 1)
+XLAJIT_MAKE_UNARY(Softsign,
+                  b->Div(x,
+                         b->Add(b->Abs(x), XlaHelpers::One(b, input_type(0)))));
 XLAJIT_MAKE_UNARY(Sqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));

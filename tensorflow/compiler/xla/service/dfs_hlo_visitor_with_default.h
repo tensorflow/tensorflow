@@ -41,12 +41,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   // Default action performed on HloInstruction.
   virtual Status DefaultAction(HloInstruction* hlo_instruction) = 0;
 
-  Status HandleElementwiseUnary(HloInstruction* hlo,
-                                HloOpcode opcode) override {
+  Status HandleElementwiseUnary(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleElementwiseBinary(HloInstruction* hlo,
-                                 HloOpcode opcode) override {
+  Status HandleElementwiseBinary(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
 

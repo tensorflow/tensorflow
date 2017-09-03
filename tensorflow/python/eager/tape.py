@@ -151,6 +151,15 @@ def watch(tensor):
   return tensor
 
 
+def watch_variable(resource_variable):
+  """Marks this ResourceVariable to be watched by all tapes in the stack.
+
+  Args:
+    resource_variable: A ResourceVariable to be watched.
+  """
+  watch(resource_variable.handle)  # py-lint: disable=protected-access
+
+
 def pop_tape():
   """Pops the top tape in the stack, if any."""
   if _tape_stack.stack:

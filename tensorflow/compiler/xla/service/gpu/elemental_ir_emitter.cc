@@ -334,7 +334,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
 
         IrArray::Index input_index(index.size());
-        llvm::Value* in_bounds = ir_builder_->getInt1(1);
+        llvm::Value* in_bounds = ir_builder_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
               index[i], ir_builder_->getInt64(window.dimensions(i).stride()));

@@ -102,10 +102,12 @@ def _increase_eval_step_op(iterations_per_loop):
                               use_locking=True)
 
 
-def _tpu_job(run_config):
+def _tpu_job(run_config, mode):
   # The tpu job is determined by the run_config. Right now, this method is
   # required as tpu_config is not part of the RunConfig.
-  return None if run_config.master in ['', 'local'] else 'tpu_worker'
+  master = (run_config.evaluation_master if mode == model_fn_lib.ModeKeys.EVAL
+            else run_config.master)
+  return None if master in ['', 'local'] else 'tpu_worker'
 
 
 def _is_running_on_cpu(use_tpu, mode, eval_batch_size):
@@ -265,9 +267,9 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
      dequeue.
   """
 
-  def __init__(self, run_config, enqueue_fn, dequeue_ops=None):
+  def __init__(self, run_config, mode, enqueue_fn, dequeue_ops=None):
     self._iterations = run_config.tpu_config.iterations_per_loop
-    self._tpu_job = _tpu_job(run_config)
+    self._tpu_job = _tpu_job(run_config, mode)
     self._enqueue_fn = enqueue_fn
     self._dequeue_ops = dequeue_ops
 
@@ -899,7 +901,7 @@ class _EvalMetrics(object):
     """
 
     num_shards = run_config.tpu_config.num_shards
-    job = _tpu_job(run_config)
+    job = _tpu_job(run_config, model_fn_lib.ModeKeys.EVAL)
     job_device = '' if job is None else ('/job:%s' % job)
 
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -978,18 +980,20 @@ class TPUEstimator(estimator_lib.Estimator):
 
   Example (MNIST):
   ```
+  # The metric Fn which runs on CPU.
+  def metric_fn(labels, logits):
+    predictions = tf.argmax(logits, 1)
+    return {
+      'accuracy': tf.metrics.precision(
+          labels=labels, predictions=predictions),
+    }
+
+  # Your model Fn which runs on TPU.
   def model_fn(features, labels, mode, config, params):
     ...
     logits = ...
 
     if mode = tf.estimator.ModeKeys.EVAL:
-      def metric_fn(labels, logits):
-        predictions = tf.argmax(logits, 1)
-        return {
-          'precision': tf.metrics.precision(
-              labels=labels, predictions=predictions),
-        }
-
       return tpu_estimator.TPUEstimatorSpec(
           mode=mode,
           loss=loss,
@@ -1162,7 +1166,7 @@ class TPUEstimator(estimator_lib.Estimator):
       with ops.device('/device:CPU:0'):
         return input_fn(**kwargs)
 
-    job = _tpu_job(config)
+    job = _tpu_job(config, mode)
     def placement_function(index):
       if job is None:
         return '/replica:0/task:0/device:CPU:0'
@@ -1190,13 +1194,14 @@ class TPUEstimator(estimator_lib.Estimator):
 
 # TODO(b/64607814): Ensure batch_axis works with nested structures.
 def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
-                                              batch_axis):
+                                              batch_axis, mode):
   """Utility to convert input_fn to enqueue and dequeue fns for TPU.
 
   Args:
     inputs_holder: An `_InputsHolder` holding features and labels.
     run_config: A `RunConfig` instance.
     batch_axis: A python list of batch dimensions.
+    mode: ModeKeys
 
   Returns:
     A tuple of (dequeue_fn, enqueue_fn)
@@ -1239,7 +1244,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
       return infeed_queue.generate_enqueue_ops(
           sharded_inputs, tpu_ordinal_function=tpu_ordinal_function)
     else:
-      job = _tpu_job(run_config)
+      job = _tpu_job(run_config, mode)
       def placement_function(index):
         if job is None:
           return '/replica:0/task:0/device:CPU:0'
@@ -1271,12 +1276,12 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
                            num_shards=config.tpu_config.num_shards)
 
     dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(
-        inputs, config, batch_axis)
+        inputs, config, batch_axis, mode)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       loss = _train_on_tpu_system(model_fn_wrapper, dequeue_fn)
       hooks = [
-          TPUInfeedOutfeedSessionHook(config, enqueue_fn),
+          TPUInfeedOutfeedSessionHook(config, mode, enqueue_fn),
           training.LoggingTensorHook(
               {'loss': array_ops.identity(loss),
                'step': training.get_global_step()},
@@ -1318,7 +1323,7 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
         eval_metric_ops.to_metric_metric_ops_for_tpu(
             config, dummy_update_op))
     hooks = [
-        TPUInfeedOutfeedSessionHook(config, enqueue_fn, eval_update_ops),
+        TPUInfeedOutfeedSessionHook(config, mode, enqueue_fn, eval_update_ops),
     ]
 
     return model_fn_lib.EstimatorSpec(

@@ -75,6 +75,9 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
 def tf_jspb_proto_library(**kwargs):
   pass
 
+def tf_nano_proto_library(**kwargs):
+  pass
+
 def tf_proto_library(name, srcs = [], has_services = None,
                      protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],

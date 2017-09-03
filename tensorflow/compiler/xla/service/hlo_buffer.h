@@ -84,21 +84,14 @@ class HloBuffer {
     return a->id() == b->id();
   }
 
-  HloBuffer(Id id) : id_(id) {}
+  HloBuffer(Id id, tensorflow::gtl::ArraySlice<const HloValue*> values)
+      : id_(id), values_(values.begin(), values.end()) {}
 
   // Return the unique identifier for this HloBuffer.
   Id id() const { return id_; }
 
-  // Add a value to the set of values held by this buffer. Also adds the
-  // HloPositions of the value to the positions vector of the buffer. If the
-  // buffer already contains this value, then this method is a nop.
-  void AddValue(const HloValue& value);
-  void RemoveValue(const HloValue& value);
-
   // Return all values contained in this buffer.
   const std::vector<const HloValue*>& values() const { return values_; }
-
-  std::vector<HloPosition> ComputePositions() const;
 
   // Return the unique HLO value in the buffer. CHECK fails if the buffer does
   // not contain exactly one value.
@@ -106,6 +99,8 @@ class HloBuffer {
     CHECK_EQ(values_.size(), 1);
     return *values_[0];
   }
+
+  std::vector<HloPosition> ComputePositions() const;
 
   string ToString() const;
 
@@ -118,7 +113,7 @@ class HloBuffer {
 
   // The set of values contained in this buffer. Vector contains no duplicates
   // and is sorted stably by HloValue::Id.
-  std::vector<const HloValue*> values_;
+  const std::vector<const HloValue*> values_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer);
