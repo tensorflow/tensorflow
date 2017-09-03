@@ -21,7 +21,7 @@ __global__ void RollCudaKernel(int N, int D, int* dim_size, const T* input, T* o
             // find indices input/output for current dimension
             const int ds = dim_size[d];
             const int in_dim_i = (in_i / strides[d]) % ds;
-            const int out_dim_i = ((in_dim_i + shifts[d]) % ds + ds) % ds; // modulo that works with negatives
+            const int out_dim_i = ((in_dim_i + shifts[d]) % ds + ds) % ds;
             // convert back to flat index
             out_i += (out_dim_i - in_dim_i) * strides[d];
         }
