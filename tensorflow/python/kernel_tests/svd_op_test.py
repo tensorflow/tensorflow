@@ -47,20 +47,13 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
   is_single = dtype_ in (np.float32, np.complex64)
   
   # The gpu version returns results that are much less precise
-  precision_factor = 1000 if use_gpu_ else 1
+  precision_factor = 100 if use_gpu_ else 1
+  tol = precision_factor * (1e-4 if is_single else 1e-12)
 
   def CompareSingularValues(self, x, y):
-    if is_single:
-      tol = 5e-5
-    else:
-      tol = 1e-14
     self.assertAllClose(x, y, atol=(x[0] + y[0]) * tol)
 
   def CompareSingularVectors(self, x, y, rank):
-    if is_single:
-      atol = 5e-4
-    else:
-      atol = 5e-14
     # We only compare the first 'rank' singular vectors since the
     # remainder form an arbitrary orthonormal basis for the
     # (row- or column-) null space, whose exact value depends on
@@ -75,13 +68,9 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
     sum_of_ratios = np.sum(np.divide(y, x), -2, keepdims=True)
     phases = np.divide(sum_of_ratios, np.abs(sum_of_ratios))
     x *= phases
-    self.assertAllClose(x, y, atol=atol)
+    self.assertAllClose(x, y, atol=tol)
 
   def CheckApproximation(self, a, u, s, v, full_matrices):
-    if is_single:
-      tol = 1e-5
-    else:
-      tol = 1e-14
     # Tests that a ~= u*diag(s)*transpose(v).
     batch_shape = a.shape[:-2]
     m = a.shape[-2]
@@ -102,10 +91,6 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    if is_single:
-      tol = 1e-5
-    else:
-      tol = 1e-14
     self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
 
   def Test(self):
@@ -119,8 +104,6 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
 
     for compute_uv in False, True:
       for full_matrices in False, True:
-        #print("compute_uv:", compute_uv, ", full_matrices:", full_matrices)
-        #print(x_np)
         with self.test_session(use_gpu = use_gpu_) as sess:
           if use_static_shape_:
             x_tf = constant_op.constant(x_np)
@@ -157,16 +140,8 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
           # dimension that is equal to one
           s_np = np.reshape(s_np, s_tf_val.shape)
 
-          #print("expected S:", s_np)
-          #print("actual S:", s_tf_val)
-
           CompareSingularValues(self, s_np, s_tf_val)
           if compute_uv:
-            #print("expected U:", u_np)
-            #print("actual U:", u_tf_val)
-            #print("expected V:", v_np)
-            #print("actual V:", v_tf_val)
-          
             CompareSingularVectors(self, u_np, u_tf_val, min(shape_[-2:]))
             CompareSingularVectors(self,
                                    np.conj(np.swapaxes(v_np, -2, -1)), v_tf_val,
@@ -178,11 +153,6 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
 
   return Test
 
-# TODO
-# The GPU version still fails if one of the dimensions is one.
-# In that case, the SVD returns zeros instead of ones as U or V
-# After fixing that, remove the print statements above
-# and add 1 as possible number of rows or columns below again
 
 if __name__ == "__main__":
   for use_gpu in False, True:

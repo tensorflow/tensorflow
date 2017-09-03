@@ -29,18 +29,13 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
-// I need to transpose V afterwards
-#include "tensorflow/core/kernels/transpose_functor.h"
-
-// Logging
-#include <stdio.h>
 
 namespace tensorflow {
 
