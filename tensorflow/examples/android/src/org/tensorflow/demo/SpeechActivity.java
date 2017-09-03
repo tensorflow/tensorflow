@@ -152,6 +152,7 @@ public class SpeechActivity extends Activity {
 
     // Start the recording and recognition threads.
     requestMicrophonePermission();
+    startRecording();
     startRecognition();
   }
 
