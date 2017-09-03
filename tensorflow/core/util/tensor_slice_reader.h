@@ -165,13 +165,18 @@ bool TensorSliceReader::CopySliceData(const string& name,
     CHECK_GE(idx, 0) << "Failed to find the index for filename " << fname;
     // We read a record in the corresponding sstable
     const string key = EncodeTensorNameSlice(name, slice_s);
-    CHECK(sss_[idx]->Get(key, &value))
-        << "Failed to seek to the record for tensor " << name << ", slice "
-        << slice_s.DebugString() << ": computed key = " << key;
+    if (!sss_[idx]->Get(key, &value)) {
+      VLOG(1) << "Failed to seek to the record for tensor " << name
+              << ", slice " << slice_s.DebugString()
+              << ": computed key = " << key;
+      return false;
+    }
     SavedTensorSlices sts;
-    CHECK(ParseProtoUnlimited(&sts, value))
-        << "Failed to parse the record for tensor " << name << ", slice "
-        << slice_s.DebugString() << ": computed key = " << key;
+    if (!ParseProtoUnlimited(&sts, value)) {
+      VLOG(1) << "Failed to parse the record for tensor " << name << ", slice "
+              << slice_s.DebugString() << ": computed key = " << key;
+      return false;
+    }
     CopyDataFromTensorSliceToTensorSlice(
         tss->shape(), slice_s, slice,
         checkpoint::TensorProtoData<T>(sts.data().data()), data);

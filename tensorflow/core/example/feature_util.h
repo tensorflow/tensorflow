@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// A set of lightweight wrappers which simplify access to Example features.
+// A set of lightweight wrappers which simplify access to Feature protos.
 //
 // TensorFlow Example proto uses associative maps on top of oneof fields.
+// SequenceExample proto uses associative map of FeatureList.
 // So accessing feature values is not very convenient.
 //
 // For example, to read a first value of integer feature "tag":
@@ -42,9 +43,59 @@ limitations under the License.
 // (RepeatedPtrField for byte list). So refer to its documentation of
 // RepeatedField for full list of supported methods.
 //
-// NOTE: It is also important to mention that due to the nature of oneof proto
-// fields setting a feature of one type automatically clears all values stored
-// as another type with the same feature name.
+// NOTE: Due to the nature of oneof proto fields setting a feature of one type
+// automatically clears all values stored as another type with the same feature
+// key.
+//
+// This library also has tools to work with SequenceExample protos.
+//
+// To get a value from SequenceExample.context:
+//   int id = GetFeatureValues<protobuf_int64>("tag", se.context()).Get(0);
+// To add a value to the context:
+//   GetFeatureValues<protobuf_int64>("tag", se.mutable_context())->Add(42);
+//
+// To add values to feature_lists:
+//   AppendFeatureValues({4.0},
+//                       GetFeatureList("movie_ratings", &se)->Add());
+//   AppendFeatureValues({5.0, 3.0},
+//                       GetFeatureList("movie_ratings", &se)->Add());
+// This will create a feature list keyed as "images" with two features:
+//   feature_lists {
+//     feature_list {
+//       key: "images"
+//       value {
+//         feature { float_list { value: [4.0] } }
+//         feature { float_list { value: [5.0, 3.0] } }
+//       }
+//     } }
+//
+// Functions exposed by this library:
+//   HasFeature<[FeatureType]>(key, proto) -> bool
+//     Returns true if a feature with the specified key, and optionally
+//     FeatureType, belongs to the Features or Example proto.
+//   HasFeatureList(key, sequence_example) -> bool
+//     Returns true if SequenceExample has a feature_list with the key.
+//   GetFeatureValues<FeatureType>(key, proto) -> RepeatedField<FeatureType>
+//     Returns values for the specified key and the FeatureType.
+//     Supported types for the proto: Example, Features.
+//   GetFeatureList(key, sequence_example) -> RepeatedPtrField<Feature>
+//     Returns Feature protos associated with a key.
+//   AppendFeatureValues(begin, end, feature)
+//   AppendFeatureValues(container or initializer_list, feature)
+//     Copies values into a Feature.
+//   AppendFeatureValues(begin, end, key, proto)
+//   AppendFeatureValues(container or initializer_list, key, proto)
+//     Copies values into Features and Example protos with the specified key.
+//
+// Auxiliary functions, it is unlikely you'll need to use them directly:
+//   GetFeatures(proto) -> Features
+//     A convenience function to get Features proto.
+//     Supported types for the proto: Example, Features.
+//   GetFeature(key, proto) -> Feature*
+//     Returns a Feature proto for the specified key, creates a new if
+//     necessary. Supported types for the proto: Example, Features.
+//   GetFeatureValues<FeatureType>(feature) -> RepeatedField<FeatureType>
+//     Returns values of the feature for the FeatureType.
 
 #ifndef TENSORFLOW_EXAMPLE_FEATURE_H_
 #define TENSORFLOW_EXAMPLE_FEATURE_H_
@@ -62,10 +113,11 @@ namespace tensorflow {
 
 namespace internal {
 
+// DEPRECATED: Use GetFeature instead.
+// TODO(gorban): Update all clients in a followup CL.
 // Returns a reference to a feature corresponding to the name.
 // Note: it will create a new Feature if it is missing in the example.
-::tensorflow::Feature& ExampleFeature(const string& name,
-                                      ::tensorflow::Example* example);
+Feature& ExampleFeature(const string& name, Example* example);
 
 // Specializations of RepeatedFieldTrait define a type of RepeatedField
 // corresponding to a selected feature type.
@@ -127,89 +179,135 @@ struct FeatureTrait<
 
 }  //  namespace internal
 
-// Returns true if feature with the specified name belongs to the example proto.
-// Doesn't check feature type. Note that specialized versions return false if
-// the feature has a wrong type.
-template <typename FeatureType = void>
-bool ExampleHasFeature(const string& name, const Example& example) {
-  return example.features().feature().find(name) !=
-         example.features().feature().end();
-}
+// Returns true if sequence_example has a feature_list with the specified key.
+bool HasFeatureList(const string& key, const SequenceExample& sequence_example);
+
+// A family of template functions to return mutable Features proto from a
+// container proto. Supported ProtoTypes: Example, Features.
+template <typename ProtoType>
+Features* GetFeatures(ProtoType* proto);
+
+template <typename ProtoType>
+const Features& GetFeatures(const ProtoType& proto);
 
 // Base declaration of a family of template functions to return a read only
-// repeated field corresponding to a feature with the specified name.
+// repeated field of feature values.
 template <typename FeatureType>
 const typename internal::RepeatedFieldTrait<FeatureType>::Type&
-GetFeatureValues(const string& name, const Example& example);
+GetFeatureValues(const Feature& feature);
 
-// Base declaration of a family of template functions to return a mutable
-// repeated field corresponding to a feature with the specified name.
+// Returns a read only repeated field corresponding to a feature with the
+// specified name and FeatureType. Supported ProtoTypes: Example, Features.
+template <typename FeatureType, typename ProtoType>
+const typename internal::RepeatedFieldTrait<FeatureType>::Type&
+GetFeatureValues(const string& key, const ProtoType& proto) {
+  return GetFeatureValues<FeatureType>(GetFeatures(proto).feature().at(key));
+}
+
+// Returns a mutable repeated field of a feature values.
 template <typename FeatureType>
 typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
-    const string& name, Example* example);
+    Feature* feature);
 
-// Copies elements from the range, defined by [first, last) into a feature.
+// Returns a mutable repeated field corresponding to a feature with the
+// specified name and FeatureType. Supported ProtoTypes: Example, Features.
+template <typename FeatureType, typename ProtoType>
+typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
+    const string& key, ProtoType* proto) {
+  ::tensorflow::Feature& feature =
+      (*GetFeatures(proto)->mutable_feature())[key];
+  return GetFeatureValues<FeatureType>(&feature);
+}
+
+// Returns a Feature proto for the specified key, creates a new if necessary.
+// Supported types for the proto: Example, Features.
+template <typename ProtoType>
+Feature* GetFeature(const string& key, ProtoType* proto) {
+  return &(*GetFeatures(proto)->mutable_feature())[key];
+}
+
+// Returns a repeated field with features corresponding to a feature_list key.
+const protobuf::RepeatedPtrField<Feature>& GetFeatureList(
+    const string& key, const SequenceExample& sequence_example);
+
+// Returns a mutable repeated field with features corresponding to a
+// feature_list key. It will create a new FeatureList if necessary.
+protobuf::RepeatedPtrField<Feature>* GetFeatureList(
+    const string& feature_list_key, SequenceExample* sequence_example);
+
 template <typename IteratorType>
 void AppendFeatureValues(IteratorType first, IteratorType last,
-                         const string& name, Example* example) {
+                         Feature* feature) {
   using FeatureType = typename internal::FeatureTrait<
       typename std::iterator_traits<IteratorType>::value_type>::Type;
-  std::copy(first, last, protobuf::RepeatedFieldBackInserter(
-                             GetFeatureValues<FeatureType>(name, example)));
+  std::copy(first, last,
+            protobuf::RepeatedFieldBackInserter(
+                GetFeatureValues<FeatureType>(feature)));
+}
+
+template <typename ValueType>
+void AppendFeatureValues(std::initializer_list<ValueType> container,
+                         Feature* feature) {
+  AppendFeatureValues(container.begin(), container.end(), feature);
+}
+
+template <typename ContainerType>
+void AppendFeatureValues(const ContainerType& container, Feature* feature) {
+  using IteratorType = typename ContainerType::const_iterator;
+  AppendFeatureValues<IteratorType>(container.begin(), container.end(),
+                                    feature);
+}
+
+// Copies elements from the range, defined by [first, last) into the feature
+// obtainable from the (proto, key) combination.
+template <typename IteratorType, typename ProtoType>
+void AppendFeatureValues(IteratorType first, IteratorType last,
+                         const string& key, ProtoType* proto) {
+  AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
 }
 
 // Copies all elements from the container into a feature.
-template <typename ContainerType>
-void AppendFeatureValues(const ContainerType& container, const string& name,
-                         Example* example) {
+template <typename ContainerType, typename ProtoType>
+void AppendFeatureValues(const ContainerType& container, const string& key,
+                         ProtoType* proto) {
   using IteratorType = typename ContainerType::const_iterator;
-  AppendFeatureValues<IteratorType>(container.begin(), container.end(), name,
-                                    example);
+  AppendFeatureValues<IteratorType>(container.begin(), container.end(), key,
+                                    proto);
 }
 
-// Copies all elements from the initializer list into a feature.
-template <typename ValueType>
+// Copies all elements from the initializer list into a Feature contained by
+// Features or Example proto.
+template <typename ValueType, typename ProtoType>
 void AppendFeatureValues(std::initializer_list<ValueType> container,
-                         const string& name, Example* example) {
+                         const string& key, ProtoType* proto) {
   using IteratorType =
       typename std::initializer_list<ValueType>::const_iterator;
-  AppendFeatureValues<IteratorType>(container.begin(), container.end(), name,
-                                    example);
+  AppendFeatureValues<IteratorType>(container.begin(), container.end(), key,
+                                    proto);
 }
 
-template <>
-bool ExampleHasFeature<protobuf_int64>(const string& name,
-                                       const Example& example);
+// Returns true if a feature with the specified key belongs to the Features.
+// The template parameter pack accepts zero or one template argument - which
+// is FeatureType. If the FeatureType not specified (zero template arguments)
+// the function will not check the feature type. Otherwise it will return false
+// if the feature has a wrong type.
+template <typename... FeatureType>
+bool HasFeature(const string& key, const Features& features);
 
-template <>
-bool ExampleHasFeature<float>(const string& name, const Example& example);
+// Returns true if a feature with the specified key belongs to the Example.
+// Doesn't check feature type if used without FeatureType, otherwise the
+// specialized versions return false if the feature has a wrong type.
+template <typename... FeatureType>
+bool HasFeature(const string& key, const Example& example) {
+  return HasFeature<FeatureType...>(key, GetFeatures(example));
+};
 
-template <>
-bool ExampleHasFeature<string>(const string& name, const Example& example);
-
-template <>
-const protobuf::RepeatedField<protobuf_int64>& GetFeatureValues<protobuf_int64>(
-    const string& name, const Example& example);
-
-template <>
-protobuf::RepeatedField<protobuf_int64>* GetFeatureValues<protobuf_int64>(
-    const string& name, Example* example);
-
-template <>
-const protobuf::RepeatedField<float>& GetFeatureValues<float>(
-    const string& name, const Example& example);
-
-template <>
-protobuf::RepeatedField<float>* GetFeatureValues<float>(const string& name,
-                                                        Example* example);
-
-template <>
-const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
-    const string& name, const Example& example);
-
-template <>
-protobuf::RepeatedPtrField<string>* GetFeatureValues<string>(const string& name,
-                                                             Example* example);
+// DEPRECATED: use HasFeature instead.
+// TODO(gorban): update all clients in a followup CL.
+template <typename... FeatureType>
+bool ExampleHasFeature(const string& key, const Example& example) {
+  return HasFeature<FeatureType...>(key, example);
+}
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_EXAMPLE_FEATURE_H_

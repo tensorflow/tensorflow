@@ -87,14 +87,13 @@ class HloAliasAnalysisTest : public HloTestBase {
   // constructed.
   bool AnyValuesInSameBufferInterfere() {
     DependencyHloOrdering ordering(module_.get());
-    for (const HloBuffer* buffer : analysis_->buffers()) {
-      for (const HloValue* value_a : buffer->values()) {
-        for (const HloValue* value_b : buffer->values()) {
+    for (const HloBuffer& buffer : analysis_->buffers()) {
+      for (const HloValue* value_a : buffer.values()) {
+        for (const HloValue* value_b : buffer.values()) {
           if (*value_a != *value_b &&
-              analysis_->dataflow_analysis().MayInterfere(*value_a, *value_b,
-                                                          ordering)) {
+              ordering.MayInterfere(*value_a, *value_b)) {
             VLOG(1) << *value_a << " interferes with " << *value_b
-                    << " in buffer: " << *buffer;
+                    << " in buffer: " << buffer;
             return true;
           }
         }
@@ -384,10 +383,7 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
 
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0})),
-      UnorderedElementsAre(GetValueDefinedAt(xla_while, /*index=*/{0}),
-                           GetValueDefinedAt(body_param, /*index=*/{0}),
-                           GetValueDefinedAt(cond_param, /*index=*/{0}),
-                           GetValueDefinedAt(constant1)));
+      UnorderedElementsAre(GetValueDefinedAt(constant1)));
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1})),
       UnorderedElementsAre(GetValueDefinedAt(constant2),
@@ -631,9 +627,9 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
   // HloBuffers.
   EXPECT_THAT(
       analysis.buffers(),
-      UnorderedElementsAre(&analysis.GetUniqueBufferAt(constant1),
-                           &analysis.GetUniqueBufferAt(tuple, /*index=*/{}),
-                           &analysis.GetUniqueBufferAt(cond_constant)));
+      UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1),
+                           analysis.GetUniqueBufferAt(tuple, /*index=*/{}),
+                           analysis.GetUniqueBufferAt(cond_constant)));
 
   // The tuple elements of the while and the three constant inputs should all be
   // smooshed into the same buffer.
@@ -819,128 +815,6 @@ TEST_F(HloAliasAnalysisTest, Bitcast) {
   EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
             analysis.GetUniqueBufferAt(bitcast));
 }
-
-TEST_F(HloAliasAnalysisTest, UpdateAnalysisForWhile) {
-  // Test updating alias analysis after modifying a module with an array shaped
-  // while:
-  //
-  // body(F32[]  %param):
-  //   %negate = Negate(%param)
-  //
-  // condition(F32[] %param):
-  //   return Constant(false)
-  //
-  // entry:
-  //   %constant = Constant(1.0)
-  //   %exp = Exp(%constant)
-  //   return While(%exp, body, condition)
-  //
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
-  auto negate = body_builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kNegate, body_param));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
-
-  // Condition computation trivially returns a constant "false".
-  auto cond_builder = HloComputation::Builder("condition");
-  auto cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
-  HloComputation* condition =
-      module_->AddEmbeddedComputation(cond_builder.Build());
-
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape_, HloOpcode::kExp, constant));
-  auto xla_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(scalar_shape_, condition, body, exp));
-  module_->AddEntryComputation(builder.Build());
-
-  HloAliasAnalysis& analysis = RunAnalysis();
-
-  // Sanity check some alias information.
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(negate));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(xla_while));
-
-  // Set the body root to the body_param. Previously it was Negate(body_param).
-  body->set_root_instruction(body_param);
-
-  // Prior to updating, verify that the analysis is no longer valid.
-  Status verify_status = analysis.VerifyAgainstReference();
-  EXPECT_FALSE(verify_status.ok());
-
-  analysis.UpdateAfterChangingRoot(/*old_root=*/negate,
-                                   /*new_root*/ body_param);
-
-  // Analysis should be valid after the update.
-  TF_ASSERT_OK(analysis.VerifyAgainstReference());
-
-  // The exponential should now pass through the body transparently.
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_NE(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(negate));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(xla_while));
-
-  // Now replace the operand of the while with %constant (was %exp).
-  TF_ASSERT_OK(exp->ReplaceUseWith(xla_while, constant));
-  analysis.UpdateAfterChangingOperand(xla_while, /*old_operand=*/exp,
-                                      /*new_operand=*/constant);
-
-  // Analysis should be valid after the update.
-  TF_ASSERT_OK(analysis.VerifyAgainstReference());
-
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(xla_while));
-  EXPECT_NE(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(exp));
-  EXPECT_NE(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(negate));
-
-  // And finally make the negate the root of the body again.
-  body->set_root_instruction(negate);
-  analysis.UpdateAfterChangingRoot(/*old_root=*/body_param,
-                                   /*new_root*/ negate);
-
-  // Analysis should be valid after the update.
-  TF_ASSERT_OK(analysis.VerifyAgainstReference());
-
-  EXPECT_EQ(analysis.GetUniqueBufferAt(negate),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(negate),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(negate),
-            analysis.GetUniqueBufferAt(xla_while));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(negate));
-
-  auto value_of = [&analysis](const HloInstruction* instruction) {
-    return &analysis.dataflow_analysis().GetValueDefinedAt(instruction);
-  };
-  EXPECT_THAT(analysis.GetUniqueBufferAt(negate).values(),
-              UnorderedElementsAre(value_of(body_param), value_of(cond_param),
-                                   value_of(negate), value_of(constant),
-                                   value_of(xla_while)));
-}
-
-// Test update tuple element.
 
 }  // namespace
 }  // namespace xla

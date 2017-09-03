@@ -143,7 +143,7 @@ class GradientTreesPredictionOp : public OpKernel {
     // Release the reference to the resource once we're done using it.
     core::ScopedUnref unref_me(decision_tree_ensemble_resource);
     if (use_locking_) {
-      mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
+      tf_shared_lock l(*decision_tree_ensemble_resource->get_mutex());
       DoCompute(context, decision_tree_ensemble_resource);
     } else {
       DoCompute(context, decision_tree_ensemble_resource);
@@ -334,7 +334,7 @@ class GradientTreesPartitionExamplesOp : public OpKernel {
     // Release the reference to the resource once we're done using it.
     core::ScopedUnref unref_me(decision_tree_ensemble_resource);
     if (use_locking_) {
-      mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
+      tf_shared_lock l(*decision_tree_ensemble_resource->get_mutex());
       DoCompute(context, decision_tree_ensemble_resource);
     } else {
       DoCompute(context, decision_tree_ensemble_resource);

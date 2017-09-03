@@ -56,7 +56,7 @@ with tf.contrib.tfprof.ProfileContext() as pctx:
 
 ```shell
 # Profiling from Python API is not interactive.
-# Dump the profiles to files and profile with interactive command line.
+# Dump the profiles to files and profile with interactive command line or web UI.
 with tf.contrib.tfprof.ProfileContext() as pctx:
   pctx.add_auto_profile_dump('/tmp/profiles', [100])
   train_loop()
@@ -66,7 +66,15 @@ bazel-bin/tensorflow/core/profiler/profiler \
     --run_meta_path=/tmp/profiles/run_meta \
     --op_log_path=/tmp/profiles/tfprof_log \
 tfprof> op -select micros,bytes,occurrence -order_by micros
+
+
+# To be open sourced...
+bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
+    --graph_path=/tmp/profiles/graph.pbtxt \
+    --run_meta_path=/tmp/profiles/run_meta \
+    --op_log_path=/tmp/profiles/tfprof_log \
 ```
+![ProfilerUI](g3doc/profiler_ui.jpg)
 
 <b>Detail Tutorials</b>
 
@@ -239,5 +247,6 @@ bug fix. `OpLogProto` is a good plus if it is used.
 #### Teams
 
 * Xin Pan (xpan@google.com, github: panyx0718)
+* Chris Antaki
 * Yao Zhang
 * Jon Shlens
