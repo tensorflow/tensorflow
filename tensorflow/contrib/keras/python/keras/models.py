@@ -34,6 +34,7 @@ from tensorflow.contrib.keras.python.keras.engine.topology import Input
 from tensorflow.contrib.keras.python.keras.engine.topology import Layer
 from tensorflow.contrib.keras.python.keras.engine.topology import TFBaseLayer
 from tensorflow.contrib.keras.python.keras.engine.training import Model
+from tensorflow.contrib.keras.python.keras.utils.generic_utils import has_arg
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -121,66 +122,65 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     if not proceed:
       return
 
-  f = h5py.File(filepath, 'w')
-  f.attrs['keras_version'] = str(keras_version).encode('utf8')
-  f.attrs['backend'] = K.backend().encode('utf8')
-  f.attrs['model_config'] = json.dumps(
-      {
-          'class_name': model.__class__.__name__,
-          'config': model.get_config()
-      },
-      default=get_json_type).encode('utf8')
+  with h5py.File(filepath, mode='w') as f:
+    f.attrs['keras_version'] = str(keras_version).encode('utf8')
+    f.attrs['backend'] = K.backend().encode('utf8')
+    f.attrs['model_config'] = json.dumps(
+        {
+            'class_name': model.__class__.__name__,
+            'config': model.get_config()
+        },
+        default=get_json_type).encode('utf8')
 
-  model_weights_group = f.create_group('model_weights')
-  model_layers = model.layers
-  topology.save_weights_to_hdf5_group(model_weights_group, model_layers)
+    model_weights_group = f.create_group('model_weights')
+    model_layers = model.layers
+    topology.save_weights_to_hdf5_group(model_weights_group, model_layers)
 
-  if include_optimizer and hasattr(model, 'optimizer'):
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
-      logging.warning(
-          'TensorFlow optimizers do not '
-          'make it possible to access '
-          'optimizer attributes or optimizer state '
-          'after instantiation. '
-          'As a result, we cannot save the optimizer '
-          'as part of the model save file.'
-          'You will have to compile your model again after loading it. '
-          'Prefer using a Keras optimizer instead '
-          '(see keras.io/optimizers).')
-    else:
-      f.attrs['training_config'] = json.dumps(
-          {
-              'optimizer_config': {
-                  'class_name': model.optimizer.__class__.__name__,
-                  'config': model.optimizer.get_config()
-              },
-              'loss': model.loss,
-              'metrics': model.metrics,
-              'sample_weight_mode': model.sample_weight_mode,
-              'loss_weights': model.loss_weights,
-          },
-          default=get_json_type).encode('utf8')
+    if include_optimizer and hasattr(model, 'optimizer'):
+      if isinstance(model.optimizer, optimizers.TFOptimizer):
+        logging.warning(
+            'TensorFlow optimizers do not '
+            'make it possible to access '
+            'optimizer attributes or optimizer state '
+            'after instantiation. '
+            'As a result, we cannot save the optimizer '
+            'as part of the model save file.'
+            'You will have to compile your model again after loading it. '
+            'Prefer using a Keras optimizer instead '
+            '(see keras.io/optimizers).')
+      else:
+        f.attrs['training_config'] = json.dumps(
+            {
+                'optimizer_config': {
+                    'class_name': model.optimizer.__class__.__name__,
+                    'config': model.optimizer.get_config()
+                },
+                'loss': model.loss,
+                'metrics': model.metrics,
+                'sample_weight_mode': model.sample_weight_mode,
+                'loss_weights': model.loss_weights,
+            },
+            default=get_json_type).encode('utf8')
 
-      # Save optimizer weights.
-      symbolic_weights = getattr(model.optimizer, 'weights')
-      if symbolic_weights:
-        optimizer_weights_group = f.create_group('optimizer_weights')
-        weight_values = K.batch_get_value(symbolic_weights)
-        weight_names = []
-        for w, val in zip(symbolic_weights, weight_values):
-          name = str(w.name)
-          weight_names.append(name.encode('utf8'))
-        optimizer_weights_group.attrs['weight_names'] = weight_names
-        for name, val in zip(weight_names, weight_values):
-          param_dset = optimizer_weights_group.create_dataset(
-              name, val.shape, dtype=val.dtype)
-          if not val.shape:
-            # scalar
-            param_dset[()] = val
-          else:
-            param_dset[:] = val
-  f.flush()
-  f.close()
+        # Save optimizer weights.
+        symbolic_weights = getattr(model.optimizer, 'weights')
+        if symbolic_weights:
+          optimizer_weights_group = f.create_group('optimizer_weights')
+          weight_values = K.batch_get_value(symbolic_weights)
+          weight_names = []
+          for w, val in zip(symbolic_weights, weight_values):
+            name = str(w.name)
+            weight_names.append(name.encode('utf8'))
+          optimizer_weights_group.attrs['weight_names'] = weight_names
+          for name, val in zip(weight_names, weight_values):
+            param_dset = optimizer_weights_group.create_dataset(
+                name, val.shape, dtype=val.dtype)
+            if not val.shape:
+              # scalar
+              param_dset[()] = val
+            else:
+              param_dset[:] = val
+    f.flush()
 
 
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
@@ -545,12 +545,12 @@ class Sequential(Model):
     Returns:
         A layer instance.
     """
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.get_layer(name, index)
 
   def call(self, inputs, mask=None):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.call(inputs, mask)
 
@@ -586,7 +586,7 @@ class Sequential(Model):
 
   @property
   def uses_learning_phase(self):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.uses_learning_phase
 
@@ -622,35 +622,35 @@ class Sequential(Model):
 
   @property
   def updates(self):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.updates
 
   @property
   def state_updates(self):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.state_updates
 
   def get_updates_for(self, inputs):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.get_updates_for(inputs)
 
   @property
   def losses(self):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.losses
 
   def get_losses_for(self, inputs):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.get_losses_for(inputs)
 
   @property
   def regularizers(self):
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.regularizers
 
@@ -661,7 +661,7 @@ class Sequential(Model):
         A flat list of Numpy arrays
         (one array per model weight).
     """
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.get_weights()
 
@@ -673,7 +673,7 @@ class Sequential(Model):
             of Numpy arrays with shapes and types matching
             the output of `model.get_weights()`.
     """
-    if self.model is None:
+    if not self.built:
       self.build()
     self.model.set_weights(weights)
 
@@ -710,6 +710,7 @@ class Sequential(Model):
               loss,
               metrics=None,
               sample_weight_mode=None,
+              weighted_metrics=None,
               **kwargs):
     """Configures the learning process.
 
@@ -725,9 +726,9 @@ class Sequential(Model):
         sample_weight_mode: if you need to do timestep-wise
             sample weighting (2D weights), set this to "temporal".
             "None" defaults to sample-wise weights (1D).
-        **kwargs: for Theano backend, these are passed into K.function.
-            When using the Tensorflow backend, these are passed into
-            `tf.Session.run`.
+        weighted_metrics: list of metrics to be evaluated and weighted
+             by `sample_weight` or `class_weight` during training and testing.
+        **kwargs: These are passed into `tf.Session.run`.
 
     Example:
         ```python
@@ -747,12 +748,14 @@ class Sequential(Model):
         loss,
         metrics=metrics,
         sample_weight_mode=sample_weight_mode,
+        weighted_metrics=weighted_metrics,
         **kwargs)
     self.optimizer = self.model.optimizer
     self.loss = self.model.loss
     self.total_loss = self.model.total_loss
     self.loss_weights = self.model.loss_weights
     self.metrics = self.model.metrics
+    self.weighted_metrics = self.model.weighted_metrics
     self.metrics_tensors = self.model.metrics_tensors
     self.metrics_names = self.model.metrics_names
     self.sample_weight_mode = self.model.sample_weight_mode
@@ -818,7 +821,7 @@ class Sequential(Model):
     Raises:
         RuntimeError: if the model was never compiled.
     """
-    if self.model is None:
+    if not self.built:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.fit(
         x,
@@ -854,7 +857,7 @@ class Sequential(Model):
     Raises:
         RuntimeError: if the model was never compiled.
     """
-    if self.model is None:
+    if not self.built:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.evaluate(
         x,
@@ -876,7 +879,7 @@ class Sequential(Model):
     Returns:
         A Numpy array of predictions.
     """
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.predict(x, batch_size=batch_size, verbose=verbose)
 
@@ -890,7 +893,7 @@ class Sequential(Model):
     Returns:
         A Numpy array of predictions.
     """
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.predict_on_batch(x)
 
@@ -914,7 +917,7 @@ class Sequential(Model):
     Raises:
         RuntimeError: if the model was never compiled.
     """
-    if self.model is None:
+    if not self.built:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.train_on_batch(
         x, y, sample_weight=sample_weight, class_weight=class_weight)
@@ -937,7 +940,7 @@ class Sequential(Model):
     Raises:
         RuntimeError: if the model was never compiled.
     """
-    if self.model is None:
+    if not self.built:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.test_on_batch(x, y, sample_weight=sample_weight)
 
@@ -1083,7 +1086,7 @@ class Sequential(Model):
     if kwargs:
       raise ValueError('Unrecognized keyword arguments: ' + str(kwargs))
 
-    if self.model is None:
+    if not self.built:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.fit_generator(
         generator,
@@ -1149,7 +1152,7 @@ class Sequential(Model):
     if kwargs:
       raise ValueError('Unrecognized keyword arguments: ' + str(kwargs))
 
-    if self.model is None:
+    if not self.built:
       raise RuntimeError('The model needs to be compiled ' 'before being used.')
     return self.model.evaluate_generator(
         generator,
@@ -1205,7 +1208,7 @@ class Sequential(Model):
     if kwargs:
       raise ValueError('Unrecognized keyword arguments: ' + str(kwargs))
 
-    if self.model is None:
+    if not self.built:
       self.build()
     return self.model.predict_generator(
         generator,
@@ -1231,3 +1234,225 @@ class Sequential(Model):
       layer = layer_module.deserialize(conf, custom_objects=custom_objects)
       model.add(layer)
     return model
+
+
+def _clone_functional_model(model, input_tensors=None):
+  """Clone a functional `Model` instance.
+
+  Model cloning is similar to calling a model on new inputs,
+  except that it creates new layers (and thus new weights) instead
+  of sharing the weights of the existing layers.
+
+  Arguments:
+      model: Instance of `Model`.
+      input_tensors: optional list of input tensors
+          to build the model upon. If not provided,
+          placeholders will be created.
+
+  Returns:
+      An instance of `Model` reproducing the behavior
+      of the original model, on top of new inputs tensors,
+      using newly instantiated weights.
+
+  Raises:
+      ValueError: in case of invalid `model` argument value.
+  """
+  if not isinstance(model, Model):
+    raise ValueError('Expected `model` argument '
+                     'to be a `Model` instance, got ', model)
+  if isinstance(model, Sequential):
+    raise ValueError('Expected `model` argument '
+                     'to be a functional `Model` instance, '
+                     'got a `Sequential` instance instead:', model)
+
+  layer_map = {}  # Cache for created layers.
+  tensor_map = {}  # Map {reference_tensor: (corresponding_tensor, mask)}
+  if input_tensors is None:
+    # Create placeholders to build the model on top of.
+    input_layers = []
+    input_tensors = []
+    for layer in model._input_layers:
+      input_tensor = Input(
+          batch_shape=layer.batch_input_shape,
+          dtype=layer.dtype,
+          sparse=layer.sparse,
+          name=layer.name)
+      input_tensors.append(input_tensor)
+      # Cache newly created input layer.
+      newly_created_input_layer = input_tensor._keras_history[0]
+      layer_map[layer] = newly_created_input_layer
+    for original_input_layer, cloned_input_layer in zip(model._input_layers,
+                                                        input_layers):
+      layer_map[original_input_layer] = cloned_input_layer
+  else:
+    # Make sure that all input tensors come from a Keras layer.
+    # If tensor comes from an input layer: cache the input layer.
+    input_tensors = topology._to_list(input_tensors)
+    input_tensors_ = []
+    for i, x in enumerate(input_tensors):
+      if not K.is_keras_tensor(x):
+        name = model._input_layers[i].name
+        input_tensor = Input(tensor=x, name='input_wrapper_for_' + name)
+        input_tensors_.append(input_tensor)
+        # Cache newly created input layer.
+        original_input_layer = x._keras_history[0]
+        newly_created_input_layer = input_tensor._keras_history[0]
+        layer_map[original_input_layer] = newly_created_input_layer
+      else:
+        input_tensors_.append(x)
+    input_tensors = input_tensors_
+
+  for x, y in zip(model.inputs, input_tensors):
+    tensor_map[x] = (y, None)  # tensor, mask
+
+  # Iterated over every node in the reference model, in depth order.
+  depth_keys = list(model._nodes_by_depth.keys())
+  depth_keys.sort(reverse=True)
+  for depth in depth_keys:
+    nodes = model._nodes_by_depth[depth]
+    for node in nodes:
+      # Recover the corresponding layer.
+      layer = node.outbound_layer
+
+      # Get or create layer.
+      if layer not in layer_map:
+        # Clone layer.
+        new_layer = layer.__class__.from_config(layer.get_config())
+        layer_map[layer] = new_layer
+        layer = new_layer
+      else:
+        # Reuse previously cloned layer.
+        layer = layer_map[layer]
+        # Don't call InputLayer multiple times.
+        if isinstance(layer, topology.InputLayer):
+          continue
+
+      # Gather inputs to call the new layer.
+      referenceinput_tensors_ = node.input_tensors
+      reference_output_tensors = node.output_tensors
+
+      # If all previous input tensors are available in tensor_map,
+      # then call node.inbound_layer on them.
+      computed_data = []  # List of tuples (input, mask).
+      for x in referenceinput_tensors_:
+        if x in tensor_map:
+          computed_data.append(tensor_map[x])
+
+      if len(computed_data) == len(referenceinput_tensors_):
+        # Call layer.
+        if node.arguments:
+          kwargs = node.arguments
+        else:
+          kwargs = {}
+        if len(computed_data) == 1:
+          computed_tensor, computed_mask = computed_data[0]
+          if has_arg(layer.call, 'mask'):
+            if 'mask' not in kwargs:
+              kwargs['mask'] = computed_mask
+          output_tensors = topology._to_list(layer(computed_tensor, **kwargs))
+          output_masks = topology._to_list(
+              layer.compute_mask(computed_tensor, computed_mask))
+          computed_tensors = [computed_tensor]
+          computed_masks = [computed_mask]
+        else:
+          computed_tensors = [x[0] for x in computed_data]
+          computed_masks = [x[1] for x in computed_data]
+          if has_arg(layer.call, 'mask'):
+            if 'mask' not in kwargs:
+              kwargs['mask'] = computed_masks
+          output_tensors = topology._to_list(layer(computed_tensors, **kwargs))
+          output_masks = topology._to_list(
+              layer.compute_mask(computed_tensors, computed_masks))
+        # Update tensor_map.
+        for x, y, mask in zip(reference_output_tensors, output_tensors,
+                              output_masks):
+          tensor_map[x] = (y, mask)
+
+  # Check that we did compute the model outputs,
+  # then instantiate a new model from inputs and outputs.
+  output_tensors = []
+  for x in model.outputs:
+    assert x in tensor_map, 'Could not compute output ' + str(x)
+    tensor, _ = tensor_map[x]
+    output_tensors.append(tensor)
+  return Model(input_tensors, output_tensors, name=model.name)
+
+
+def _clone_sequential_model(model, input_tensors=None):
+  """Clone a `Sequential` model instance.
+
+  Model cloning is similar to calling a model on new inputs,
+  except that it creates new layers (and thus new weights) instead
+  of sharing the weights of the existing layers.
+
+  Arguments:
+      model: Instance of `Sequential`.
+      input_tensors: optional list of input tensors
+          to build the model upon. If not provided,
+          placeholders will be created.
+
+  Returns:
+      An instance of `Sequential` reproducing the behavior
+      of the original model, on top of new inputs tensors,
+      using newly instantiated weights.
+
+  Raises:
+      ValueError: in case of invalid `model` argument value.
+  """
+  if not isinstance(model, Sequential):
+    raise ValueError('Expected `model` argument '
+                     'to be a `Sequential` model instance, '
+                     'but got:', model)
+
+  def clone(layer):
+    return layer.__class__.from_config(layer.get_config())
+
+  layers = [clone(layer) for layer in model.layers]
+  if input_tensors is None:
+    return Sequential(layers=layers, name=model.name)
+  else:
+    if len(topology._to_list(input_tensors)) != 1:
+      raise ValueError('To clone a `Sequential` model, we expect '
+                       ' at most one tensor '
+                       'as part of `input_tensors`.')
+    x = topology._to_list(input_tensors)[0]
+    if K.is_keras_tensor(x):
+      origin_layer = x._keras_history[0]
+      if isinstance(origin_layer, topology.InputLayer):
+        return Sequential(layers=[origin_layer] + layers, name=model.name)
+      else:
+        raise ValueError('Cannot clone a `Sequential` model on top '
+                         'of a tensor that comes from a Keras layer '
+                         'other than an `InputLayer`. '
+                         'Use the functional API instead.')
+    input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
+    input_layer = input_tensor._keras_history[0]
+    return Sequential(layers=[input_layer] + layers, name=model.name)
+
+
+def clone_model(model, input_tensors=None):
+  """Clone any `Model` instance.
+
+  Model cloning is similar to calling a model on new inputs,
+  except that it creates new layers (and thus new weights) instead
+  of sharing the weights of the existing layers.
+
+  Arguments:
+      model: Instance of `Model`
+          (could be a functional model or a Sequential model).
+      input_tensors: optional list of input tensors
+          to build the model upon. If not provided,
+          placeholders will be created.
+
+  Returns:
+      An instance of `Model` reproducing the behavior
+      of the original model, on top of new inputs tensors,
+      using newly instantiated weights.
+
+  Raises:
+      ValueError: in case of invalid `model` argument value.
+  """
+  if isinstance(model, Sequential):
+    return _clone_sequential_model(model, input_tensors=input_tensors)
+  else:
+    return _clone_functional_model(model, input_tensors=input_tensors)

@@ -77,8 +77,8 @@ toolchain {
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed"
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/local_include"
   cxx_builtin_include_directory: "/usr/include"
-
-  cxx_flag: "-std=c++11"	
+  cxx_builtin_include_directory: "/workspace/toolchain/openblas/include/"
+  cxx_flag: "-std=c++11"
   # The cxx_builtin_include_directory directives don't seem to be adding these, so
   # explicitly set them as flags. There's a query to the Bazel team outstanding about
   # why this is necessary.

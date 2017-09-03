@@ -1097,6 +1097,180 @@ TEST_F(HloEvaluatorTest, ReduceAdd) {
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
+TEST_F(HloEvaluatorTest, ReduceWindowMax) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  arg_array->FillUnique(1.0f);
+  auto arg_literal = Literal::CreateR2FromArray2D<float>(*arg_array);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder max_computation("max");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = max_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = max_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  max_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
+  HloModule module(TestName());
+  auto max_func = module.AddEmbeddedComputation(max_computation.Build());
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 2});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, arg_instruction, init_value, window, max_func));
+
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({{6, 7}});
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, ReduceWindowAdd) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[2,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  // }
+  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  arg_array->FillUnique(1.0f);
+  auto arg_literal = Literal::CreateR2FromArray2D<float>(*arg_array);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+  HloModule module(TestName());
+  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(1);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(1);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, arg_instruction, init_value, window, add_func));
+
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR2<float>({{1, 3, 5}, {5, 11, 13}});
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, ReduceWindowAdd6D) {
+  HloComputation::Builder b(TestName());
+
+  // arg: f32[4,4,4,4,4,4] full of ones. Using small dims to limit run-time.
+  std::vector<int64> input_dims(6, 4);
+  std::unique_ptr<Literal> arg_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+  HloModule module(TestName());
+  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+
+  Window window;
+
+  WindowDimension trivial_dim;
+  trivial_dim.set_size(1);
+  trivial_dim.set_stride(1);
+  trivial_dim.set_padding_low(0);
+  trivial_dim.set_padding_high(0);
+  trivial_dim.set_window_dilation(1);
+  trivial_dim.set_base_dilation(1);
+
+  WindowDimension active_dim;
+  active_dim.set_size(2);
+  active_dim.set_stride(1);
+  active_dim.set_padding_low(0);
+  active_dim.set_padding_high(0);
+  active_dim.set_window_dilation(1);
+  active_dim.set_base_dilation(1);
+
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 3, 3, 4, 4});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, arg_instruction, init_value, window, add_func));
+
+  auto computation = module.AddEntryComputation(b.Build());
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  std::vector<int64> output_dims = {4, 3, 3, 3, 4, 4};
+  std::unique_ptr<Literal> result_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 8.0f);
+  LiteralTestUtil::ExpectEqual(*result_literal, *result);
+}
+
 TEST_F(HloEvaluatorTest, StridedSlice) {
   HloComputation::Builder b(TestName());
 

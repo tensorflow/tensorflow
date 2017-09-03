@@ -263,7 +263,7 @@ py_test(
 
 py_test(
     name = "mobilenet_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/applications/mobilenet_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -608,7 +608,7 @@ py_test(
 
 py_test(
     name = "callbacks_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/callbacks_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

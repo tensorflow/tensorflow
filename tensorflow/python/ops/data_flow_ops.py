@@ -25,6 +25,7 @@ import threading
 
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -160,7 +161,10 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    self._name = self._queue_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._queue_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @staticmethod
   def from_list(index, queues):
@@ -208,7 +212,9 @@ class QueueBase(object):
   @property
   def name(self):
     """The name of the underlying queue."""
-    return self._queue_ref.op.name
+    if context.in_graph_mode():
+      return self._queue_ref.op.name
+    return self._name
 
   @property
   def dtypes(self):
@@ -419,9 +425,10 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
-    op = ret[0].op
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(shape)
+    if context.in_graph_mode():
+      op = ret[0].op
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(shape)
 
     return self._dequeue_return_value(ret)
 
@@ -458,10 +465,13 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    op = ret[0].op
-    batch_dim = tensor_shape.Dimension(tensor_util.constant_value(op.inputs[1]))
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      batch_dim = tensor_shape.Dimension(
+          tensor_util.constant_value(op.inputs[1]))
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(
+            tensor_shape.TensorShape([batch_dim]).concatenate(shape))
 
     return self._dequeue_return_value(ret)
 
@@ -499,9 +509,10 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    op = ret[0].op
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
 
     return self._dequeue_return_value(ret)
 
@@ -897,7 +908,10 @@ class Barrier(object):
     self._barrier_ref = gen_data_flow_ops._barrier(
         component_types=self._types, shapes=self._shapes,
         shared_name=shared_name, name=name)
-    self._name = self._barrier_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._barrier_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @property
   def barrier_ref(self):
@@ -907,7 +921,9 @@ class Barrier(object):
   @property
   def name(self):
     """The name of the underlying barrier."""
-    return self._barrier_ref.op.name
+    if context.in_graph_mode():
+      return self._barrier_ref.op.name
+    return self._name
 
   def insert_many(self, component_index, keys, values, name=None):
     """For each key, assigns the respective value to the specified component.
@@ -984,16 +1000,19 @@ class Barrier(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Barrier object.
-    op = ret[0].op
-    if allow_small_batch:
-      batch_dim = None
-    else:
-      batch_dim = tensor_shape.Dimension(
-          tensor_util.constant_value(op.inputs[1]))
-    op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
-    op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
-    for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
-      output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      if allow_small_batch:
+        batch_dim = None
+      else:
+        batch_dim = tensor_shape.Dimension(
+            tensor_util.constant_value(op.inputs[1]))
+      op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
+      op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
+      for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
+        output.set_shape(
+            tensor_shape.TensorShape([batch_dim]).concatenate(
+                shape))
 
     return ret
 
@@ -1081,7 +1100,10 @@ class ConditionalAccumulatorBase(object):
     else:
       self._shape = tensor_shape.unknown_shape()
     self._accumulator_ref = accumulator_ref
-    self._name = self._accumulator_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._accumulator_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @property
   def accumulator_ref(self):

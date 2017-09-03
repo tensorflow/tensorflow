@@ -61,6 +61,7 @@ tf_cuda_library(
             "//tensorflow/cc:ops",
             "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:scope_internal",
+            "//tensorflow/cc:while_loop",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",

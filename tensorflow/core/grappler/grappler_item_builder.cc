@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
@@ -163,6 +165,104 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     return nullptr;
   }
 
+  // TODO(yuefengz): consider handling saved_model_main_op and legacy_init_op.
+  // The reason why they are difficult to handle is because they may not intend
+  // to initialize all variables that are required to run fetch nodes. We may
+  // have to run restore op first.
+
+  // Try to find initializers from variables and tables as init ops.
+  for (const string& var_collection :
+       {"variables", "local_variables", "model_variables",
+        "trainable_variables"}) {
+    if (meta_graph.collection_def().count(var_collection) == 0) {
+      continue;
+    }
+    const CollectionDef& vars = meta_graph.collection_def().at(var_collection);
+    for (const auto& raw_var : vars.bytes_list().value()) {
+      VariableDef var;
+      var.ParseFromString(raw_var);
+      if (!var.initializer_name().empty()) {
+        new_item->init_ops.push_back(NodeName(var.initializer_name()));
+      }
+    }
+  }
+
+  if (meta_graph.collection_def().count("table_initializer") > 0) {
+    const CollectionDef& inits =
+        meta_graph.collection_def().at("table_initializer");
+    if (inits.has_node_list()) {
+      for (const auto& node : inits.node_list().value()) {
+        new_item->init_ops.push_back(NodeName(node));
+        // Tables are initialized from files, which can take a long time. Add
+        // 30 minutes to the initialization time for each table to avoid
+        // timing out.
+        // TODO(bsteiner): adjust the timeout based on the file size.
+        new_item->expected_init_time += 30 * 60;
+      }
+    }
+  }
+
+  // We keep the mapping from asset node to asset files. This should have been
+  // used as feed but since asset node is usually a constant node, we will fill
+  // the values of these constant nodes with their actual asset file paths.
+  std::unordered_map<string, string> asset_node_to_value;
+
+  // Assets file may have changed their directory, we assemble their new paths
+  // if assets_directory_override is set. We also make sure we still can
+  // access these asset files.
+  if (!cfg.assets_directory_override.empty()) {
+    if (meta_graph.collection_def().count("saved_model_assets") > 0) {
+      const CollectionDef& collection =
+          meta_graph.collection_def().at("saved_model_assets");
+      const auto& any_assets = collection.any_list().value();
+      for (const auto& any_asset : any_assets) {
+        AssetFileDef asset_file_def;
+        if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
+                 .ok()) {
+          LOG(ERROR) << "Failed to parse AssetFile.";
+          continue;
+        }
+        string asset_filepath = io::JoinPath(cfg.assets_directory_override,
+                                             asset_file_def.filename());
+        if (!FilesExist({asset_filepath}, nullptr)) {
+          LOG(ERROR) << "Can't access one or more of the asset files "
+                     << asset_filepath << ", skipping this input";
+          return nullptr;
+        }
+        asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
+            asset_filepath;
+      }
+    }
+  } else if (meta_graph.collection_def().count("asset_filepaths") > 0) {
+    const CollectionDef& file_paths =
+        meta_graph.collection_def().at("asset_filepaths");
+    std::vector<string> paths;
+    for (const auto& raw_path : file_paths.bytes_list().value()) {
+      paths.push_back(raw_path);
+    }
+    if (!FilesExist(paths, nullptr)) {
+      LOG(ERROR) << "Can't access one or more of the asset files, skipping "
+                    "this input";
+      return nullptr;
+    }
+  }
+
+  if (meta_graph.collection_def().count("queue_runners") > 0) {
+    const CollectionDef& vars = meta_graph.collection_def().at("queue_runners");
+    for (const auto& raw : vars.bytes_list().value()) {
+      QueueRunnerDef queue_runner;
+      if (!queue_runner.ParseFromString(raw)) {
+        LOG(ERROR) << "Could not parse queue_runners, skipping this input";
+        return nullptr;
+      }
+      if (queue_runner.cancel_op_name().empty()) {
+        LOG(ERROR) << "Queue without a cancel op, skipping this input";
+        return nullptr;
+      }
+      new_item->queue_runners.push_back(queue_runner);
+    }
+  }
+
   for (auto& node : *new_item->graph.mutable_node()) {
     if (IsPlaceholder(node)) {
       if (node.attr().count("dtype") == 0) {
@@ -248,6 +348,24 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       // inferring shapes and is a no-op when dynamically inferring shapes as
       // the Placeholder shape will match the shape passed from new_item->feed.
       *(node.mutable_attr()->at("shape").mutable_shape()) = shape_proto;
+    } else if (IsConstant(node)) {
+      auto it = asset_node_to_value.find(node.name());
+      if (it != asset_node_to_value.end()) {
+        auto iter = node.mutable_attr()->find("value");
+        if (iter == node.attr().end()) {
+          LOG(ERROR) << "Value attribute expected in const op for asset files";
+          return nullptr;
+        }
+        if (!iter->second.has_tensor() ||
+            iter->second.tensor().string_val_size() != 1) {
+          LOG(INFO) << "Unexected AttrValue proto: "
+                    << iter->second.DebugString();
+          return nullptr;
+        }
+        LOG(INFO) << "Using asset file " << it->second << " for node "
+                  << node.name();
+        *(iter->second.mutable_tensor()->mutable_string_val(0)) = it->second;
+      }
     }
 
     // Erase the recorded result of any previous shape inference to start again
@@ -265,71 +383,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       if (it != attr->end()) {
         attr->erase(it);
       }
-    }
-  }
-
-  for (const string& var_collection :
-       {"variables", "local_variables", "model_variables",
-        "trainable_variables"}) {
-    if (meta_graph.collection_def().count(var_collection) == 0) {
-      continue;
-    }
-    const CollectionDef& vars = meta_graph.collection_def().at(var_collection);
-    for (const auto& raw_var : vars.bytes_list().value()) {
-      VariableDef var;
-      var.ParseFromString(raw_var);
-      if (!var.initializer_name().empty()) {
-        new_item->init_ops.push_back(var.initializer_name());
-      }
-    }
-  }
-
-  if (meta_graph.collection_def().count("table_initializer") > 0) {
-    const CollectionDef& inits =
-        meta_graph.collection_def().at("table_initializer");
-    if (inits.has_node_list()) {
-      for (const auto& node : inits.node_list().value()) {
-        new_item->init_ops.push_back(node);
-        // Tables are initialized from files, which can take a long time. Add 30
-        // minutes to the initialization time for each table to avoid timing
-        // out.
-        // TODO(bsteiner): adjust the timeout based on the file size.
-        new_item->expected_init_time += 30 * 60;
-      }
-    }
-  }
-
-  if (meta_graph.collection_def().count("queue_runners") > 0) {
-    const CollectionDef& vars = meta_graph.collection_def().at("queue_runners");
-    for (const auto& raw : vars.bytes_list().value()) {
-      QueueRunnerDef queue_runner;
-      if (!queue_runner.ParseFromString(raw)) {
-        LOG(ERROR) << "Could parse queue_runners, skipping this input";
-        return nullptr;
-      }
-      if (queue_runner.cancel_op_name().empty()) {
-        LOG(ERROR) << "Queue without a cancel op, skipping this input";
-        return nullptr;
-      }
-      new_item->queue_runners.push_back(queue_runner);
-    }
-  }
-
-  // Make sure we still can access the input files (aka "asset_filepaths") since
-  // these might have been moved or deleted, the cns cell might have been shut
-  // down, or we might be running as a user who does not have access to the
-  // files.
-  if (meta_graph.collection_def().count("asset_filepaths") > 0) {
-    const CollectionDef& file_paths =
-        meta_graph.collection_def().at("asset_filepaths");
-    std::vector<string> paths;
-    for (const auto& raw_path : file_paths.bytes_list().value()) {
-      paths.push_back(raw_path);
-    }
-    if (!FilesExist(paths, nullptr)) {
-      LOG(ERROR)
-          << "Can't access one or more of the asset files, skipping this input";
-      return nullptr;
     }
   }
 

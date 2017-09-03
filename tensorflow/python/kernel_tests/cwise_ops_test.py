@@ -1956,7 +1956,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = sess.run([tf_angle])
+      tf_angle_val = sess.run(tf_angle)
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 

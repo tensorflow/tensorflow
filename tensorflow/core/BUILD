@@ -1926,6 +1926,7 @@ tf_cuda_library(
     name = "gpu_runtime",
     srcs = [
         "common_runtime/gpu/gpu_bfc_allocator.cc",
+        "common_runtime/gpu/gpu_cudamalloc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
@@ -1938,6 +1939,7 @@ tf_cuda_library(
     ],
     hdrs = [
         "common_runtime/gpu/gpu_bfc_allocator.h",
+        "common_runtime/gpu/gpu_cudamalloc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
         "common_runtime/gpu/gpu_device.h",
         "common_runtime/gpu/gpu_init.h",

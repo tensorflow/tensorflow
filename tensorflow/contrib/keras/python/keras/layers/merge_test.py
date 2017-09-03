@@ -194,6 +194,20 @@ class MergeLayersTest(test.TestCase):
       dot = keras.layers.Dot(1)
       dot._compute_output_shape(1)
 
+  def test_merge_subtract(self):
+    i1 = keras.layers.Input(shape=(4, 5))
+    i2 = keras.layers.Input(shape=(4, 5))
+    y = keras.layers.subtract([i1, i2])
+    self.assertEqual(y.get_shape().as_list(), [None, 4, 5])
+
+    # Test invalid use cases
+    i1 = keras.layers.Input(shape=(4, 5))
+    i2 = keras.layers.Input(shape=(3, 5))
+    with self.assertRaises(ValueError):
+      keras.layers.subtract([i1, i2])
+    with self.assertRaises(ValueError):
+      keras.layers.subtract([i1, i1, i1])
+
 
 if __name__ == '__main__':
   test.main()

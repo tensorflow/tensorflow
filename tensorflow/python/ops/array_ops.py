@@ -1726,18 +1726,19 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     raise ValueError("Unknown padding mode: %s" % mode)
 
   # Restore shape information where possible.
-  paddings_constant = tensor_util.constant_value(
-      result.op.inputs[1], partial=True)
-  input_shape = result.op.inputs[0].shape
-  if (input_shape.ndims is not None and not result.shape.is_fully_defined() and
-      paddings_constant is not None):
-    new_shape = []
-    for padding, dim in zip(paddings_constant, input_shape.as_list()):
-      if padding is None or dim is None or not all(padding):
-        new_shape.append(None)
-      else:
-        new_shape.append(sum(padding) + dim)
-    result.set_shape(new_shape)
+  if context.in_graph_mode():
+    paddings_constant = tensor_util.constant_value(
+        result.op.inputs[1], partial=True)
+    input_shape = result.op.inputs[0].shape
+    if (input_shape.ndims is not None and not result.shape.is_fully_defined()
+        and paddings_constant is not None):
+      new_shape = []
+      for padding, dim in zip(paddings_constant, input_shape.as_list()):
+        if padding is None or dim is None or not all(padding):
+          new_shape.append(None)
+        else:
+          new_shape.append(sum(padding) + dim)
+      result.set_shape(new_shape)
 
   return result
 

@@ -107,6 +107,10 @@ XLA_MAKE_BINARY(
     b->Mul(b->Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
            b->Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
            extend_dimensions));
+XLA_MAKE_BINARY(SqrtGrad,
+                b->Div(b->Mul(rhs,
+                              XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                       lhs, extend_dimensions));
 
 static xla::ComputationDataHandle Square(xla::ComputationBuilder* builder,
                                          const xla::ComputationDataHandle& x) {

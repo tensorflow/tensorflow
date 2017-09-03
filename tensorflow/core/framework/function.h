@@ -292,20 +292,24 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // 'fdef' already exists in this function library.
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
+  // This operation is atomic.
   Status AddFunctionDef(const FunctionDef& fdef);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
+  // This operation is atomic.
   Status AddGradientDef(const GradientDef& grad);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
+  // This operation is atomic.
   Status AddLibrary(const FunctionLibraryDefinition& other);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
+  // This operation is atomic.
   Status AddLibrary(const FunctionDefLibrary& lib_def);
 
   // If the gradient function for 'func' is specified explicitly in
@@ -353,6 +357,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     OpRegistrationData op_registration_data;
   };
 
+  // Same as AddFunctionDef/AddGradientDef except these methods set
+  // `added` to true if the `fdef`/`grad` were actually added to this.
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added);
+  Status AddGradientDefHelper(const GradientDef& grad, bool* added);
+
   const OpRegistryInterface* const default_registry_;
   gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
       function_defs_;
@@ -361,6 +370,18 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
   const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
+
+  // Remove function `func` from the library. `func` must be in the library.
+  void RemoveFunction(const string& func);
+
+  // Remove gradient of function `func` from the library. `func` must have
+  // a gradient.
+  void RemoveGradient(const string& func);
+
+  // Remove all functions in `funcs` and all gradients of
+  // functions in `funcs_with_grads` from this library.
+  void Remove(const std::vector<string>& funcs,
+              const std::vector<string>& funcs_with_grads);
 };
 
 // Forward declare. Defined in common_runtime/function.h

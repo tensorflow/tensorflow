@@ -139,6 +139,33 @@ class BackendUtilsTest(test.TestCase):
       y_val = f([1])[0]
       self.assertAllClose(y_val, 1)
 
+  def test_is_keras_tensor(self):
+    x = keras.backend.variable(1)
+    self.assertEqual(keras.backend.is_keras_tensor(x), False)
+    x = keras.Input(shape=(1,))
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    with self.assertRaises(ValueError):
+      keras.backend.is_keras_tensor(0)
+
+  def test_is_placeholder(self):
+    x = keras.backend.placeholder(shape=(1,))
+    self.assertEqual(keras.backend.is_placeholder(x), True)
+    # Test with TF placeholder
+    x = keras.backend.array_ops.placeholder(dtype='float32', shape=(1,))
+    self.assertEqual(keras.backend.is_placeholder(x), True)
+    x = keras.backend.variable(1)
+    self.assertEqual(keras.backend.is_placeholder(x), False)
+
+  def test_stop_gradient(self):
+    x = keras.backend.variable(1)
+    y = keras.backend.stop_gradient(x)
+    self.assertEqual(y.op.name[:12], 'StopGradient')
+
+    xs = [keras.backend.variable(1) for _ in range(3)]
+    ys = keras.backend.stop_gradient(xs)
+    for y in ys:
+      self.assertEqual(y.op.name[:12], 'StopGradient')
+
 
 class BackendVariableTest(test.TestCase):
 
@@ -408,10 +435,10 @@ class BackendShapeOpsTest(test.TestCase):
     y = keras.backend.repeat_elements(x, 3, axis=1)
     self.assertEqual(y.get_shape().as_list(), [1, 9, 2])
 
-    # Invalid use:
-    with self.assertRaises(ValueError):
-      x = keras.backend.placeholder(shape=(2, None, 2))
-      keras.backend.repeat_elements(x, 3, axis=1)
+    # Use with a dynamic axis:
+    x = keras.backend.placeholder(shape=(2, None, 2))
+    y = keras.backend.repeat_elements(x, 3, axis=1)
+    self.assertEqual(y.get_shape().as_list(), [2, None, 2])
 
   def test_repeat(self):
     x = keras.backend.variable(np.ones((1, 3)))
