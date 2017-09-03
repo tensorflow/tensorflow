@@ -24,7 +24,7 @@
 # Enable tracing and profile the time and memory information.
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
-with tf.contrib.tfprof.ProfileContext() as pctx:
+with tf.python.profiler.profile_context.ProfileContext() as pctx:
   with tf.Session() as sess:
     x = build_model()
     sess.run(tf.global_variables_initializer())
@@ -43,7 +43,7 @@ with tf.contrib.tfprof.ProfileContext() as pctx:
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
 opts2 = tf.profiler.ProfileOptionBuilder.trainable_variables_parameter()
-with tf.contrib.tfprof.ProfileContext() as pctx:
+with tf.python.profiler.profile_context.ProfileContext() as pctx:
   # Profile time and memory from step 100 to 109.
   # Note: High level APIs can run sessions for queue, variable initialization
   # or training at different steps. Try profile multiple steps.
@@ -57,7 +57,7 @@ with tf.contrib.tfprof.ProfileContext() as pctx:
 ```shell
 # Profiling from Python API is not interactive.
 # Dump the profiles to files and profile with interactive command line.
-with tf.contrib.tfprof.ProfileContext() as pctx:
+with tf.python.profiler.profile_context.ProfileContext() as pctx:
   pctx.add_auto_profile_dump('/tmp/profiles', [100])
   train_loop()
 
