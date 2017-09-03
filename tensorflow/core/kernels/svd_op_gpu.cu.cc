@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-// TODO(shamanDevel): Enable complex inputs. This will require additional tests
-//                    and OP_REQUIRES.
+// TODO(shamanDevel): Enable complex inputs. This will require a specialization
+//                    of Gesvd for complex inputs as well as a new kernel
+//                    definition to output the singular values as reals
+//                    instead of complex values. The current CPU implementation
+//                    outputs the singular values as complex values and then
+//                    casts them to reals in the python wrapper.
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
