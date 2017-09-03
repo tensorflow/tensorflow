@@ -165,7 +165,8 @@ void RdmaAdapter::Process_CQ() {
           RdmaBuffer* ab = rc->tx_ack_buffer_;
           ab->SendNextItem();
           // find buffer
-          RdmaTensorBuffer* tb = reinterpret_cast<RdmaTensorBuffer*> (rc->FindBuffer(rm.name_));
+          RdmaTensorBuffer* tb =
+              reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
           tb->SetBufferStatus(remote, idle);
           worker_env_->compute_pool->Schedule([tb]() { tb->ReSendNextItem(); });
         } else if (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) {
@@ -198,7 +199,8 @@ void RdmaAdapter::Process_CQ() {
           RdmaBuffer* ab = rc->tx_ack_buffer_;
           ab->SendNextItem();
           // find buffer
-          RdmaTensorBuffer* tb = reinterpret_cast<RdmaTensorBuffer*> (rc->FindBuffer(rm.name_));
+          RdmaTensorBuffer* tb =
+              reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
           CHECK(rm.buffer_size_ == tb->size_)
               << "rm.buffer_size = " << rm.buffer_size_
               << "tb->size_ = " << tb->size_ << "rm.name_ = " << rm.name_;
@@ -662,8 +664,8 @@ void RdmaMessageBuffer::SendNextItem() {
 }
 
 Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
-    const string& key_with_step_id, const string& key,
-    int64 step_id, const Rendezvous::ParsedKey& parsed) {
+    const string& key_with_step_id, const string& key, int64 step_id,
+    const Rendezvous::ParsedKey& parsed) {
   Rendezvous::DoneCallback cb = [this, key_with_step_id, key, step_id, parsed](
       const Status& status, const Rendezvous::Args& send_args,
       const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
@@ -840,7 +842,7 @@ void RdmaTensorBuffer::PostCopyOperations(
       VLOG(2) << "Extend RDMA buffer from " << size_ << " to " << buffer_size;
     }
     CreateCPUBuffer(buffer_size, false);
-    //Need to be recieved again, put into the re-recv queue and the table
+    // Need to be received again, put into the re-recv queue and the table
     requeue.push(key_with_step_id);
     ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
     retable.insert(std::pair<string, ReItem*>(key_with_step_id, item));
@@ -891,7 +893,7 @@ void RdmaTensorBuffer::PostCopyOperations(
     }
     Write(imm_data, buffer_size);
   } else {
-    //Need to be recieved again, put into the re-recv queue and the table
+    // Need to be received again, put into the re-recv queue and the table
     requeue.push(key_with_step_id);
     ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
     retable.insert(std::pair<string, ReItem*>(key_with_step_id, item));
