@@ -43,13 +43,13 @@ INCLUDES := \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 LIBS := \
+-Wl,--allow-multiple-definition \
+-Wl,--whole-archive \
 -ltensorflow-core \
+-Wl,--no-whole-archive \
 -lstdc++ \
 -lprotobuf \
 -lv4l2 \
--Wl,--allow-multiple-definition \
--Wl,--whole-archive \
--Wl,--no-whole-archive \
 -ldl \
 -lpthread \
 -lm \
