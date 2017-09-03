@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "roll_op.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/register_types_traits.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -267,10 +267,6 @@ class RollOp : public OpKernel {
         DoRoll<T>(context, N, D, dim_size, input_flat, output_flat, threshold,
                   dim_range);
       }
-    } else {
-      // for GPUs
-      RollFunctor<Device, T>()(context->eigen_device<Device>(), N, D, dim_size,
-                               input_flat, output_flat, threshold, dim_range);
     }
   }
 };
@@ -305,35 +301,4 @@ class RollOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_CPU);
 REGISTER_CPU(bfloat16);
 #undef REGISTER_CPU
-
-// Register the GPU kernels.
-#ifdef GOOGLE_CUDA
-#define REGISTER_GPU(type)                                       \
-  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int32>("Taxis"),   \
-                          RollOp<GPUDevice, type, int32, int32>) \
-  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int32>("Taxis"),   \
-                          RollOp<GPUDevice, type, int64, int32>) \
-  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis"),   \
-                          RollOp<GPUDevice, type, int32, int64>) \
-  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis"),   \
-                          RollOp<GPUDevice, type, int64, int64>)
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU)
-#endif  // GOOGLE_CUDA
 }  // namespace tensorflow
