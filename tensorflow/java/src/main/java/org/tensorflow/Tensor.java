@@ -159,7 +159,7 @@ public final class Tensor<T> implements AutoCloseable {
    * checked statically. Use class {@link org.tensorflow.Tensors} to
    * create Tensors in a fully type-safe way.
    * @param obj the object supplying the tensor data. It type must be compatible with T.
-   * @param type the DataType representation of the type T
+   * @param dtype the DataType representation of the type T
    * @return the new tensor
    */
   static <T extends TFType> Tensor<T> create(Object obj, DataType dtype) {
