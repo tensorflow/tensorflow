@@ -1042,5 +1042,16 @@ TEST_F(NaryGradTest, Minimum) {
   RunTest(x, x_init_value, y, shape);
 }
 
+TEST_F(NaryGradTest, Lgamma) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Lgamma(scope_, x);
+  // Select values to avoid instability when computing finite differences.
+  // Ref: https://en.wikipedia.org/wiki/File:Gamma_plot.svg
+  Tensor x_init_value =
+      test::AsTensor<float>({-3.5f, -2.5f, -1.5f, 1.0f, 2.0f, 3.5f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
 }  // namespace
 }  // namespace tensorflow
