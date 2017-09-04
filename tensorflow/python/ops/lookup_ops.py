@@ -39,8 +39,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
 
-# TODO(yleon): Remove this function.
-@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
+@deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
