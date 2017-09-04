@@ -159,12 +159,6 @@ void HloValue::AddPosition(HloInstruction* instruction,
   for (const HloPosition& position : positions_) {
     DCHECK_NE(position, new_position);
   }
-  // The shape of the new position must match existing positions.
-  if (!positions_.empty()) {
-    CHECK(
-        ShapeUtil::Compatible(positions_.front().shape(), new_position.shape()))
-        << "front: " << positions_.front() << " new: " << new_position;
-  }
 
   positions_.push_back(std::move(new_position));
 

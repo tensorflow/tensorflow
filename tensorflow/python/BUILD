@@ -1766,6 +1766,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":array_ops_gen",
+        ":dtypes",
         ":framework_ops",
         ":resource_variable_ops_gen",
         ":tensor_shape",
@@ -1775,7 +1777,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/eager:tensor",
+        "//tensorflow/python/eager:tensor_node",
     ],
 )
 
@@ -2550,6 +2552,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":checkpoint_ops_gen",
         ":client",
         ":control_flow_ops",
         ":data_flow_ops",
@@ -3559,6 +3562,28 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
     deps = [
+        ":client",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":io_ops",
+        ":partitioned_variables",
+        ":platform",
+        ":pywrap_tensorflow",
+        ":state_ops",
+        ":training",
+        ":variable_scope",
+        ":variables",
+    ],
+)
+
+py_test(
+    name = "checkpoint_ops_test",
+    size = "small",
+    srcs = ["training/checkpoint_ops_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":checkpoint_ops_gen",
         ":client",
         ":client_testlib",
         ":framework_for_generated_wrappers",
