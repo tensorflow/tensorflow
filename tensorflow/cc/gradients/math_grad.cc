@@ -699,6 +699,72 @@ Status LgammaGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
 
+Status MinOrMaxGrad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
+  // The partial derivative for any input along a "reduced" dimension
+  // is 1 when it is the min (or max) and 0 everywhere else. So the
+  // gradient calculation is identical for both operators.
+  //
+  // There's a special case for propagating gradients when there are
+  // multiple minima (or maxima) - we choose to divide the gradient
+  // equally among all matching inputs.
+  //
+  // Please note this comment
+  // https://github.com/tensorflow/tensorflow/issues/4886#issuecomment-256836063
+  // for details.
+
+  // Running example:
+  // input: [[5, 5, 5],
+  //         [1, 2, -3]]
+  // reduction_indices: [1]
+  auto input = op.input(0);
+  auto reduction_indices = op.input(1);
+
+  // [2, 3]
+  auto input_shape = Shape(scope, input);
+
+  // [2, 1]
+  auto output_shape_kept_dims =
+      ReducedShapeHelper(scope, input_shape, reduction_indices);
+
+  // for op=min (say)
+  // output = [5, -3]
+  // y = [[5],
+  //      [-3]]
+  auto y = Reshape(scope, op.output(0), output_shape_kept_dims);
+
+  // reshape([g1, g2], [2, 1]) = [[g1],
+  //                              [g2]]
+  auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
+
+  // indicators = equal(y, input)
+  //  = equal([[5],   [[5, 5, 5],
+  //           [-3]],  [1, 2, -3]])
+  //  = [[1, 1, 1],
+  //     [0, 0, 1]]
+  auto indicators = Cast(scope, Equal(scope, y, input), grad_inputs[0].type());
+
+  // [[3],
+  //  [1]]
+  auto num_selected = Reshape(scope, Sum(scope, indicators, reduction_indices),
+                              output_shape_kept_dims);
+
+  // [[1/3, 1/3, 1/3],
+  //  [0, 0, 1]]
+  auto scale = Div(scope, indicators, num_selected);
+
+  // [[g1/3, g1/3, g1/3],
+  //  [0, 0, g2]]
+  grad_outputs->push_back(Mul(scope, scale, grad));
+
+  // Stop propagation along reduction_indices
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Min", MinOrMaxGrad);
+REGISTER_GRADIENT_OP("Max", MinOrMaxGrad);
+
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,

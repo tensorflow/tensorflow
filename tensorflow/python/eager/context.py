@@ -172,16 +172,6 @@ class Context(object):
     self._summary_writer_resource = resource
 
   @property
-  def recording_summaries(self):
-    """Returns True if recording summaries is enabled in current thread.."""
-    return self._eager_context.recording_summaries
-
-  @recording_summaries.setter
-  def recording_summaries(self, val):
-    """Enables recording summaries is enabled in current thread.."""
-    self._eager_context.recording_summaries = val
-
-  @property
   def device_name(self):
     """Returns the device name for the current thread."""
     return self._eager_context.device_name
@@ -358,24 +348,6 @@ def device(name):
     Context manager for setting the device.
   """
   return context().device(name)
-
-
-@contextlib.contextmanager
-def record_summaries():
-  """Context-manager to enable recording of summaries."""
-  ctx = context()
-  old = ctx.recording_summaries
-  ctx.recording_summaries = True
-  try:
-    yield
-  finally:
-    ctx.recording_summaries = old
-
-
-def should_record_summary():
-  """True if a summary should be recorded now."""
-  c = context()
-  return c.recording_summaries and c.summary_writer_resource is not None
 
 
 def run(main=None, argv=None):

@@ -793,13 +793,6 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     }
   }
 
-  for (HloComputation* computation :
-       instruction_to_fuse->called_computations()) {
-    if (std::find(called_computations_.begin(), called_computations_.end(),
-                  computation) == called_computations_.end()) {
-      called_computations_.push_back(computation);
-    }
-  }
   VLOG(2) << "New clone:\n" << clone->ToString();
   return clone;
 }

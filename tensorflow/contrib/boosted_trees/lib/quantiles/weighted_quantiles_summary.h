@@ -15,6 +15,7 @@
 #ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
 
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_buffer.h"
@@ -34,10 +35,27 @@ class WeightedQuantilesSummary {
 
   struct SummaryEntry {
     SummaryEntry(const ValueType& v, const WeightType& w, const WeightType& min,
-                 const WeightType& max)
-        : value(v), weight(w), min_rank(min), max_rank(max) {}
+                 const WeightType& max) {
+      // Explicitely initialize all of memory (including padding from memory
+      // alignment) to allow the struct to be msan-resistant "plain old data".
+      //
+      // POD = http://en.cppreference.com/w/cpp/concept/PODType
+      memset(this, 0, sizeof(*this));
 
-    SummaryEntry() : value(0), weight(0), min_rank(0), max_rank(0) {}
+      value = v;
+      weight = w;
+      min_rank = min;
+      max_rank = max;
+    }
+
+    SummaryEntry() {
+      memset(this, 0, sizeof(*this));
+
+      value = 0;
+      weight = 0;
+      min_rank = 0;
+      max_rank = 0;
+    }
 
     bool operator==(const SummaryEntry& other) const {
       return value == other.value && weight == other.weight &&
