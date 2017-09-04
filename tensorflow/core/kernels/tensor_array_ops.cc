@@ -1069,7 +1069,7 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     } else {
       OP_REQUIRES(
           ctx, max_index < array_size,
-          errors::InvalidArgument("Max scatter index must be <= array size (",
+          errors::InvalidArgument("Max scatter index must be < array size (",
                                   max_index, " vs. ", array_size, ")"));
     }
     element_shape.RemoveDim(0);
