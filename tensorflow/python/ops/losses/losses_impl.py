@@ -27,6 +27,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
+from tensorflow.python.util.deprecation import deprecated_args
 
 
 class Reduction(object):
@@ -230,10 +231,12 @@ def absolute_difference(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
-    labels, predictions, dim=None, weights=1.0, scope=None,
+    labels, predictions, axis=None, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS,
+    dim=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -242,7 +245,7 @@ def cosine_distance(
   Args:
     labels: `Tensor` whose shape matches 'predictions'
     predictions: An arbitrary matrix.
-    dim: The dimension along which the cosine distance is computed.
+    axis: The dimension along which the cosine distance is computed.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).
@@ -256,10 +259,14 @@ def cosine_distance(
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
-      `dim`, `labels`, `predictions` or `weights` is `None`.
+      `axis`, `labels`, `predictions` or `weights` is `None`.
   """
-  if dim is None:
-    raise ValueError("`dim` cannot be None.")
+  if dim is not None:
+    if axis is not None:
+      raise ValueError("Cannot specify both 'axis' and 'dim'")
+    axis = dim
+  if axis is None and dim is None:
+    raise ValueError("`axis` and `dim` cannot both be None.")
   if labels is None:
     raise ValueError("labels must not be None.")
   if predictions is None:
@@ -271,7 +278,7 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(dim,), keep_dims=True)
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keep_dims=True)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
