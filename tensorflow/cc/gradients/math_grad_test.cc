@@ -1100,6 +1100,7 @@ TEST_F(NaryGradTest, Lgamma) {
   Tensor x_init_value =
       test::AsTensor<float>({-3.5f, -2.5f, -1.5f, 1.0f, 2.0f, 3.5f}, {3, 2});
   RunTest(x, x_init_value, y, shape);
+  // TODO(suharshs): add test case for complex values
 }
 
 }  // namespace
