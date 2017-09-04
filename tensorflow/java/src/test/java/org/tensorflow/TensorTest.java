@@ -34,6 +34,7 @@ import org.tensorflow.types.TFFloat;
 import org.tensorflow.types.TFDouble;
 import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFString;
+import org.tensorflow.types.TFUInt8;
 import org.tensorflow.types.TFInt64;
 import org.tensorflow.types.TFBool;
 
@@ -416,6 +417,20 @@ public class TensorTest {
     }
   }
   
+  @Test
+  public void testUInt8Tensor() {
+  	byte[] vector = new byte[] { 1, 2, 3, 4 };
+  	try (Tensor<TFUInt8> t = Tensor.create(vector, TFUInt8.class)) {
+  		assertEquals(DataType.UINT8, t.dataType());
+  		assertEquals(1, t.numDimensions());
+  		assertArrayEquals(new long[] {4}, t.shape());
+  		
+  		byte[] got = t.copyTo(new byte[4]);
+  		assertArrayEquals(got, vector);
+  	}
+  }
+  
+
   @Test
   public void failCreateOnMismatchedDimensions() {
     int[][][] invalid = new int[3][1][];

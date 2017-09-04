@@ -114,12 +114,26 @@ public final class Tensor<T> implements AutoCloseable {
    * @see org.tensorflow.op.Tensors
    */
   public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
-  	DataType dt1 = dataTypeOf(obj);
   	DataType dt2 = Types.dataType(type);
-    if (!dt1.equals(dt2)) {
+    if (!objectCompatWithType(obj, dt2)) {
   		throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dataTypeOf(obj) + ")");
     }
     return create(obj, dt2);
+  }
+
+  /** Returns whether the object {@code obj} can represent a tensor with
+   *  data type {@code dt}.
+   *  TODO(andrewmyers): Probably should not be built using dataTypeOf,
+   *  which is somewhat questionable once we allow a give Java type
+   *  to represent multiple tensor types.
+   */
+	private static boolean objectCompatWithType(Object obj, DataType dt) {
+		DataType dto = dataTypeOf(obj);
+		if (dto.equals(dt))
+			return true;
+		if (dto == DataType.STRING && dt == DataType.UINT8)
+			return true;
+		return false;
   }
   
   /**
@@ -145,9 +159,9 @@ public final class Tensor<T> implements AutoCloseable {
    * @param type the DataType representation of the type T
    * @return the new tensor
    */
-  static <T extends TFType> Tensor<T> create(Object obj, DataType type) {
-	  Tensor<T> t = new Tensor<T>(type);
-    t.shapeCopy = new long[numDimensions(obj)];
+  static <T extends TFType> Tensor<T> create(Object obj, DataType dtype) {
+	  Tensor<T> t = new Tensor<T>(dtype);
+	  t.shapeCopy = new long[numDimensions(obj, dtype)];
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
       int byteSize = elemByteSize(t.dtype) * numElements(t.shapeCopy);
@@ -615,8 +629,6 @@ public final class Tensor<T> implements AutoCloseable {
 
   private static int elemByteSize(DataType dataType) {
     switch (dataType) {
-      case UINT8:
-        return 1;
       case FLOAT:
       case INT32:
         return 4;
@@ -624,6 +636,7 @@ public final class Tensor<T> implements AutoCloseable {
       case INT64:
         return 8;
       case BOOL:
+      case UINT8:
         return 1;
       case STRING:
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
@@ -674,18 +687,34 @@ public final class Tensor<T> implements AutoCloseable {
     }
   }
 
-  private static int numDimensions(Object o) {
-    if (o.getClass().isArray()) {
-      Object e = Array.get(o, 0);
-      if (e == null) {
-        throwExceptionIfNotByteOfByteArrays(o);
-        return 1;
-      } else if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
-        return 0;
-      }
-      return 1 + numDimensions(e);
+  /** Return the number of dimensions of the tensor that object {@code o}
+   *  represents as a tensor whose datatype is {@code dtype}. Normally
+   *  this is the same as the number of dimensions of o itself, but
+   *  is one smaller for tensors of strings.
+   *  @param o The object to inspect. It must be a valid representation
+   *           of the given data type.
+   *  @param dtype The expected data type of the tensor.
+   */
+  private static int numDimensions(Object o, DataType dtype) {
+    int ret = numArrayDimensions(o);
+    if (dtype == DataType.STRING) {
+    	return ret - 1;
     }
-    return 0;
+    return ret;
+  }
+  
+  /** Returns the number of dimensions of the array object o.
+   *  Returns 0 if o is not an array.
+   */
+  private static int numArrayDimensions(Object o) {
+  	Class<?> c = o.getClass();
+    if (!c.isArray()) return 0;
+    String s = c.getName();
+    int i = 0;
+    while (s.charAt(i) == '[') {
+    		i++;
+    }
+    return i;
   }
 
   private static void fillShape(Object o, int dim, long[] shape) {
@@ -706,13 +735,13 @@ public final class Tensor<T> implements AutoCloseable {
 
   private void throwExceptionIfTypeIsIncompatible(Object o) {
     final int rank = numDimensions();
-    final int oRank = numDimensions(o);
+    final int oRank = numDimensions(o, dtype);
     if (oRank != rank) {
       throw new IllegalArgumentException(
           String.format(
               "cannot copy Tensor with %d dimensions into an object with %d", rank, oRank));
     }
-    if (dataTypeOf(o) != dtype) {
+    if (!objectCompatWithType(o, dtype)) {
       throw new IllegalArgumentException(
           String.format(
               "cannot copy Tensor with DataType %s into an object of type %s",
