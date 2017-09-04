@@ -127,6 +127,10 @@ def tf_library(name, graph, config,
   header_file = name + ".h"
   object_file = name + ".o"
   ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
+  if type(tfcompile_flags) == type(""):
+    flags = tfcompile_flags
+  else:
+    flags = " ".join(["'" + arg.replace("'", "'\\''") + "'" for arg in (tfcompile_flags or [])])
   native.genrule(
       name=("gen_" + name),
       srcs=[
@@ -145,7 +149,7 @@ def tf_library(name, graph, config,
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
            " --out_object=$(@D)/" + object_file +
-           " ".join(tfcompile_flags or [])),
+           flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
