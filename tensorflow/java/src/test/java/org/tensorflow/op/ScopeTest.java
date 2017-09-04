@@ -184,13 +184,13 @@ public class ScopeTest {
     private final Output<T> output;
     
     static Const<TFInt32> create(Scope s, int v) {
-    	return create(s, Tensor.create(v, TFInt32.class));
+      return create(s, Tensor.create(v, TFInt32.class));
     }
     static Const<TFInt32> create(Scope s, int[] v) {
-    	return create(s, Tensor.create(v, TFInt32.class));
+      return create(s, Tensor.create(v, TFInt32.class));
     }
     static <T> Const<T> create(Scope s, Tensor<T> value) {
-    	return new Const<T>(
+      return new Const<T>(
           s.graph()
           .opBuilder("Const", s.makeOpName("Const"))
           .setAttr("dtype", value.dataType())

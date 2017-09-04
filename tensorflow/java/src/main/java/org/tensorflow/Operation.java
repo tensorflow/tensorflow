@@ -114,7 +114,7 @@ public final class Operation {
    *  @param idx The index of the output among the outputs produced by this operation.
    */
   @SuppressWarnings({ "rawtypes", "unchecked" })
-	public <T> Output<T> output(int idx) {
+  public <T> Output<T> output(int idx) {
     return new Output(this, idx);
   }
 

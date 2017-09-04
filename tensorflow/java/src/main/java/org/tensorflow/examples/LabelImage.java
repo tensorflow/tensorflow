@@ -244,12 +244,12 @@ public class LabelImage {
       }
 
     @SuppressWarnings("unchecked")
-		private <T> Output<T> binaryOp(String type, Output<T> in1, Output<T> in2) {
+    private <T> Output<T> binaryOp(String type, Output<T> in1, Output<T> in2) {
       return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
     }
     @SuppressWarnings("unchecked")
-		private <T, U, V> Output<T> binaryOp3(String type, Output<U> in1, Output<V> in2) {
-    	 return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+    private <T, U, V> Output<T> binaryOp3(String type, Output<U> in1, Output<V> in2) {
+       return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
     }
     private Graph g;
   }

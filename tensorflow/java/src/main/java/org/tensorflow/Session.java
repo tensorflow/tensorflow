@@ -357,7 +357,7 @@ public final class Session implements AutoCloseable {
     }
 
     @SuppressWarnings("rawtypes")
-		private Output<?> parseOutput(String opName) {
+    private Output<?> parseOutput(String opName) {
       int colon = opName.lastIndexOf(':');
       if (colon == -1 || colon == opName.length() - 1) {
         return new Output(operationByName(opName), 0);

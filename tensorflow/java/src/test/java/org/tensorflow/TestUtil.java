@@ -46,10 +46,10 @@ public class TestUtil {
     return g.opBuilder("Placeholder", name).setAttr("dtype", dtype).build().output(0);
   }
   public static <T extends TFType> Output<T> placeholder(Graph g, String name, Class<T> type) {
-		return g.opBuilder("Placeholder", name)
-				.setAttr("dtype", Types.dataType(type))
-				.build()
-				.<T>output(0);
+    return g.opBuilder("Placeholder", name)
+        .setAttr("dtype", Types.dataType(type))
+        .build()
+        .<T>output(0);
   }
   
   public static Output<?> addN(Graph g, Output<?>... inputs) {

@@ -114,26 +114,29 @@ public final class Tensor<T> implements AutoCloseable {
    * @see org.tensorflow.op.Tensors
    */
   public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
-  	DataType dt2 = Types.dataType(type);
+    DataType dt2 = Types.dataType(type);
     if (!objectCompatWithType(obj, dt2)) {
-  		throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dataTypeOf(obj) + ")");
+      throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dataTypeOf(obj) + ")");
     }
     return create(obj, dt2);
   }
 
   /** Returns whether the object {@code obj} can represent a tensor with
-   *  data type {@code dt}.
-   *  TODO(andrewmyers): Probably should not be built using dataTypeOf,
-   *  which is somewhat questionable once we allow a give Java type
-   *  to represent multiple tensor types.
+   *  data type {@code dtype}.
    */
-	private static boolean objectCompatWithType(Object obj, DataType dt) {
-		DataType dto = dataTypeOf(obj);
-		if (dto.equals(dt))
-			return true;
-		if (dto == DataType.STRING && dt == DataType.UINT8)
-			return true;
-		return false;
+  private static boolean objectCompatWithType(Object obj, DataType dtype) {
+   /*  TODO(andrewmyers): Probably should not be built using dataTypeOf,
+    *  which is somewhat questionable once we allow a give Java type
+    *  to represent multiple tensor types.
+    */
+    DataType dto = dataTypeOf(obj);
+    if (dto.equals(dtype)) {
+      return true;
+    }
+    if (dto == DataType.STRING && dtype == DataType.UINT8) {
+      return true;
+    }
+    return false;
   }
   
   /**
@@ -147,7 +150,7 @@ public final class Tensor<T> implements AutoCloseable {
    *     system.
    */
   public static <T extends TFType> Tensor<T> create(Object obj) {
-  	return create(obj, dataTypeOf(obj));
+    return create(obj, dataTypeOf(obj));
   }
   
   /**
@@ -160,8 +163,8 @@ public final class Tensor<T> implements AutoCloseable {
    * @return the new tensor
    */
   static <T extends TFType> Tensor<T> create(Object obj, DataType dtype) {
-	  Tensor<T> t = new Tensor<T>(dtype);
-	  t.shapeCopy = new long[numDimensions(obj, dtype)];
+    Tensor<T> t = new Tensor<T>(dtype);
+    t.shapeCopy = new long[numDimensions(obj, dtype)];
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
       int byteSize = elemByteSize(t.dtype) * numElements(t.shapeCopy);
@@ -599,7 +602,7 @@ public final class Tensor<T> implements AutoCloseable {
   private long[] shapeCopy = null;
 
   private Tensor(DataType t) {
-	  dtype = t;
+    dtype = t;
   }
   
   private ByteBuffer buffer() {
@@ -698,7 +701,7 @@ public final class Tensor<T> implements AutoCloseable {
   private static int numDimensions(Object o, DataType dtype) {
     int ret = numArrayDimensions(o);
     if (dtype == DataType.STRING) {
-    	return ret - 1;
+      return ret - 1;
     }
     return ret;
   }
@@ -707,12 +710,12 @@ public final class Tensor<T> implements AutoCloseable {
    *  Returns 0 if o is not an array.
    */
   private static int numArrayDimensions(Object o) {
-  	Class<?> c = o.getClass();
+    Class<?> c = o.getClass();
     if (!c.isArray()) return 0;
     String s = c.getName();
     int i = 0;
     while (s.charAt(i) == '[') {
-    		i++;
+      i++;
     }
     return i;
   }
