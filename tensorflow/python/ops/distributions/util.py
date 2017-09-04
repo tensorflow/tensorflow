@@ -770,7 +770,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     else:
       d = math_ops.cast(array_ops.shape(x)[-1], dtype=dtypes.float32)
       # d = n(n+1)/2 implies n is:
-      n = math_ops.cast(0.5 * (dtypes.sqrt(1. + 8. * d) - 1.),
+      n = math_ops.cast(0.5 * (math_ops.sqrt(1. + 8. * d) - 1.),
                         dtype=dtypes.int32)
       if validate_args:
         is_valid_input_shape = check_ops.assert_equal(
