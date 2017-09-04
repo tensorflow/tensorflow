@@ -114,25 +114,12 @@ public final class Tensor<T> implements AutoCloseable {
    * @see org.tensorflow.op.Tensors
    */
   public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
+  	DataType dt1 = dataTypeOf(obj);
   	DataType dt2 = Types.dataType(type);
-    if (!objectCompatWithType(obj, dt2)) {
+    if (!dt1.equals(dt2)) {
   		throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dataTypeOf(obj) + ")");
     }
     return create(obj, dt2);
-  }
-
-  /** Returns whether {@code obj} can be used as a data source
-   *  for a tensor of type {@code type}.
-   *
-   * @param obj The object containing source data.
-   *
-   * @param type The class object for the expected TensorFlow type.
-   */
-  private static boolean objectCompatWithType(Object obj, DataType dt) {
-  	DataType dto = dataTypeOf(obj);
-  	if (dto.equals(dt)) return true;
-    if (dto == DataType.STRING && dt == DataType.UINT8) return true;
-    return false;
   }
   
   /**
