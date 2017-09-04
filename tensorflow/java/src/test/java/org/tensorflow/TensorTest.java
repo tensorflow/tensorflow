@@ -429,7 +429,6 @@ public class TensorTest {
   		assertEquals(got, vector);
   	}
   }
-  
 
   @Test
   public void failCreateOnMismatchedDimensions() {

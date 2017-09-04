@@ -56,6 +56,7 @@ public class Types {
     Types.typeCodes.put(TFFloat.class, DataType.FLOAT);
     Types.typeCodes.put(TFDouble.class, DataType.DOUBLE);
     Types.typeCodes.put(TFInt32.class, DataType.INT32);
+    Types.typeCodes.put(TFUInt8.class, DataType.UINT8);
     Types.typeCodes.put(TFInt64.class, DataType.INT64);
     Types.typeCodes.put(TFBool.class, DataType.BOOL);
     Types.typeCodes.put(TFString.class, DataType.STRING);
@@ -63,6 +64,7 @@ public class Types {
     Types.zeros.put(TFFloat.class, 0.0f);
     Types.zeros.put(TFDouble.class, 0.0);
     Types.zeros.put(TFInt32.class, 0);
+    Types.zeros.put(TFUInt8.class, (byte) 0);
     Types.zeros.put(TFInt64.class, 0L);
     Types.zeros.put(TFBool.class, false);
     Types.zeros.put(TFString.class, null); // no zero value
