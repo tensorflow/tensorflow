@@ -3538,10 +3538,10 @@ class MeanPerClassAccuracyTest(test.TestCase):
       weights_queue = data_flow_ops.FIFOQueue(
           6, dtypes=dtypes_lib.float32, shapes=(1, 1))
       _enqueue_vector(sess, weights_queue, [1.0])
-      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [0.5])
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [0.0])
-      _enqueue_vector(sess, weights_queue, [0.5])
+      _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [0.0])
       weights = weights_queue.dequeue()
 
