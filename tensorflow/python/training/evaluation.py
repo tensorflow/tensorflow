@@ -22,6 +22,7 @@ import time
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -56,6 +57,23 @@ def _get_or_create_eval_step():
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.EVAL_STEP])
     return counter
+
+
+def _get_latest_eval_step_value(update_ops):
+  """Gets the eval step `Tensor` value after running `update_ops`.
+
+  Args:
+    update_ops: A list of `Tensors` or a dictionary of names to `Tensors`,
+        which are run before reading the eval step value.
+
+  Returns:
+    A `Tensor` representing the value for the evaluation step.
+  """
+  if isinstance(update_ops, dict):
+    update_ops = list(update_ops.values())
+
+  with ops.control_dependencies(update_ops):
+    return array_ops.identity(_get_or_create_eval_step().read_value())
 
 
 class _StopAfterNEvalsHook(session_run_hook.SessionRunHook):
@@ -113,7 +131,7 @@ def _evaluate_once(checkpoint_path,
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
   summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
-  summaries run immedietly after the model checkpoint has been restored.
+  summaries run immediately after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.
@@ -145,14 +163,10 @@ def _evaluate_once(checkpoint_path,
   eval_step = _get_or_create_eval_step()
 
   # Prepare the run hooks.
-  hooks = hooks or []
+  hooks = list(hooks or [])
 
   if eval_ops is not None:
-    update_eval_step = state_ops.assign_add(eval_step, 1)
-
-    for h in hooks:
-      if isinstance(h, _StopAfterNEvalsHook):
-        h._set_evals_completed_tensor(update_eval_step)  # pylint: disable=protected-access
+    update_eval_step = state_ops.assign_add(eval_step, 1, use_locking=True)
 
     if isinstance(eval_ops, dict):
       eval_ops['update_eval_step'] = update_eval_step
@@ -160,6 +174,12 @@ def _evaluate_once(checkpoint_path,
       eval_ops = list(eval_ops) + [update_eval_step]
     else:
       eval_ops = [eval_ops, update_eval_step]
+
+    eval_step_value = _get_latest_eval_step_value(eval_ops)
+
+    for h in hooks:
+      if isinstance(h, _StopAfterNEvalsHook):
+        h._set_evals_completed_tensor(eval_step_value)  # pylint: disable=protected-access
 
   logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                          time.gmtime()))

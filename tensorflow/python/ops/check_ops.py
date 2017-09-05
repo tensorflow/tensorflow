@@ -29,6 +29,7 @@ See the @{$python/check_ops} guide.
 @@assert_greater_equal
 @@assert_rank
 @@assert_rank_at_least
+@@assert_rank_in
 @@assert_type
 @@assert_integer
 @@assert_proper_iterable
@@ -45,6 +46,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -82,6 +84,22 @@ __all__ = [
     'is_numeric_tensor',
     'is_strictly_increasing',
 ]
+
+
+def _maybe_constant_value_string(t):
+  if not isinstance(t, ops.Tensor):
+    return str(t)
+  const_t = tensor_util.constant_value(t)
+  if const_t is not None:
+    return str(const_t)
+  return t
+
+
+def _assert_static(condition, data):
+  """Raises a static ValueError with as much information as possible."""
+  if not condition:
+    data_static = [_maybe_constant_value_string(x) for x in data]
+    raise ValueError('\n'.join(data_static))
 
 
 def assert_proper_iterable(values):
@@ -140,7 +158,9 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       data = [
-          message, 'Condition x < 0 did not hold element-wise: x = ', x.name, x]
+          message,
+          'Condition x < 0 did not hold element-wise:',
+          'x (%s) = ' % x.name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less(x, zero, data=data, summarize=summarize)
 
@@ -174,7 +194,8 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       data = [
-          message, 'Condition x > 0 did not hold element-wise: x = ', x.name, x]
+          message, 'Condition x > 0 did not hold element-wise:',
+          'x (%s) = ' % x.name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less(zero, x, data=data, summarize=summarize)
 
@@ -210,7 +231,8 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
     if data is None:
       data = [
           message,
-          'Condition x >= 0 did not hold element-wise: x = ', x.name, x]
+          'Condition x >= 0 did not hold element-wise:',
+          'x (%s) = ' % x.name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less_equal(zero, x, data=data, summarize=summarize)
 
@@ -246,7 +268,8 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
     if data is None:
       data = [
           message,
-          'Condition x <= 0 did not hold element-wise: x = ', x.name, x]
+          'Condition x <= 0 did not hold element-wise:'
+          'x (%s) = ' % x.name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
     return assert_less_equal(x, zero, data=data, summarize=summarize)
 
@@ -284,10 +307,16 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     if data is None:
       data = [
           message,
-          'Condition x == y did not hold element-wise: x = ', x.name, x, 'y = ',
-          y.name, y
+          'Condition x == y did not hold element-wise:',
+          'x (%s) = ' % x.name, x,
+          'y (%s) = ' % y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.equal(x, y))
+    x_static = tensor_util.constant_value(x)
+    y_static = tensor_util.constant_value(y)
+    if x_static is not None and y_static is not None:
+      condition_static = (x_static == y_static).all()
+      _assert_static(condition_static, data)
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
@@ -326,9 +355,9 @@ def assert_none_equal(
     if data is None:
       data = [
           message,
-          'Condition x != y did not hold for every single element: x = ',
-          x.name, x,
-          'y = ', y.name, y
+          'Condition x != y did not hold for every single element:'
+          'x (%s) = ' % x.name, x,
+          'y (%s) = ' % y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.not_equal(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -367,8 +396,8 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
     if data is None:
       data = [
           message,
-          'Condition x < y did not hold element-wise: x = ', x.name, x, 'y = ',
-          y.name, y
+          'Condition x < y did not hold element-wise:'
+          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -407,8 +436,8 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
     if data is None:
       data = [
           message,
-          'Condition x <= y did not hold element-wise: x = ', x.name, x, 'y = ',
-          y.name, y
+          'Condition x <= y did not hold element-wise:'
+          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -447,8 +476,8 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
     if data is None:
       data = [
           message,
-          'Condition x > y did not hold element-wise: x = ', x.name, x, 'y = ',
-          y.name, y
+          'Condition x > y did not hold element-wise:'
+          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.greater(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -489,8 +518,8 @@ def assert_greater_equal(x, y, data=None, summarize=None, message=None,
     if data is None:
       data = [
           message,
-          'Condition x >= y did not hold element-wise: x = ', x.name, x, 'y = ',
-          y.name, y
+          'Condition x >= y did not hold element-wise:'
+          'x (%s) = ' % x.name, x, 'y (%s) = ' % y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.greater_equal(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
@@ -699,7 +728,7 @@ def _assert_ranks_condition(
 
   # Attempt to statically defined rank.
   ranks_static = tuple([tensor_util.constant_value(rank) for rank in ranks])
-  if None not in ranks_static:
+  if not any(r is None for r in ranks_static):
     for rank_static in ranks_static:
       if rank_static.ndim != 0:
         raise ValueError('Rank must be a scalar.')
@@ -833,8 +862,12 @@ def assert_type(tensor, tf_type, message=None, name=None):
   with ops.name_scope(name, 'assert_type', [tensor]):
     tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
-      raise TypeError(
-          '%s  %s must be of type %s' % (message, tensor.op.name, tf_type))
+      if context.in_graph_mode():
+        raise TypeError(
+            '%s  %s must be of type %s' % (message, tensor.name, tf_type))
+      else:
+        raise TypeError(
+            '%s tensor must be of type %s' % (message, tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 

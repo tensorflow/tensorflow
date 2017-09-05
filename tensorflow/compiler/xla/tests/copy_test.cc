@@ -17,13 +17,13 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -44,11 +44,10 @@ class CopyOpTest : public HloTestBase {
     builder.AddInstruction(HloInstruction::CreateUnary(
         constant->shape(), HloOpcode::kCopy, constant));
     auto computation = builder.Build();
-    auto hlo_module = MakeUnique<HloModule>("test_module");
-    hlo_module->AddEntryComputation(std::move(computation));
+    auto module = CreateNewModule();
+    module->AddEntryComputation(std::move(computation));
 
-    std::unique_ptr<Literal> result =
-        ExecuteAndTransfer(std::move(hlo_module), {});
+    std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
     LiteralTestUtil::ExpectEqual(literal, *result);
   }
 
@@ -57,39 +56,34 @@ class CopyOpTest : public HloTestBase {
                                 tensorflow::gtl::ArraySlice<int64> permutation);
 };
 
-TEST_F(CopyOpTest, CopyR0Bool) {
-  TestCopyOp(*LiteralUtil::CreateR0<bool>(true));
+XLA_TEST_F(CopyOpTest, CopyR0Bool) { TestCopyOp(*Literal::CreateR0<bool>(true)); }
+
+XLA_TEST_F(CopyOpTest, CopyR1S0U32) { TestCopyOp(*Literal::CreateR1<uint32>({})); }
+
+XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
+  TestCopyOp(*Literal::CreateR1<uint32>({1, 2, 3}));
 }
 
-TEST_F(CopyOpTest, CopyR1S0U32) {
-  TestCopyOp(*LiteralUtil::CreateR1<uint32>({}));
+XLA_TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
+  TestCopyOp(*Literal::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
+                                 {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
 }
 
-TEST_F(CopyOpTest, CopyR1S3U32) {
-  TestCopyOp(*LiteralUtil::CreateR1<uint32>({1, 2, 3}));
-}
-
-TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
-  TestCopyOp(
-      *LiteralUtil::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
-                              {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
-}
-
-TEST_F(CopyOpTest, CopyR4S32_2x2x3x2) {
-  TestCopyOp(*LiteralUtil::CreateR4(
+XLA_TEST_F(CopyOpTest, CopyR4S32_2x2x3x2) {
+  TestCopyOp(*Literal::CreateR4(
       {{{{1, -2}, {-4, 5}, {6, 7}}, {{8, 9}, {10, 11}, {12, 13}}},
        {{{10, 3}, {7, -2}, {3, 6}}, {{2, 5}, {-11, 5}, {-2, -5}}}}));
 }
 
-TEST_F(CopyOpTest, CopyR4S32_0x2x3x2) {
-  TestCopyOp(*LiteralUtil::CreateR4FromArray4D(Array4D<int32>(0, 2, 3, 2)));
+XLA_TEST_F(CopyOpTest, CopyR4S32_0x2x3x2) {
+  TestCopyOp(*Literal::CreateR4FromArray4D(Array4D<int32>(0, 2, 3, 2)));
 }
 
-TEST_F(CopyOpTest, CopyParameterScalar) {
+XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   auto builder = HloComputation::Builder(TestName());
 
   // Copy literal to device to use as parameter.
-  auto literal = LiteralUtil::CreateR0<float>(42.0);
+  auto literal = Literal::CreateR0<float>(42.0);
   Shape shape = literal->shape();
   auto constant_device_base = TransferToDevice(*literal);
 
@@ -100,18 +94,18 @@ TEST_F(CopyOpTest, CopyParameterScalar) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(std::move(computation));
 
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), {constant_device_base});
+      ExecuteAndTransfer(std::move(module), {constant_device_base});
   LiteralTestUtil::ExpectR0Near<float>(42.0f, *result, error_spec_);
 }
 
-TEST_F(CopyOpTest, CopyConstantR2Twice) {
+XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto literal = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
 
@@ -122,19 +116,18 @@ TEST_F(CopyOpTest, CopyConstantR2Twice) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
-  hlo_module->AddEntryComputation(std::move(computation));
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), {});
+  auto module = CreateNewModule();
+  module->AddEntryComputation(std::move(computation));
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR2Near<float>({{1.0, 2.0}, {3.0, 4.0}}, *result,
                                        error_spec_);
 }
 
-TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
+XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   HloComputation::Builder builder(TestName());
 
   std::unique_ptr<Literal> literal =
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   // Reverse the minor-to-major order of the literal.
   Layout* literal_layout = literal->mutable_shape()->mutable_layout();
   ASSERT_EQ(2, literal_layout->minor_to_major_size());
@@ -148,10 +141,9 @@ TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
-  hlo_module->AddEntryComputation(std::move(computation));
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), {});
+  auto module = CreateNewModule();
+  module->AddEntryComputation(std::move(computation));
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
 
   // The result of the computation has the default layout, which is the inverse
   // of the layout of the source literal.
@@ -171,7 +163,7 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
 
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR3FromArray3D(a);
+  std::unique_ptr<Literal> literal = Literal::CreateR3FromArray3D(a);
 
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
@@ -181,15 +173,10 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
-  auto config = MakeUnique<HloModuleConfig>(computation->ComputeProgramShape());
-  *config->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(
-          constant->shape().element_type(),
-          AsInt64Slice(constant->shape().dimensions()), {1, 2, 0}));
-  hlo_module->AddEntryComputation(std::move(computation));
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), std::move(config), {});
+  auto module = CreateNewModule();
+  module->AddEntryComputation(std::move(computation));
+  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({1, 2, 0}));
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
 
   LiteralTestUtil::ExpectR3EqualArray3D(a, *result);
 }
@@ -210,7 +197,7 @@ void CopyOpTest::TestCopyConstantLayoutR4(
 
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR4FromArray4D(a);
+  std::unique_ptr<Literal> literal = Literal::CreateR4FromArray4D(a);
 
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
@@ -220,18 +207,10 @@ void CopyOpTest::TestCopyConstantLayoutR4(
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
-  auto config = MakeUnique<HloModuleConfig>(computation->ComputeProgramShape());
-  *config->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(
-          constant->shape().element_type(),
-          AsInt64Slice(constant->shape().dimensions()), ({
-            std::vector<int64> p(permutation.rbegin(), permutation.rend());
-            p;
-          })));
-  hlo_module->AddEntryComputation(std::move(computation));
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), std::move(config), {});
+  auto module = CreateNewModule();
+  module->AddEntryComputation(std::move(computation));
+  ForceResultLayout(module.get(), LayoutUtil::MakeLayout(permutation));
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
 
   LiteralTestUtil::ExpectR4EqualArray4D(a, *result);
 }
@@ -256,22 +235,21 @@ XLA_TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
   TestCopyConstantLayoutR4(2, 14, 5, 35, {0, 3, 1, 2});
 }
 
+using CopyOpClientTest = ClientLibraryTestBase;
+
+XLA_TEST_F(CopyOpClientTest, Copy0x0) {
+  Shape in_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {0, 1});
+  Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
+  auto empty = Literal::CreateFromShape(in_shape);
+
+  ComputationBuilder builder(client_, TestName());
+  auto param0 = builder.Parameter(0, in_shape, "input");
+  auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
+
+  auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
+                    .ConsumeValueOrDie();
+  LiteralTestUtil::ExpectEqual(*empty, *actual);
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

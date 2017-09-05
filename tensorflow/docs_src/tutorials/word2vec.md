@@ -1,7 +1,7 @@
 # Vector Representations of Words
 
 In this tutorial we look at the word2vec model by
-[Mikolov et al.](http://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf)
+[Mikolov et al.](https://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf)
 This model is used for learning vector representations of words, called "word
 embeddings".
 
@@ -23,7 +23,7 @@ straight in, feel free to look at the minimalistic implementation in
 This basic example contains the code needed to download some data, train on it a
 bit and visualize the result. Once you get comfortable with reading and running
 the basic version, you can graduate to
-[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py)
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py)
 which is a more serious implementation that showcases some more advanced
 TensorFlow principles about how to efficiently use threads to move data into a
 text model, how to checkpoint during training, etc.
@@ -51,7 +51,7 @@ means that we may need more data in order to successfully train statistical
 models.  Using vector representations can overcome some of these obstacles.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/audio-image-text.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/audio-image-text.png" alt>
 </div>
 
 [Vector space models](https://en.wikipedia.org/wiki/Vector_space_model) (VSMs)
@@ -78,7 +78,7 @@ model).
 
 Word2vec is a particularly computationally-efficient predictive model for
 learning word embeddings from raw text. It comes in two flavors, the Continuous
-Bag-of-Words model (CBOW) and the Skip-Gram model (Section 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
+Bag-of-Words model (CBOW) and the Skip-Gram model (Section 3.1 and 3.2 in [Mikolov et al.](https://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
 models are similar, except that CBOW predicts target words (e.g. 'mat') from
 source context words ('the cat sits on the'), while the skip-gram does the
 inverse and predicts source context-words from the target words. This inversion
@@ -108,7 +108,7 @@ $$
 
 where \\(\text{score}(w_t, h)\\) computes the compatibility of word \\(w_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
-by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
+by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function)
 on the training set, i.e. by maximizing
 
 $$
@@ -125,18 +125,18 @@ probability using the score for all other \\(V\\) words \\(w'\\) in the current
 context \\(h\\), *at every training step*.
 
 <div style="width:60%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/softmax-nplm.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-nplm.png" alt>
 </div>
 
 On the other hand, for feature learning in word2vec we do not need a full
 probabilistic model. The CBOW and skip-gram models are instead trained using a
-binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression)) 
+binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression))
 to discriminate the real target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
 same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
 
 <div style="width:60%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/nce-nplm.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/nce-nplm.png" alt>
 </div>
 
 Mathematically, the objective (for each example) is to maximize
@@ -155,14 +155,14 @@ from the noise distribution (i.e. we compute a
 This objective is maximized when the model assigns high probabilities
 to the real words, and low probabilities to noise words. Technically, this is
 called
-[Negative Sampling](http://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf),
+[Negative Sampling](https://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf),
 and there is good mathematical motivation for using this loss function:
 The updates it proposes approximate the updates of the softmax function in the
 limit. But computationally it is especially appealing because computing the
 loss function now scales only with the number of *noise words* that we
 select (\\(k\\)), and not *all words* in the vocabulary (\\(V\\)). This makes it
 much faster to train. We will actually make use of the very similar
-[noise-contrastive estimation (NCE)](http://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf)
+[noise-contrastive estimation (NCE)](https://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf)
 loss, for which TensorFlow has a handy helper function `tf.nn.nce_loss()`.
 
 Let's get an intuitive feel for how this would work in practice!
@@ -222,7 +222,7 @@ successful at discriminating real words from noise words.
 
 We can visualize the learned vectors by projecting them down to 2 dimensions
 using for instance something like the
-[t-SNE dimensionality reduction technique](http://lvdmaaten.github.io/tsne/).
+[t-SNE dimensionality reduction technique](https://lvdmaaten.github.io/tsne/).
 When we inspect these visualizations it becomes apparent that the vectors
 capture some general, and in fact quite useful, semantic information about
 words and their relationships to one another. It was very interesting when we
@@ -230,18 +230,18 @@ first discovered that certain directions in the induced vector space specialize
 towards certain semantic relationships, e.g. *male-female*, *verb tense* and
 even *country-capital* relationships between words, as illustrated in the figure
 below (see also for example
-[Mikolov et al., 2013](http://www.aclweb.org/anthology/N13-1090)).
+[Mikolov et al., 2013](https://www.aclweb.org/anthology/N13-1090)).
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/linear-relationships.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/linear-relationships.png" alt>
 </div>
 
 This explains why these vectors are also useful as features for many canonical
 NLP prediction tasks, such as part-of-speech tagging or named entity recognition
 (see for example the original work by
-[Collobert et al., 2011](http://arxiv.org/abs/1103.0398)
-([pdf](http://arxiv.org/pdf/1103.0398.pdf)), or follow-up work by
-[Turian et al., 2010](http://www.aclweb.org/anthology/P10-1040)).
+[Collobert et al., 2011](https://arxiv.org/abs/1103.0398)
+([pdf](https://arxiv.org/pdf/1103.0398.pdf)), or follow-up work by
+[Turian et al., 2010](https://www.aclweb.org/anthology/P10-1040)).
 
 But for now, let's just use them to draw pretty pictures!
 
@@ -335,13 +335,13 @@ After training has finished we can visualize the learned embeddings using
 t-SNE.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/tsne.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/tsne.png" alt>
 </div>
 
 Et voila! As expected, words that are similar end up clustering nearby each
 other. For a more heavyweight implementation of word2vec that showcases more of
 the advanced features of TensorFlow, see the implementation in
-[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 ## Evaluating Embeddings: Analogical Reasoning
 
@@ -351,13 +351,13 @@ to evaluate embeddings is to directly use them to predict syntactic and semantic
 relationships like `king is to queen as father is to ?`. This is called
 *analogical reasoning* and the task was introduced by
 [Mikolov and colleagues
-](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf).
+](https://www.aclweb.org/anthology/N13-1090).
 Download the dataset for this task from
 [download.tensorflow.org](http://download.tensorflow.org/data/questions-words.txt).
 
 To see how we do this evaluation, have a look at the `build_eval_graph()` and
 `eval()` functions in
-[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 The choice of hyperparameters can strongly influence the accuracy on this task.
 To achieve state-of-the-art performance on this task requires training over a
@@ -385,13 +385,13 @@ your model is seriously bottlenecked on input data, you may want to implement a
 custom data reader for your problem, as described in
 @{$new_data_formats$New Data Formats}.  For the case of Skip-Gram
 modeling, we've actually already done this for you as an example in
-[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 If your model is no longer I/O bound but you want still more performance, you
 can take things further by writing your own TensorFlow Ops, as described in
 @{$adding_an_op$Adding a New Op}.  Again we've provided an
 example of this for the Skip-Gram case
-[tensorflow_models/tutorials/embedding/word2vec_optimized.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec_optimized.py).
+[models/tutorials/embedding/word2vec_optimized.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec_optimized.py).
 Feel free to benchmark these against each other to measure performance
 improvements at each stage.
 

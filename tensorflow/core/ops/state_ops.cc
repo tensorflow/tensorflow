@@ -18,7 +18,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -30,11 +29,11 @@ REGISTER_OP("VariableV2")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
     })
@@ -72,10 +71,8 @@ REGISTER_OP("Variable")
         return shape_inference::UnknownShape(c);
       }
 
-      TensorShapeProto shape_proto;
-      shape.AsProto(&shape_proto);
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
       return Status::OK();
     })
@@ -103,10 +100,10 @@ REGISTER_OP("TemporaryVariable")
     .Attr("var_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &output));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
       c->set_output(0, output);
       return Status::OK();
     })
@@ -288,7 +285,7 @@ for each value is undefined.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterUpdate.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterUpdate.png" alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -332,7 +329,7 @@ the same location, their contributions add.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterAdd.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -376,7 +373,7 @@ the same location, their (negated) contributions add.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterSub.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterSub.png" alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -472,63 +469,6 @@ use_locking: If True, the operation will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
-namespace {
-
-Status ScatterNdUpdateShape(InferenceContext* c) {
-  ShapeHandle ref_shape = c->input(0);
-  ShapeHandle indices_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
-  ShapeHandle updates_shape;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
-
-  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
-    const int64 outer_dims = c->Rank(indices_shape) - 1;
-    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
-
-    // We can only do more validation if the last dimension of indices
-    // is a known value.
-    if (c->ValueKnown(ixdim)) {
-      int64 ix = c->Value(ixdim);
-      ShapeHandle unused;
-      ShapeHandle prefix_indices;
-      TF_RETURN_IF_ERROR(
-          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
-      ShapeHandle prefix_updates;
-      TF_RETURN_IF_ERROR(
-          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
-
-      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
-      if (!s.ok()) {
-        return errors::InvalidArgument(
-            "The outer ", outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), "must match the outer ", outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
-      }
-
-      ShapeHandle suffix_ref;
-      TF_RETURN_IF_ERROR(c->Subshape(ref_shape, ix, &suffix_ref));
-      ShapeHandle suffix_updates;
-      TF_RETURN_IF_ERROR(
-          c->Subshape(updates_shape, outer_dims, &suffix_updates));
-      s = c->Merge(suffix_ref, suffix_updates, &unused);
-      if (!s.ok()) {
-        return errors::InvalidArgument(
-            "The inner ", c->Rank(ref_shape) - ix, " dimensions of ref.shape=",
-            c->DebugString(ref_shape), "must match the inner ",
-            c->Rank(updates_shape) - outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
-      }
-    }
-  }
-
-  c->set_output(0, ref_shape);
-  return Status::OK();
-}
-
-}  // namespace
-
 REGISTER_OP("ScatterNdUpdate")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
@@ -537,7 +477,7 @@ REGISTER_OP("ScatterNdUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
-    .SetShapeFn(ScatterNdUpdateShape)
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape)
     .Doc(R"doc(
 Applies sparse `updates` to individual values or slices within a given
 variable according to `indices`.
@@ -573,7 +513,7 @@ The resulting update to ref would look like this:
 
     [1, 11, 3, 10, 9, 6, 7, 12]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -596,7 +536,7 @@ REGISTER_OP("ScatterNdAdd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(ScatterNdUpdateShape)
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape)
     .Doc(R"doc(
 Applies sparse addition between `updates` and individual values or slices
 within a given variable according to `indices`.
@@ -630,7 +570,7 @@ The resulting update to ref would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -653,7 +593,7 @@ REGISTER_OP("ScatterNdSub")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(ScatterNdUpdateShape)
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape)
     .Doc(R"doc(
 Applies sparse subtraction between `updates` and individual values or slices
 within a given variable according to `indices`.
@@ -687,7 +627,7 @@ The resulting update to ref would look like this:
 
     [1, -9, 3, -6, -4, 6, 7, -4]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -713,7 +653,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 //     .Attr("T: numbertype")
 //     .Attr("Tindices: {int32, int64}")
 //     .Attr("use_locking: bool = false")
-//     .SetShapeFn(ScatterNdUpdateShape)
+//     .SetShapeFn(shape_inference::ScatterNdUpdateShape)
 //     .Doc(
 //         R"doc(Applies sparse subtraction between `updates` and individual
 //         values or slices within a given variable according to `indices`.
@@ -747,7 +687,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 
 //     [1, 22, 3, 40, 45, 6, 7, 96]
 
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates
+// See @{tf.scatter_nd} for more details about how to make updates
 // to slices.
 
 // ref: A mutable Tensor. Should be from a Variable node.
@@ -769,7 +709,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 //     .Attr("T: numbertype")
 //     .Attr("Tindices: {int32, int64}")
 //     .Attr("use_locking: bool = false")
-//     .SetShapeFn(ScatterNdUpdateShape)
+//     .SetShapeFn(shape_inference::ScatterNdUpdateShape)
 //     .Doc(
 //         R"doc(Applies sparse subtraction between `updates` and individual
 //         values or slices within a given variable according to `indices`.
@@ -803,7 +743,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 
 //     [10, 5, 30, 13, 25, 60, 70, 16]
 
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates
+// See @{tf.scatter_nd} for more details about how to make updates
 // to slices.
 
 // ref: A mutable Tensor. Should be from a Variable node.

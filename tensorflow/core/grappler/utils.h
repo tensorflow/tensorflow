@@ -31,20 +31,49 @@ namespace grappler {
 class NodeMap {
  public:
   explicit NodeMap(GraphDef* graph);
-  NodeDef* GetNode(const string& name);
-  std::set<NodeDef*> GetOutputs(const string& node_name);
+  NodeDef* GetNode(const string& name) const;
+  const std::set<NodeDef*>& GetOutputs(const string& node_name) const;
   // This method doesn't record the outputs of the added node; the outputs need
-  // to be explictly added by the AddOutput method.
+  // to be explicitly added by the AddOutput method.
   void AddNode(const string& name, NodeDef* node);
-  void AddOutput(const string& node, const string& output);
-  void UpdateOutput(const string& node, const string& old_output,
-                    const string& new_output);
+  void UpdateInput(const string& node_name, const string& old_input_name,
+                   const string& new_input_name);
+  void AddOutput(const string& node_name, const string& output_name);
+  void RemoveInputs(const string& node_name);
+  void RemoveOutput(const string& node_name, const string& output_name);
+  void RemoveOutputs(const string& node_name);
+  void UpdateOutput(const string& node_name, const string& old_output_name,
+                    const string& new_output_name);
 
  private:
   GraphDef* graph_;
+  std::set<NodeDef*> empty_set_;
   std::unordered_map<string, NodeDef*> nodes_;
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
 };
+
+// A utility class to lookup a node's outputs and the number of times it
+// presents in each output.
+class OutputMap {
+ public:
+  explicit OutputMap(GraphDef* graph);
+  NodeDef* GetNode(const string& name) const;
+  const std::unordered_map<NodeDef*, int>& GetOutputs(
+      const string& node_name) const;
+
+ private:
+  GraphDef* graph_;
+  std::unordered_map<NodeDef*, int> empty_map_;
+  std::unordered_map<string, NodeDef*> nodes_;
+  std::unordered_map<string, std::unordered_map<NodeDef*, int>> outputs_;
+};
+
+// True iff 'name' refers to a control inputs, i.e. a node name prefixed with
+// the ^ character.
+bool IsControlInput(const string& name);
+
+// True iff 'name1' and 'name2' refer to the same input.
+bool IsSameInput(const string& name1, const string& name2);
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
@@ -56,7 +85,11 @@ int NodePosition(const string& name);
 // Returns the node name and position in a single call.
 string ParseNodeName(const string& name, int* position);
 
-// Add a prefix to a node name
+// Add a prefix to a node name with a custom delimiter.
+string AddPrefixToNodeName(const string& name, const string& prefix,
+                           const string& delimiter);
+
+// Add a prefix to a node name.
 string AddPrefixToNodeName(const string& name, const string& prefix);
 
 // Executes a 'fn' in the 'thread_pool'. The method waits for the configured
@@ -67,6 +100,14 @@ string AddPrefixToNodeName(const string& name, const string& prefix);
 // as appropriate.
 bool ExecuteWithTimeout(std::function<void()> fn, int64 timeout_in_ms,
                         thread::ThreadPool* thread_pool);
+
+// Returns the node name prefixed with conventional symbol '^'
+// for control dependency, given a NodeDef.
+string AsControlDependency(const NodeDef& node);
+//
+// Returns the node name prefixed with conventional symbol '^'
+// for control dependency, given a node name
+string AsControlDependency(const string& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

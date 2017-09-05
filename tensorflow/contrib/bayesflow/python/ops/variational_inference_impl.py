@@ -28,10 +28,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph_impl as sg
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor_impl as st
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import tf_logging as logging
 
 VI_PRIORS = "__vi_priors__"
@@ -259,7 +259,7 @@ def _elbo(form, log_likelihood, log_joint, variational_with_prior,
     kl = None
     if log_joint is None and form in {ELBOForms.default, ELBOForms.analytic_kl}:
       try:
-        kl = kullback_leibler.kl(q, p)
+        kl = kullback_leibler.kl_divergence(q, p)
         logging.info("Using analytic KL between q:%s, p:%s", q, p)
       except NotImplementedError as e:
         if form == ELBOForms.analytic_kl:

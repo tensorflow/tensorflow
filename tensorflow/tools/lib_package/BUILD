@@ -1,11 +1,17 @@
-# Packaging the TensorFlow C API and Java libraries into standalone archives
-# for use with language bindings and installations without Python.
-#
-# TODO(ashankar): Something similar for the C++ API (caveat: ABI compatibility)
+# Packaging for TensorFlow artifacts other than the Python API (pip whl).
+# This includes the C API, Java API, and protocol buffer files.
 
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
+
+genrule(
+    name = "libtensorflow_proto",
+    srcs = ["//tensorflow/core:protos_all_proto_srcs"],
+    outs = ["libtensorflow_proto.zip"],
+    cmd = "zip $@ $(SRCS)",
+)
 
 pkg_tar(
     name = "libtensorflow",
@@ -79,23 +85,31 @@ genrule(
     srcs = [
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
+        "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ],
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -106,23 +120,31 @@ genrule(
     srcs = [
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
+        "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ],
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],

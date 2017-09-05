@@ -21,9 +21,6 @@ from __future__ import print_function
 import os
 import sys
 
-import tensorflow as tf
-
-from tensorflow.python import debug as tf_debug
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import generate_lib
 from tensorflow.tools.docs import parser
@@ -54,22 +51,10 @@ class DummyVisitor(object):
 
 class GenerateTest(googletest.TestCase):
 
-  def test_extraction(self):
-    py_modules = [('tf', tf), ('tfdbg', tf_debug)]
-    _ = tf.contrib.__name__  # Trigger loading of tf.contrib
-    try:
-      generate_lib.extract(
-          py_modules, generate_lib._get_default_do_not_descend_map())
-    except RuntimeError:
-      print('*****************************************************************')
-      print('If this test fails, you have most likely introduced an unsealed')
-      print('module. Make sure to use remove_undocumented or similar utilities')
-      print('to avoid leaking symbols. See below for more information on the')
-      print('failure.')
-      print('*****************************************************************')
-      raise
-
   def test_write(self):
+    if sys.version_info >= (3, 0):
+      self.skipTest('Warning: Doc generation is not supported from python3.')
+
     module = sys.modules[__name__]
 
     index = {

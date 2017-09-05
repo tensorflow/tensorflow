@@ -47,7 +47,7 @@ def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   """Gets the list of losses from the loss_collection.
 
   Args:
-    scope: An optional scope for filtering the losses to return.
+    scope: An optional scope name for filtering the losses to return.
     loss_collection: Optional losses collection.
 
   Returns:
@@ -57,13 +57,13 @@ def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
 
 
 def get_regularization_losses(scope=None):
-  """Gets the regularization losses.
+  """Gets the list of regularization losses.
 
   Args:
-    scope: An optional scope for filtering the losses to return.
+    scope: An optional scope name for filtering the losses to return.
 
   Returns:
-    A list of loss variables.
+    A list of regularization losses as Tensors.
   """
   return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
 
@@ -72,7 +72,7 @@ def get_regularization_loss(scope=None, name="total_regularization_loss"):
   """Gets the total regularization loss.
 
   Args:
-    scope: An optional scope for filtering the losses to return.
+    scope: An optional scope name for filtering the losses to return.
     name: The name of the returned tensor.
 
   Returns:
@@ -88,7 +88,11 @@ def get_regularization_loss(scope=None, name="total_regularization_loss"):
 def get_total_loss(add_regularization_losses=True, name="total_loss"):
   """Returns a tensor whose value represents the total loss.
 
-  Notice that the function adds the given losses to the regularization losses.
+  In particular, this adds any losses you have added with `tf.add_loss()` to
+  any regularization losses that have been added by regularization parameters
+  on layers constructors e.g. `tf.layers`. Be very sure to use this if you
+  are constructing a loss_op manually. Otherwise regularization arguments
+  on `tf.layers` methods will not function.
 
   Args:
     add_regularization_losses: A boolean indicating whether or not to use the

@@ -228,9 +228,7 @@ class TFExampleDecoderTest(test.TestCase):
     image_shape = (2, 3, 3)
     unused_image, serialized_example = self.GenerateImage(
         image_format='jpeg', image_shape=image_shape)
-    expected_regex = ('jpeg decoder can only be used to decode to tf.uint8 but '
-                      '.* was requested for a jpeg image.')
-    with self.assertRaisesRegexp(ValueError, expected_regex):
+    with self.assertRaises(TypeError):
       unused_decoded_image = self.RunDecodeExample(
           serialized_example,
           tfexample_decoder.Image(dtype=dtypes.uint16),
@@ -729,6 +727,43 @@ class TFExampleDecoderTest(test.TestCase):
       bboxes = tf_bboxes.eval()
 
     self.assertAllClose(np_bboxes, bboxes)
+
+  def testDecodeExampleWithRepeatedImages(self):
+    image_shape = (2, 3, 3)
+    image_format = 'png'
+    image, _ = self.GenerateImage(
+        image_format=image_format, image_shape=image_shape)
+    tf_encoded = self._Encoder(image, image_format)
+    with self.test_session():
+      tf_string = tf_encoded.eval()
+
+    example = example_pb2.Example(features=feature_pb2.Features(feature={
+        'image/encoded': feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+            value=[tf_string, tf_string])),
+        'image/format': self._StringFeature(image_format),
+    }))
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = array_ops.reshape(serialized_example, shape=[])
+
+      decoder = tfexample_decoder.TFExampleDecoder(
+          keys_to_features={
+              'image/encoded':
+                  parsing_ops.FixedLenFeature(
+                      (2,), dtypes.string),
+              'image/format':
+                  parsing_ops.FixedLenFeature(
+                      (), dtypes.string, default_value=image_format),
+          },
+          items_to_handlers={'image': tfexample_decoder.Image(repeated=True)})
+      [tf_image] = decoder.decode(serialized_example, ['image'])
+
+      output_image = tf_image.eval()
+
+      self.assertEqual(output_image.shape, (2, 2, 3, 3))
+      self.assertAllEqual(np.squeeze(output_image[0, :, :, :]), image)
+      self.assertAllEqual(np.squeeze(output_image[1, :, :, :]), image)
 
 
 if __name__ == '__main__':

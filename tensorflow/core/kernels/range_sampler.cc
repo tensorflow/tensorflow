@@ -105,7 +105,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
     num_tries = batch_size;
   }
   // Compute the expected counts of the batch and the extra values
-  if (batch_expected_count.size() > 0) {
+  if (!batch_expected_count.empty()) {
     CHECK_EQ(batch_size, batch_expected_count.size());
     for (int i = 0; i < batch_size; i++) {
       batch_expected_count[i] =
@@ -131,7 +131,7 @@ void AllSampler::SampleBatchGetExpectedCountAvoid(
   for (int i = 0; i < batch_size; i++) {
     batch[i] = i;
   }
-  if (batch_expected_count.size() > 0) {
+  if (!batch_expected_count.empty()) {
     CHECK_EQ(batch_size, batch_expected_count.size());
     for (int i = 0; i < batch_size; i++) {
       batch_expected_count[i] = 1;
@@ -290,7 +290,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
     // The vocabulary file should be in csv like format, with the last
     // field the weight associated with the word.
     std::vector<string> cols = str_util::Split(line, ',');
-    if (cols.size() == 0) continue;
+    if (cols.empty()) continue;
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
       float w = 0.0;

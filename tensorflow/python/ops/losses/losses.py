@@ -16,10 +16,12 @@
 
 Note: All the losses are added to the `GraphKeys.LOSSES` collection by default.
 
+@@Reduction
 @@absolute_difference
 @@compute_weighted_loss
 @@cosine_distance
 @@hinge_loss
+@@huber_loss
 @@log_loss
 @@mean_pairwise_squared_error
 @@mean_squared_error

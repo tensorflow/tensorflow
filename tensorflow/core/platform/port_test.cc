@@ -26,7 +26,7 @@ namespace port {
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
     void* p = AlignedMalloc(1, alignment);
-    ASSERT_TRUE(p != NULL) << "AlignedMalloc(1, " << alignment << ")";
+    ASSERT_TRUE(p != nullptr) << "AlignedMalloc(1, " << alignment << ")";
     uintptr_t pval = reinterpret_cast<uintptr_t>(p);
     EXPECT_EQ(pval % alignment, 0);
     AlignedFree(p);
@@ -38,14 +38,14 @@ TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
   mutex_lock l(m);
   condition_variable cv;
   ConditionResult result = kCond_MaybeNotified;
-  time_t start = time(NULL);
+  time_t start = time(nullptr);
   // Condition variables are subject to spurious wakeups on some platforms,
   // so need to check for a timeout within a loop.
   while (result == kCond_MaybeNotified) {
     result = WaitForMilliseconds(&l, &cv, 3000);
   }
   EXPECT_EQ(result, kCond_Timeout);
-  time_t finish = time(NULL);
+  time_t finish = time(nullptr);
   EXPECT_GE(finish - start, 3);
 }
 
@@ -54,7 +54,7 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
   mutex m;
   mutex_lock l(m);
   condition_variable cv;
-  time_t start = time(NULL);
+  time_t start = time(nullptr);
   // Sleep for just 1 second then notify.  We have a timeout of 3 secs,
   // so the condition variable will notice the cv signal before the timeout.
   pool.Schedule([&m, &cv]() {
@@ -63,7 +63,7 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
     cv.notify_all();
   });
   EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_MaybeNotified);
-  time_t finish = time(NULL);
+  time_t finish = time(nullptr);
   EXPECT_LT(finish - start, 3);
 }
 

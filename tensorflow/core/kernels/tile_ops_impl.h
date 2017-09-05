@@ -21,31 +21,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
 namespace functor {
-
-template <typename Device, typename T, int NDIM>
-struct Tile {
-  void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
-                  typename TTypes<T, NDIM>::ConstTensor in,
-                  const Eigen::array<int32, NDIM>& broadcast_array) const {
-    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      // Use 32bit indexing to speed up the computations
-      To32Bit(out).device(d) = To32Bit(in).broadcast(broadcast_array);
-    } else {
-      out.device(d) = in.broadcast(broadcast_array);
-    }
-  }
-};
-
-template <typename Device, typename T>
-struct Tile<Device, T, 0> {
-  void operator()(const Device& d, typename TTypes<T, 0>::Tensor out,
-                  typename TTypes<T, 0>::ConstTensor in,
-                  const Eigen::array<int32, 0>&) const {
-    // In the scalar case we simply copy the input.
-    out.device(d) = in;
-  }
-};
 
 template <typename Device, typename T, int NDIM>
 struct TileGrad {

@@ -18,60 +18,66 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from google.protobuf import json_format
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import summary_op_util
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
 
 
-def _Collect(val, collections, default_collections):
-  if collections is None:
-    collections = default_collections
-  for key in collections:
-    ops.add_to_collection(key, val)
-
-
-def tensor_summary(  # pylint: disable=invalid-name
-    name,
-    tensor,
-    summary_description=None,
-    collections=None):
-  # pylint: disable=line-too-long
+def tensor_summary(name,
+                   tensor,
+                   summary_description=None,
+                   collections=None,
+                   summary_metadata=None,
+                   family=None,
+                   display_name=None):
   """Outputs a `Summary` protocol buffer with a serialized tensor.proto.
 
-  The generated
-  [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-  has one summary value containing the input tensor.
-
   Args:
-    name: A name for the generated node. Will also serve as the series name in
-      TensorBoard.
+    name: A name for the generated node. If display_name is not set, it will
+      also serve as the tag name in TensorBoard. (In that case, the tag
+      name will inherit tf name scopes.)
     tensor: A tensor of any type and shape to serialize.
-    summary_description: Optional summary_pb2.SummaryDescription()
+    summary_description: A long description of the summary sequence. Markdown
+      is supported.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    summary_metadata: Optional SummaryMetadata proto (which describes which
+      plugins may use the summary value).
+    family: Optional; if provided, used as the prefix of the summary tag,
+      which controls the name used for display on TensorBoard when
+      display_name is not set.
+    display_name: A string used to name this data in TensorBoard. If this is
+      not set, then the node name will be used instead.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  # pylint: enable=line-too-long
 
-  if summary_description is None:
-    summary_description = summary_pb2.SummaryDescription()
+  if summary_metadata is None:
+    summary_metadata = summary_pb2.SummaryMetadata()
 
-  description = json_format.MessageToJson(summary_description)
-  with ops.name_scope(name, None, [tensor]) as scope:
-    val = gen_logging_ops._tensor_summary(
+  if summary_description is not None:
+    summary_metadata.summary_description = summary_description
+
+  if display_name is not None:
+    summary_metadata.display_name = display_name
+
+  serialized_summary_metadata = summary_metadata.SerializeToString()
+
+  with summary_op_util.summary_scope(
+      name, family, values=[tensor]) as (tag, scope):
+    val = gen_logging_ops._tensor_summary_v2(
         tensor=tensor,
-        description=description,
-        name=scope)
-    _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
+        tag=tag,
+        name=scope,
+        serialized_summary_metadata=serialized_summary_metadata)
+    summary_op_util.collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
-
 
 ops.NotDifferentiable("TensorSummary")

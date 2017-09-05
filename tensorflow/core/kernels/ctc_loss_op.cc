@@ -42,6 +42,8 @@ class CTCLossOp : public OpKernel {
                                      &preprocess_collapse_repeated_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("ctc_merge_repeated", &ctc_merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("ignore_longer_outputs_than_inputs",
+                                     &ignore_longer_outputs_than_inputs_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -85,6 +87,9 @@ class CTCLossOp : public OpKernel {
                     "same number of rows, but saw shapes: ",
                     labels_indices->shape().DebugString(), " vs. ",
                     labels_values->shape().DebugString()));
+
+    OP_REQUIRES(ctx, batch_size != 0,
+                errors::InvalidArgument("batch_size must not be 0"));
 
     TensorShape labels_shape({batch_size, max_time});
     std::vector<int64> order{0, 1};
@@ -150,12 +155,15 @@ class CTCLossOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctc_loss_calculator.CalculateLoss(
                             seq_len_t, labels_t, input_list_t,
                             preprocess_collapse_repeated_, ctc_merge_repeated_,
-                            &loss_t, &gradient_list_t, &workers));
+                            ignore_longer_outputs_than_inputs_, &loss_t,
+                            &gradient_list_t, &workers));
   }
 
  private:
   bool preprocess_collapse_repeated_;
   bool ctc_merge_repeated_;
+  bool ignore_longer_outputs_than_inputs_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOp);
 };
 

@@ -52,16 +52,30 @@ def hinge(y_true, y_pred):
   return K.mean(K.maximum(1. - y_true * y_pred, 0.), axis=-1)
 
 
+def categorical_hinge(y_true, y_pred):
+  pos = K.sum(y_true * y_pred, axis=-1)
+  neg = K.max((1. - y_true) * y_pred, axis=-1)
+  return K.maximum(neg - pos + 1., 0.)
+
+
+def logcosh(y_true, y_pred):
+
+  def cosh(x):
+    return (K.exp(x) + K.exp(-x)) / 2
+
+  return K.mean(K.log(cosh(y_pred - y_true)), axis=-1)
+
+
 def categorical_crossentropy(y_true, y_pred):
-  return K.categorical_crossentropy(y_pred, y_true)
+  return K.categorical_crossentropy(y_true, y_pred)
 
 
 def sparse_categorical_crossentropy(y_true, y_pred):
-  return K.sparse_categorical_crossentropy(y_pred, y_true)
+  return K.sparse_categorical_crossentropy(y_true, y_pred)
 
 
 def binary_crossentropy(y_true, y_pred):
-  return K.mean(K.binary_crossentropy(y_pred, y_true), axis=-1)
+  return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
 
 
 def kullback_leibler_divergence(y_true, y_pred):

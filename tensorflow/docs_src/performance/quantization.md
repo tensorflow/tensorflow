@@ -89,13 +89,18 @@ here's how you can translate the latest GoogLeNet model into a version that uses
 eight-bit computations:
 
 ```sh
-curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz -o /tmp/inceptionv3.tgz
-tar xzf /tmp/inceptionv3.tgz -C /tmp/
-bazel build tensorflow/tools/quantization/tools:quantize_graph
-bazel-bin/tensorflow/tools/quantization/tools/quantize_graph \
-  --input=/tmp/classify_image_graph_def.pb \
-  --output_node_names="softmax" --output=/tmp/quantized_graph.pb \
-  --mode=eightbit
+curl -L "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz" |
+  tar -C tensorflow/examples/label_image/data -xz
+bazel build tensorflow/tools/graph_transforms:transform_graph
+bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
+  --in_graph=tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb \
+  --out_graph=/tmp/quantized_graph.pb \
+  --inputs=input \
+  --outputs=InceptionV3/Predictions/Reshape_1 \
+  --transforms='add_default_attributes strip_unused_nodes(type=float, shape="1,299,299,3")
+    remove_nodes(op=Identity, op=CheckNumerics) fold_constants(ignore_errors=true)
+    fold_batch_norms fold_old_batch_norms quantize_weights quantize_nodes
+    strip_unused_nodes sort_by_execution_order'
 ```
 
 This will produce a new model that runs the same operations as the original, but
@@ -105,23 +110,9 @@ versus 91MB). You can still run this model using exactly the same inputs and
 outputs though, and you should get equivalent results. Here's an example:
 
 ```sh
-# Note: You need to add the dependencies of the quantization operation to the
-#       cc_binary in the BUILD file of the label_image program:
-#
-#     //tensorflow/contrib/quantization:cc_ops
-#     //tensorflow/contrib/quantization/kernels:quantized_ops
-
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
---image=<input-image> \
 --graph=/tmp/quantized_graph.pb \
---labels=/tmp/imagenet_synset_to_human_label_map.txt \
---input_width=299 \
---input_height=299 \
---input_mean=128 \
---input_std=128 \
---input_layer="Mul:0" \
---output_layer="softmax:0"
 ```
 
 You'll see that this runs the newly-quantized graph, and outputs a very similar
@@ -143,17 +134,17 @@ conversion functions before and after to move the data between float and
 eight-bit. Below is an example of what they look like. First here's the original
 Relu operation, with float inputs and outputs:
 
-![Relu Diagram](https://www.tensorflow.org/../images/quantization0.png)
+![Relu Diagram](https://www.tensorflow.org/images/quantization0.png)
 
 Then, this is the equivalent converted subgraph, still with float inputs and
 outputs, but with internal conversions so the calculations are done in eight
 bit.
 
-![Converted Diagram](https://www.tensorflow.org/../images/quantization1.png)
+![Converted Diagram](https://www.tensorflow.org/images/quantization1.png)
 
 The min and max operations actually look at the values in the input float
 tensor, and then feeds them into the Dequantize operation that converts the
-tensor into eight-bits. There're more details on how the quantized representation
+tensor into eight-bits. There are more details on how the quantized representation
 works later on.
 
 Once the individual operations have been converted, the next stage is to remove
@@ -162,7 +153,7 @@ operations that all have float equivalents, then there will be a lot of adjacent
 Dequantize/Quantize ops. This stage spots that pattern, recognizes that they
 cancel each other out, and removes them, like this:
 
-![Stripping Diagram](https://www.tensorflow.org/../images/quantization2.png)
+![Stripping Diagram](https://www.tensorflow.org/images/quantization2.png)
 
 Applied on a large scale to models where all of the operations have quantized
 equivalents, this gives a graph where all of the tensor calculations are done in

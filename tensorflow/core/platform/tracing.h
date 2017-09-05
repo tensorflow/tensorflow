@@ -166,10 +166,14 @@ class Tracing::Engine {
   // May return nullptr if annotations are not supported.
   virtual Annotation* PushAnnotation(StringPiece name) = 0;
 
-  // Start tracing under the specified label.  Caller should delete the
-  // result to stop tracing.
+  // Start tracing under the specified label. Caller should delete the result
+  // to stop tracing.
   // May return nullptr if tracing is not supported.
   virtual Tracer* StartTracing(StringPiece label) = 0;
+  // Same as above, but implementations can avoid copying the string.
+  virtual Tracer* StartTracing(string&& label) {
+    return StartTracing(StringPiece(label));
+  }
 };
 
 // This class permits a user to apply annotation on kernels and memcpys
@@ -215,6 +219,12 @@ class Tracing::TraceMe {
  public:
   explicit TraceMe(StringPiece name);
 
+  // If tracing is enabled, set up a traceMe with a label of
+  // "<name_part1>:<name_part2>".  This can be cheaper than the
+  // single-argument constructor because the concatenation of the
+  // label string is only done if tracing is enabled.
+  TraceMe(StringPiece name_part1, StringPiece name_part2);
+
  private:
   std::unique_ptr<Engine::Tracer> tracer_;
 };
@@ -239,6 +249,15 @@ inline Tracing::TraceMe::TraceMe(StringPiece name) {
   auto e = Tracing::engine();
   if (e && e->IsEnabled()) {
     tracer_.reset(e->StartTracing(name));
+  }
+}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name_part1,
+                                 StringPiece name_part2) {
+  auto e = Tracing::engine();
+  if (e && e->IsEnabled()) {
+    tracer_.reset(
+        e->StartTracing(strings::StrCat(name_part1, ":", name_part2)));
   }
 }
 

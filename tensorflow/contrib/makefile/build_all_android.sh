@@ -19,6 +19,7 @@ set -e
 
 usage() {
   echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-s:t:Tx:X]"
+  echo "-E enable experimental hexnn ops"
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
   echo "-T only build tensorflow"
@@ -31,8 +32,9 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-while getopts "s:t:Tx:" opt_name; do
+while getopts "Es:t:Tx:" opt_name; do
   case "$opt_name" in
+    E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
     s) SUB_MAKEFILES="${OPTARG}";;
     t) BUILD_TARGET="${OPTARG}";;
     T) ONLY_MAKE_TENSORFLOW="true";;
@@ -65,6 +67,13 @@ else
   make -f tensorflow/contrib/makefile/Makefile clean_except_protobuf_libs
 fi
 
+# Compile nsync for the host and the target Android device architecture.
+# Don't use  export var=`something` syntax; it swallows the exit status.
+HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+TARGET_NSYNC_LIB=`CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
+      tensorflow/contrib/makefile/compile_nsync.sh -t android -a armeabi-v7a`
+export HOST_NSYNC_LIB TARGET_NSYNC_LIB
+
 if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
     echo "Copy hexagon libraries from ${HEXAGON_LIB_PATH}"
 
@@ -80,19 +89,25 @@ fi
 if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" >/dev/null && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" >/dev/null && pwd)
+    HEXAGON_INCLUDE=$(cd "tensorflow/core/kernels/hexagon" >/dev/null && pwd)
+fi
+
+if [[ "${ENABLE_EXPERIMENTAL_HEXNN_OPS}" == "true" ]]; then
+    EXTRA_MAKE_ARGS+=("ENABLE_EXPERIMENTAL_HEXNN_OPS=true")
 fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
+         HOST_NSYNC_LIB="$HOST_NSYNC_LIB" TARGET_NSYNC_LIB="$TARGET_NSYNC_LIB" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}"
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${EXTRA_MAKE_ARGS[@]}
 else
     # BUILD_TARGET explicitly uncommented to allow multiple targets to be
     # passed to make in a single build_all_android.sh invocation.
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
+         HOST_NSYNC_LIB="$HOST_NSYNC_LIB" TARGET_NSYNC_LIB="$TARGET_NSYNC_LIB" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}" ${BUILD_TARGET}
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${EXTRA_MAKE_ARGS[@]} ${BUILD_TARGET}
 fi

@@ -468,12 +468,12 @@ struct ApproximateEqual<CPUDevice, T> {
 
 // Macros to register kernels for multiple types (T0, T1, etc.)  on
 // device type "D" (CPU or GPU) for operation "N" (e.g., sqrt) using
-// the functor "F" (e.g., functor:sqrt).
+// the functor "F" (e.g., functor::sqrt).
 
 #if defined(__ANDROID_TYPES_SLIM__)
 // Note that __ANDROID_TYPES_SLIM__ is also checked in the cwise_ops*.cc files.
 // Normally Android TensorFlow is built with a reduced number of types (float).
-// Override on the command-line "--define ANDROID_TYPES=__ANDROID_TYPES_FULL__"
+// Override on the command-line using "--copt=-D__ANDROID_TYPES_FULL__"
 // to generate a library with full type support with a consequent increase in
 // code size.
 #define REGISTER2(OP, D, N, F, T0, T1) REGISTER(OP, D, N, F, T0)

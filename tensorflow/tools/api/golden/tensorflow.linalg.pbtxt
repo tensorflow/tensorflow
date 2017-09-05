@@ -1,0 +1,7 @@
+path: "tensorflow.linalg"
+tf_module {
+  member_method {
+    name: "logdet"
+    argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

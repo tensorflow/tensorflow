@@ -17,12 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -45,9 +48,10 @@ class SquareLinearOperatorFullMatrixTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorFullMatrix(matrix_ph)
+      operator = linalg.LinearOperatorFullMatrix(matrix_ph, is_square=True)
       feed_dict = {matrix_ph: matrix}
     else:
+      # is_square should be auto-detected here.
       operator = linalg.LinearOperatorFullMatrix(matrix)
       feed_dict = None
 
@@ -68,6 +72,46 @@ class SquareLinearOperatorFullMatrixTest(
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
+    # Auto-detected.
+    self.assertTrue(operator.is_square)
+
+  def test_assert_non_singular_raises_if_cond_too_big_but_finite(self):
+    with self.test_session():
+      tril = linear_operator_test_util.random_tril_matrix(
+          shape=(50, 50), dtype=np.float32)
+      diag = np.logspace(-2, 2, 50).astype(np.float32)
+      tril = array_ops.matrix_set_diag(tril, diag)
+      matrix = math_ops.matmul(tril, tril, transpose_b=True).eval()
+      operator = linalg.LinearOperatorFullMatrix(matrix)
+      with self.assertRaisesOpError("Singular matrix"):
+        # Ensure that we have finite condition number...just HUGE.
+        cond = np.linalg.cond(matrix)
+        self.assertTrue(np.isfinite(cond))
+        self.assertGreater(cond, 1e12)
+        operator.assert_non_singular().run()
+
+  def test_assert_non_singular_raises_if_cond_infinite(self):
+    with self.test_session():
+      matrix = [[1., 1.], [1., 1.]]
+      # We don't pass the is_self_adjoint hint here, which means we take the
+      # generic code path.
+      operator = linalg.LinearOperatorFullMatrix(matrix)
+      with self.assertRaisesOpError("Singular matrix"):
+        operator.assert_non_singular().run()
+
+  def test_assert_self_adjoint(self):
+    matrix = [[0., 1.], [0., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    with self.test_session():
+      with self.assertRaisesOpError("not equal to its adjoint"):
+        operator.assert_self_adjoint().run()
+
+  def test_assert_positive_definite(self):
+    matrix = [[1., 1.], [1., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=True)
+    with self.test_session():
+      with self.assertRaisesOpError("Cholesky decomposition was not success"):
+        operator.assert_positive_definite().run()
 
 
 class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
@@ -104,6 +148,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
+      # is_square is auto-set because of self_adjoint/pd.
       operator = linalg.LinearOperatorFullMatrix(
           matrix_ph, is_self_adjoint=True, is_positive_definite=True)
       feed_dict = {matrix_ph: matrix}
@@ -129,7 +174,36 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
 
     # Should be auto-set
     self.assertTrue(operator.is_non_singular)
-    self.assertTrue(operator._is_spd)
+    self.assertTrue(operator._can_use_cholesky)
+    self.assertTrue(operator.is_square)
+
+  def test_assert_non_singular(self):
+    matrix = [[1., 1.], [1., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(
+        matrix, is_self_adjoint=True, is_positive_definite=True)
+    with self.test_session():
+      # Cholesky decomposition may fail, so the error is not specific to
+      # non-singular.
+      with self.assertRaisesOpError(""):
+        operator.assert_non_singular().run()
+
+  def test_assert_self_adjoint(self):
+    matrix = [[0., 1.], [0., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(
+        matrix, is_self_adjoint=True, is_positive_definite=True)
+    with self.test_session():
+      with self.assertRaisesOpError("not equal to its adjoint"):
+        operator.assert_self_adjoint().run()
+
+  def test_assert_positive_definite(self):
+    matrix = [[1., 1.], [1., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(
+        matrix, is_self_adjoint=True, is_positive_definite=True)
+    with self.test_session():
+      # Cholesky decomposition may fail, so the error is not specific to
+      # non-singular.
+      with self.assertRaisesOpError(""):
+        operator.assert_positive_definite().run()
 
 
 class NonSquareLinearOperatorFullMatrixTest(
@@ -157,16 +231,14 @@ class NonSquareLinearOperatorFullMatrixTest(
     return operator, mat, feed_dict
 
   def test_is_x_flags(self):
-    # Matrix with two positive eigenvalues.
-    matrix = [[3., 0.], [1., 1.]]
+    matrix = [[3., 2., 1.], [1., 1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix,
-        is_positive_definite=True,
-        is_non_singular=True,
         is_self_adjoint=False)
-    self.assertTrue(operator.is_positive_definite)
-    self.assertTrue(operator.is_non_singular)
+    self.assertEqual(operator.is_positive_definite, None)
+    self.assertEqual(operator.is_non_singular, None)
     self.assertFalse(operator.is_self_adjoint)
+    self.assertFalse(operator.is_square)
 
   def test_matrix_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):

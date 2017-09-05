@@ -17,13 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.layers.ops import gen_bucketization_op
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
-
-_bucketization_op = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_bucketization_op.so"))
+from tensorflow.python.ops import math_ops
 
 
 def bucketize(input_tensor, boundaries, name=None):
@@ -43,10 +37,5 @@ def bucketize(input_tensor, boundaries, name=None):
   Raises:
     TypeError: If boundaries is not a list.
   """
-  if not isinstance(boundaries, list):
-    raise TypeError("boundaries must be a list")
-
-  return gen_bucketization_op.bucketize(input_tensor, boundaries, name=name)
-
-
-ops.NotDifferentiable("Bucketize")
+  return math_ops._bucketize(  # pylint: disable=protected-access
+      input_tensor, boundaries=boundaries, name=name)

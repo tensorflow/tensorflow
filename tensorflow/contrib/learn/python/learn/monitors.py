@@ -35,7 +35,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
+import copy
 import os
 import time
 
@@ -44,15 +44,18 @@ import six
 
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training import summary_io
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_inspect
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -473,7 +476,7 @@ class LoggingTrainable(EveryN):
 
   def every_n_step_begin(self, step):
     super(LoggingTrainable, self).every_n_step_begin(step)
-    # Get a list of trainable variables at the begining of every N steps.
+    # Get a list of trainable variables at the beginning of every N steps.
     # We cannot get this in __init__ because train_op has not been generated.
     trainables = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
                                     scope=self._scope)
@@ -519,7 +522,7 @@ class SummarySaver(EveryN):
     self._summary_op = summary_op
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
-      self._summary_writer = summary_io.SummaryWriter(output_dir)
+      self._summary_writer = core_summary.FileWriter(output_dir)
     self._scaffold = scaffold
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
@@ -527,7 +530,7 @@ class SummarySaver(EveryN):
     super(SummarySaver, self).set_estimator(estimator)
     # TODO(mdan): This line looks redundant.
     if self._summary_writer is None:
-      self._summary_writer = summary_io.SummaryWriter(estimator.model_dir)
+      self._summary_writer = core_summary.FileWriter(estimator.model_dir)
 
   def every_n_step_begin(self, step):
     super(SummarySaver, self).every_n_step_begin(step)
@@ -615,6 +618,7 @@ class ValidationMonitor(EveryN):
     self.name = name
     self._best_value_step = None
     self._best_value = None
+    self._best_metrics = None
     self._early_stopped = False
     self._latest_path = None
     self._latest_path_step = None
@@ -633,6 +637,40 @@ class ValidationMonitor(EveryN):
   def best_value(self):
     """Returns the best early stopping metric value found so far."""
     return self._best_value
+
+  @property
+  def best_metrics(self):
+    """Returns all eval metrics computed with the best early stopping metric.
+
+    For instance, if the metrics computed in two successive evals are
+    1. {'loss':40, 'auc':0.5}
+    2. {'loss':50, 'auc':0.6}
+    this function would return the first dict {'loss':40, 'auc':0.5} after both
+    first and second eval (if `early_stopping_metric` is 'loss' and
+    `early_stopping_metric_minimize` is True).
+
+    Returns:
+      The output dict of estimator.evaluate which contains the best value of
+      the early stopping metric seen so far.
+    """
+    return self._best_metrics
+
+  def _evaluate_estimator(self):
+    if isinstance(self._estimator, core_estimator.Estimator):
+      if any((x is not None for x in
+              [self.x, self.y, self.batch_size, self.metrics])):
+        raise ValueError(
+            "tf.estimator.Estimator does not support following "
+            "arguments: x, y, batch_size, metrics. Should set as `None` "
+            "in ValidationMonitor")
+      return self._estimator.evaluate(
+          input_fn=self.input_fn, steps=self.eval_steps, hooks=self.hooks,
+          name=self.name)
+    else:
+      return self._estimator.evaluate(
+          x=self.x, y=self.y, input_fn=self.input_fn,
+          batch_size=self.batch_size, steps=self.eval_steps,
+          metrics=self.metrics, hooks=self.hooks, name=self.name)
 
   def every_n_step_end(self, step, outputs):
     super(ValidationMonitor, self).every_n_step_end(step, outputs)
@@ -656,10 +694,7 @@ class ValidationMonitor(EveryN):
     self._latest_path_step = step
 
     # Run evaluation and log it.
-    validation_outputs = self._estimator.evaluate(
-        x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        steps=self.eval_steps, metrics=self.metrics, hooks=self.hooks,
-        name=self.name)
+    validation_outputs = self._evaluate_estimator()
     stats = []
     for name in validation_outputs:
       stats.append("%s = %s" % (name, str(validation_outputs[name])))
@@ -676,6 +711,7 @@ class ValidationMonitor(EveryN):
           (not self.early_stopping_metric_minimize and
            (current_value > self._best_value))):
         self._best_value = current_value
+        self._best_metrics = copy.deepcopy(validation_outputs)
         self._best_value_step = step
       stop_now = (step - self._best_value_step >= self.early_stopping_rounds)
       if stop_now:
@@ -919,6 +955,10 @@ class ExportMonitor(EveryN):
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
+      if isinstance(self._estimator, core_estimator.Estimator):
+        raise ValueError(
+            "ExportMonitor does not support `tf.estimator.Estimator. `. "
+            "Please pass an ExportStrategy to Experiment instead.")
       self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
@@ -946,6 +986,10 @@ class ExportMonitor(EveryN):
       logging.info("Skipping export at the end since model has not been saved "
                    "yet.")
       return
+    if isinstance(self._estimator, core_estimator.Estimator):
+      raise ValueError(
+          "ExportMonitor does not support `tf.estimator.Estimator. `. "
+          "Please pass an ExportStrategy to Experiment instead.")
     try:
       self._last_export_dir = self._estimator.export(
           self.export_dir,
@@ -986,7 +1030,7 @@ class CheckpointSaver(BaseMonitor):
     logging.info("Create CheckpointSaver.")
     super(CheckpointSaver, self).__init__()
     self._saver = saver
-    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
+    self._summary_writer = core_summary.FileWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
     self._save_secs = save_secs
@@ -1055,12 +1099,12 @@ class StepCounter(EveryN):
     self._last_reported_time = None
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+      self._summary_writer = core_summary.FileWriterCache.get(output_dir)
 
   def set_estimator(self, estimator):
     super(StepCounter, self).set_estimator(estimator)
     if self._summary_writer is None:
-      self._summary_writer = SummaryWriterCache.get(estimator.model_dir)
+      self._summary_writer = core_summary.FileWriterCache.get(estimator.model_dir)
 
   def every_n_step_end(self, current_step, outputs):
     current_time = time.time()
@@ -1126,7 +1170,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
 
   def begin(self):
     self._last_step = None
-    self._global_step_tensor = contrib_variables.get_global_step()
+    self._global_step_tensor = training_util.get_global_step()
     for m in self._monitors:
       m.begin(max_steps=None)
 
@@ -1164,7 +1208,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
   def end(self, session):
     self._last_step = None
     for m in self._monitors:
-      if "session" in inspect.getargspec(m.end).args:
+      if "session" in tf_inspect.getargspec(m.end).args:
         m.end(session=session)
       else:
         m.end()

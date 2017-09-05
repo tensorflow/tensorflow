@@ -17,6 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
 #include "tensorflow/core/kernels/constant_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -26,9 +30,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
+
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
@@ -36,9 +45,8 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-  OP_REQUIRES_OK(ctx,
-                 ctx->device()->MakeTensorFromProto(
-                     *proto, AllocatorAttributes(), &tensor_));
+  OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
+                          *proto, AllocatorAttributes(), &tensor_));
   OP_REQUIRES(
       ctx, ctx->output_type(0) == tensor_.dtype(),
       errors::InvalidArgument("Type mismatch between value (",
@@ -51,18 +59,6 @@ void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
 ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
-
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                     \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
-      ConstantOp);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-REGISTER_SYCL_KERNEL(bool);
-REGISTER_SYCL_KERNEL(int64);
-#undef REGISTER_SYCL_KERNEL
-#endif
 
 #if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                                      \
@@ -81,8 +77,31 @@ REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
+// TODO(ebrevdo): Add callbacks based on Variant TypeName for
+// Variant tensors in rendezvous.  At that point, MakeTensorFromProto() will
+// work correctly and so will Variant _Send/_Recv calls; and we will
+// no longer have to mark Variant inputs/outputs as sitting on host in
+// kernel registrations.  Then we can uncomment this registration.
+// REGISTER_KERNEL(GPU, Variant);
+
 // Currently we do not support string constants on GPU
 #undef REGISTER_KERNEL
+#endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(D, TYPE)                                 \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+REGISTER_SYCL_KERNEL(SYCL, float);
+REGISTER_SYCL_KERNEL(SYCL, double);
+REGISTER_SYCL_KERNEL(SYCL, uint8);
+REGISTER_SYCL_KERNEL(SYCL, int8);
+REGISTER_SYCL_KERNEL(SYCL, uint16);
+REGISTER_SYCL_KERNEL(SYCL, int16);
+REGISTER_SYCL_KERNEL(SYCL, int64);
+REGISTER_SYCL_KERNEL(SYCL, bool);
+#undef REGISTER_SYCL_KERNEL
 #endif
 
 HostConstantOp::HostConstantOp(OpKernelConstruction* ctx)
@@ -116,9 +135,6 @@ REGISTER_KERNEL_BUILDER(Name("Const")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Const")
                             .Device(DEVICE_SYCL)
                             .HostMemory("output")
@@ -142,17 +158,6 @@ struct FillFunctor<CPUDevice, T> {
     out.device(d) = out.constant(in());
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-// Partial specialization of FillFunctor<Device=SYCLDevice, T>.
-template <typename T>
-struct FillFunctor<SYCLDevice, T> {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstScalar in) {
-    To32Bit(out).device(d) = To32Bit(out).constant(in());
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 
@@ -184,6 +189,28 @@ class FillOp : public OpKernel {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+
+namespace functor {
+// Partial specialization of FillFunctor<Device=SYCLDevice, T>.
+template <typename T>
+struct FillFunctor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstScalar in) {
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::array<int, 1> rank1{1};
+#else
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
+#endif
+    const int size = out.dimension(0);
+    Eigen::array<int, 1> broadcast_dims{size};
+
+    To32Bit(out).device(d) = in.reshape(rank1).broadcast(broadcast_dims);
+  }
+};
+}  // namespace functor
+#endif  // TENSORFLOW_USE_SYCL
+
 #define REGISTER_KERNEL(D, TYPE)                         \
   REGISTER_KERNEL_BUILDER(Name("Fill")                   \
                               .Device(DEVICE_##D)        \
@@ -196,11 +223,18 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // TODO(b/28917570): Add a test for this. Currently python 3 is not happy about
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
+REGISTER_KERNEL(CPU, quint16);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(SYCL, float)
-REGISTER_KERNEL(SYCL, double)
+REGISTER_KERNEL(SYCL, float);
+REGISTER_KERNEL(SYCL, double);
+REGISTER_KERNEL(SYCL, uint8);
+REGISTER_KERNEL(SYCL, int8);
+REGISTER_KERNEL(SYCL, uint16);
+REGISTER_KERNEL(SYCL, int16);
+REGISTER_KERNEL(SYCL, int64);
+
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -208,6 +242,7 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
+#undef REGISTER_KERNEL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
@@ -242,11 +277,23 @@ class ZerosLikeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
-                            {0}, 0, input.shape(), &out));
-    functor::SetZeroFunctor<Device, T> f;
-    f(ctx->eigen_device<Device>(), out->flat<T>());
+    const Device& d = ctx->eigen_device<Device>();
+    if (std::is_same<T, Variant>::value) {
+      OP_REQUIRES(ctx, input.dims() == 0,
+                  errors::InvalidArgument(
+                      "ZerosLike of non-unary Variant not supported."));
+      const Variant& v = input.scalar<Variant>()();
+      Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+      Variant* out_v = &(out.scalar<Variant>()());
+      OP_REQUIRES_OK(ctx, CreateZerosLikeVariant<Device>(ctx, v, out_v));
+      ctx->set_output(0, out);
+    } else {
+      Tensor* out = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0}, 0, input.shape(), &out));
+      functor::SetZeroFunctor<Device, T> f;
+      f(d, out->flat<T>());
+    }
   }
 };
 
@@ -257,11 +304,14 @@ class ZerosLikeOp : public OpKernel {
 
 #define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
 TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
+REGISTER_CPU(Variant);
 #undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(float, SYCL);
 REGISTER_KERNEL(bool, SYCL);
+REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL(double, SYCL);
+REGISTER_KERNEL(int64, SYCL);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -282,6 +332,14 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
+// TODO(ebrevdo): Once rendezvous has been properly set up for
+// Variants, we'll no longer need a HostMemory attribute for this case.
+REGISTER_KERNEL_BUILDER(Name("ZerosLike")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Variant>("T")
+                            .HostMemory("x")
+                            .HostMemory("y"),
+                        ZerosLikeOp<GPUDevice, Variant>);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNEL

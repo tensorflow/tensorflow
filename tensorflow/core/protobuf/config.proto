@@ -10,6 +10,7 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
@@ -41,7 +42,7 @@ message GPUOptions {
   // A comma-separated list of GPU ids that determines the 'visible'
   // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
   // can see 8 GPU devices in the process, and one wanted to map
-  // visible GPU devices 5 and 3 as "/gpu:0", and "/gpu:1", then one
+  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1", then one
   // would specify this field as "5,3".  This field is similar in
   // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
   // it applies to the visible GPU devices in the process.
@@ -64,6 +65,18 @@ message GPUOptions {
   // PollEvents calls, when the queue is empty.  If value is not
   // set or set to 0, gets set to a non-zero default.
   int32 polling_inactive_delay_msecs = 7;
+
+  // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,
+  // enabling this option forces all CPU tensors to be allocated with Cuda
+  // pinned memory. Normally, TensorFlow will infer which tensors should be
+  // allocated as the pinned memory. But in case where the inference is
+  // incomplete, this option can significantly speed up the cross-device memory
+  // copy performance as long as it fits the memory.
+  // Note that this option is not something that should be
+  // enabled by default for unknown or very large models, since all Cuda pinned
+  // memory is unpageable, having too much pinned memory might negatively impact
+  // the overall host system performance.
+  bool force_gpu_compatible = 8;
 };
 
 // Options passed to the graph optimizer
@@ -89,6 +102,8 @@ message OptimizerOptions {
     L0 = -1;
   }
 
+  // Overall optimization level. The actual optimizations applied will be the
+  // logical OR of the flags that this level implies and any flags already set.
   Level opt_level = 3;
 
   // Control the use of the compiler/jit.  Experimental.
@@ -147,6 +162,8 @@ message GraphOptions {
   int32 timeline_step = 8;
 
   // Options that control the type and amount of graph rewriting.
+  // Not currently configurable via the public Python API (i.e. there is no API
+  // stability guarantee if you import RewriterConfig explicitly).
   RewriterConfig rewrite_options = 10;
 };
 
@@ -156,6 +173,23 @@ message ThreadPoolOptionProto {
   // 0 means the system picks a value based on where this option proto is used
   // (see the declaration of the specific field for more info).
   int32 num_threads = 1;
+
+  // The global name of the threadpool.
+  //
+  // If empty, then the threadpool is made and used according to the scope it's
+  // in - e.g., for a session threadpool, it is used by that session only.
+  //
+  // If non-empty, then:
+  // - a global threadpool associated with this name is looked
+  //   up or created. This allows, for example, sharing one threadpool across
+  //   many sessions (e.g., like the default behavior, if
+  //   inter_op_parallelism_threads is not configured), but still partitioning
+  //   into a large and small pool.
+  // - if the threadpool for this global_name already exists, then it is an
+  //   error if the existing pool was created using a different num_threads
+  //   value as is specified on this call.
+  // - threadpools created this way are never garbage collected.
+  string global_name = 2;
 };
 
 message RPCOptions {
@@ -203,13 +237,24 @@ message ConfigProto {
   bool use_per_session_threads = 9;
 
   // This option is experimental - it may be replaced with a different mechanism
-  // in the future. The intended use is for when some session invocations need
-  // to run in a background pool limited to a small number of threads.
+  // in the future.
   //
   // Configures session thread pools. If this is configured, then RunOptions for
   // a Run call can select the thread pool to use.
   //
-  // If a pool's num_threads is 0, then inter_op_parallelism_threads is used.
+  // The intended use is for when some session invocations need to run in a
+  // background pool limited to a small number of threads:
+  // - For example, a session may be configured to have one large pool (for
+  // regular compute) and one small pool (for periodic, low priority work);
+  // using the small pool is currently the mechanism for limiting the inter-op
+  // parallelism of the low priority work.  Note that it does not limit the
+  // parallelism of work spawned by a single op kernel implementation.
+  // - Using this setting is normally not needed in training, but may help some
+  // serving use cases.
+  // - It is also generally recommended to set the global_name field of this
+  // proto, to avoid creating multiple large pools. It is typically better to
+  // run the non-low-priority work, even across sessions, in a single large
+  // pool.
   repeated ThreadPoolOptionProto session_inter_op_thread_pool = 12;
 
   // Assignment of Nodes to Devices is recomputed every placement_period
@@ -247,6 +292,11 @@ message ConfigProto {
 
   // Options that apply when this session uses the distributed runtime.
   RPCOptions rpc_options = 13;
+
+  // Optional list of all workers to use in this session.
+  ClusterDef cluster_def = 14;
+
+  // Next: 15
 };
 
 // Options for a single Run() call.

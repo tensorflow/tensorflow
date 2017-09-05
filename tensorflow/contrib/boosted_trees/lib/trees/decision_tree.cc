@@ -67,10 +67,26 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
       }
       case TreeNode::kCategoricalIdBinarySplit: {
         const auto& split = current_node.categorical_id_binary_split();
-        node_id = example.sparse_int_features[split.feature_column()].count(
-                      split.feature_id()) > 0
+        const auto& features =
+            example.sparse_int_features[split.feature_column()];
+        node_id = features.find(split.feature_id()) != features.end()
                       ? split.left_id()
                       : split.right_id();
+        break;
+      }
+      case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
+        const auto& split =
+            current_node.categorical_id_set_membership_binary_split();
+        // The new node_id = left_id if a feature is found, or right_id.
+        node_id = split.right_id();
+        for (const int64 feature_id :
+             example.sparse_int_features[split.feature_column()]) {
+          if (std::binary_search(split.feature_ids().begin(),
+                                 split.feature_ids().end(), feature_id)) {
+            node_id = split.left_id();
+            break;
+          }
+        }
         break;
       }
       case TreeNode::NODE_NOT_SET: {
@@ -129,6 +145,15 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
       split->set_right_id(*++children_it);
       break;
     }
+    case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
+      QCHECK(children.size() == 2)
+          << "A binary split node must have exactly two children.";
+      auto* split =
+          parent_node->mutable_categorical_id_set_membership_binary_split();
+      split->set_left_id(*children_it);
+      split->set_right_id(*++children_it);
+      break;
+    }
     case TreeNode::NODE_NOT_SET: {
       QCHECK(false) << "A non-set node cannot have children.";
       break;
@@ -157,6 +182,10 @@ std::vector<int32> DecisionTree::GetChildren(const TreeNode& node) {
     }
     case TreeNode::kCategoricalIdBinarySplit: {
       const auto& split = node.categorical_id_binary_split();
+      return {split.left_id(), split.right_id()};
+    }
+    case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
+      const auto& split = node.categorical_id_set_membership_binary_split();
       return {split.left_id(), split.right_id()};
     }
     case TreeNode::NODE_NOT_SET: {

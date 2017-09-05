@@ -29,6 +29,11 @@ bool FilesExist(const std::vector<string>& files,
                 std::vector<Status>* status = nullptr);
 bool FilesExist(const std::set<string>& files);
 
+bool FileExists(const std::string& file, Status* status);
+
+Status ReadGraphDefFromFile(const std::string& graph_def_pbtxt_path,
+                            GraphDef* result);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

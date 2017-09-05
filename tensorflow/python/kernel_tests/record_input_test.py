@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -53,6 +55,7 @@ class RecordInputOpTest(test.TestCase):
   def testRecordInputEpochs(self):
     files = 100
     records_per_file = 100
+    batches = 2
     with self.test_session() as sess:
       self.generateTestData("basic", files, records_per_file)
 
@@ -63,18 +66,74 @@ class RecordInputOpTest(test.TestCase):
           batch_size=1,
           shift_ratio=0.33,
           seed=10,
-          name="record_input")
+          name="record_input",
+          batches=batches)
 
       yield_op = records.get_yield_op()
 
       # cycle over 3 epochs and make sure we never duplicate
       for _ in range(3):
         epoch_set = set()
-        for _ in range(files * records_per_file):
-          r = sess.run(yield_op)
-          self.assertTrue(r[0] not in epoch_set)
-          epoch_set.add(r[0])
+        for _ in range(int(files * records_per_file / batches)):
+          op_list = sess.run(yield_op)
+          self.assertTrue(len(op_list) is batches)
+          for r in op_list:
+            self.assertTrue(r[0] not in epoch_set)
+            epoch_set.add(r[0])
 
+  def testDoesNotDeadlock(self):
+    # Iterate multiple times to cause deadlock if there is a chance it can occur
+    for _ in range(30):
+      with self.test_session() as sess:
+        self.generateTestData("basic", 1, 1)
+
+        records = data_flow_ops.RecordInput(
+            file_pattern=os.path.join(self.get_temp_dir(), "basic.*"),
+            parallelism=1,
+            buffer_size=100,
+            batch_size=1,
+            name="record_input")
+
+        yield_op = records.get_yield_op()
+        for _ in range(50):
+          sess.run(yield_op)
+
+  def testEmptyGlob(self):
+    with self.test_session() as sess:
+      record_input = data_flow_ops.RecordInput(file_pattern="foo")
+      yield_op = record_input.get_yield_op()
+      sess.run(variables.global_variables_initializer())
+      with self.assertRaises(NotFoundError):
+        sess.run(yield_op)
+
+  def testBufferTooSmall(self):
+    files = 10
+    records_per_file = 10
+    batches = 2
+    with self.test_session() as sess:
+      self.generateTestData("basic", files, records_per_file)
+
+      records = data_flow_ops.RecordInput(
+          file_pattern=os.path.join(self.get_temp_dir(), "basic.*"),
+          parallelism=2,
+          buffer_size=2000,
+          batch_size=1,
+          shift_ratio=0.33,
+          seed=10,
+          name="record_input",
+          batches=batches)
+
+      yield_op = records.get_yield_op()
+
+      # cycle over 3 epochs and make sure we never duplicate
+      for _ in range(3):
+        epoch_set = set()
+        for _ in range(int(files * records_per_file / batches)):
+          op_list = sess.run(yield_op)
+          self.assertTrue(len(op_list) is batches)
+          for r in op_list:
+            self.assertTrue(r[0] not in epoch_set)
+            epoch_set.add(r[0])
 
 if __name__ == "__main__":
   test.main()

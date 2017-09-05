@@ -32,7 +32,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
 
-
 _PLUGINS_DIR = "plugins"
 
 
@@ -81,12 +80,19 @@ class SummaryToEventTransformer(object):
       self.add_graph(graph=graph, graph_def=graph_def)
       # Also export the meta_graph_def in this case.
       # graph may itself be a graph_def due to positional arguments
-      maybe_graph_as_def = (
-          graph.as_graph_def(add_shapes=True) if isinstance(graph, ops.Graph)
-          else graph)
+      maybe_graph_as_def = (graph.as_graph_def(add_shapes=True)
+                            if isinstance(graph, ops.Graph) else graph)
       self.add_meta_graph(
-          meta_graph.create_meta_graph_def(
-              graph_def=graph_def or maybe_graph_as_def))
+          meta_graph.create_meta_graph_def(graph_def=graph_def or
+                                           maybe_graph_as_def))
+
+    # This set contains tags of Summary Values that have been encountered
+    # already. The motivation here is that the SummaryWriter only keeps the
+    # metadata property (which is a SummaryMetadata proto) of the first Summary
+    # Value encountered for each tag. The SummaryWriter strips away the
+    # SummaryMetadata for all subsequent Summary Values with tags seen
+    # previously. This saves space.
+    self._seen_summary_tags = set()
 
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
@@ -110,6 +116,24 @@ class SummaryToEventTransformer(object):
       summ = summary_pb2.Summary()
       summ.ParseFromString(summary)
       summary = summ
+
+    # We strip metadata from values with tags that we have seen before in order
+    # to save space - we just store the metadata on the first value with a
+    # specific tag.
+    for value in summary.value:
+      if not value.metadata:
+        continue
+
+      if value.tag in self._seen_summary_tags:
+        # This tag has been encountered before. Strip the metadata.
+        value.ClearField("metadata")
+        continue
+
+      # We encounter a value with a tag we have not encountered previously. And
+      # it has metadata. Remember to strip metadata from future values with this
+      # tag string.
+      self._seen_summary_tags.add(value.tag)
+
     event = event_pb2.Event(summary=summary)
     self._add_event(event, global_step)
 
@@ -214,8 +238,8 @@ class SummaryToEventTransformer(object):
       TypeError: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
     """
     if not isinstance(meta_graph_def, meta_graph_pb2.MetaGraphDef):
-      raise TypeError("meta_graph_def must be type MetaGraphDef, saw type: %s"
-                      % type(meta_graph_def))
+      raise TypeError("meta_graph_def must be type MetaGraphDef, saw type: %s" %
+                      type(meta_graph_def))
     meta_graph_bytes = meta_graph_def.SerializeToString()
     event = event_pb2.Event(meta_graph_def=meta_graph_bytes)
     self._add_event(event, global_step)
@@ -266,7 +290,8 @@ class FileWriter(SummaryToEventTransformer):
                graph=None,
                max_queue=10,
                flush_secs=120,
-               graph_def=None):
+               graph_def=None,
+               filename_suffix=None):
     """Creates a `FileWriter` and an event file.
 
     On construction the summary writer creates a new event file in `logdir`.
@@ -304,9 +329,20 @@ class FileWriter(SummaryToEventTransformer):
       flush_secs: Number. How often, in seconds, to flush the
         pending events and summaries to disk.
       graph_def: DEPRECATED: Use the `graph` argument instead.
+      filename_suffix: A string. Every event file's name is suffixed with
+        `suffix`.
     """
-    event_writer = EventFileWriter(logdir, max_queue, flush_secs)
+    event_writer = EventFileWriter(logdir, max_queue, flush_secs,
+                                   filename_suffix)
     super(FileWriter, self).__init__(event_writer, graph, graph_def)
+
+  def __enter__(self):
+    """Make usable with "with" statement."""
+    return self
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    """Make usable with "with" statement."""
+    self.close()
 
   def get_logdir(self):
     """Returns the directory where event file will be written."""

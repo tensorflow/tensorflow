@@ -17,8 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
-#include "tensorflow/compiler/xla/legacy_flags/alias_analysis_flags.h"
+#include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -29,7 +28,8 @@ namespace llvm_ir {
 // Sentry allocation used to represent parameters of the entry computation in
 // alias_scope_metadata_ and noalias_metadata_.
 static const BufferAllocation* kParameterAllocation = new BufferAllocation(
-    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false);
+    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false,
+    LogicalBuffer::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     llvm_ir::IrArray* array) {
@@ -50,28 +50,41 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
     buffer_slice = *slices.begin();
   }
 
-  llvm::MDNode*& alias_scope_md = alias_scope_metadata_[buffer_slice];
-  if (alias_scope_md == nullptr) {
-    alias_scope_md =
-        GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
+  if (module_.config().debug_options().xla_llvm_enable_alias_scope_metadata()) {
+    llvm::MDNode*& alias_scope_md = alias_scope_metadata_[buffer_slice];
+    if (alias_scope_md == nullptr) {
+      alias_scope_md =
+          GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
+    }
+    if (alias_scope_md != nullptr) {
+      array->AddAliasScopeMetadata(alias_scope_md);
+    }
   }
-  array->AddAliasScopeMetadata(alias_scope_md);
 
-  llvm::MDNode*& noalias_md = noalias_metadata_[buffer_slice];
-  if (noalias_md == nullptr) {
-    noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
-                                             assignment_, hlo);
+  if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
+    llvm::MDNode*& noalias_md = noalias_metadata_[buffer_slice];
+    if (noalias_md == nullptr) {
+      noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
+                                               assignment_, hlo);
+    }
+    if (noalias_md != nullptr) {
+      array->AddNoaliasMetadata(noalias_md);
+    }
   }
-  array->AddNoaliasMetadata(noalias_md);
 
-  // Parameters of the entry computation are never stored to, loading from a
-  // parameter pointer should always return the same result within a loop.
-  if (hlo.opcode() == HloOpcode::kParameter) {
-    const std::vector<HloInstruction*>& parameter_instructions =
-        module_.entry_computation()->parameter_instructions();
-    if (std::find(parameter_instructions.begin(), parameter_instructions.end(),
-                  &hlo) != parameter_instructions.end()) {
-      array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
+  if (module_.config()
+          .debug_options()
+          .xla_llvm_enable_invariant_load_metadata()) {
+    // Parameters of the entry computation are never stored to, loading from a
+    // parameter pointer should always return the same result within a loop.
+    if (hlo.opcode() == HloOpcode::kParameter) {
+      const std::vector<HloInstruction*>& parameter_instructions =
+          module_.entry_computation()->parameter_instructions();
+      if (std::find(parameter_instructions.begin(),
+                    parameter_instructions.end(),
+                    &hlo) != parameter_instructions.end()) {
+        array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
+      }
     }
   }
 }
@@ -86,12 +99,6 @@ llvm::MDNode* AliasAnalysis::GetAliasDomain() {
 
 llvm::MDNode* AliasAnalysis::GetAliasScopeMetadataForBuffer(
     const BufferAllocation::Slice& buffer_slice, llvm::MDNode* domain) {
-  legacy_flags::AliasAnalysisFlags* flags =
-      legacy_flags::GetAliasAnalysisFlags();
-  if (!flags->xla_emit_alias_scope) {
-    return nullptr;
-  }
-
   // While we could synthesize an alias.scope, doing so is not more profitable
   // than LLVM's default behavior.
   if (buffer_slice.allocation() == kParameterAllocation) {
@@ -108,12 +115,6 @@ llvm::MDNode* AliasAnalysis::GetAliasScopeMetadataForBuffer(
 llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
     const BufferAllocation::Slice& buffer_slice, llvm::MDNode* domain,
     const BufferAssignment& assignment, const HloInstruction& hlo) {
-  legacy_flags::AliasAnalysisFlags* flags =
-      legacy_flags::GetAliasAnalysisFlags();
-  if (!flags->xla_emit_alias_scope) {
-    return nullptr;
-  }
-
   // We want to construct a list of buffers which:
   //
   // 1. Do not alias the given buffer.

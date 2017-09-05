@@ -36,17 +36,21 @@ namespace xla {
 // operations separately from transcendental operations.
 class HloCostAnalysis : public DfsHloVisitor {
  public:
+  // Each HLO is associated to a vector of properties with the indices given
+  // below. Sub-classes can add further properties.
+  typedef std::map<string, float> Properties;
+  static constexpr char kFlopsKey[] = "flops";
+  static constexpr char kTranscendentalsKey[] = "transcendentals";
+  static constexpr char kBytesAccessedKey[] = "bytes accessed";
+  static constexpr char kSecondsKey[] = "seconds";
+
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
-  explicit HloCostAnalysis(const ShapeSizeFunction& shape_size)
-      : shape_size_(shape_size) {}
+  explicit HloCostAnalysis(const ShapeSizeFunction& shape_size);
 
-  Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode,
-                                HloInstruction* operand) override;
-  Status HandleElementwiseBinary(HloInstruction* hlo, HloOpcode opcode,
-                                 HloInstruction* lhs,
-                                 HloInstruction* rhs) override;
+  Status HandleElementwiseUnary(HloInstruction* hlo) override;
+  Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant,
                         const Literal& literal) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
@@ -58,14 +62,14 @@ class HloCostAnalysis : public DfsHloVisitor {
                        HloInstruction* lhs, HloInstruction* rhs) override;
   Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
                      HloInstruction* arg, HloInstruction* max) override;
+  Status HandleReducePrecision(HloInstruction* hlo) override;
   Status HandleConcatenate(
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleRecv(HloInstruction* recv) override;
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleConvert(HloInstruction* convert) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
                    HloInstruction* rhs) override;
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
@@ -83,17 +87,18 @@ class HloCostAnalysis : public DfsHloVisitor {
                       HloInstruction* init_value,
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function_handle) override;
+  Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
+  Status HandleBatchNormInference(HloInstruction* batchNormInference) override;
+  Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call,
-                    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                    HloComputation* computation) override;
+  Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call,
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-  Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* operand,
+                            HloInstruction* start_indices) override;
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* operand,
                                   HloInstruction* update,
@@ -115,55 +120,96 @@ class HloCostAnalysis : public DfsHloVisitor {
   Status HandlePad(HloInstruction* pad) override;
   Status HandleReshape(HloInstruction* reshape) override;
   Status HandleTranspose(HloInstruction* transpose) override;
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                     HloComputation* condition, HloComputation* body) override;
+  Status HandleWhile(HloInstruction* xla_while) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
 
-  // Returns the amount of computations in the graph.
-  int64 flop_count() const { return flop_count_; }
-  int64 transcendental_count() const { return transcendental_count_; }
+  // Set the rates used to calculate the time taken by the computation. These
+  // need to be set before visiting starts.
+  void set_flops_per_second(float value) {
+    per_second_rates_[kFlopsKey] = value;
+  }
+  void set_transcendentals_per_second(float value) {
+    per_second_rates_[kTranscendentalsKey] = value;
+  }
+  void set_bytes_per_second(float value) {
+    per_second_rates_[kBytesAccessedKey] = value;
+  }
+
+  // Returns properties for the computation.
+  float flop_count() const;
+  float transcendental_count() const;
+  float bytes_accessed() const;
+  float seconds() const;
 
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
-
-  // Returns the number of bytes read/written.
   int64 bytes_accessed(const HloInstruction& hlo) const;
-  int64 bytes_accessed() const { return bytes_accessed_; }
+  float seconds(const HloInstruction& hlo) const;
 
- private:
-  // An FMA counts as two floating point operations in these analyses.
+  const Properties& properties() const { return properties_sum_; }
+  const float property(const string& key) const {
+    return GetProperty(key, properties());
+  }
+
+ protected:
+  typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
+
+  // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64 kFmaFlops = 2;
+
+  HloCostAnalysis(const ShapeSizeFunction& shape_size,
+                  const Properties& per_second_rates);
+
+  // Returns the properties computed from visiting the computation rooted at the
+  // given hlo. Uses shape_size_ to calculate shape sizes if shape_size is null,
+  // otherwise uses shape_size_.
+  StatusOr<Properties> ProcessSubcomputation(
+      HloComputation* computation,
+      const ShapeSizeFunction* shape_size = nullptr);
 
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(HloInstruction* hlo_instruction);
+
+  // Returns the default value if the key is not present in the
+  // properties. Otherwise, returns the value that the key maps to from the
+  // properties parameter.
+  static float GetProperty(const string& key, const Properties& properties,
+                           float default_value = 0.0f);
+
+  // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
+  // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that
+  // the key maps to in the properties of the given hlo.
+  static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
+                                 const HloToProperties& hlo_to_properties);
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods
   // return an error.
   const ShapeSizeFunction shape_size_;
 
-  // The total number of floating point operations, transcendental operations,
-  // and bytes accesses (read or written) in the computation.
-  int64 flop_count_ = 0;
-  int64 transcendental_count_ = 0;
-  int64 bytes_accessed_ = 0;
+  HloToProperties hlo_properties_;
 
-  // Cost counts of the current instruction. These should be set by each
-  // handlers if different from the default values computed in Preprocess.
-  int64 current_flop_count_;
-  int64 current_transcendental_count_;
-  int64 current_bytes_accessed_;
+  // If true, the time taken will be computed from the rates for each property
+  // and the total time will be the maximum time, which is the time of the
+  // bottleneck.
+  bool current_should_compute_bottleneck_time_;
 
-  // Mapping from HLO instructions to the cost we computed for them in the
-  // course of the graph analysis.
-  std::map<const HloInstruction*, int64> hlo_to_flop_count_;
-  std::map<const HloInstruction*, int64> hlo_to_transcendental_count_;
-  std::map<const HloInstruction*, int64> hlo_to_bytes_accessed_;
+  // The properties of the currently visited instruction. A HandleFoo method can
+  // modify these to change the default values computed in Preprocess.
+  Properties current_properties_;
+
+  // The sum of the properties of all HLOs in the computation.
+  Properties properties_sum_;
+
+  // How much of each property can be processed per second. E.g. if the property
+  // is bytes accessed, this is the number of bytes that can be processed per
+  // second. Is empty if no rates have been set.
+  Properties per_second_rates_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloCostAnalysis);
 };

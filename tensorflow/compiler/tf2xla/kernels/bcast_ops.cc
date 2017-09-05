@@ -55,7 +55,7 @@ class BCastGradArgsOp : public XlaOpKernel {
 
       BCast::Vec vec;
       for (int64 i = 0; i < in_shape.num_elements(); ++i) {
-        vec.push_back(xla::LiteralUtil::Get<int>(literal, {i}));
+        vec.push_back(literal.Get<int>({i}));
       }
       shapes.push_back(vec);
     }

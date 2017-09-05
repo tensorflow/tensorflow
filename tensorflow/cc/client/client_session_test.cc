@@ -49,7 +49,7 @@ TEST(ClientSessionTest, Feed) {
 
 TEST(ClientSessionTest, Extend) {
   Scope root = Scope::NewRootScope();
-  auto a = Placeholder(root, DT_INT32);
+  auto a = Placeholder(root, DT_INT32, Placeholder::Shape({2}));
   auto c = Add(root, a, {2, 2});
   ClientSession session(root);
   std::vector<Tensor> outputs;

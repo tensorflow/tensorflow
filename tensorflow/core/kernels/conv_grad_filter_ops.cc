@@ -495,6 +495,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
+    cudnn_disable_conv_1x1_optimization_ = CudnnDisableConv1x1Optimization();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -558,7 +559,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       return;
     }
 
-    if (dims.spatial_dims[0].filter_size == 1 &&
+    if (!cudnn_disable_conv_1x1_optimization_ &&
+        dims.spatial_dims[0].filter_size == 1 &&
         dims.spatial_dims[1].filter_size == 1 &&
         dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
         data_format_ == FORMAT_NHWC) {
@@ -776,7 +778,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     if (cudnn_use_autotune_ && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
-      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
+          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
@@ -808,16 +811,15 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         }
       }
       OP_REQUIRES(context,
-                  best_result.is_valid() &&
-                      best_result.algorithm() != kDefaultAlgorithm,
+                  best_result.is_valid() || best_result_no_scratch.is_valid(),
                   errors::NotFound("No algorithm worked!"));
-      OP_REQUIRES(context,
-                  best_result_no_scratch.is_valid() &&
-                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm without scratch worked!"));
-      algorithm_config.set_algorithm(best_result.algorithm());
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
+      if (best_result.is_valid()) {
+        algorithm_config.set_algorithm(best_result.algorithm());
+      }
+      if (best_result_no_scratch.is_valid()) {
+        algorithm_config.set_algorithm_no_scratch(
+            best_result_no_scratch.algorithm());
+      }
       AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
@@ -852,6 +854,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   bool use_cudnn_;
   TensorFormat data_format_;
   bool cudnn_use_autotune_;
+  bool cudnn_disable_conv_1x1_optimization_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);
 };

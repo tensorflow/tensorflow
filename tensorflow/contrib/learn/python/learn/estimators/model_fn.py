@@ -53,12 +53,17 @@ class ModeKeys(object):
   EVAL = 'eval'
   INFER = 'infer'
 
+  @classmethod
+  def validate(cls, key):
+    if key not in (cls.TRAIN, cls.EVAL, cls.INFER):
+      raise ValueError('Invalid mode %s.' % key)
+
 
 class ModelFnOps(
     collections.namedtuple('ModelFnOps', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
-        'scaffold'
+        'scaffold', 'mode'
     ])):
   """Ops returned from a model_fn."""
 
@@ -119,13 +124,15 @@ class ModelFnOps(
     Raises:
       ValueError: If validation fails.
     """
+    ModeKeys.validate(mode)
+
     # Assert all ops are from the same graph.
     get_graph_from_inputs((predictions, loss, train_op))
 
     # Validate train_op.
     if train_op is None:
       if mode == ModeKeys.TRAIN:
-        raise ValueError('Missing training_op.')
+        raise ValueError('Missing train_op.')
     elif not isinstance(train_op, ops.Operation):
       # TODO(ptucker): Should this be allowed? Consider raising error.
       train_op = ops.convert_to_tensor(train_op).op
@@ -183,14 +190,13 @@ class ModelFnOps(
         output_alternatives=output_alternatives,
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
-        scaffold=scaffold)
+        scaffold=scaffold,
+        mode=mode)
 
-  def estimator_spec(self, mode, default_serving_output_alternative_key=None):
+  def estimator_spec(self, default_serving_output_alternative_key=None):
     """Creates an equivalent `EstimatorSpec`.
 
     Args:
-      mode: One of `ModeKeys`. Specifies if this training, evaluation or
-        prediction.
       default_serving_output_alternative_key: Required for multiple heads. If
         you have multiple entries in `output_alternatives` dict (comparable to
         multiple heads), `EstimatorSpec` requires a default head that will be
@@ -264,8 +270,17 @@ class ModelFnOps(
           result[key] = value
       return result
 
+    # Convert the contrib mode enum to the core mode enum.
+    # Note: mode already validated in __new__().
+    if self.mode == ModeKeys.TRAIN:
+      core_mode = core_model_fn_lib.ModeKeys.TRAIN
+    elif self.mode == ModeKeys.EVAL:
+      core_mode = core_model_fn_lib.ModeKeys.EVAL
+    elif self.mode == ModeKeys.INFER:
+      core_mode = core_model_fn_lib.ModeKeys.PREDICT
+
     return core_model_fn_lib.EstimatorSpec(
-        mode=mode,
+        mode=core_mode,
         predictions=self.predictions,
         loss=self.loss,
         train_op=self.train_op,

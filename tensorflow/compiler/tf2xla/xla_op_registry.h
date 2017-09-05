@@ -41,10 +41,14 @@ namespace tensorflow {
 extern const char* const DEVICE_CPU_XLA_JIT;  // "CPU_XLA_JIT"
 extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
 
+extern const char* const DEVICE_XLA_CPU;
+extern const char* const DEVICE_XLA_GPU;
+
 constexpr std::array<DataType, 2> kIntTypes = {{DT_INT32, DT_INT64}};
-constexpr std::array<DataType, 2> kFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
+constexpr std::array<DataType, 3> kFloatTypes = {
+    {DT_HALF, DT_FLOAT, DT_DOUBLE}};
+constexpr std::array<DataType, 5> kNumericTypes = {
+    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE}};
 
 constexpr std::array<DataType, 5> kCpuAllTypes = {
     {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
@@ -171,8 +175,17 @@ class XlaOpRegistry {
     Factory factory;
   };
 
+  // Returns true if registrations x and y can both be added to the registry.
+  // This is always the case if they refer to different ops. If they refer to
+  // the same op name, they must: have the same values for compilation_only and
+  // allow_resource_types; use a device_whitelist; and their
+  // whitelists must not intersect.
+  static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
+
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
-  std::unordered_map<string, std::unique_ptr<OpRegistration>> ops_
+  // Registrations present under the same key must satisfy IsCompatible above,
+  // and this is checked during registration.
+  std::unordered_multimap<string, std::unique_ptr<OpRegistration>> ops_
       GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?

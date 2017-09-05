@@ -11,8 +11,8 @@ problem is to classify RGB 32x32 pixel images across 10 categories:
 airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.
 ```
 
-For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
-and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
+For more details refer to the [CIFAR-10 page](https://www.cs.toronto.edu/~kriz/cifar.html)
+and a [Tech Report](https://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
 by Alex Krizhevsky.
 
 ### Goals
@@ -42,7 +42,7 @@ designing larger and more sophisticated models in TensorFlow:
 ([wiki](https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
 and @{tf.nn.local_response_normalization$local response normalization}
 (Chapter 3.3 in
-[AlexNet paper](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
+[AlexNet paper](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
 * @{$summaries_and_tensorboard$Visualization}
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
@@ -83,7 +83,7 @@ for details.  It consists of 1,068,298 learnable parameters and requires about
 ## Code Organization
 
 The code for this tutorial resides in
-[`tensorflow_models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
+[`models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
 
 File | Purpose
 --- | ---
@@ -141,7 +141,7 @@ so that we may visualize them in @{$summaries_and_tensorboard$TensorBoard}.
 This is a good practice to verify that inputs are built correctly.
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:70%" src="../images/cifar_image_summary.png">
+  <img style="width:70%" src="https://www.tensorflow.org/images/cifar_image_summary.png">
 </div>
 
 Reading images from disk and distorting them can use a non-trivial amount of
@@ -170,7 +170,7 @@ Layer Name | Description
 Here is a graph generated from TensorBoard describing the inference operation:
 
 <div style="width:15%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/cifar_graph.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/cifar_graph.png">
 </div>
 
 > **EXERCISE**: The output of `inference` are un-normalized logits. Try editing
@@ -178,7 +178,7 @@ the network architecture to return normalized predictions using
 @{tf.nn.softmax}.
 
 The `inputs()` and `inference()` functions provide all the components
-necessary to perform evaluation on a model. We now shift our focus towards
+necessary to perform an evaluation of a model. We now shift our focus towards
 building operations for training a model.
 
 > **EXERCISE:** The model architecture in `inference()` differs slightly from
@@ -205,7 +205,7 @@ loss and all these weight decay terms, as returned by the `loss()` function.
 
 We visualize it in TensorBoard with a @{tf.summary.scalar}:
 
-![CIFAR-10 Loss](../images/cifar_loss.png "CIFAR-10 Total Loss")
+![CIFAR-10 Loss](https://www.tensorflow.org/images/cifar_loss.png "CIFAR-10 Total Loss")
 
 We train the model using standard
 [gradient descent](https://en.wikipedia.org/wiki/Gradient_descent)
@@ -214,7 +214,7 @@ with a learning rate that
 @{tf.train.exponential_decay$exponentially decays}
 over time.
 
-![CIFAR-10 Learning Rate Decay](../images/cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
+![CIFAR-10 Learning Rate Decay](https://www.tensorflow.org/images/cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
 
 The `train()` function adds the operations needed to minimize the objective by
 calculating the gradient and updating the learned variables (see
@@ -295,8 +295,8 @@ For instance, we can watch how the distribution of activations and degree of
 sparsity in `local3` features evolve during training:
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px; display: flex; flex-direction: row">
-  <img style="flex-grow:1; flex-shrink:1;" src="../images/cifar_sparsity.png">
-  <img style="flex-grow:1; flex-shrink:1;" src="../images/cifar_activations.png">
+  <img style="flex-grow:1; flex-shrink:1;" src="https://www.tensorflow.org/images/cifar_sparsity.png">
+  <img style="flex-grow:1; flex-shrink:1;" src="https://www.tensorflow.org/images/cifar_activations.png">
 </div>
 
 Individual loss functions, as well as the total loss, are particularly
@@ -378,7 +378,7 @@ processing a batch of data.
 Here is a diagram of this model:
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/Parallelism.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/Parallelism.png">
 </div>
 
 Note that each GPU computes inference as well as the gradients for a unique
@@ -411,13 +411,13 @@ the first tower are prepended with `tower_0`, e.g. `tower_0/conv1/Conv2D`.
 
 * A preferred hardware device to run the operation within a tower.
 @{tf.device} specifies this. For
-instance, all operations in the first tower reside within `device('/gpu:0')`
+instance, all operations in the first tower reside within `device('/device:GPU:0')`
 scope indicating that they should be run on the first GPU.
 
 All variables are pinned to the CPU and accessed via
 @{tf.get_variable}
 in order to share them in a multi-GPU version.
-See how-to on @{$variable_scope$Sharing Variables}.
+See how-to on @{$variables$Sharing Variables}.
 
 ### Launching and Training the Model on Multiple GPU cards
 

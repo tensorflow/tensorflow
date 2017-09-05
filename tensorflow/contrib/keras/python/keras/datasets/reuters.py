@@ -43,7 +43,7 @@ def load_data(path='reuters.npz',
       num_words: max number of words to include. Words are ranked
           by how often they occur (in the training set) and only
           the most frequent words are kept
-      skip_top: skip the top N most frequently occuring words
+      skip_top: skip the top N most frequently occurring words
           (which may not be informative).
       maxlen: truncate sequences after this length.
       test_split: Fraction of the dataset to be used as test data.
@@ -104,7 +104,7 @@ def load_data(path='reuters.npz',
     for x in xs:
       nx = []
       for w in x:
-        if w >= num_words or w < skip_top:
+        if skip_top <= w < num_words:
           nx.append(w)
       new_xs.append(nx)
     xs = new_xs

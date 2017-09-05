@@ -25,6 +25,21 @@ filegroup(
 )
 
 cc_library(
+    name = "expiring_lru_cache",
+    hdrs = ["expiring_lru_cache.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "file_block_cache",
+    srcs = ["file_block_cache.cc"],
+    hdrs = ["file_block_cache.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
     name = "gcs_file_system",
     srcs = [
         "gcs_file_system.cc",
@@ -35,6 +50,8 @@ cc_library(
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
+        ":expiring_lru_cache",
+        ":file_block_cache",
         ":google_auth_provider",
         ":http_request",
         ":retrying_file_system",
@@ -96,6 +113,17 @@ cc_library(
 )
 
 cc_library(
+    name = "now_seconds_env",
+    testonly = 1,
+    hdrs = ["now_seconds_env.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "oauth_client",
     srcs = [
         "oauth_client.cc",
@@ -152,6 +180,32 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "expiring_lru_cache_test",
+    size = "small",
+    srcs = ["expiring_lru_cache_test.cc"],
+    deps = [
+        ":expiring_lru_cache",
+        ":now_seconds_env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "file_block_cache_test",
+    size = "small",
+    srcs = ["file_block_cache_test.cc"],
+    deps = [
+        ":file_block_cache",
+        ":now_seconds_env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

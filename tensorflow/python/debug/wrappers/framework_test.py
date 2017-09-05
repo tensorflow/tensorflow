@@ -17,11 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import shutil
 import tempfile
+import threading
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
@@ -32,14 +36,18 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import monitored_session
+from tensorflow.python.util import tf_inspect
 
 
 class TestDebugWrapperSession(framework.BaseDebugWrapperSession):
   """A concrete implementation of BaseDebugWrapperSession for test."""
 
-  def __init__(self, sess, dump_root, observer):
+  def __init__(self, sess, dump_root, observer, thread_name_filter=None):
     # Supply dump root.
     self._dump_root = dump_root
 
@@ -47,7 +55,8 @@ class TestDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._obs = observer
 
     # Invoke superclass constructor.
-    framework.BaseDebugWrapperSession.__init__(self, sess)
+    framework.BaseDebugWrapperSession.__init__(
+        self, sess, thread_name_filter=thread_name_filter)
 
   def on_session_init(self, request):
     """Override abstract on-session-init callback method."""
@@ -134,6 +143,12 @@ class TestDebugWrapperSessionBadAction(framework.BaseDebugWrapperSession):
 
 class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
+  def _no_rewrite_session_config(self):
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    return config_pb2.ConfigProto(graph_options=graph_options)
+
   def setUp(self):
     self._observer = {
         "sess_init_count": 0,
@@ -148,14 +163,14 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self._dump_root = tempfile.mkdtemp()
 
-    self._sess = session.Session()
+    self._sess = session.Session(config=self._no_rewrite_session_config())
 
     self._a_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
     self._b_init_val = np.array([[2.0], [-1.0]])
     self._c_val = np.array([[-4.0], [6.0]])
 
     self._a_init = constant_op.constant(
-        self._a_init_val, shape=[2, 2], name="a1_init")
+        self._a_init_val, shape=[2, 2], name="a_init")
     self._b_init = constant_op.constant(
         self._b_init_val, shape=[2, 1], name="b_init")
 
@@ -180,7 +195,8 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     # Tear down temporary dump directory.
-    shutil.rmtree(self._dump_root)
+    if os.path.isdir(self._dump_root):
+      shutil.rmtree(self._dump_root)
 
     ops.reset_default_graph()
 
@@ -209,7 +225,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
       wrapper_sess.partial_run_setup(self._p)
 
   def testInteractiveSessionInit(self):
-    """The wrapper should work also on other subclassses of session.Session."""
+    """The wrapper should work also on other subclasses of session.Session."""
 
     TestDebugWrapperSession(
         session.InteractiveSession(), self._dump_root, self._observer)
@@ -321,17 +337,103 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
                                       self._observer)
     wrapper.close()
 
-  def testUsingNonDirectSessionRaisesNotImplementedError(self):
-    # TODO(cais): Remove this test once tfdbg is integrated with GrpcSession.
-    fake_non_direct_session = session.Session()
-    fake_non_direct_session._target = "foo"
+  def testWrapperThreadNameFilterMainThread(self):
+    wrapper = TestDebugWrapperSession(
+        self._sess, self._dump_root, self._observer,
+        thread_name_filter="MainThread")
 
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r"Non-DirectSession support is not available from TensorFlow Debugger "
-        r"yet \(sess_str=foo\)"):
-      TestDebugWrapperSession(
-          fake_non_direct_session, self._dump_root, self._observer)
+    child_run_output = []
+    def child_thread_job():
+      child_run_output.append(wrapper.run(self._b_init))
+
+    thread = threading.Thread(name="ChildThread", target=child_thread_job)
+    thread.start()
+    self.assertAllClose(self._a_init_val, wrapper.run(self._a_init))
+    thread.join()
+    self.assertAllClose([self._b_init_val], child_run_output)
+
+    dump = debug_data.DebugDumpDir(self._dump_root)
+    self.assertEqual(1, dump.size)
+    self.assertEqual("a_init", dump.dumped_tensor_data[0].node_name)
+
+  def testWrapperThreadNameFilterChildThread(self):
+    wrapper = TestDebugWrapperSession(
+        self._sess, self._dump_root, self._observer,
+        thread_name_filter=r"Child.*")
+
+    child_run_output = []
+    def child_thread_job():
+      child_run_output.append(wrapper.run(self._b_init))
+
+    thread = threading.Thread(name="ChildThread", target=child_thread_job)
+    thread.start()
+    self.assertAllClose(self._a_init_val, wrapper.run(self._a_init))
+    thread.join()
+    self.assertAllClose([self._b_init_val], child_run_output)
+
+    dump = debug_data.DebugDumpDir(self._dump_root)
+    self.assertEqual(1, dump.size)
+    self.assertEqual("b_init", dump.dumped_tensor_data[0].node_name)
+
+  def testWrapperThreadNameFilterBothThreads(self):
+    wrapper = TestDebugWrapperSession(
+        self._sess, self._dump_root, self._observer,
+        thread_name_filter=None)
+
+    child_run_output = []
+    def child_thread_job():
+      child_run_output.append(wrapper.run(self._b_init))
+
+    thread = threading.Thread(name="ChildThread", target=child_thread_job)
+    thread.start()
+    self.assertAllClose(self._a_init_val, wrapper.run(self._a_init))
+    thread.join()
+    self.assertAllClose([self._b_init_val], child_run_output)
+
+    dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
+    self.assertEqual(2, dump.size)
+    self.assertItemsEqual(
+        ["a_init", "b_init"],
+        [datum.node_name for datum in dump.dumped_tensor_data])
+
+
+def _is_public_method_name(method_name):
+  return (method_name.startswith("__") and method_name.endswith("__")
+          or not method_name.startswith("_"))
+
+
+class SessionWrapperPublicMethodParityTest(test_util.TensorFlowTestCase):
+
+  def testWrapperHasAllPublicMethodsOfSession(self):
+    session_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(session.Session, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    wrapper_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(
+            framework.BaseDebugWrapperSession, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    missing_public_methods = [
+        method for method in session_public_methods
+        if method not in wrapper_public_methods]
+    self.assertFalse(missing_public_methods)
+
+  def testWrapperHasAllPublicMethodsOfMonitoredSession(self):
+    session_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(monitored_session.MonitoredSession,
+                              predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    wrapper_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(
+            framework.BaseDebugWrapperSession, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    missing_public_methods = [
+        method for method in session_public_methods
+        if method not in wrapper_public_methods]
+    self.assertFalse(missing_public_methods)
 
 
 if __name__ == "__main__":

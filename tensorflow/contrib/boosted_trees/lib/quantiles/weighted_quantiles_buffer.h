@@ -55,7 +55,7 @@ class WeightedQuantilesBuffer {
       : max_size_(std::min(block_size << 1, max_elements)) {
     QCHECK(max_size_ > 0) << "Invalid buffer specification: (" << block_size
                           << ", " << max_elements << ")";
-    map_.reserve(max_size_);
+    vec_.reserve(max_size_);
   }
 
   // Disallow copying as it's semantically non-sensical in the Squawd algorithm
@@ -77,42 +77,48 @@ class WeightedQuantilesBuffer {
       return;
     }
 
-    // Insert entry to map if not already present else
-    // accumulate the new weight.
-    auto result = map_.insert(BufferMapEntry(value, weight));
-    if (!result.second) {
-      result.first->second += weight;
-    }
+    // Push back the entry to the buffer.
+    vec_.push_back(BufferEntry(value, weight));
   }
 
-  // Returns a sorted vector view of the base buffer. Callers should
-  // minimize how often this is called, ideally only right after the buffer
-  // becomes full.
-  std::vector<BufferEntry> GenerateEntryList() const {
+  // Returns a sorted vector view of the base buffer and clears the buffer.
+  // Callers should minimize how often this is called, ideally only right after
+  // the buffer becomes full.
+  std::vector<BufferEntry> GenerateEntryList() {
     std::vector<BufferEntry> ret;
-    ret.reserve(map_.size());
-    std::transform(map_.begin(), map_.end(), std::back_inserter(ret),
-                   [](const BufferMapEntry& map_entry) {
-                     return BufferEntry(map_entry.first, map_entry.second);
-                   });
+    if (vec_.size() == 0) {
+      return ret;
+    }
+    ret.swap(vec_);
+    vec_.reserve(max_size_);
     std::sort(ret.begin(), ret.end());
+    size_t num_entries = 0;
+    for (size_t i = 1; i < ret.size(); ++i) {
+      if (ret[i].value != ret[i - 1].value) {
+        BufferEntry tmp = ret[i];
+        ++num_entries;
+        ret[num_entries] = tmp;
+      } else {
+        ret[num_entries].weight += ret[i].weight;
+      }
+    }
+    ret.resize(num_entries + 1);
     return ret;
   }
 
-  int64 Size() const { return map_.size(); }
-  bool IsFull() const { return map_.size() >= max_size_; }
-  void Clear() { map_.clear(); }
+  int64 Size() const { return vec_.size(); }
+  bool IsFull() const { return vec_.size() >= max_size_; }
+  void Clear() { vec_.clear(); }
 
  private:
-  using BufferMap = typename std::unordered_map<ValueType, WeightType>;
-  using BufferMapEntry = typename BufferMap::value_type;
+  using BufferVector = typename std::vector<BufferEntry>;
 
   // Comparison function.
   static constexpr decltype(CompareFn()) kCompFn = CompareFn();
 
   // Base buffer.
   size_t max_size_;
-  BufferMap map_;
+  BufferVector vec_;
 };
 
 template <typename ValueType, typename WeightType, typename CompareFn>

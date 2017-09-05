@@ -29,11 +29,11 @@ class Tuner(object):
 
   Example:
   ```
-    def _create_my_experiment(config, hparams):
+    def _create_my_experiment(run_config, hparams):
       hidden_units = [hparams.unit_per_layer] * hparams.num_hidden_layers
 
       return tf.contrib.learn.Experiment(
-          estimator=DNNClassifier(config=config, hidden_units=hidden_units),
+          estimator=DNNClassifier(config=run_config, hidden_units=hidden_units),
           train_input_fn=my_train_input,
           eval_input_fn=my_eval_input)
 
@@ -79,7 +79,7 @@ class Tuner(object):
 
     Args:
       experiment_fn: A function that creates an `Experiment`. It should accept
-        an argument `config` which should be used to create the `Estimator`
+        an argument `run_config` which should be used to create the `Estimator`
         (passed as `config` to its constructor), and an argument `hparams`,
         which should be used for hyper-parameters tuning. It must return an
         `Experiment`.

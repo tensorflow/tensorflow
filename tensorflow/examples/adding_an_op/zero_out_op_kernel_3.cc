@@ -50,7 +50,7 @@ class ZeroOutOp : public OpKernel {
                 errors::InvalidArgument("preserve_index out of range"));
 
     // Create an output tensor
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
     auto output = output_tensor->template flat<int32>();

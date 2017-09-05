@@ -17,9 +17,12 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
+%include "tensorflow/python/pywrap_tfe.i"
+
 %include "tensorflow/python/util/port.i"
 %include "tensorflow/python/util/py_checkpoint_reader.i"
 %include "tensorflow/python/util/stat_summarizer.i"
+%include "tensorflow/python/util/tfprof.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
 
@@ -40,3 +43,8 @@ limitations under the License.
 %include "tensorflow/python/util/kernel_registry.i"
 
 %include "tensorflow/python/util/transform_graph.i"
+
+%include "tensorflow/python/grappler/tf_optimizer.i"
+%include "tensorflow/python/grappler/cost_analyzer.i"
+%include "tensorflow/python/grappler/model_analyzer.i"
+

@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/ADT/APInt.h"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Type.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -55,7 +55,7 @@ using tensorflow::strings::StrAppend;
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
   return operand->opcode() == HloOpcode::kConstant &&
-         LiteralUtil::IsAllFloat(operand->literal(), value);
+         operand->literal().IsAllFloat(value);
 }
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
@@ -113,7 +113,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
     PrimitiveType output_type) const {
-  // Binary math functions tranform are of type [T] -> T.
+  // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
       return Unimplemented("Input type ≠ output type: %s ≠ %s",
@@ -175,7 +175,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     return make_sqrt();
   }
 
-  if (!hlo_module_config_.fast_math_disabled() &&
+  if (hlo_module_config_.debug_options().xla_enable_fast_math() &&
       IsFPLiteralWithValue(rhs, -.5)) {
     VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
     // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
@@ -210,6 +210,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
                                    output_type);
     case HloOpcode::kLog:
       return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
+                                   output_type);
+    case HloOpcode::kCos:
+      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
+                                   output_type);
+    case HloOpcode::kSin:
+      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
                                    output_type);
     case HloOpcode::kTanh:
       return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
@@ -328,7 +334,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
 
         IrArray::Index input_index(index.size());
-        llvm::Value* in_bounds = ir_builder_->getInt1(1);
+        llvm::Value* in_bounds = ir_builder_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
               index[i], ir_builder_->getInt64(window.dimensions(i).stride()));

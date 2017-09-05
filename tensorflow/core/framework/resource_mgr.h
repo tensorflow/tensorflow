@@ -22,8 +22,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -202,15 +202,28 @@ class ResourceMgr {
 
 // Makes a resource handle with the specified type for a given container /
 // name.
+ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
+                                  const string& name,
+                                  const TypeIndex& type_index);
+
 template <typename T>
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name);
+                                  const string& name) {
+  return MakeResourceHandle(ctx, container, name, MakeTypeIndex<T>());
+}
+
+Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
+                                  const string& container, const string& name,
+                                  const TypeIndex& type_index);
+
 template <typename T>
 ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
                                          const string& name);
 
 // Returns a resource handle from a numbered op input.
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
+Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
+                       ResourceHandle* handle);
 
 // Create a resource pointed by a given resource handle.
 template <typename T>
@@ -422,25 +435,6 @@ Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
 }
 
 template <typename T>
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name) {
-  ResourceHandle result;
-  result.set_device(ctx->device()->attributes().name());
-  string actual_container;
-  if (!container.empty()) {
-    actual_container = container;
-  } else {
-    actual_container = ctx->resource_manager()->default_container();
-  }
-  result.set_container(actual_container);
-  result.set_name(name);
-  auto type_index = MakeTypeIndex<T>();
-  result.set_hash_code(type_index.hash_code());
-  result.set_maybe_type_name(type_index.name());
-  return result;
-}
-
-template <typename T>
 ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
                                          const string& name) {
   return MakeResourceHandle<T>(ctx, ctx->step_container()->name(), name);
@@ -497,9 +491,16 @@ template <typename T>
 void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
-  T* unused;
-  output->flat<bool>()(0) =
-      LookupResource(ctx, HandleFromInput(ctx, 0), &unused).ok();
+  T* object;
+  bool found;
+  if (LookupResource(ctx, HandleFromInput(ctx, 0), &object).ok()) {
+    found = true;
+    object->Unref();
+  } else {
+    found = false;
+  }
+
+  output->flat<bool>()(0) = found;
 }
 
 template <typename T>

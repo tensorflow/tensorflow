@@ -25,19 +25,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -68,12 +66,46 @@ XLA_TEST_F(ReshapeTest, SingleElementArrayToScalar) {
   ComputeAndCompareR0<float>(&builder, 1.0f, {}, zero_error_spec_);
 }
 
+XLA_TEST_F(ReshapeTest, ScalarToSingleElementArray) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR0<float>(1.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto a = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
+  a = builder.Neg(a);
+  auto reshape =
+      builder.Reshape(/*operand=*/a, /*dimensions=*/{}, /*new_sizes=*/{1});
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f}, {param0_data.get()},
+                             zero_error_spec_);
+}
+
 XLA_TEST_F(ReshapeTest, Trivial0x3) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 3));
   auto result = builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
 
   ComputeAndCompareR1<float>(&builder, {}, {}, zero_error_spec_);
+}
+
+// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
+// does not handle zero-sized shapes correctly. Failed last on 2017-05-15
+// with an incorrect result rank.
+XLA_TEST_F(ReshapeTest, DISABLED_ON_GPU(Trivial0x3WithParameter)) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> param0_literal =
+      Literal::CreateR2FromArray2D<float>(Array2D<float>(0, 3));
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto a = builder.Parameter(0, ShapeUtil::MakeShape(F32, {0, 3}), "param0");
+  auto result = builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
+
+  ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
+                             zero_error_spec_);
 }
 
 XLA_TEST_F(ReshapeTest, Trivial3x0) {
@@ -369,7 +401,7 @@ XLA_TEST_F(ReshapeTest, FullyConnectedCollapseDesugared) {
 XLA_TEST_F(ReshapeTest, ToScalar) {
   for (int rank = 0; rank < 8; ++rank) {
     ComputationBuilder b(client_, TestName());
-    auto input = LiteralUtil::CreateR1<float>({83.0f});
+    auto input = Literal::CreateR1<float>({83.0f});
     std::vector<int64> ones(rank, 1);  // this is {1, ..., 1}.
     std::vector<int64> dimensions(rank);
     std::iota(dimensions.begin(), dimensions.end(), 0);
@@ -383,15 +415,15 @@ XLA_TEST_F(ReshapeTest, ToScalar) {
 XLA_TEST_F(ReshapeTest, BadDimensions) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1}), {}, {});
-  EXPECT_MATCH(ExecuteToString(&b, {}),
-               testing::HasSubstr("dimensions not a permutation"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("dimensions not a permutation"));
 }
 
 XLA_TEST_F(ReshapeTest, BadNewSizes) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1, 2}), {1}, {});
-  EXPECT_MATCH(ExecuteToString(&b, {}),
-               testing::HasSubstr("mismatched element counts"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("mismatched element counts"));
 }
 
 XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
@@ -401,7 +433,7 @@ XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   builder.Reshape(a, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{2, 8});
 
   // clang-format off
-  auto literal = LiteralUtil::CreateR4FromArray4DWithLayout(Array4D<float>{
+  auto literal = Literal::CreateR4FromArray4DWithLayout(Array4D<float>{
     {
       {
         {0, 1},
@@ -433,7 +465,7 @@ XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   });
 
   Computation computation = builder.Build().ConsumeValueOrDie();
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {2, 8}, {1, 0});
   std::unique_ptr<Literal> actual =
@@ -441,12 +473,12 @@ XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
           ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2FromArray2D<float>(expected_array);
+      Literal::CreateR2FromArray2D<float>(expected_array);
   LiteralTestUtil::ExpectEqual(*expected, *actual);
 }
 
 XLA_TEST_F(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
-  std::unique_ptr<Literal> input = LiteralUtil::CreateR2<float>({
+  std::unique_ptr<Literal> input = Literal::CreateR2<float>({
       {0, 1, 2, 3, 4, 5, 6, 7},
       {100, 101, 102, 103, 104, 105, 106, 107},
       {200, 201, 202, 203, 204, 205, 206, 207},
@@ -474,7 +506,7 @@ XLA_TEST_F(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
 
 // Tests R2->R4 reshape with the reshape dimensions {1, 0}.
 XLA_TEST_F(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
-  std::unique_ptr<Literal> input = LiteralUtil::CreateR2<float>({
+  std::unique_ptr<Literal> input = Literal::CreateR2<float>({
       {0, 1, 2, 3, 4, 5, 6, 7},
       {100, 101, 102, 103, 104, 105, 106, 107},
       {200, 201, 202, 203, 204, 205, 206, 207},
@@ -508,7 +540,7 @@ XLA_TEST_F(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -531,7 +563,7 @@ XLA_TEST_F(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -555,7 +587,7 @@ XLA_TEST_F(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -569,7 +601,7 @@ XLA_TEST_F(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
     expected_array(indices[0], indices[2] * 30 + indices[1] * 3 + indices[3]) =
         *cell;
   });
-  auto expected = LiteralUtil::CreateR2FromArray2D(expected_array);
+  auto expected = Literal::CreateR2FromArray2D(expected_array);
   ComputeAndCompareLiteral(&builder, *expected, {input_data.get()});
 }
 
@@ -581,7 +613,7 @@ XLA_TEST_F(ReshapeTest, NoopReshape) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input_array, LayoutUtil::MakeLayout({1, 2, 3, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -592,7 +624,7 @@ XLA_TEST_F(ReshapeTest, NoopReshape) {
                   /*new_sizes=*/{7, 2, 3, 5});
   Computation computation = builder.Build().ConsumeValueOrDie();
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {7, 2, 3, 5}, {2, 3, 0, 1});
   std::unique_ptr<Literal> output_literal =
@@ -608,7 +640,7 @@ XLA_TEST_F(ReshapeTest, NoopReshape) {
 }
 
 XLA_TEST_F(ReshapeTest, R4ToR4Reshape_Trivial) {
-  auto literal_1x2x3x4 = LiteralUtil::CreateR4(
+  auto literal_1x2x3x4 = Literal::CreateR4(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
 
@@ -621,7 +653,7 @@ XLA_TEST_F(ReshapeTest, R4ToR4Reshape_Trivial) {
 }
 
 XLA_TEST_F(ReshapeTest, R4ToR4Reshape) {
-  auto literal_1x2x3x4 = LiteralUtil::CreateR4(
+  auto literal_1x2x3x4 = Literal::CreateR4(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
 
@@ -631,7 +663,7 @@ XLA_TEST_F(ReshapeTest, R4ToR4Reshape) {
                   /*new_sizes=*/{2, 4, 3, 1});
 
   // clang-format off
-  auto expected_2x4x3x1 = LiteralUtil::CreateR4(
+  auto expected_2x4x3x1 = Literal::CreateR4(
       {{{{1}, {5}, {9}},
         {{2}, {6}, {10}},
         {{3}, {7}, {11}},
@@ -655,7 +687,7 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeSimple) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -664,9 +696,9 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeSimple) {
   auto a = builder.Parameter(0, input_literal->shape(), "a");
   builder.Reshape(a, /*dimensions=*/{0, 1, 3, 2}, /*new_sizes=*/new_bounds);
 
-  std::unique_ptr<Literal> expected = LiteralUtil::Relayout(
-      *LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal),
-      LayoutUtil::MakeLayout({3, 2, 1, 0}));
+  std::unique_ptr<Literal> expected =
+      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+          ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
   // actually corresponds to a two minor transpose.
@@ -684,7 +716,7 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -693,9 +725,9 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
   auto a = builder.Parameter(0, input_literal->shape(), "a");
   builder.Reshape(a, /*dimensions=*/{0, 1, 3, 2}, /*new_sizes=*/new_bounds);
 
-  std::unique_ptr<Literal> expected = LiteralUtil::Relayout(
-      *LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal),
-      LayoutUtil::MakeLayout({3, 2, 1, 0}));
+  std::unique_ptr<Literal> expected =
+      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+          ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
   // actually corresponds to a two minor transpose.
@@ -713,7 +745,7 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -722,9 +754,9 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
   auto a = builder.Parameter(0, input_literal->shape(), "a");
   builder.Reshape(a, /*dimensions=*/{0, 1, 3, 2}, /*new_sizes=*/new_bounds);
 
-  std::unique_ptr<Literal> expected = LiteralUtil::Relayout(
-      *LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal),
-      LayoutUtil::MakeLayout({3, 2, 1, 0}));
+  std::unique_ptr<Literal> expected =
+      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+          ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
   // actually corresponds to a two minor transpose.
@@ -743,7 +775,7 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -752,9 +784,9 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
   auto a = builder.Parameter(0, input_literal->shape(), "a");
   builder.Reshape(a, /*dimensions=*/{0, 1, 3, 2}, /*new_sizes=*/new_bounds);
 
-  std::unique_ptr<Literal> expected = LiteralUtil::Relayout(
-      *LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal),
-      LayoutUtil::MakeLayout({3, 2, 1, 0}));
+  std::unique_ptr<Literal> expected =
+      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+          ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
   // actually corresponds to a two minor transpose.
@@ -772,7 +804,7 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR4FromArray4DWithLayout(
+      Literal::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -781,9 +813,9 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
   auto a = builder.Parameter(0, input_literal->shape(), "a");
   builder.Reshape(a, /*dimensions=*/{1, 0, 2, 3}, /*new_sizes=*/new_bounds);
 
-  std::unique_ptr<Literal> expected = LiteralUtil::Relayout(
-      *LiteralTestUtil::Reshape(new_bounds, {1, 0, 2, 3}, *input_literal),
-      input_literal->shape().layout());
+  std::unique_ptr<Literal> expected =
+      LiteralTestUtil::Reshape(new_bounds, {1, 0, 2, 3}, *input_literal)
+          ->Relayout(input_literal->shape().layout());
 
   // Specify the requested output shape explicitly to ensure that this reshape
   // actually corresponds to a two minor transpose.
@@ -793,20 +825,3 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

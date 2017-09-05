@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.distributions.python.ops import onehot_categorical
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,6 +26,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 
 
@@ -178,8 +178,8 @@ class OneHotCategoricalTest(test.TestCase):
           kl_expected = np.sum(
               prob_p * (np.log(prob_p) - np.log(prob_q)), axis=-1)
 
-          kl_actual = kullback_leibler.kl(p, q)
-          kl_same = kullback_leibler.kl(p, p)
+          kl_actual = kullback_leibler.kl_divergence(p, q)
+          kl_same = kullback_leibler.kl_divergence(p, p)
           x = p.sample(int(2e4), seed=0)
           x = math_ops.cast(x, dtype=dtypes.float32)
           # Compute empirical KL(p||q).

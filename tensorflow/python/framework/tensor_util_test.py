@@ -314,6 +314,17 @@ class TensorUtilTest(test.TestCase):
                   shape=[3, 4],
                   dtype=dtype)))
 
+  def testIntMixedWithDimension(self):
+    # Github issue: 11974
+    dtype = dtypes.int32
+    nptype = np.int32
+    t = tensor_util.make_tensor_proto([10, tensor_shape.Dimension(20), 30],
+                                      dtype=dtype)
+    self.assertEquals(dtype, t.dtype)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(nptype, a.dtype)
+    self.assertAllClose(np.array([10, 20, 30], dtype=nptype), a)
+
   def testLong(self):
     t = tensor_util.make_tensor_proto(10, dtype=dtypes.int64)
     self.assertProtoEquals("""
@@ -713,6 +724,13 @@ class ConstantValueTest(test.TestCase):
     self.assertAllEqual(np_val, c_val)
     self.assertEqual(np.int32, c_val.dtype)
 
+  def testFill(self):
+    np_val = np.array([-1, -1, -1], dtype=np.float32)
+    tf_val = array_ops.fill([3], constant_op.constant(-1.0))
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(np_val, c_val)
+    self.assertEqual(np.float32, c_val.dtype)
+
   def testSize(self):
     tf_val = array_ops.size(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.constant_value(tf_val)
@@ -786,6 +804,43 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
+  def testPack_Partial(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+    c_val = tensor_util.constant_value(tf_val, partial=True)
+    self.assertAllClose(input_, c_val[0])
+    self.assertIsNone(c_val[1])
+
+  def testEqual(self):
+    # Scalar inputs.
+    tf_val = math_ops.equal(constant_op.constant(1), constant_op.constant(1))
+    self.assertEqual(tensor_util.constant_value(tf_val), True)
+
+    tf_val = math_ops.equal(constant_op.constant(1), constant_op.constant(0))
+    self.assertEqual(tensor_util.constant_value(tf_val), False)
+
+    # Shaped inputs with broadcast semantics.
+    tf_val = math_ops.equal(constant_op.constant([[0, 1]]),
+                            constant_op.constant([[0], [1]]))
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(c_val, [[True, False], [False, True]])
+
+  def testNotEqual(self):
+    # Scalar inputs.
+    tf_val = math_ops.not_equal(constant_op.constant(1),
+                                constant_op.constant(1))
+    self.assertEqual(tensor_util.constant_value(tf_val), False)
+
+    tf_val = math_ops.not_equal(constant_op.constant(1),
+                                constant_op.constant(0))
+    self.assertEqual(tensor_util.constant_value(tf_val), True)
+
+    # Shaped inputs with broadcast semantics.
+    tf_val = math_ops.not_equal(constant_op.constant([[0, 1]]),
+                                constant_op.constant([[0], [1]]))
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(c_val, [[False, True], [True, False]])
+
 
 class ConstantValueAsShapeTest(test.TestCase):
 
@@ -824,6 +879,83 @@ class ConstantValueAsShapeTest(test.TestCase):
             dtypes.int32, shape=(1,)), [48]], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, 48], c_val.as_list())
+
+  def testSlice(self):
+    tf_val = array_ops.placeholder(dtypes.int32, shape=(4,))[0:2]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([None, None], c_val.as_list())
+
+    # begin:end
+    tf_val = constant_op.constant([10, 20, 30])[1:3]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([20, 30], c_val.as_list())
+
+    # begin:end:stride
+    tf_val = array_ops.strided_slice(
+        constant_op.constant([10, 20, 30]), [1], [3], strides=[2])
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([20], c_val.as_list())
+
+    # [1, 2, 16, 37, None, 48]
+    tf_val_orig = array_ops.concat(
+        [[1, 2, 16, 37], array_ops.placeholder(
+            dtypes.int32, shape=(1,)), [48]], 0)
+
+    # begin: no end
+    tf_val = tf_val_orig[2:]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([16, 37, None, 48], c_val.as_list())
+
+    # begin::negative slice
+    tf_val = tf_val_orig[2::-1]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([16, 2, 1], c_val.as_list())
+
+    # :end:negative slice
+    tf_val = tf_val_orig[:1:-2]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([48, 37], c_val.as_list())
+
+    # begin:end:negative slice
+    tf_val = tf_val_orig[3:1:-1]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([37, 16], c_val.as_list())
+
+    # begin:negative end:slice
+    tf_val = tf_val_orig[1:-3:1]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([2, 16], c_val.as_list())
+
+    # negative begin::slice
+    tf_val = tf_val_orig[-3::1]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([37, None, 48], c_val.as_list())
+
+    # negative begin::negative slice
+    tf_val = tf_val_orig[-3::-1]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([37, 16, 2, 1], c_val.as_list())
+
+    # negative begin:negative end:negative slice
+    tf_val = tf_val_orig[-3:-5:-1]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([37, 16], c_val.as_list())
+
+    # Do not support shape inference for additional arguments
+    tf_val = constant_op.constant([10, 20, 30])[...]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([None, None, None], c_val.as_list())
+
+    # Do not support shape inference for tensor slices.
+    tf_val = constant_op.constant([10, 20, 30])[
+        array_ops.placeholder(dtypes.int32, shape=()):]
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual(tensor_shape.unknown_shape(), c_val)
+
+    # Do not support shape inference for higher rank
+    with self.assertRaises(ValueError):
+      tf_val = constant_op.constant([[10], [20], [30]])[:, 0:]
+      c_val = tensor_util.constant_value_as_shape(tf_val)
 
 
 if __name__ == "__main__":

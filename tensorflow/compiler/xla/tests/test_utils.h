@@ -61,7 +61,7 @@ std::unique_ptr<Literal> CreateR2LiteralWithLayout(
   auto literal = MakeUnique<Literal>();
   const int64 d0 = values.size();
   const int64 d1 = values.begin()->size();
-  LiteralUtil::PopulateWithValue<NativeT>(0, {d0, d1}, literal.get());
+  literal.get()->PopulateWithValue<NativeT>(0, {d0, d1});
   *literal->mutable_shape()->mutable_layout() =
       LayoutUtil::MakeLayout(minor_to_major);
   TF_CHECK_OK(ShapeUtil::ValidateShape(literal->shape()));
@@ -70,7 +70,7 @@ std::unique_ptr<Literal> CreateR2LiteralWithLayout(
   for (auto inner_list : values) {
     int64 dim1 = 0;
     for (auto value : inner_list) {
-      LiteralUtil::Set(literal.get(), {dim0, dim1}, value);
+      literal.get()->Set({dim0, dim1}, value);
       ++dim1;
     }
     ++dim0;
@@ -88,7 +88,7 @@ std::unique_ptr<Literal> CreateR3LiteralWithLayout(
   const int64 d0 = values.size();
   const int64 d1 = values.begin()->size();
   const int64 d2 = values.begin()->begin()->size();
-  LiteralUtil::PopulateWithValue<NativeT>(0, {d0, d1, d2}, literal.get());
+  literal.get()->PopulateWithValue<NativeT>(0, {d0, d1, d2});
   *literal->mutable_shape()->mutable_layout() =
       LayoutUtil::MakeLayout(minor_to_major);
   TF_CHECK_OK(ShapeUtil::ValidateShape(literal->shape()));
@@ -99,7 +99,7 @@ std::unique_ptr<Literal> CreateR3LiteralWithLayout(
     for (auto inner_inner_list : inner_list) {
       int64 dim2 = 0;
       for (auto value : inner_inner_list) {
-        LiteralUtil::Set(literal.get(), {dim0, dim1, dim2}, value);
+        literal.get()->Set({dim0, dim1, dim2}, value);
         ++dim2;
       }
       ++dim1;

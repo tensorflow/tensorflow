@@ -163,20 +163,20 @@ class GradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
-      with g.device("/gpu:0"):
+      with g.device("/device:GPU:0"):
         wx = math_ops.matmul(w, x)
       gw = gradients.gradients(wx, [w], colocate_gradients_with_ops=True)[0]
     self.assertEqual(gw.op.colocation_groups(), wx.op.colocation_groups())
 
   def testColocateGradientsWithAggregation(self):
     with ops.Graph().as_default() as g:
-      with g.device("/gpu:1"):
+      with g.device("/device:GPU:1"):
         w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
       y = constant(1.0, shape=[1, 2])
       wx = math_ops.matmul(w, x)
       wy = math_ops.matmul(w, y)
-      with g.device("/gpu:0"):
+      with g.device("/device:GPU:0"):
         z = wx + wy
 
       gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
@@ -187,7 +187,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
 
   def testColocateGradientsWithAggregationInMultipleDevices(self):
     with ops.Graph().as_default() as g:
-      with g.device("/gpu:1"):
+      with g.device("/device:GPU:1"):
         w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
       y = constant(1.0, shape=[1, 2])
@@ -195,7 +195,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
         wx = math_ops.matmul(w, x)
       with g.device("/task:2"):
         wy = math_ops.matmul(w, y)
-      with g.device("/gpu:0"):
+      with g.device("/device:GPU:0"):
         z = wx + wy
 
       gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
@@ -577,14 +577,16 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
   def testWarnings(self):
     # TODO(gunan) Reenable after this issue is fixed:
     # https://github.com/google/protobuf/issues/2812
-    if sys.version_info < (3, 6):
-      # Smaller than the threshold: no warning.
-      c_sparse = ops.IndexedSlices(
-          array_ops.placeholder(dtypes.float32),
-          array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
-      with warnings.catch_warnings(record=True) as w:
-        math_ops.multiply(c_sparse, 1.0)
-      self.assertEqual(0, len(w))
+    if sys.version_info >= (3, 6):
+      self.skipTest("Skipped test for Python 3.6+")
+
+    # Smaller than the threshold: no warning.
+    c_sparse = ops.IndexedSlices(
+        array_ops.placeholder(dtypes.float32),
+        array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
+    with warnings.catch_warnings(record=True) as w:
+      math_ops.multiply(c_sparse, 1.0)
+    self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
     c_sparse = ops.IndexedSlices(

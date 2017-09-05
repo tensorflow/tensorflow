@@ -18,7 +18,7 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_TENSOR_CODING_H_
 
 #include <string>
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/platform.h"

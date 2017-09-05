@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
@@ -85,6 +87,39 @@ class AssignSubVariableOp : public XlaOpKernel {
 REGISTER_XLA_OP(
     Name("AssignSubVariableOp").TypeConstraint("dtype", kNumericTypes),
     AssignSubVariableOp);
+
+class ResourceGatherOp : public XlaOpKernel {
+ public:
+  explicit ResourceGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* builder = ctx->builder();
+
+    // Get the shape of the resource tensor.
+    TensorShape resource_shape;
+    DataType resource_dtype;
+    OP_REQUIRES_OK(
+        ctx, ctx->GetVariableTypeAndShape(0, &resource_dtype, &resource_shape));
+
+    DataType expected_output_dtype = ctx->expected_output_dtype(0);
+    OP_REQUIRES(ctx, resource_dtype == expected_output_dtype,
+                errors::InvalidArgument(
+                    "Variable dtype is ", DataTypeString(resource_dtype),
+                    " but expected output dtype is ",
+                    DataTypeString(expected_output_dtype), "."));
+
+    xla::ComputationDataHandle resource_handle;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &resource_handle));
+
+    auto indices = ctx->Input(1);
+    auto indices_shape = ctx->InputShape(1);
+    xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
+        ctx, resource_handle, resource_shape, indices, indices_shape,
+        resource_dtype, builder);
+    ctx->SetOutput(0, gather);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceGather").TypeConstraint("dtype", kNumericTypes),
+                ResourceGatherOp);
 
 }  // namespace
 }  // namespace tensorflow

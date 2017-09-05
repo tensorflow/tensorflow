@@ -23,7 +23,10 @@ from tensorflow.contrib.keras.python.keras.utils import data_utils
 from tensorflow.contrib.keras.python.keras.utils import generic_utils
 from tensorflow.contrib.keras.python.keras.utils import io_utils
 from tensorflow.contrib.keras.python.keras.utils import np_utils
+from tensorflow.contrib.keras.python.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
+from tensorflow.contrib.keras.python.keras.utils.data_utils import OrderedEnqueuer
+from tensorflow.contrib.keras.python.keras.utils.data_utils import Sequence
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import custom_object_scope
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object

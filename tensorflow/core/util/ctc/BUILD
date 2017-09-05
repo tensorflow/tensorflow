@@ -2,14 +2,16 @@
 # is a type of seq2seq loss.  The libraries in this directory
 # implement the CTC loss and a number of CTC decoders.
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "ctc_beam_entry.h",
         "ctc_beam_scorer.h",
@@ -17,6 +19,11 @@ filegroup(
         "ctc_decoder.h",
         "ctc_loss_util.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 filegroup(
@@ -97,5 +104,4 @@ cc_library(
     hdrs = [
         "ctc_loss_util.h",
     ],
-    deps = ["//tensorflow/core:lib"],
 )

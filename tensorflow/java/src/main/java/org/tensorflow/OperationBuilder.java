@@ -28,7 +28,7 @@ import java.nio.charset.Charset;
  * <pre>{@code
  * // g is a Graph instance.
  * try (Tensor c1 = Tensor.create(3.0f)) {
- *   g.opBuilder("Constant", "MyConst")
+ *   g.opBuilder("Const", "MyConst")
  *       .setAttr("dtype", c1.dataType())
  *       .setAttr("value", c1)
  *       .build();
@@ -63,10 +63,43 @@ public final class OperationBuilder {
     }
   }
 
+
+  /**
+   * Returns the builder to create an operation.
+   *
+   * <p>Inputs to TensorFlow operations are outputs of another TensorFlow operation. This method is
+   * used to add a input to a {@link OperationBuilder}.
+   *
+   * @param input {@link Output} supposed to be the input of the OperationBuilder.
+   * @return the OperationBuilder instance for chaining.
+   */
   public OperationBuilder addInput(Output input) {
     Graph.Reference r = graph.ref();
     try {
       addInput(unsafeNativeHandle, input.op().getUnsafeNativeHandle(), input.index());
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  /**
+   * Ensure that the operation does not execute before the control operation does.
+   *
+   * <p>A control input is an Operation that must be executed before running the operation currently
+   * being built.
+   *
+   * <p>For example, an Assert operation may be added as a control input for this operation. The
+   * Assert now behaves as a pre-condition that will always verify itself before running the
+   * operation.
+   *
+   * @param control operation that must be executed before running this operation.
+   * @return the OperationBuilder instance for chaining.
+   */
+  public OperationBuilder addControlInput(Operation control) {
+    Graph.Reference r = graph.ref();
+    try {
+      addControlInput(unsafeNativeHandle, control.getUnsafeNativeHandle());
     } finally {
       r.close();
     }
@@ -233,6 +266,21 @@ public final class OperationBuilder {
     return this;
   }
 
+  public OperationBuilder setAttr(String name,  String[] value) {
+    Charset utf8 = Charset.forName("UTF-8");
+    Object[] objects = new Object[value.length];
+    for (int i = 0; i < value.length; ++i) {
+      objects[i] = value[i].getBytes(utf8);
+    }
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrStringList(unsafeNativeHandle, name, objects);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
   private long unsafeNativeHandle;
   private Graph graph;
 
@@ -244,14 +292,13 @@ public final class OperationBuilder {
 
   private static native void addInputList(long handle, long[] opHandles, int[] indices);
 
+  private static native void addControlInput(long handle, long opHandle);
+
   private static native void setDevice(long handle, String device);
 
   // The names of all the setAttr* family functions below correspond to the C library types, not the
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
-  //
   // TODO(ashankar):
-  // - setAttrStringList: Which would take in an array of byte[] (java Strings will need to be UTF-8
-  //   encoded?)
   // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
@@ -277,4 +324,7 @@ public final class OperationBuilder {
   private static native void setAttrTensorList(long handle, String name, long[] tensorHandle);
 
   private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
+
+  private static native void setAttrStringList(long handle, String name, Object[] value);
+
 }

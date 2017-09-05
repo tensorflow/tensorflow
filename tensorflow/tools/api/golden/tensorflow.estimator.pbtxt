@@ -1,0 +1,59 @@
+path: "tensorflow.estimator"
+tf_module {
+  member {
+    name: "DNNClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DNNLinearCombinedClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DNNLinearCombinedRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DNNRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Estimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "EstimatorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ModeKeys"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RunConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "export"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "inputs"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "classifier_parse_example_spec"
+    argspec: "args=[\'feature_columns\', \'label_key\', \'label_dtype\', \'label_default\', \'weight_column\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "regressor_parse_example_spec"
+    argspec: "args=[\'feature_columns\', \'label_key\', \'label_dtype\', \'label_default\', \'label_dimension\', \'weight_column\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'1\', \'None\'], "
+  }
+}

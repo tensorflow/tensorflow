@@ -34,8 +34,8 @@ def md_files_in_dir(py_guide_src_dir):
 class PyGuideParser(object):
   """Simple parsing of a guide .md file.
 
-  Decendents can override the process_*() functions (called by process())
-  to either record infromation from the guide, or call replace_line()
+  Descendants can override the process_*() functions (called by process())
+  to either record information from the guide, or call replace_line()
   to affect the return value of process().
   """
 

@@ -50,12 +50,16 @@ void SplitCustom<Device, T>::operator()(
 #define DEFINE_GPU_KERNELS(T) template struct Split<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_complex64(DEFINE_GPU_KERNELS);
+TF_CALL_complex128(DEFINE_GPU_KERNELS);
 DEFINE_GPU_KERNELS(bfloat16);
 
 #undef DEFINE_GPU_KERNELS
 #define DEFINE_GPU_KERNELS(T) template struct SplitCustom<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_complex64(DEFINE_GPU_KERNELS);
+TF_CALL_complex128(DEFINE_GPU_KERNELS);
 DEFINE_GPU_KERNELS(bfloat16);
 
 #undef DEFINE_GPU_KERNELS
@@ -134,7 +138,8 @@ __global__ void split_v_kernel(const T* input_ptr,
   // do an initial binary search and then scan linearly from there
   // works well when there are many small segments and when the
   // segments are much longer
-  IntType segment = gpu::upper_bound<IntType>(col_scan, num_outputs, gidx) - 1;
+  IntType segment =
+      cuda_helper::upper_bound<IntType>(col_scan, num_outputs, gidx) - 1;
 
   IntType curr_offset = col_scan[segment];
   IntType curr_segment = segment;
@@ -191,10 +196,10 @@ struct SplitOpGPULaunch {
     CudaLaunchConfig config = GetCudaLaunchConfig(
         prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
-    SplitOpKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        input, prefix_dim_size, split_dim_size, suffix_dim_size,
-        output_ptr_data);
+    SplitOpKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            input, prefix_dim_size, split_dim_size, suffix_dim_size,
+            output_ptr_data);
   }
 };
 
@@ -220,15 +225,15 @@ struct SplitVOpGPULaunch {
       // 4096 inputs is a lot, most code will take the smem path
       const int32 kMaxSmemBytesPerformance = 16384;
       if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance)
-        split_v_kernel<T, IntType,
-                       true><<<config.block_count, config.thread_per_block,
-                               smem_usage, gpu_device.stream()>>>(
-            input_ptr, output_scan, total_rows, total_cols, output_ptr_data);
+        split_v_kernel<T, IntType, true>
+            <<<config.block_count, config.thread_per_block, smem_usage,
+               gpu_device.stream()>>>(input_ptr, output_scan, total_rows,
+                                      total_cols, output_ptr_data);
       else
-        split_v_kernel<T, IntType,
-                       false><<<config.block_count, config.thread_per_block, 0,
-                                gpu_device.stream()>>>(
-            input_ptr, output_scan, total_rows, total_cols, output_ptr_data);
+        split_v_kernel<T, IntType, false>
+            <<<config.block_count, config.thread_per_block, 0,
+               gpu_device.stream()>>>(input_ptr, output_scan, total_rows,
+                                      total_cols, output_ptr_data);
     }
   }
 };
@@ -236,12 +241,16 @@ struct SplitVOpGPULaunch {
 #define REGISTER_GPU_KERNEL(T) template struct SplitOpGPULaunch<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_complex64(REGISTER_GPU_KERNEL);
+TF_CALL_complex128(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #define REGISTER_GPU_KERNEL(T)                 \
   template struct SplitVOpGPULaunch<T, int32>; \
   template struct SplitVOpGPULaunch<T, int64>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_complex64(REGISTER_GPU_KERNEL);
+TF_CALL_complex128(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bfloat16);
 #undef REGISTER_GPU_KERNEL
 

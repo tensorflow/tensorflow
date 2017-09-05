@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include <set>
-
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Forward declare proto so that it's symbols can be removed from .so exports
+class GraphDef;
 
 // Produce a human-readable version of a GraphDef that is more concise
 // than a text-format proto.
@@ -62,7 +63,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 // attr with a default was added). Note that this will not affect
 // attrs with non-default values, so you must run a
 // ValidateGraphDef...() function to see if the result is in fact
-// compatible. If not nulllptr, the op/attr pairs that were removed
+// compatible. If not nullptr, the op/attr pairs that were removed
 // are added to '*op_attr_removed'.
 //
 // Expected usage, for a producer that wants to prepare a graph for

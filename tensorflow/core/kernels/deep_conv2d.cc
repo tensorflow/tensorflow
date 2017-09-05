@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// DeepConv2D is a Conv2D implementation specialzied for deep convolutions (i.e
+// DeepConv2D is a Conv2D implementation specialized for deep convolutions (i.e
 // large 'in_depth' and 'out_depth' product. See cost models below for details).
 //
 // DeepConv2D is implemented by computing the following equation:
@@ -1069,7 +1069,7 @@ struct DeepConv2D<CPUDevice, T> {
       // Allocate temporary buffer 'buffer2', which is first used for
       // transformed input tiles, then re-used for transformed output tiles.
       // Calculate required buffer size for 'buffer2' as max required buffer
-      // between input and output tranform buffer sizes.
+      // between input and output transform buffer sizes.
       const int64 buffer2_tile_transform_size =
           tile_spatial_size * num_tiles * in_depth;
       const int64 buffer2_out_transform_size =

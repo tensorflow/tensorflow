@@ -17,12 +17,19 @@ limitations under the License.
 
 #include <vector>
 
+#define EIGEN_USE_THREADS
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -91,15 +98,33 @@ int64 TestAllocator::deallocation_count(int device_ordinal) const {
   return allocator_;
 }
 
+// Define this in .cc file to avoid having to include eigen or forward declare
+// these types in the header.
+struct LocalClientTestBase::EigenThreadPoolWrapper {
+  explicit EigenThreadPoolWrapper()
+      : pool(new tensorflow::thread::ThreadPool(
+            tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
+        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
+        device(new Eigen::ThreadPoolDevice(wrapper.get(),
+                                           wrapper->NumThreads())) {}
+
+  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
+  std::unique_ptr<Eigen::ThreadPoolDevice> device;
+};
+
 LocalClientTestBase::LocalClientTestBase(
     perftools::gputools::Platform* platform)
     : local_client_(
-          ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()) {
+          ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
+      thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
                          .ValueOrDie()[local_client_->default_device_ordinal()];
   transfer_manager_ =
       TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
 }
+
+LocalClientTestBase::~LocalClientTestBase() {}
 
 std::unique_ptr<ScopedShapedBuffer>
 LocalClientTestBase::LiteralToScopedShapedBuffer(const Literal& literal) {
@@ -166,18 +191,13 @@ LocalClientTestBase::ShapedBufferToScopedShapedBuffer(
   }
   *scoped_buffer->mutable_buffers() = shaped_buffer->buffers();
 
-  TF_CHECK_OK(
-      scoped_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
-              [&shaped_buffer](const ShapeIndex& index, bool is_leaf,
-                               size_t* buffer_entry) -> ::tensorflow::Status {
-                if (is_leaf) {
-                  *buffer_entry =
-                      shaped_buffer->shape_index_to_buffer_entry().element(
-                          index);
-                }
-                return tensorflow::Status::OK();
-              }));
+  scoped_buffer->mutable_shape_index_to_buffer_entry()->ForEachMutableElement(
+      [&shaped_buffer](const ShapeIndex& index, size_t* buffer_entry) {
+        if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
+          *buffer_entry =
+              shaped_buffer->shape_index_to_buffer_entry().element(index);
+        }
+      });
   return scoped_buffer;
 }
 
@@ -190,8 +210,7 @@ ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
   ExecutableRunOptions run_options;
   run_options.set_inter_op_thread_pool(
       local_client_->backend().inter_op_thread_pool());
-  run_options.set_intra_op_thread_pool(
-      local_client_->backend().eigen_intra_op_thread_pool_device());
+  run_options.set_intra_op_thread_pool(thread_pool_wrapper_->device.get());
   run_options.set_allocator(GetOrCreateAllocator(local_client_->platform()));
   return run_options;
 }

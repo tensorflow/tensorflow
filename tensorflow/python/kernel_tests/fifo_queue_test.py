@@ -1078,6 +1078,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual([50.0], dequeued_t.eval())
       self.assertEqual([60.0], dequeued_t.eval())
 
+      # Make sure the thread finishes before exiting.
+      thread.join()
+
   def testBlockingEnqueueBeforeClose(self):
     with self.test_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
@@ -1372,7 +1375,8 @@ class FIFOQueueTest(test.TestCase):
       dtypes = [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
           dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8, dtypes_lib.int64,
-          dtypes_lib.bool, dtypes_lib.complex64, dtypes_lib.complex128
+          dtypes_lib.uint16, dtypes_lib.bool, dtypes_lib.complex64,
+          dtypes_lib.complex128
       ]
       shape = (32, 4, 128)
       q = data_flow_ops.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))

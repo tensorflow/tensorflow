@@ -63,7 +63,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     x: tensor or placeholder for input features.
     y: tensor or placeholder for labels.
     init_mean: the mean value to use for initialization.
-    init_stddev: the standard devation to use for initialization.
+    init_stddev: the standard deviation to use for initialization.
 
   Returns:
     Predictions and loss tensors.
@@ -124,7 +124,7 @@ def logistic_regression(x,
                   will check if graph contains tensor `class_weight:0`.
                   If that is not provided either all ones are used.
     init_mean: the mean value to use for initialization.
-    init_stddev: the standard devation to use for initialization.
+    init_stddev: the standard deviation to use for initialization.
 
   Returns:
     Predictions and loss tensors.

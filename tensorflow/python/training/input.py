@@ -40,7 +40,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
@@ -63,9 +63,10 @@ def match_filenames_once(pattern, name=None):
     A variable that is initialized to the list of files matching the pattern(s).
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
-    return variables.Variable(io_ops.matching_files(pattern), trainable=False,
-                              name=name, validate_shape=False,
-                              collections=[ops.GraphKeys.LOCAL_VARIABLES])
+    return vs.variable(
+        name=name, initial_value=io_ops.matching_files(pattern),
+        trainable=False, validate_shape=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
 
 def limit_epochs(tensor, num_epochs=None, name=None):
@@ -92,7 +93,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
   with ops.name_scope(name, "limit_epochs", [tensor]) as name:
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    epochs = variables.Variable(
+    epochs = vs.variable(
         zero64, name="epochs", trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
     counter = epochs.count_up_to(num_epochs)
@@ -147,7 +148,7 @@ def input_producer(input_tensor,
   """
   with ops.name_scope(name, "input_producer", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
-    element_shape = input_tensor.get_shape()[1:].merge_with(element_shape)
+    element_shape = input_tensor.shape[1:].merge_with(element_shape)
     if not element_shape.is_fully_defined():
       raise ValueError("Either `input_tensor` must have a fully defined shape "
                        "or `element_shape` must be specified")
@@ -167,7 +168,7 @@ def input_producer(input_tensor,
             q, [enq], cancel_op=cancel_op))
     if summary_name is not None:
       summary.scalar(summary_name,
-                     math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
+                     math_ops.to_float(q.size()) * (1. / capacity))
     return q
 
 
@@ -196,7 +197,10 @@ def string_input_producer(string_tensor,
     seed: An integer (optional). Seed used if shuffle == True.
     capacity: An integer. Sets the queue capacity.
     shared_name: (optional). If set, this queue will be shared under the given
-      name across multiple sessions.
+      name across multiple sessions. All sessions open to the device which has
+      this queue will be able to access it via the shared_name. Using this in
+      a distributed setting means each name will only be seen by one of the
+      sessions which has access to this operation.
     name: A name for the operations (optional).
     cancel_op: Cancel op for the queue (optional).
 
@@ -378,7 +382,7 @@ class _SparseMetaData(object):
 
 def _as_tensor_list(tensors):
   if isinstance(tensors, dict):
-    return [tensors[k] for k in sorted(tensors)]
+    return [tensors[k] for k in sorted(tensors, key=str)]
   else:
     return tensors
 
@@ -404,7 +408,7 @@ def _as_original_type(original_tensors, tensor_list):
       # was enqueued.  Make it a list again.  See b/28117485.
       tensor_list = [tensor_list]
     return {k: tensor_list[i]
-            for i, k in enumerate(sorted(original_tensors))}
+            for i, k in enumerate(sorted(original_tensors, key=str))}
   else:
     return tensor_list
 
@@ -461,7 +465,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
   def _sparse_meta_data(t, storing_op, map_op):
     if not isinstance(t, sparse_tensor.SparseTensor):
       return _SparseMetaData(False, None, None)
-    rank = t.dense_shape.get_shape().with_rank(1)[0]
+    rank = t.dense_shape.shape.with_rank(1)[0]
     if enqueue_many:
       rank -= 1
     # If a shared map_op was provided, use that. Otherwise use the name of
@@ -488,8 +492,15 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
       out_tensor.set_shape([None])  # necessary when t.ndims is unknown
       return out_tensor
-    if keep_input.get_shape().ndims == 1:
-      t = sparse_ops.sparse_retain(t, keep_input)
+    def _sparse_values_to_keep(t, keep_input):
+      """Convert a per-row `keep_input` vector to a per-value one."""
+      # Get the rows of every value in the sparse Tensor.
+      row_values = array_ops.reshape(
+          t.indices, [array_ops.shape(t.indices)[0], -1])[:, 0]
+      # The value should be kept iff the row should be kept.
+      return array_ops.gather(keep_input, row_values)
+    if keep_input.shape.ndims == 1:
+      t = sparse_ops.sparse_retain(t, _sparse_values_to_keep(t, keep_input))
       store_f = lambda t, name, _: _store_many_sparse(t, shared_name=name)
     elif enqueue_many:
       store_f = _maybe_store_many_sparse
@@ -573,13 +584,13 @@ def _validate_join(tensor_list_list):
 def _validate_keep_input(keep_input, enqueue_many):
   """Validate `keep_input` argument to conditional batching functions."""
   keep_input = ops.convert_to_tensor(keep_input)
-  if keep_input.get_shape().ndims is None:
+  if keep_input.shape.ndims is None:
     raise ValueError(
         "`keep_input` dimensions must be known at graph construction.")
-  if not enqueue_many and keep_input.get_shape().ndims == 1:
+  if not enqueue_many and keep_input.shape.ndims == 1:
     raise ValueError(
         "`keep_input` cannot be a vector when `enqueue_many=False`.")
-  if keep_input.get_shape().ndims > 1:
+  if keep_input.shape.ndims > 1:
     raise ValueError("`keep_input` must be 0 or 1 dimensions.")
   return keep_input
 
@@ -628,18 +639,18 @@ def _shapes(tensor_list_list, shapes, enqueue_many):
 
     for tl in tensor_list_list:
       for i in xrange(len0):
-        if tl[i].get_shape().ndims is None:
+        if tl[i].shape.ndims is None:
           raise ValueError("Cannot infer Tensor's rank: %s" % tl[i])
 
     shapes = [_merge_shapes(
-        [tl[i].get_shape().as_list() for tl in tensor_list_list], enqueue_many)
+        [tl[i].shape.as_list() for tl in tensor_list_list], enqueue_many)
               for i in xrange(len0)]
   return shapes
 
 
 def _select_which_to_enqueue(tensor_list, keep_input):
   """Select which examples to enqueue based on vector `keep_input`."""
-  select_i = math_ops.cast(keep_input, dtypes.int32)
+  select_i = math_ops.to_int32(keep_input)
   tensor_list = [
       data_flow_ops.dynamic_partition(x, select_i, num_partitions=2)[1]
       for x in tensor_list]
@@ -652,7 +663,7 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
     enqueue_fn = queue.enqueue_many
   else:
     enqueue_fn = queue.enqueue
-  if keep_input.get_shape().ndims == 1:
+  if keep_input.shape.ndims == 1:
     enqueue_ops = [enqueue_fn(_select_which_to_enqueue(x, keep_input))
                    for x in tensor_list_list]
   else:
@@ -669,7 +680,7 @@ def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
     enqueue_fn = queue.enqueue_many
   else:
     enqueue_fn = queue.enqueue
-  if keep_input.get_shape().ndims == 1:
+  if keep_input.shape.ndims == 1:
     enqueue_ops = [
         enqueue_fn(_select_which_to_enqueue(tensor_list, keep_input))] * threads
   else:
@@ -703,8 +714,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
     summary.scalar("fraction_of_%d_full" % capacity,
-                   math_ops.cast(queue.size(), dtypes.float32) *
-                   (1. / capacity))
+                   math_ops.to_float(queue.size()) * (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -738,8 +748,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
     summary.scalar("fraction_of_%d_full" % capacity,
-                   math_ops.cast(queue.size(), dtypes.float32) *
-                   (1. / capacity))
+                   math_ops.to_float(queue.size()) * (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -758,6 +767,9 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
+    if capacity <= min_after_dequeue:
+      raise ValueError("capacity %d must be bigger than min_after_dequeue %d."
+                       % (capacity, min_after_dequeue))
     tensor_list = _validate(tensor_list)
     keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list, sparse_info = _store_sparse_tensors(
@@ -768,8 +780,8 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
-    full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-                          dtypes.float32) *
+    full = (math_ops.to_float(
+        math_ops.maximum(0, queue.size() - min_after_dequeue)) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
@@ -805,8 +817,8 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
-    full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-                          dtypes.float32) *
+    full = (math_ops.to_float(
+        math_ops.maximum(0, queue.size() - min_after_dequeue)) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
@@ -872,16 +884,14 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
-
-  Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -933,7 +943,8 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       corresponding value in `keep_input` is `True`. This tensor essentially
       acts as a filtering mechanism.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -976,6 +987,9 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   The `tensors_list` argument is a list of tuples of tensors, or a list of
   dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.batch()`.
+
+  WARNING: This function is nondeterministic, since it starts a separate thread
+  for each tensor.
 
   Enqueues a different list of tensors in different threads.
   Implemented using a queue -- a `QueueRunner` for the queue
@@ -1024,7 +1038,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1079,8 +1093,8 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     batch_size: An integer. The new batch size pulled from the queue.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single
@@ -1169,11 +1183,8 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
-
-  Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.
@@ -1233,8 +1244,8 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     num_threads: The number of threads enqueuing `tensor_list`.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list` is a single example.
@@ -1314,7 +1325,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1375,8 +1386,8 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single
       example.
