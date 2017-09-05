@@ -572,9 +572,15 @@ def gradients(ys,
       # Update pending count for the inputs of op and enqueue ready ops.
       _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state)
 
-  if loop_state:
-    loop_state.PostProcessing()
-  return [_GetGrad(grads, x) for x in xs]
+    if loop_state:
+      loop_state.PostProcessing()
+ 
+    result = [_GetGrad(grads, x) for x in xs]
+    if result == None:
+        raise Exception
+    
+    return result
+
 
 
 def _HasAnyNotNoneGrads(grads, op):
