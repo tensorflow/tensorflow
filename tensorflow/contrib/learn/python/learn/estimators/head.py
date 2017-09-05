@@ -22,13 +22,13 @@ import abc
 
 import six
 
-from tensorflow.contrib import framework as framework_lib
 from tensorflow.contrib import layers as layers_lib
 from tensorflow.contrib.learn.python.learn.estimators import constants
-from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey as mkey
+from tensorflow.python.estimator import model_fn
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import framework_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -120,7 +120,7 @@ class Head(object):
       update_op = tf.contrib.layers.optimize_loss(optimizer=sync,
                                                   loss=model_fn_ops.loss, ...)
       hooks = [sync.make_session_run_hook(is_chief)]
-      ... upate train_op and hooks in ModelFnOps and return
+      ... update train_op and hooks in EstimatorSpec and return
     ```
   """
   __metaclass__ = abc.ABCMeta
@@ -145,7 +145,7 @@ class Head(object):
                           logits=None,
                           logits_input=None,
                           scope=None):
-    """Returns `ModelFnOps` that a model_fn can return.
+    """Returns `EstimatorSpec` that a model_fn can return.
 
     Please note that,
     + Exactly one of `logits` and `logits_input` must be provided.
@@ -169,7 +169,7 @@ class Head(object):
       scope: Optional scope for `variable_scope`.
 
     Returns:
-      An instance of `ModelFnOps`.
+      An instance of `EstimatorSpec`.
 
     Raises:
       ValueError: If `mode` is not recognized.
@@ -620,7 +620,7 @@ def _create_model_fn_ops(features,
                          head_name=None,
                          weight_column_name=None,
                          enable_centered_bias=False):
-  """Returns a `ModelFnOps` object."""
+  """Returns a `EstimatorSpec` object."""
   _check_mode_valid(mode)
 
   centered_bias = None
@@ -632,7 +632,7 @@ def _create_model_fn_ops(features,
   loss = None
   train_op = None
   eval_metric_ops = None
-  if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+  if (mode != model_fn.ModeKeys.PREDICT) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
     # Uses the deprecated API to set the tag explicitly.
@@ -648,13 +648,13 @@ def _create_model_fn_ops(features,
                            batch_size, loss_fn, weight_tensor)
     eval_metric_ops = metrics_fn(
         weighted_average_loss, predictions, labels, weight_tensor)
-  return model_fn.ModelFnOps(
+  return model_fn.EstimatorSpec(
       mode=mode,
       predictions=predictions,
       loss=loss,
       train_op=train_op,
       eval_metric_ops=eval_metric_ops,
-      output_alternatives=create_output_alternatives_fn(predictions))
+      export_outputs=create_output_alternatives_fn(predictions))
 
 
 class _RegressionHead(_SingleHead):
@@ -738,7 +738,7 @@ class _RegressionHead(_SingleHead):
 
   def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
-    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+    if (mode == model_fn.ModeKeys.PREDICT) or (labels is None):
       return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
@@ -860,7 +860,7 @@ class _BinaryLogisticHead(_SingleHead):
 
   def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
-    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+    if (mode == model_fn.ModeKeys.PREDICT) or (labels is None):
       return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
@@ -1065,7 +1065,7 @@ class _MultiClassHead(_SingleHead):
 
   def _transform_labels(self, mode, labels):
     """Returns a dict that contains both the original labels and label IDs."""
-    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+    if (mode == model_fn.ModeKeys.PREDICT) or (labels is None):
       return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
@@ -1262,7 +1262,7 @@ class _BinarySvmHead(_SingleHead):
 
   def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
-    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+    if (mode == model_fn.ModeKeys.PREDICT) or (labels is None):
       return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
@@ -1362,7 +1362,7 @@ class _MultiLabelHead(_SingleHead):
 
   def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
-    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+    if (mode == model_fn.ModeKeys.PREDICT) or (labels is None):
       return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     labels_tensor = _sparse_labels_to_indicator(labels_tensor,
@@ -1471,7 +1471,7 @@ class _LossOnlyHead(Head):
           constructs a separate variable_scope according to its `head_name`.
 
     Returns:
-      A `ModelFnOps` object.
+      A `EstimatorSpec` object.
 
     Raises:
       ValueError: if `mode` is not recognition.
@@ -1479,7 +1479,7 @@ class _LossOnlyHead(Head):
     _check_mode_valid(mode)
     loss = None
     train_op = None
-    if mode != model_fn.ModeKeys.INFER:
+    if mode != model_fn.ModeKeys.PREDICT:
       with variable_scope.variable_scope(scope, default_name=self.head_name):
         loss = self._loss_fn()
         if isinstance(loss, list):
@@ -1492,7 +1492,7 @@ class _LossOnlyHead(Head):
           with ops.name_scope(None, "train_op", (loss,)):
             train_op = train_op_fn(loss)
 
-    return model_fn.ModelFnOps(
+    return model_fn.EstimatorSpec(
         mode=mode,
         loss=loss,
         train_op=train_op,
@@ -1595,7 +1595,7 @@ class _MultiHead(Head):
         constructs a separate variable_scope according to its `head_name`.
 
     Returns:
-      `ModelFnOps`.
+      `EstimatorSpec`.
 
     Raises:
       ValueError: if `mode` is not recognized, or neither or both of `logits`
@@ -1641,7 +1641,7 @@ class _MultiHead(Head):
       if train_op_fn is None:
         raise ValueError("train_op_fn can not be None in TRAIN mode.")
       return self._merge_train(all_model_fn_ops, train_op_fn)
-    if mode == model_fn.ModeKeys.INFER:
+    if mode == model_fn.ModeKeys.PREDICT:
       return self._merge_infer(all_model_fn_ops)
     if mode == model_fn.ModeKeys.EVAL:
       return self._merge_eval(all_model_fn_ops)
@@ -1667,15 +1667,15 @@ class _MultiHead(Head):
     return all_logits
 
   def _merge_train(self, all_model_fn_ops, train_op_fn):
-    """Merges list of ModelFnOps for training.
+    """Merges list of EstimatorSpec for training.
 
     Args:
-      all_model_fn_ops: list of ModelFnOps for the individual heads.
+      all_model_fn_ops: list of EstimatorSpec for the individual heads.
       train_op_fn: Function to create train op. See `create_model_fn_ops`
           documentation for more details.
 
     Returns:
-      ModelFnOps that merges all heads for TRAIN.
+      EstimatorSpec that merges all heads for TRAIN.
     """
     losses = []
     additional_train_ops = []
@@ -1686,19 +1686,19 @@ class _MultiHead(Head):
 
     train_op = train_op_fn(loss)
     train_op = control_flow_ops.group(train_op, *additional_train_ops)
-    return model_fn.ModelFnOps(
+    return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         loss=loss,
         train_op=train_op)
 
   def _merge_infer(self, all_model_fn_ops):
-    """Merges list of ModelFnOps for inference.
+    """Merges list of EstimatorSpec for inference.
 
     Args:
-      all_model_fn_ops: list of ModelFnOps for the individual heads.
+      all_model_fn_ops: list of EstimatorSpec for the individual heads.
 
     Returns:
-      ModelFnOps that Merges all the heads for INFER.
+      EstimatorSpec that Merges all the heads for INFER.
     """
     predictions = {}
     output_alternatives = {}
@@ -1710,19 +1710,19 @@ class _MultiHead(Head):
       for k, v in m.predictions.items():
         predictions[(head_name, k)] = v
 
-    return model_fn.ModelFnOps(
-        mode=model_fn.ModeKeys.INFER,
+    return model_fn.EstimatorSpec(
+        mode=model_fn.ModeKeys.PREDICT,
         predictions=predictions,
-        output_alternatives=output_alternatives)
+        export_outputs=output_alternatives)
 
   def _merge_eval(self, all_model_fn_ops):
-    """Merges list of ModelFnOps for eval.
+    """Merges list of EstimatorSpec for eval.
 
     Args:
-      all_model_fn_ops: list of ModelFnOps for the individual heads.
+      all_model_fn_ops: list of EstimatorSpec for the individual heads.
 
     Returns:
-      ModelFnOps that merges all the heads for EVAL.
+      EstimatorSpec that merges all the heads for EVAL.
     """
     predictions = {}
     metrics = {}
@@ -1737,7 +1737,7 @@ class _MultiHead(Head):
         metrics[k] = v
     loss = self._loss_merger(losses)
 
-    return model_fn.ModelFnOps(
+    return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.EVAL,
         predictions=predictions,
         loss=loss,
@@ -1821,7 +1821,7 @@ def _wrap_custom_loss_fn(loss_fn):
 
 def _check_mode_valid(mode):
   """Raises ValueError if the given mode is invalid."""
-  if (mode != model_fn.ModeKeys.TRAIN and mode != model_fn.ModeKeys.INFER and
+  if (mode != model_fn.ModeKeys.TRAIN and mode != model_fn.ModeKeys.PREDICT and
       mode != model_fn.ModeKeys.EVAL):
     raise ValueError("mode=%s unrecognized." % str(mode))
 
