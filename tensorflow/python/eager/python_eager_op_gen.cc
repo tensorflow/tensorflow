@@ -659,14 +659,26 @@ void GenEagerPythonOp::AddEagerExecute(const string& num_outputs_expr) {
 
 string GetEagerPythonOps(const OpList& ops,
                          const std::vector<string>& hidden_ops,
-                         bool require_shapes) {
+                         bool require_shapes,
+                         const string& source_file_name = "") {
+
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
-  strings::StrAppend(&result, R"("""Python wrappers for TensorFlow ops.
+  strings::StrAppend(&result, R"("""Python wrappers around TensorFlow ops.
 
 This file is MACHINE GENERATED! Do not edit.
-"""
+)");
+ 
+  // Mention the original source file so someone tracing back through generated
+  // Python code will know where to look next.
+  if (!source_file_name.empty()) {
+    strings::StrAppend(&result, "Original C++ source file: ");
+    strings::StrAppend(&result, source_file_name);
+    strings::StrAppend(&result, "\n");
+  }
+ 
+  strings::StrAppend(&result, R"("""
 
 import collections as _collections
 
@@ -747,8 +759,11 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 
 void PrintEagerPythonOps(const OpList& ops,
                          const std::vector<string>& hidden_ops,
-                         bool require_shapes) {
-  printf("%s", GetEagerPythonOps(ops, hidden_ops, require_shapes).c_str());
+                         bool require_shapes,
+                         const string& source_file_name) 
+{
+  printf("%s", GetEagerPythonOps(ops, hidden_ops, require_shapes, 
+                                 source_file_name).c_str());
 }
 
 string GetEagerPythonWrappers(const char* op_list_buf, size_t op_list_len) {
