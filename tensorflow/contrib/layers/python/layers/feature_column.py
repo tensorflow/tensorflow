@@ -2559,10 +2559,10 @@ def _create_sequence_feature_spec_for_parsing(sequence_feature_columns,
   feature_spec = create_feature_spec_for_parsing(sequence_feature_columns)
   sequence_feature_spec = {}
   for key, feature in feature_spec.items():
-    if (isinstance(feature, parsing_ops.VarLenFeature) or
-        isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
+    if isinstance(feature, parsing_ops.VarLenFeature):
       sequence_feature = feature
-    elif isinstance(feature, parsing_ops.FixedLenFeature):
+    elif (isinstance(feature, parsing_ops.FixedLenFeature) or
+          isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
       default_is_set = feature.default_value is not None
       if default_is_set:
         logging.warning(

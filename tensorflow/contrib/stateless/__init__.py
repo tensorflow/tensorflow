@@ -34,5 +34,11 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.stateless.gen_stateless_random_ops import *
 
+from tensorflow.python.framework import ops
 from tensorflow.python.util.all_util import remove_undocumented
+
+ops.NotDifferentiable("StatelessRandomNormal")
+ops.NotDifferentiable("StatelessRandomUniform")
+ops.NotDifferentiable("StatelessTruncatedNormal")
+
 remove_undocumented(__name__)

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"

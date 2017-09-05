@@ -548,6 +548,14 @@ class HloInstruction {
   string ToString(bool compact_operands = false,
                   bool include_metadata = true) const;
 
+  // Components of the ToString() representation:
+
+  // Returns a string representation of the operand list.
+  string OperandsToString(bool compact) const;
+
+  // Returns string representation of op-specific attributes.
+  std::vector<string> ExtraAttributesToString() const;
+
   string ToStringNoMetadata() const { return ToString(false, false); }
 
   // As ToString, but returns a shorter string.
