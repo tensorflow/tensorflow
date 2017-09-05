@@ -77,6 +77,10 @@ class SymbolicGradientBuilder {
   Status CallGradFunction(const Operation& op,
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs);
+  
+  // Returns a list mapping whether each node in the graph is reachable
+  // from outputs_. Keyed by node id.
+  std::vector<bool> GetReachableNodes();
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -143,11 +147,36 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
   return Status::OK();
 }
 
+std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
+  std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
+  std::deque<Node*> queue;
+  for (const Output& out : outputs_) {
+    if (!reachable_nodes[out.node()->id()]) {
+      queue.push_back(out.node());
+      reachable_nodes[out.node()->id()] = true;
+    }
+  }
+  
+  while (!queue.empty()) {
+    Node* n = queue.front();
+    queue.pop_front();
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) continue;
+      queue.push_back(e->src());
+      reachable_nodes[e->src()->id()] = true;
+    }
+  }
+  return reachable_nodes;
+}
+
 Status SymbolicGradientBuilder::Initialize() {
   if (outputs_.size() != grad_inputs_.size()) {
     return errors::InvalidArgument(
         "Must specify a gradient input for each output.");
   }
+  std::vector<bool> reachable_nodes = GetReachableNodes();
+  // TODO(theflofly) Check that inputs_ are reachable from
+  // outputs_ using reachable_nodes
   grad_outputs_->clear();
   grad_outputs_->resize(inputs_.size());
   // Populate `output_nodes_` from node ids in `outputs_`.
@@ -188,12 +217,15 @@ Status SymbolicGradientBuilder::Initialize() {
       if (output_nodes_.find(n->id()) == output_nodes_.end()) {
         // Internal node: continue BFS along connected outputs.
         for (const Edge* e : n->out_edges()) {
-          if (e->IsControlEdge()) continue;
-          ++num_expected_backprops;
+          // If a node is not reachable from outputs_,
+          // we don't expect it to receive a backpropagated gradient.
+          // It will not be counted in num_expected_backprops.
+          if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
           if (visited.find(e->dst()) == visited.end()) {
             queue.push_back(e->dst());
             visited.insert(e->dst());
           }
+          ++num_expected_backprops;
         }
       } else {
         // Output node: stop BFS and update `num_expected_backprops` for
