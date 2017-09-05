@@ -529,7 +529,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   const int64 out_depths = GetTensorDim(*output, data_format, 'C');
   const int64 patch_rows = filter.dim_size(0);
   const int64 patch_cols = filter.dim_size(1);
-  if (padding == Eigen::PADDING_SAME) {
+  if (padding == SAME) {
     // Total padding on rows and cols is
     // Pr = (R' - 1) * S + Kr - R
     // Pc = (C' - 1) * S + Kc - C
