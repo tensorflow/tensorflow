@@ -464,6 +464,7 @@ cc_binary(
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
             "//tensorflow/c:exported_symbols.lds",
+            "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
