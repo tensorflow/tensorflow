@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -137,52 +138,58 @@ class InverseOpTest(test.TestCase):
 
 class MatrixInverseBenchmark(test.Benchmark):
 
-  sizes = [
+  shapes = [
       (4, 4),
+      (10, 10),
       (16, 16),
+      (101, 101),
       (256, 256),
+      (1000, 1000),
       (1024, 1024),
+      (2048, 2048),
       (513, 4, 4),
       (513, 16, 16),
       (513, 256, 256),
   ]
 
-  def _GenerateData(self, size):
-    batch_shape = size[:-2]
-    size = size[-2:]
-    assert size[0] == size[1]
-    n = size[0]
-    data = np.ones(size).astype(np.float32) / (
+  def _GenerateMatrix(self, shape):
+    batch_shape = shape[:-2]
+    shape = shape[-2:]
+    assert shape[0] == shape[1]
+    n = shape[0]
+    matrix = np.ones(shape).astype(np.float32) / (
         2.0 * n) + np.diag(np.ones(n).astype(np.float32))
-    return np.tile(data, batch_shape + (1, 1))
+    return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
 
   def benchmarkMatrixInverseOp(self):
     for adjoint in False, True:
-      for size in self.sizes:
-        data = self._GenerateData(size)
-
+      for shape in self.shapes:
         with ops.Graph().as_default(), \
             session.Session() as sess, \
             ops.device("/cpu:0"):
-          inv = linalg_ops.matrix_inverse(data, adjoint=adjoint)
+          matrix = self._GenerateMatrix(shape)
+          inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
+          variables.global_variables_initializer().run()
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(inv),
               min_iters=25,
-              name="matrix_inverse_cpu_{size}_{adjoint}".format(
-                  size=size, adjoint="adjoint" if adjoint else "noadjoint"))
+              name="matrix_inverse_cpu_{shape}_adjoint_{adjoint}".format(
+                  shape=shape, adjoint=adjoint))
 
         if test.is_gpu_available(True):
           with ops.Graph().as_default(), \
               session.Session() as sess, \
               ops.device("/gpu:0"):
-            inv = linalg_ops.matrix_inverse(data, adjoint=adjoint)
+            matrix = self._GenerateMatrix(shape)
+            inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
+            variables.global_variables_initializer().run()
             self.run_op_benchmark(
                 sess,
                 control_flow_ops.group(inv),
                 min_iters=25,
-                name="matrix_inverse_gpu_{size}_{adjoint}".format(
-                    size=size, adjoint="adjoint" if adjoint else "noadjoint"))
+                name="matrix_inverse_gpu_{shape}_adjoint_{adjoint}".format(
+                    shape=shape, adjoint=adjoint))
 
 
 if __name__ == "__main__":

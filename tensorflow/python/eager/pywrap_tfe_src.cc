@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/python/lib/core/py_func.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 
 using tensorflow::string;
 
@@ -46,15 +46,32 @@ namespace {
 #if PY_MAJOR_VERSION >= 3
 PARSE_VALUE(ParseIntValue, int, PyLong_Check, PyLong_AsLong)
 PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLong)
-PARSE_VALUE(ParseStringValue, const char*, PyUnicode_Check, PyUnicode_AsUTF8)
 #else
-PARSE_VALUE(ParseStringValue, const char*, PyString_Check, PyString_AsString)
 PARSE_VALUE(ParseIntValue, int, PyInt_Check, PyInt_AsLong)
 PARSE_VALUE(ParseInt64Value, int64_t, PyInt_Check, PyInt_AsLong)
 #endif
 PARSE_VALUE(ParseFloatValue, float, PyFloat_Check, PyFloat_AsDouble)
-
 #undef PARSE_VALUE
+
+bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
+                      const char** value) {
+  if (PyBytes_Check(py_value)) {
+    *value = PyBytes_AsString(py_value);
+    return true;
+  }
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(py_value)) {
+    *value = PyUnicode_AsUTF8(py_value);
+    return true;
+  }
+#endif
+  TF_SetStatus(
+      status, TF_INVALID_ARGUMENT,
+      tensorflow::strings::StrCat("Expecting a const char* value for attr ",
+                                  key, ", got ", py_value->ob_type->tp_name)
+          .c_str());
+  return false;
+}
 
 bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
                     unsigned char* value) {
@@ -67,22 +84,23 @@ const char* ParseProtoValue(const string& key, const char* proto_name,
                             TF_Status* status) {
   char* output = nullptr;
   Py_ssize_t py_size;
-#if PY_MAJOR_VERSION >= 3
-  if (!PyUnicode_Check(py_value) ||
-      (output = PyUnicode_AsUTF8AndSize(py_value, &py_size)) == nullptr) {
-#else
-  if (!PyString_Check(py_value) ||
-      (PyString_AsStringAndSize(py_value, &output, &py_size) < 0)) {
-#endif
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat("Expecting a string (serialized ",
-                                    proto_name, ") value for attr ", key)
-            .c_str());
-    return nullptr;
+  if (PyBytes_Check(py_value) &&
+      PyBytes_AsStringAndSize(py_value, &output, &py_size) >= 0) {
+    *size = static_cast<size_t>(py_size);
+    return output;
   }
-  *size = static_cast<size_t>(py_size);
-  return output;
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(py_value) &&
+      (output = PyUnicode_AsUTF8AndSize(py_value, &py_size)) != nullptr) {
+    *size = static_cast<size_t>(py_size);
+    return output;
+  }
+#endif
+  TF_SetStatus(status, TF_INVALID_ARGUMENT,
+               tensorflow::strings::StrCat("Expecting a string (serialized ",
+                                           proto_name, ") value for attr ", key)
+                   .c_str());
+  return nullptr;
 }
 
 bool SetOpAttrList(TFE_Op* op, const char* key, PyObject* py_list,
@@ -256,9 +274,10 @@ void SetOpAttrs(TFE_Op* op, PyObject* attrs, TF_Status* out_status) {
     PyObject* py_key = PyTuple_GET_ITEM(attrs, i);
     PyObject* py_value = PyTuple_GET_ITEM(attrs, i + 1);
 #if PY_MAJOR_VERSION >= 3
-    const char* key = PyUnicode_AsUTF8(py_key);
+    const char* key = PyBytes_Check(py_key) ? PyBytes_AsString(py_key)
+                                            : PyUnicode_AsUTF8(py_key);
 #else
-    const char* key = PyString_AsString(py_key);
+    const char* key = PyBytes_AsString(py_key);
 #endif
     unsigned char is_list = 0;
     const TF_AttrType type = TFE_OpGetAttrType(op, key, &is_list, out_status);
@@ -278,9 +297,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
   if (TF_GetCode(out_status) != TF_OK) return;
-  if (device_name != nullptr) {
-    TFE_OpSetDevice(op, ctx, device_name, out_status);
-  }
+  TFE_OpSetDevice(op, ctx, device_name, out_status);
   if (TF_GetCode(out_status) == TF_OK) {
     for (int i = 0; i < inputs->size() && TF_GetCode(out_status) == TF_OK;
          ++i) {
@@ -311,7 +328,7 @@ PyObject* TFE_Py_TensorHandleToNumpy(TFE_TensorHandle* h, TF_Status* status) {
     Py_RETURN_NONE;
   }
   PyObject* ret = nullptr;
-  auto cppstatus = tensorflow::ConvertTensorToNdarray(*t, &ret);
+  auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
   if (!cppstatus.ok()) {
     TF_SetStatus(status, TF_Code(cppstatus.code()),
                  cppstatus.error_message().c_str());
@@ -328,7 +345,7 @@ PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
 
 TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
   tensorflow::Tensor t;
-  auto cppstatus = tensorflow::ConvertNdarrayToTensor(obj, &t);
+  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
   if (cppstatus.ok()) {
     return TFE_NewTensorHandle(t);
   } else {
@@ -374,4 +391,16 @@ int TFE_Py_MayBeRaiseException(TF_Status* status) {
     PyErr_SetString(PyExc_RuntimeError, TF_Message(status));
   }
   return -1;
+}
+
+char* TFE_GetPyThonString(PyObject* o) {
+  if (PyBytes_Check(o)) {
+    return PyBytes_AsString(o);
+  }
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(o)) {
+    return PyUnicode_AsUTF8(o);
+  }
+#endif
+  return nullptr;
 }

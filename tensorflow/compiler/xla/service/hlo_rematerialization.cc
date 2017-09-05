@@ -55,16 +55,6 @@ namespace {
 
 // Returns true if the given instruction is rematerializable.
 bool IsRematerializable(const HloInstruction* instruction) {
-  // Conservatively, don't rematerialize instruction with control
-  // dependencies. For one, control dependencies are added to prevent
-  // interference of aliased buffers (say, in while bodies) and
-  // rematerialization is ignorant of liveness and may break the intended
-  // ordering.
-  if (!instruction->control_predecessors().empty() ||
-      !instruction->control_successors().empty()) {
-    return false;
-  }
-
   // Don't rematerialize instructions with side effects or instructions which
   // cannot be cloned safely.
   switch (instruction->opcode()) {
@@ -503,7 +493,7 @@ MemoryUsageTracker::MemoryUsageTracker(
     const TuplePointsToAnalysis& points_to_analysis,
     const InstructionList& instruction_list)
     : computation_(computation), instruction_list_(instruction_list) {
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> live_out_set =
+  PointsToSet::BufferSet live_out_set =
       points_to_analysis.GetPointsToSet(computation_->root_instruction())
           .CreateFlattenedSet();
   tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferId>
@@ -906,6 +896,19 @@ Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
       continue;
     }
 
+    // If any of the candidate's control successor has been placed, we need to
+    // skip this candidate. Otherwise we will violate control dependency.
+    bool control_successor_placed =
+        std::any_of(candidate->control_successors().begin(),
+                    candidate->control_successors().end(),
+                    [&memory_tracker](const HloInstruction* inst) {
+                      return memory_tracker.IsPlaced(inst);
+                    });
+
+    if (control_successor_placed) {
+      continue;
+    }
+
     const int64 memory_reduced =
         memory_tracker.MemoryReducedIfRematerialized(item);
 
@@ -1047,6 +1050,15 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
       HloInstruction* remat =
           computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
+
+      // Add control dependencies to the new operation.
+      for (auto successor : best->control_successors()) {
+        TF_RETURN_IF_ERROR(remat->AddControlDependencyTo(successor));
+      }
+      for (auto predecessor : best->control_predecessors()) {
+        TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(remat));
+      }
+
       Item* remat_item = instruction_list.CreateItem(remat);
 
       // Replace each remaining use of 'best' with the rematerialization.
@@ -1081,6 +1093,15 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
             }
           }
         }
+      }
+      // Insert rematerialized instruction before any of its successors to
+      // preserve ordering regarding control dependency.
+      for (auto successor : remat->control_successors()) {
+        Item* successor_item = instruction_list.GetItem(successor);
+        // Assert to make sure we never remat an operation with control
+        // successor already placed.
+        CHECK(!successor_item->placed);
+        place_before.push_back(successor_item);
       }
       instruction_list.InsertBeforeInstructions(remat_item, place_before);
 
@@ -1227,7 +1248,8 @@ StatusOr<bool> HloRematerialization::Run(
                                 sequence->at(node.computation())));
         }
         return Status::OK();
-      }));
+      },
+      /*visit_unreachable_nodes=*/false));
 
   // The peak memory usage of the module equals the peak memory use of the entry
   // computation plus the output size of the computation. This is because the

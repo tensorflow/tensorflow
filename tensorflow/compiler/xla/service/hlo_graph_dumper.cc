@@ -479,7 +479,7 @@ stylesheet="
     // If this edge crosses a fusion cluster boundary, highlight it when the
     // cluster is hovered over.
     if (from_node->IsFused() &&
-        from_node->fusion_instruction()->fused_expression_root() == from_node) {
+        from_node->parent()->root_instruction() == from_node) {
       int64 cluster_id = cluster_ids_.at(from_node->parent());
       add_hover_css_rule("clust", cluster_id, kBlue);
     }
@@ -561,13 +561,21 @@ tooltip = " ";
   }
 
   string comp_body = DumpComputation(subcomp);
-  string computation =
-      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 
-  // Add an edge from the subcomputation to its parent node.  If subcomp
-  // belongs to a fusion node, it's drawn in place of the fusion instruction, so
-  // there's no need to link those.
-  if (parent_instr->opcode() != HloOpcode::kFusion) {
+  if (parent_instr->opcode() == HloOpcode::kFusion) {
+    // Dump any nested fusion nodes.
+    for (const auto& subcomp_instr : subcomp->instructions()) {
+      if (subcomp_instr->opcode() == HloOpcode::kFusion) {
+        StrAppend(
+            &comp_body,
+            DumpSubcomputation(subcomp_instr->fused_instructions_computation(),
+                               subcomp_instr.get()));
+      }
+    }
+  } else {
+    // Add an edge from the subcomputation to its parent node.  If subcomp
+    // belongs to a fusion node, it's drawn in place of the fusion instruction,
+    // so there's no need to link those.
     edge_ids_.insert(
         {{subcomp->root_instruction(), parent_instr}, next_edge_id_++});
     const char* edge_fmt =
@@ -577,6 +585,9 @@ tooltip = " ";
                InstructionId(parent_instr), SubcomputationId(subcomp),
                subcomp->name(), parent_instr->name()));
   }
+
+  string computation =
+      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 
   return computation;
 }
@@ -657,7 +668,7 @@ string HloDotDumper::GetInstructionNodeInlinedConstants(
   // Special case: If instr is a parameter to a fusion node, check whether the
   // corresponding operand to the fusion node is a constant.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* fusion = instr->parent()->FusionInstruction();
     const HloInstruction* operand = fusion->operand(instr->parameter_number());
     if (operand->opcode() != HloOpcode::kConstant) {
       return "";
@@ -742,6 +753,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kParameter:
       return kOrange;
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kReduce:
     case HloOpcode::kSelectAndScatter:
@@ -869,7 +881,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
-                      int64 operand_num) {
+                      int64 operand_num, bool control_edge = false) {
     // Fusion nodes' subcomputations are displayed inline, so if 'from' is a
     // fusion node and the node's subcomputation is shown, we draw our edge
     // starting at the fusion node's root instead of at the fusion node itself.
@@ -883,8 +895,10 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     edge_ids_.insert({{from, to}, next_edge_id_++});
 
     string edge_label;
-    if (instr->operand_count() > 1) {
+    if (instr->operand_count() > 1 && !control_edge) {
       edge_label = Printf(R"( headlabel="%lld", labeldistance=2)", operand_num);
+    } else if (control_edge) {
+      edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
     const char* kEdgeFmt = R"(%s -> %s [tooltip="%s -> %s" %s];)";
     edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
@@ -895,12 +909,15 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   // expressions are handled specially -- we draw an edge from the corresponding
   // operand on the fusion node itself to the parameter.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* fusion = instr->parent()->FusionInstruction();
     add_edge(fusion->operand(instr->parameter_number()), instr,
              /*operand_num=*/0);
   } else {
     for (int64 i = 0; i < instr->operand_count(); ++i) {
       add_edge(instr->operand(i), instr, i);
+    }
+    for (const HloInstruction* pred : instr->control_predecessors()) {
+      add_edge(pred, instr, /*operand_num=*/0, /*control_edge=*/true);
     }
   }
 }

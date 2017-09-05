@@ -19,6 +19,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -85,6 +90,10 @@ class IteratorContext {
 // range of outputs is typically represented by an `DatasetBase`,
 // defined below.
 class IteratorBase {
+ protected:
+  class IteratorBundleReader;
+  class IteratorBundleWriter;
+
  public:
   virtual ~IteratorBase() {}
 
@@ -114,6 +123,118 @@ class IteratorBase {
   // (and possibly partially defined) shapes of each tuple component
   // in the outputs of this iterator.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
+
+  // Saves the state of this iterator.
+  virtual Status SaveState(OpKernelContext* ctx, StringPiece path) {
+    BundleWriter bundle_writer(ctx->env(), path);
+    IteratorBundleWriter writer(&bundle_writer);
+    if (is_exhausted_) {
+      LOG(INFO) << "Iterator exhausted. Nothing to save.";
+      TF_RETURN_IF_ERROR(
+          writer.WriteScalar<string>(kIteratorExhausted, kIteratorExhausted));
+    } else {
+      TF_RETURN_IF_ERROR(SaveStateInternal(ctx, &writer));
+    }
+    TF_RETURN_IF_ERROR(bundle_writer.Finish());
+    return Status::OK();
+  }
+
+  // Restores the state of this iterator.
+  virtual Status RestoreState(OpKernelContext* ctx, StringPiece& path) {
+    if (!(ctx->env()->FileExists(MetaFilename(path)).ok())) {
+      return errors::NotFound(
+          "Failed to restore Iterator state. No file found at ",
+          MetaFilename(path));
+    }
+    BundleReader bundle_reader(ctx->env(), path);
+    if (bundle_reader.Contains(kIteratorExhausted)) {
+      LOG(INFO) << "Iterator exhausted. Nothing to restore.";
+      is_exhausted_ = true;
+      return Status::OK();
+    } else {
+      IteratorBundleReader reader(&bundle_reader);
+      return RestoreStateInternal(ctx, &reader);
+    }
+  }
+
+ protected:
+  class IteratorBundleReader {
+   public:
+    IteratorBundleReader(BundleReader* bundle_reader)
+        : bundle_reader_(bundle_reader) {}
+
+    // Reads a scalar value.
+    template <typename T>
+    Status ReadScalar(T* val, const string& key) {
+      Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+      TF_RETURN_IF_ERROR(Lookup(StringPiece(key), &val_t));
+      *val = val_t.scalar<T>()();
+      return Status::OK();
+    }
+
+    // Restores the state of a parent iterator recursively.
+    Status RestoreParentState(OpKernelContext* ctx,
+                              const std::unique_ptr<IteratorBase>& parent) {
+      return parent->RestoreStateInternal(ctx, this);
+    }
+
+   private:
+    Status Lookup(StringPiece key, Tensor* val) {
+      return bundle_reader_->Lookup(key, val);
+    }
+
+    BundleReader* bundle_reader_;
+  };
+
+  class IteratorBundleWriter {
+   public:
+    IteratorBundleWriter(BundleWriter* bundle_writer)
+        : bundle_writer_(bundle_writer) {}
+
+    // Writes a scalar value.
+    template <typename T>
+    Status WriteScalar(const T val, const string& key) {
+      Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+      val_t.scalar<T>()() = val;
+      TF_RETURN_IF_ERROR(Add(StringPiece(key), val_t));
+      return Status::OK();
+    }
+
+    // Saves the state of a parent iterator recursively.
+    Status SaveParentState(OpKernelContext* ctx,
+                           const std::unique_ptr<IteratorBase>& parent) {
+      return parent->SaveStateInternal(ctx, this);
+    }
+
+   private:
+    Status Add(StringPiece key, const Tensor& val) {
+      return bundle_writer_->Add(key, val);
+    }
+
+    BundleWriter* bundle_writer_;
+  };
+
+  // Saves the state of this iterator.
+  // Note: Contents written to `writer` may not get flushed to disk
+  // until the call to `SaveState` in the leaf iterator is finished.
+  // Must be overridden by sub-classes.
+  virtual Status SaveStateInternal(OpKernelContext* ctx,
+                                   IteratorBundleWriter* writer) {
+    return errors::Unimplemented("SaveState not implemented.");
+  }
+
+  // Restores the state of this iterator.
+  //
+  // Must be overridden by sub-classes.
+  virtual Status RestoreStateInternal(OpKernelContext* ctx,
+                                      IteratorBundleReader* reader) {
+    return errors::Unimplemented("RestoreState not implemented");
+  }
+
+  bool is_exhausted_ = false;  // Whether the iterator has been exhausted.
+
+ private:
+  static const char kIteratorExhausted[];
 };
 
 // Represents a (potentially infinite) range of outputs, where each
@@ -129,7 +250,11 @@ class DatasetBase : public ResourceBase {
   // start.
   //
   // Ownership of the created iterator will be transferred to the caller.
-  virtual std::unique_ptr<IteratorBase> MakeIterator() const = 0;
+  //
+  // The prefix identifies the sequence of iterators leading up to the newly
+  // created iterator.
+  virtual std::unique_ptr<IteratorBase> MakeIterator(
+      const string& prefix) const = 0;
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -146,26 +271,56 @@ class DatasetBase : public ResourceBase {
 template <class DatasetType>
 class DatasetIterator : public IteratorBase {
  public:
-  explicit DatasetIterator(const DatasetType* dataset) : dataset_(dataset) {
-    dataset_->Ref();
+  struct Params {
+    // Owns one reference on the shared dataset resource.
+    const DatasetType* dataset;
+
+    // Identifies the sequence of iterators leading up to to this iterator.
+    const string prefix;
+  };
+
+  explicit DatasetIterator(const Params& params) : params_(params) {
+    params_.dataset->Ref();
   }
 
-  ~DatasetIterator() override { dataset_->Unref(); }
+  ~DatasetIterator() override { params_.dataset->Unref(); }
 
   // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return dataset_; }
+  const DatasetType* dataset() const { return params_.dataset; }
+
+  // The sequence of iterators leading up to this iterator.
+  const string prefix() const { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
-    return dataset_->output_dtypes();
+    return params_.dataset->output_dtypes();
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
-    return dataset_->output_shapes();
+    return params_.dataset->output_shapes();
+  }
+
+  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence) final {
+    port::Tracing::TraceMe activity(params_.prefix);
+    if (is_exhausted_) {
+      *end_of_sequence = true;
+      return Status::OK();
+    }
+    return GetNextInternal(ctx, out_tensors, end_of_sequence);
+  }
+
+  // Internal implementation of GetNext that is wrapped in tracing logic.
+  virtual Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) = 0;
+
+ protected:
+  string full_name(const string& name) {
+    return strings::StrCat(prefix(), ":", name);
   }
 
  private:
-  const DatasetType* const dataset_;  // Owns one reference on the
-                                      // shared dataset resource.
+  Params params_;
 };
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow

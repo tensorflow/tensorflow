@@ -156,8 +156,7 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
 REGISTER_OP("ParallelMapDataset")
     .Input("input_dataset: resource")
     .Input("other_arguments: Targuments")
-    .Input("num_threads: int32")
-    .Input("output_buffer_size: int64")
+    .Input("num_parallel_calls: int32")
     .Output("handle: resource")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
@@ -167,14 +166,11 @@ REGISTER_OP("ParallelMapDataset")
     .Doc(R"doc(
 Creates a dataset that applies `f` to the outputs of `input_dataset`.
 
-Unlike a "MapDataset", which applies `f` sequentially, this dataset uses
-up to `num_threads` threads to process elements from `input_dataset`
-in parallel.
+Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
+to `num_parallel_calls` copies of `f` in parallel.
 
-num_threads: The number of threads to use to process elements from
-  `input_dataset`.
-output_buffer_size: The maximum number of output elements to buffer in an
-  iterator over this dataset.
+num_parallel_calls: The number of concurrent invocations of `f` that process
+  elements from `input_dataset` in parallel.
 )doc");
 
 REGISTER_OP("PrefetchDataset")
@@ -241,12 +237,15 @@ REGISTER_OP("GroupByWindowDataset")
     .Input("input_dataset: resource")
     .Input("key_func_other_arguments: Tkey_func_other_arguments")
     .Input("reduce_func_other_arguments: Treduce_func_other_arguments")
-    .Input("window_size: int64")
+    .Input(
+        "window_size_func_other_arguments: Twindow_size_func_other_arguments")
     .Output("handle: resource")
     .Attr("key_func: func")
     .Attr("reduce_func: func")
+    .Attr("window_size_func: func")
     .Attr("Tkey_func_other_arguments: list(type) >= 0")
     .Attr("Treduce_func_other_arguments: list(type) >= 0")
+    .Attr("Twindow_size_func_other_arguments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -408,6 +407,7 @@ filename: A path on the filesystem where we should cache the dataset. Note: this
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
+    .Input("buffer_size: int64")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): validate
                                                // that `filenames` is
@@ -420,6 +420,23 @@ filenames: A scalar or a vector containing the name(s) of the file(s) to be
   read.
 compression_type: A scalar containing either (i) the empty string (no
   compression), (ii) "ZLIB", or (iii) "GZIP".
+buffer_size: A scalar containing the number of bytes to buffer.
+)doc");
+
+REGISTER_OP("SqlDataset")
+    .Input("driver_name: string")
+    .Input("data_source_name: string")
+    .Input("query: string")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that executes a SQL query and emits rows of the result set.
+
+driver_name: The database type. Currently, the only supported type is 'sqlite'.
+data_source_name: A connection string to connect to the database.
+query: A SQL query to execute.
 )doc");
 
 REGISTER_OP("FixedLengthRecordDataset")
@@ -427,6 +444,7 @@ REGISTER_OP("FixedLengthRecordDataset")
     .Input("header_bytes: int64")
     .Input("record_bytes: int64")
     .Input("footer_bytes: int64")
+    .Input("buffer_size: int64")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -439,11 +457,13 @@ header_bytes: A scalar representing the number of bytes to skip at the
 record_bytes: A scalar representing the number of bytes in each record.
 footer_bytes: A scalar representing the number of bytes to skip at the end
   of a file.
+buffer_size: A scalar representing the number of bytes to buffer. Must be > 0.
 )doc");
 
 REGISTER_OP("TFRecordDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
+    .Input("buffer_size: int64")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -453,6 +473,8 @@ filenames: A scalar or vector containing the name(s) of the file(s) to be
   read.
 compression_type: A scalar containing either (i) the empty string (no
   compression), (ii) "ZLIB", or (iii) "GZIP".
+buffer_size: A scalar representing the number of bytes to buffer. A value of
+  0 means no buffering will be performed.
 )doc");
 
 REGISTER_OP("Iterator")
@@ -478,6 +500,24 @@ Makes a new iterator from the given `dataset` and stores it in `iterator`.
 
 This operation may be executed multiple times. Each execution will reset the
 iterator in `iterator` to the first element of `dataset`.
+)doc");
+
+REGISTER_OP("SaveIterator")
+    .Input("iterator: resource")
+    .Input("path: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Saves the state of the `iterator` at `path`.
+
+This state can be restored using "RestoreIterator".
+)doc");
+
+REGISTER_OP("RestoreIterator")
+    .Input("iterator: resource")
+    .Input("path: string")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Restores the state of the `iterator` from the checkpoint saved at `path` using "SaveIterator".
 )doc");
 
 REGISTER_OP("OneShotIterator")

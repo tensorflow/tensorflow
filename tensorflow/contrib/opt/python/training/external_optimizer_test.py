@@ -282,6 +282,23 @@ class ScipyOptimizerInterfaceTest(TestCase):
       optimizer.minimize(sess)
       self.assertAllClose([0., 2.], sess.run(vector))
 
+  def test_optimizer_kwargs(self):
+    # Checks that the 'method' argument is stil present
+    # after running optimizer.minimize().
+    # Bug reference: b/64065260
+    vector_initial_value = [7., 7.]
+    vector = variables.Variable(vector_initial_value, 'vector')
+    loss = math_ops.reduce_sum(math_ops.square(vector))
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, method='SLSQP')
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+      method = optimizer.optimizer_kwargs.get('method')
+      self.assertEqual('SLSQP', method)
+
 
 if __name__ == '__main__':
   test.main()

@@ -291,6 +291,11 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
       self.assertAllEqual(values, tensor.eval())
 
+  def testShapeTuple(self):
+    with self.test_session():
+      c = constant_op.constant(1)
+      self.assertEqual(c._shape_tuple(), ())  # pylint: disable=protected-access
+
   def testConvertToTensorEager(self):
     with context.eager_mode():
       t = ops.EagerTensor(1)
@@ -1248,6 +1253,13 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 
 class OpScopeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerDefaultScopeName(self):
+    with ops.name_scope(None, "default") as scope:
+      self.assertEqual(scope, "default/")
+      with ops.name_scope(None, "default2") as scope2:
+        self.assertEqual(scope2, "default/default2/")
 
   def testNoScopeName(self):
     g0 = ops.Graph()

@@ -26,9 +26,9 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
-from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -63,23 +63,34 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   device_name = ctx.device_name
   try:
     outh = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                            op_name, input_handles, attrs,
+                                            str(op_name), input_handles, attrs,
                                             num_outputs)
     # pylint: enable=protected-access
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
-    raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+    if name is not None:
+      message = e.message + " name: " + name
+    else:
+      message = e.message
+    raise core._status_to_exception(e.code, message)  # pylint: disable=protected-access
   # pylint: enable=protected-access
 
   tensors = [tensor._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
+  # TODO(alive, cais): Use the execution callback mechanism.
   if core.active_trace() is not None:
     trace_name = name if name else op_name
     for t in tensors:
       # pylint: disable=protected-access
       core.active_trace().record_tensor(trace_name,
-                                        tape.tensor_id(t),
+                                        ops.tensor_id(t),
                                         t._device_name(),
                                         t.shape.num_elements())
       # pylint: enable=protected-access
+
+  # TODO(cais): Optimize this, perhaps by replacing this execute function with
+  # a different one when there are execution callback(s).
+  for callback in ctx.post_execution_callbacks:
+    callback(op_name, name, attrs, inputs, tensors)
+
   return tensors
 
 
@@ -178,20 +189,15 @@ def args_to_matching_eager(l, default_dtype=None):
       break
 
   if dtype is None:
-    # TODO(josh11b): At the moment, I don't think this can fail, but at some
-    # point we likely should have some logic to prevent bad conversions.
-    dtype = default_dtype
-
-  if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
-      ret.append(tensor.convert_to_eager_tensor(t, dtype))
+      ret.append(ops.convert_to_tensor(t, dtype, preferred_dtype=default_dtype))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [tensor.convert_to_eager_tensor(t, dtype) for t in l]
+    ret = [ops.convert_to_tensor(t, dtype) for t in l]
 
   return dtype, ret
 
@@ -227,15 +233,15 @@ def args_to_mixed_eager_tensors(lists):
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(tensor.convert_to_eager_tensor(lists[0][i]))
+      lists_ret[0].append(ops.convert_to_tensor(lists[0][i]))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            tensor.convert_to_eager_tensor(lists[j][i], dtype=dtype))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype))
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            tensor.convert_to_eager_tensor(lists[j][i], dtype=dtype))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype))
     types.append(dtype)
   return types, lists_ret

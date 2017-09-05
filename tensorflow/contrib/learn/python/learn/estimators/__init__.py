@@ -321,6 +321,7 @@ from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassi
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearEstimator
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor
+from tensorflow.contrib.learn.python.learn.estimators.logit_fns import call_logit_fn
 from tensorflow.contrib.learn.python.learn.estimators.logit_fns import dnn_logit_fn_builder
 from tensorflow.contrib.learn.python.learn.estimators.logit_fns import linear_logit_fn_builder
 from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey

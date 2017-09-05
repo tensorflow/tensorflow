@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import os
 import six
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
@@ -86,6 +87,7 @@ __all__ = ['avg_pool2d',
            'separable_conv2d',
            'separable_convolution2d',
            'softmax',
+           'spatial_softmax',
            'stack',
            'unit_norm',
            'legacy_fully_connected',
@@ -96,6 +98,8 @@ DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
 DATA_FORMAT_NCDHW = 'NCDHW'
 DATA_FORMAT_NDHWC = 'NDHWC'
+_FUSED_DEFAULT = os.getenv('TF_DEFAULT_USES_FUSED_BATCH_NORM',
+                           '').lower() in ('true', 't', '1')
 
 
 @add_arg_scope
@@ -447,7 +451,7 @@ def batch_norm(inputs,
                outputs_collections=None,
                trainable=True,
                batch_weights=None,
-               fused=False,
+               fused=None,
                data_format=DATA_FORMAT_NHWC,
                zero_debias_moving_mean=False,
                scope=None,
@@ -517,8 +521,8 @@ def batch_norm(inputs,
       then the batch normalization uses weighted mean and
       variance. (This can be used to correct for bias in training
       example selection.)
-    fused: if `True`, use a faster, fused implementation based on
-      nn.fused_batch_norm. If `None`, use the fused implementation if possible.
+    fused: if `True`, use a faster, fused implementation if possible.
+      If `None`, use the system recommended implementation.
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
     zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
       pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
@@ -541,33 +545,28 @@ def batch_norm(inputs,
     A `Tensor` representing the output of the operation.
 
   Raises:
-    ValueError: If `batch_weights` is not None and `fused` is True.
     ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
   """
-  if fused:
-    if batch_weights is not None:
-      raise ValueError('Weighted mean and variance is not currently '
-                       'supported for fused batch norm.')
-    if param_regularizers is not None:
-      raise ValueError('Regularizers are not currently '
-                       'supported for fused batch norm.')
-    if renorm:
-      raise ValueError('Renorm is not supported for fused batch norm.')
+  # This environment variable is only used during the testing period of fused
+  # batch norm and will be removed after that.
+  if fused is None:
+    fused = _FUSED_DEFAULT
 
-  # Only use _fused_batch_norm (1) if fused is set True or if it is
-  # possible to use (currently it doesn't support batch weights,
-  # renorm, and the case when rank is neither 2 nor 4),
-  # and (2) if used with zero_debias_moving_mean, or an input shape of rank 2,
-  # or non-default updates_collections (not implemented in
-  # normalization_layers.BatchNormalization yet); otherwise use the fused
-  # implementation in normalization_layers.BatchNormalization.
+  # Only use _fused_batch_norm if all of the following three
+  # conditions are true:
+  # (1) fused is set True;
+  # (2) it is possible to use (currently it doesn't support batch weights,
+  #   renorm, and the case when rank is neither 2 nor 4);
+  # (3) it is used with zero_debias_moving_mean, or an input shape of rank 2,
+  #   or non-default updates_collections (not implemented in
+  #   normalization_layers.BatchNormalization yet); otherwise use the fused
+  #   implementation in normalization_layers.BatchNormalization.
   inputs = ops.convert_to_tensor(inputs)
   rank = inputs.get_shape().ndims
-  feature_supported = batch_weights is None and not renorm and rank in [2, 4]
-  possible_to_fuse = fused is None and feature_supported
-  if (fused or possible_to_fuse) and (
+  possible_to_fuse = batch_weights is None and not renorm and rank in [2, 4]
+  if fused and possible_to_fuse and (
       zero_debias_moving_mean or rank == 2 or
       updates_collections is not ops.GraphKeys.UPDATE_OPS):
     return _fused_batch_norm(
@@ -2614,6 +2613,90 @@ def softmax(logits, scope=None):
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
     predictions.set_shape(logits.get_shape())
     return predictions
+
+
+@add_arg_scope
+def spatial_softmax(features,
+                    temperature=None,
+                    name=None,
+                    variables_collections=None,
+                    trainable=True,
+                    data_format='NHWC'):
+  """Computes the spatial softmax of a convolutional feature map.
+
+  First computes the softmax over the spatial extent of each channel of a
+  convolutional feature map. Then computes the expected 2D position of the
+  points of maximal activation for each channel, resulting in a set of
+  feature keypoints [x1, y1, ... xN, yN] for all N channels.
+
+  Read more here:
+  "Learning visual feature spaces for robotic manipulation with
+  deep spatial autoencoders." Finn et. al, http://arxiv.org/abs/1509.06113.
+
+  Args:
+    features: A `Tensor` of size [batch_size, W, H, num_channels]; the
+      convolutional feature map.
+    temperature: Softmax temperature (optional). If None, a learnable
+      temperature is created.
+    name: A name for this operation (optional).
+    variables_collections: Collections for the temperature variable.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
+  Returns:
+    feature_keypoints: A `Tensor` with size [batch_size, num_channels * 2];
+      the expected 2D locations of each channel's feature keypoint (normalized
+      to the range (-1,1)). The inner dimension is arranged as
+      [x1, y1, ... xN, yN].
+  Raises:
+    ValueError: If unexpected data_format specified.
+    ValueError: If num_channels dimension is unspecified.
+  """
+  shape = array_ops.shape(features)
+  static_shape = features.shape
+  if data_format == DATA_FORMAT_NHWC:
+    height, width, num_channels = shape[1], shape[2], static_shape[3]
+  elif data_format == DATA_FORMAT_NCHW:
+    num_channels, height, width = static_shape[1], shape[2], shape[3]
+  else:
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  if num_channels.value is None:
+    raise ValueError('The num_channels dimension of the inputs to '
+                     '`spatial_softmax` should be defined. Found `None`.')
+
+  with ops.name_scope(name, 'spatial_softmax', [features]) as name:
+    # Create tensors for x and y coordinate values, scaled to range [-1, 1].
+    pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
+                                      math_ops.lin_space(-1., 1., num=width),
+                                      indexing='ij')
+    pos_x = array_ops.reshape(pos_x, [height * width])
+    pos_y = array_ops.reshape(pos_y, [height * width])
+    if temperature is None:
+      temperature_collections = utils.get_variable_collections(
+          variables_collections, 'temperature')
+      temperature = variables.model_variable(
+          'temperature',
+          shape=(),
+          dtype=dtypes.float32,
+          initializer=init_ops.ones_initializer(),
+          collections=temperature_collections,
+          trainable=trainable)
+    if data_format == 'NCHW':
+      features = array_ops.reshape(features, [-1, height * width])
+    else:
+      features = array_ops.reshape(
+          array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+
+    softmax_attention = nn.softmax(features/temperature)
+    expected_x = math_ops.reduce_sum(
+        pos_x * softmax_attention, [1], keep_dims=True)
+    expected_y = math_ops.reduce_sum(
+        pos_y * softmax_attention, [1], keep_dims=True)
+    expected_xy = array_ops.concat([expected_x, expected_y], 1)
+    feature_keypoints = array_ops.reshape(
+        expected_xy, [-1, num_channels.value * 2])
+    feature_keypoints.set_shape([None, num_channels.value * 2])
+    return feature_keypoints
 
 
 def stack(inputs, layer, stack_args, **kwargs):

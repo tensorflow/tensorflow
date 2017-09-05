@@ -26,7 +26,9 @@ import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import op_def_pb2
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -290,6 +292,7 @@ class _DefinedFunction(object):
     self._shape_func = shape_func
     self._extra_kwargs = kwargs
     self._definition = None  # Constructed lazily.
+    self._c_func = None  # Constructed with definition.
     self._sub_functions = dict()  # Constructed with definition.
 
     self._args = []
@@ -395,6 +398,22 @@ class _DefinedFunction(object):
     self._definition.signature.name = self._func_name
     if self._func.__doc__:
       self._definition.signature.description = self._func.__doc__
+
+    # pylint: disable=protected-access
+    if temp_graph._c_graph:
+      with errors.raise_exception_on_not_ok_status() as status:
+        output_names = ([compat.as_bytes(x) for x in self._out_names]
+                        if self._out_names else [])
+        self._c_func = c_api.TF_GraphToFunction_wrapper(
+            temp_graph._c_graph,
+            self._func_name,
+            None,  # opers
+            [t._as_tf_output() for t in inputs],
+            [t._as_tf_output() for t in outputs],
+            output_names,
+            None,  # opts
+            status)
+    # pylint: enable=protected-access
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.
@@ -835,8 +854,14 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
     attrs["_XlaSeparateCompiledGradients"] = attr_value_pb2.AttrValue(
         b=bool(separate_compiled_gradients))
-    attrs["_XlaScope"] = attr_value_pb2.AttrValue(
-        s=("function_%s" % func_name).encode())
+    # Forward _XlaScope from enclosing context (if set), otherwise create new.
+    # pylint: disable=protected-access
+    if "_XlaScope" in ops.get_default_graph()._attr_scope_map:
+      attrs["_XlaScope"] = ops.get_default_graph()._attr_scope_map["_XlaScope"]
+    else:
+      attrs["_XlaScope"] = attr_value_pb2.AttrValue(
+          s=("function_%s" % func_name).encode())
+    # pylint: enable=protected-access
 
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())

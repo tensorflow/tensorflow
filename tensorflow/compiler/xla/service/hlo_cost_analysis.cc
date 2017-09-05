@@ -118,13 +118,11 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   }
 }
 
-Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo,
-                                               HloOpcode opcode) {
+Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo,
-                                                HloOpcode opcode) {
+Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
@@ -371,6 +369,12 @@ Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
 Status HloCostAnalysis::HandleBatchNormTraining(
     HloInstruction* batchNormTraining) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleBatchNormInference(
+    HloInstruction* batchNormInference) {
+  // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
   return Status::OK();
 }
 

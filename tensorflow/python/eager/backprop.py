@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import threading
 
+from autograd import container_types
 from autograd import convenience_wrappers
 from autograd import core as ag_core
 
@@ -28,14 +29,12 @@ import six
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
-from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 # Imports TensorNode to enable autograd tracing of TF ops. We don't need to use
 # any symbols here but import the file just to get the right registrations to
 # happen.
 from tensorflow.python.eager import tensor_node  # pylint: disable=unused-import
-from tensorflow.python.eager.graph_only_ops import graph_zeros_like
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as tf_ops
@@ -76,7 +75,7 @@ class _MockOp(object):
 
   def get_attr(self, attr):
     typ = op_attr_type(self.type, attr)
-    for i in xrange(0, len(self.attrs), 2):
+    for i in range(0, len(self.attrs), 2):
       if self.attrs[i] == attr:
         return make_attr(typ, self.attrs[i + 1])
     raise KeyError(attr)
@@ -85,8 +84,6 @@ class _MockOp(object):
 def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
                              *tensors):
   """Calls the gradient function of the op.
-
-  Does so in a way that allows function.defun to cache invocations.
 
   Args:
     op_name: the name of the op to be differentiated.
@@ -107,7 +104,7 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
   if grad_fn is None:
     return [None] * num_inputs
   out_grads = [
-      o if (o is not None) else graph_zeros_like(outputs[i])
+      o if (o is not None) else array_ops.zeros_like(outputs[i])
       for i, o in enumerate(out_grads)
   ]
   return grad_fn(mock_op, *out_grads)
@@ -115,16 +112,6 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
 
 _gradient_functions = {}
 _gradient_functions_lock = threading.Lock()
-
-
-def _get_gradient_function(op_name):
-  with _gradient_functions_lock:
-    fn = _gradient_functions.get(op_name, None)
-    if fn is None:
-      fn = function.named_defun(_magic_gradient_function,
-                                "_gradient_" + op_name)
-      _gradient_functions[op_name] = fn
-    return fn
 
 
 _tracing = False
@@ -148,6 +135,8 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   Raises:
     An exception on error.
   """
+  if not any(ag_core.isnode(x) for x in inputs):
+    return results
   num_outputs = len(results)
   if num_outputs == 0:
     return results
@@ -157,17 +146,17 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   # It is imperative we make a copy of results here as otherwise we create a
   # dependency cycle in the captured function and this can delay garbage
   # collecting of the tensors arbitrarily.
-  result_copies = results[:]
+  results_size = len(results) if isinstance(results, (list, tuple)) else 1
 
-  def grad_fn(*outputs):
+  def grad_fn(*orig_outputs):
     """Generated gradient function."""
-    fn = _get_gradient_function(op_name)
-    tensors = inputs + result_copies + list(outputs)
-    tensors = [ag_core.getval(x) for x in tensors]
-    result = fn(op_name, attrs, len(inputs), num_outputs, *(tensors))
+    tensors = inputs + list(orig_outputs)
+    tensors = container_types.make_sequence(tape.EagerList, *tensors)
+    result = _magic_gradient_function(op_name, attrs, len(inputs),
+                                      num_outputs, *(tensors))
     if _tracing:
       print("Gradient for", (name if name else op_name), "inputs", inputs,
-            "output_grads", outputs)
+            "output_grads", orig_outputs[results_size:], "gradients", result)
     return result
 
   results = tape.record_operation(results, inputs, [], grad_fn)
@@ -180,14 +169,12 @@ def _record_gradient(op_name, inputs, attrs, results, name):
 execute.record_gradient = _record_gradient
 
 
-def _ones(shape, dtype):
-  return array_ops.fill(shape, tensor.Tensor(1, dtype=dtype))
-
-
 def _aggregate_grads(gradients):
   """Aggregate gradients of the same tensor."""
   grad_lists = dict()
   for t, g in gradients:
+    if g is None:
+      continue
     if id(t) not in grad_lists:
       grad_lists[id(t)] = [(t, g)]
     else:
@@ -234,7 +221,7 @@ def implicit_val_and_grad(f):
                        (end_node.progenitors, repr(start_node)))
     output_gradients = kwds.get("output_gradients", None)
     if output_gradients is None:
-      output_gradients = _ones(end_node.shape, end_node.dtype)
+      output_gradients = array_ops.ones_like(end_node.value)
     grad = ag_core.backward_pass(output_gradients, end_node, start_node)
     return end_node.value, _aggregate_grads(grad.gradients)
 

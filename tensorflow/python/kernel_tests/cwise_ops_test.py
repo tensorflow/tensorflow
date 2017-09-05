@@ -82,6 +82,7 @@ def _default_tolerance(dtype):
   else:
     return None # Fail fast for unexpected types
 
+
 class UnaryOpTest(test.TestCase):
 
   def _compareCpu(self, x, np_func, tf_func, grad_rtol=None, grad_atol=None):
@@ -1955,7 +1956,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = sess.run([tf_angle])
+      tf_angle_val = sess.run(tf_angle)
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
@@ -2122,7 +2123,6 @@ class AccumulateTest(test.TestCase):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
         tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
-
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked

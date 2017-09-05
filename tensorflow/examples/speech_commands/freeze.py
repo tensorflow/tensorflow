@@ -45,15 +45,15 @@ import sys
 import tensorflow as tf
 
 from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
-import tensorflow.examples.speech_commands.input_data as input_data
-import tensorflow.examples.speech_commands.models as models
+import input_data
+import models
 from tensorflow.python.framework import graph_util
 
 FLAGS = None
 
 
 def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
-                           window_size_ms, window_stride_ms,
+                           clip_stride_ms, window_size_ms, window_stride_ms,
                            dct_coefficient_count, model_architecture):
   """Creates an audio model with the nodes needed for inference.
 
@@ -64,6 +64,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
     wanted_words: Comma-separated list of the words we're trying to recognize.
     sample_rate: How many samples per second are in the input audio files.
     clip_duration_ms: How many samples to analyze for the audio pattern.
+    clip_stride_ms: How often to run recognition. Useful for models with cache.
     window_size_ms: Time slice duration to estimate frequencies from.
     window_stride_ms: How far apart time slices should be.
     dct_coefficient_count: Number of frequency bands to analyze.
@@ -74,6 +75,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
   model_settings = models.prepare_model_settings(
       len(words_list), sample_rate, clip_duration_ms, window_size_ms,
       window_stride_ms, dct_coefficient_count)
+  runtime_settings = {'clip_stride_ms': clip_stride_ms}
 
   wav_data_placeholder = tf.placeholder(tf.string, [], name='wav_data')
   decoded_sample_data = contrib_audio.decode_wav(
@@ -90,9 +92,15 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       spectrogram,
       decoded_sample_data.sample_rate,
       dct_coefficient_count=dct_coefficient_count)
+  fingerprint_frequency_size = model_settings['dct_coefficient_count']
+  fingerprint_time_size = model_settings['spectrogram_length']
+  reshaped_input = tf.reshape(fingerprint_input, [
+      -1, fingerprint_time_size * fingerprint_frequency_size
+  ])
 
   logits = models.create_model(
-      fingerprint_input, model_settings, model_architecture, is_training=False)
+      reshaped_input, model_settings, model_architecture, is_training=False,
+      runtime_settings=runtime_settings)
 
   # Create an output to use for inference.
   tf.nn.softmax(logits, name='labels_softmax')
@@ -103,9 +111,9 @@ def main(_):
   # Create the model and load its weights.
   sess = tf.InteractiveSession()
   create_inference_graph(FLAGS.wanted_words, FLAGS.sample_rate,
-                         FLAGS.clip_duration_ms, FLAGS.window_size_ms,
-                         FLAGS.window_stride_ms, FLAGS.dct_coefficient_count,
-                         FLAGS.model_architecture)
+                         FLAGS.clip_duration_ms, FLAGS.clip_stride_ms,
+                         FLAGS.window_size_ms, FLAGS.window_stride_ms,
+                         FLAGS.dct_coefficient_count, FLAGS.model_architecture)
   models.load_variables_from_checkpoint(sess, FLAGS.start_checkpoint)
 
   # Turn all the variables into inline constants inside the graph and save it.
@@ -132,9 +140,14 @@ if __name__ == '__main__':
       default=1000,
       help='Expected duration in milliseconds of the wavs',)
   parser.add_argument(
+      '--clip_stride_ms',
+      type=int,
+      default=30,
+      help='How often to run recognition. Useful for models with cache.',)
+  parser.add_argument(
       '--window_size_ms',
       type=float,
-      default=20.0,
+      default=30.0,
       help='How long each spectrogram timeslice is',)
   parser.add_argument(
       '--window_stride_ms',

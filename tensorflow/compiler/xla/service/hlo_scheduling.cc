@@ -72,6 +72,13 @@ class ListScheduler {
     return scheduler.CreateSchedule();
   }
 
+  // Returns whether the memory used by the given HLO should be ignored by the
+  // scheduling heuristic.
+  static bool IgnoreInstruction(const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kParameter ||
+           instruction.opcode() == HloOpcode::kConstant;
+  }
+
  private:
   // The scheduling priority of an instruction is first the number of bytes
   // freed by scheduling the instruction, and second (tie-breaker) by the number
@@ -127,9 +134,8 @@ class ListScheduler {
 
   // Returns whether the memory used by the given buffer should be ignored by
   // the scheduling heuristic.
-  bool IgnoreBuffer(const LogicalBuffer& buffer) {
-    return buffer.instruction()->opcode() == HloOpcode::kParameter ||
-           buffer.instruction()->opcode() == HloOpcode::kConstant;
+  static bool IgnoreBuffer(const LogicalBuffer& buffer) {
+    return IgnoreInstruction(*buffer.instruction());
   }
 
   // An entry in the worklist used by CreateSchedule.  Corresponds to one
@@ -306,6 +312,11 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
+    if (ListScheduler::IgnoreInstruction(*hlo)) {
+      extra_users[hlo] = 0;
+      total_sizes[hlo] = 0;
+      continue;
+    }
     extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
     total_sizes[hlo] = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);

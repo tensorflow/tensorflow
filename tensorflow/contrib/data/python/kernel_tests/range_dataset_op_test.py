@@ -17,16 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
 class RangeDatasetTest(test.TestCase):
+
+  def tearDown(self):
+    # Remove all checkpoint files.
+    prefix = self._iterator_checkpoint_prefix()
+    pattern = prefix + "*"
+    files = gfile.Glob(pattern)
+    map(gfile.Remove, files)
 
   def testStop(self):
     stop = array_ops.placeholder(dtypes.int64, shape=[])
@@ -174,6 +186,196 @@ class RangeDatasetTest(test.TestCase):
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def _iterator_checkpoint_prefix(self):
+    return os.path.join(self.get_temp_dir(), "iterator")
+
+  def testSaveRestore(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = self._iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    # Saving and restoring in different sessions.
+    start = 2
+    stop = 10
+    break_point = 5
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, _ = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, _, restore_op = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+    # Saving and restoring in same session.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, restore_op = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+        sess.run(restore_op)
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testMultipleSaves(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = self._iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    start = 2
+    stop = 10
+    break_point1 = 5
+    break_point2 = 7
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, _ = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point1):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, restore_op = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for i in range(break_point1, break_point2):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    break_point2 = 7
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, restore_op = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for i in range(break_point2, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreWithRepeat(self):
+
+    def _build_graph(start, stop, num_epochs):
+      iterator = dataset_ops.Dataset.range(
+          start, stop).repeat(num_epochs).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = self._iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    start = 2
+    stop = 10
+    num_epochs = 5
+    break_range = 5
+    break_epoch = 3
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, restore_op = _build_graph(
+          start, stop, num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        # Note: There is no checkpoint saved currently so a NotFoundError is
+        # raised.
+        with self.assertRaises(errors.NotFoundError):
+          sess.run(restore_op)
+        for _ in range(break_epoch - 1):
+          for i in range(start, stop):
+            self.assertEqual(i, sess.run(get_next))
+        for i in range(start, break_range):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for i in range(break_range, stop):
+          self.assertEqual(i, sess.run(get_next))
+        for _ in range(break_epoch, num_epochs):
+          for i in range(start, stop):
+            self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreExhaustedIterator(self):
+
+    def _build_graph(start, stop, num_epochs):
+      iterator = dataset_ops.Dataset.range(
+          start, stop).repeat(num_epochs).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = self._iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    start = 2
+    stop = 10
+    num_epochs = 5
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, restore_op = _build_graph(
+          start, stop, num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        # Note: There is no checkpoint saved currently so a NotFoundError is
+        # raised.
+        with self.assertRaises(errors.NotFoundError):
+          sess.run(restore_op)
+        for _ in range(num_epochs):
+          for i in range(start, stop):
+            self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
 
 if __name__ == "__main__":

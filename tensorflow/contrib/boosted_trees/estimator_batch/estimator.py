@@ -61,11 +61,19 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
       logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
+
+    Raises:
+      ValueError: If learner_config is not valid.
     """
     head = head_lib.multi_class_head(
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         enable_centered_bias=False)
+    if learner_config.num_classes == 0:
+      learner_config.num_classes = n_classes
+    elif learner_config.num_classes != n_classes:
+      raise ValueError("n_classes (%d) doesn't match learner_config (%d)." %
+                       (learner_config.num_classes, n_classes))
     super(GradientBoostedDecisionTreeClassifier, self).__init__(
         model_fn=model.model_builder,
         params={
@@ -129,6 +137,10 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
         label_dimension=label_dimension,
         weight_column_name=weight_column_name,
         enable_centered_bias=False)
+    if label_dimension == 1:
+      learner_config.num_classes = 2
+    else:
+      learner_config.num_classes = label_dimension
     super(GradientBoostedDecisionTreeRegressor, self).__init__(
         model_fn=model.model_builder,
         params={

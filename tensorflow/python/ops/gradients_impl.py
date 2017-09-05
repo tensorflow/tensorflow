@@ -27,6 +27,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -414,8 +415,12 @@ def gradients(ys,
     LookupError: if one of the operations between `x` and `y` does not
       have a registered gradient function.
     ValueError: if the arguments are invalid.
+    RuntimeError: if called in Eager mode.
 
   """
+  if context.in_eager_mode():
+    raise RuntimeError("tf.gradients not supported in EAGER mode. Use "
+                       "functions in tf.contrib.eager.backprop instead.")
   ys = _AsList(ys)
   xs = _AsList(xs)
   if grad_ys is None:

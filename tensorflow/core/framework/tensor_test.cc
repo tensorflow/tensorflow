@@ -51,7 +51,11 @@ inline bool operator==(const Variant& a, const Variant& b) {
   a.Encode(&a_data);
   b.Encode(&b_data);
 
-  if (a_data.metadata() != b_data.metadata()) return false;
+  string a_metadata;
+  string b_metadata;
+  a_data.get_metadata(&a_metadata);
+  b_data.get_metadata(&b_metadata);
+  if (a_metadata != b_metadata) return false;
 
   if (a_data.tensors_size() != b_data.tensors_size()) return false;
 
@@ -254,8 +258,13 @@ TEST(Tensor_Variant, Marshal) {
   TensorProto proto;
   t.AsProtoField(&proto);
 
+  // This performs a decode operation.
   Tensor t2(t.dtype());
   EXPECT_TRUE(t2.FromProto(proto));
+
+  Tensor* out = t2.flat<Variant>()(0).get<Tensor>();
+  EXPECT_NE(out, nullptr);
+  EXPECT_FLOAT_EQ(out->scalar<float>()(), 42.0f);
 }
 
 TEST(Tensor_UInt16, Simple) {
@@ -593,6 +602,45 @@ TEST_F(TensorReshapeTest, FlatInnerOuterDims) {
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(2));
+  }
+}
+
+TEST(ReinterpretLastDimension, Reinterpret_NCHW_VECT_C_as_NCHW) {
+  LOG(INFO) << "reinterpret_last_dimension";
+  {
+    Tensor t_nchw_vect_c(DT_QINT8, TensorShape({2, 3, 5, 7, 4}));
+    auto nchw_vect_c = t_nchw_vect_c.tensor<qint8, 5>();
+    Tensor t_expected_nchw(DT_INT32, TensorShape({2, 3, 5, 7}));
+    auto expected_nchw = t_expected_nchw.tensor<int32, 4>();
+    int8 val = 0;
+    for (int n = 0; n < t_nchw_vect_c.shape().dim_size(0); ++n) {
+      for (int c = 0; c < t_nchw_vect_c.shape().dim_size(1); ++c) {
+        for (int h = 0; h < t_nchw_vect_c.shape().dim_size(2); ++h, ++val) {
+          int8 packet[4];
+          for (int w = 0; w < t_nchw_vect_c.shape().dim_size(3); ++w) {
+            packet[0] = nchw_vect_c(n, c, h, w, 0) = ++val;
+            packet[1] = nchw_vect_c(n, c, h, w, 1) = ++val;
+            packet[2] = nchw_vect_c(n, c, h, w, 2) = ++val;
+            packet[3] = nchw_vect_c(n, c, h, w, 3) = ++val;
+            expected_nchw(n, c, h, w) = *reinterpret_cast<int32*>(&packet[0]);
+          }
+        }
+      }
+    }
+    auto actual_nchw = t_nchw_vect_c.reinterpret_last_dimension<int32, 4>();
+    const auto& const_t_nchw_vect_c = t_nchw_vect_c;
+    auto const_actual_nchw =
+        const_t_nchw_vect_c.reinterpret_last_dimension<int32, 4>();
+    for (int n = 0; n < t_nchw_vect_c.shape().dim_size(0); ++n) {
+      for (int c = 0; c < t_nchw_vect_c.shape().dim_size(1); ++c) {
+        for (int h = 0; h < t_nchw_vect_c.shape().dim_size(2); ++h) {
+          for (int w = 0; w < t_nchw_vect_c.shape().dim_size(3); ++w) {
+            EXPECT_EQ(expected_nchw(n, c, h, w), actual_nchw(n, c, h, w));
+            EXPECT_EQ(expected_nchw(n, c, h, w), const_actual_nchw(n, c, h, w));
+          }
+        }
+      }
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-# Using the `Dataset` API for TensorFlow Input Pipelines
+# Importing Data
 
 The `Dataset` API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
@@ -120,7 +120,7 @@ dataset3 = dataset3.filter(lambda x, (y, z): ...)
 
 ### Creating an iterator
 
-One you have built a `Dataset` to represent your input data, the next step is to
+Once you have built a `Dataset` to represent your input data, the next step is to
 create an `Iterator` to access elements from that dataset.  The `Dataset` API
 currently supports the following iterators, in increasing level of
 sophistication:
@@ -735,7 +735,7 @@ def dataset_input_fn():
 
     return {"image_data": image, "date_time": parsed["date_time"]}, label
 
-  # Use `Dataset.map()` to build a pair of a feature dictionary and a label 
+  # Use `Dataset.map()` to build a pair of a feature dictionary and a label
   # tensor for each example.
   dataset = dataset.map(parser)
   dataset = dataset.shuffle(buffer_size=10000)

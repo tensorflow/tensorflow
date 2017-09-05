@@ -157,6 +157,8 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
         "//third_party/py/numpy",
     ],
 )
@@ -255,17 +257,19 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
 py_test(
     name = "mobilenet_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/applications/mobilenet_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -310,6 +314,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -424,14 +429,15 @@ py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "normalization_test",
     size = "small",
     srcs = ["python/keras/layers/normalization_test.py"],
-    additional_deps = [
+    srcs_version = "PY2AND3",
+    deps = [
         ":keras",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -541,6 +547,19 @@ py_test(
 )
 
 py_test(
+    name = "io_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/io_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "imagenet_utils_test",
     size = "small",
     srcs = ["python/keras/applications/imagenet_utils_test.py"],
@@ -590,7 +609,7 @@ py_test(
 
 py_test(
     name = "callbacks_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/callbacks_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -603,7 +622,7 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -636,6 +655,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
 )

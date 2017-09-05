@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -224,6 +225,12 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
       HloInstruction* offset, float epsilon, int64 feature_index);
 
+  // Creates a batch-norm-inference instruction.
+  static std::unique_ptr<HloInstruction> CreateBatchNormInference(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
+      float epsilon, int64 feature_index);
+
   // Creates a batch-norm-grad instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormGrad(
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
@@ -330,7 +337,8 @@ class HloInstruction {
   int64 operand_count() const { return operands_.size(); }
 
   // Returns the vector of operands of this instruction.
-  const std::vector<HloInstruction*>& operands() const { return operands_; }
+  using InstructionVector = tensorflow::gtl::InlinedVector<HloInstruction*, 2>;
+  const InstructionVector& operands() const { return operands_; }
 
   // Returns the index of 'target' in the operands sequence.
   // Precondition: target must be an operand (or a fatal error will occur).
@@ -379,7 +387,23 @@ class HloInstruction {
       std::function<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
       std::function<bool(const HloComputation*, const HloComputation*)>
-          eq_computations = std::equal_to<const HloComputation*>()) const;
+          eq_computations = std::equal_to<const HloComputation*>()) const {
+    // An instruction is always identical to itself.
+    if (this == &other) {
+      return true;
+    }
+
+    // Identical instruction must have the same opcode and identical operands.
+    // In general, there is no need to check shape because shape is inferred
+    // from the shape of the operands.
+    if (opcode() != other.opcode() ||
+        !ContainersEqual(operands(), other.operands(),
+                         std::move(eq_operands))) {
+      return false;
+    }
+
+    return IdenticalSlowPath(other, eq_computations);
+  }
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -579,25 +603,20 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  // Returns the computation for this fused instruction.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  HloComputation* fused_instructions_computation() const;
+
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusable() const;
-
-  // Returns the fusion instruction that contains this instruction.
-  //
-  // Note: only valid if this instruction is fused into a fusion instruction.
-  HloInstruction* fusion_instruction() const;
 
   // Returns the root instruction of the fused expression contained within this
   // fusion instruction.
   //
   // Precondition: opcode() == HloOpcode::kFusion
   HloInstruction* fused_expression_root() const;
-
-  // Returns the computation for this fused instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  HloComputation* fused_instructions_computation() const;
 
   // Returns the list of fused instructions inside this fusioninstruction.
   //
@@ -778,8 +797,7 @@ class HloInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Returns the computations this instruction calls (if any). This includes
-  // computations called by fused instructions inside of a fusion instruction.
+  // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
     return called_computations_;
   }
@@ -808,6 +826,9 @@ class HloInstruction {
 
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
+
+  // Returns true if this instruction is binary and elementwise.
+  bool IsElementwiseBinary() const;
 
   // Returns whether this instruction may reuse elements of its `i`th operand.
   bool ReusesOperandElements(int64 i) const {
@@ -871,13 +892,8 @@ class HloInstruction {
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
 
-  // Sets the parent fusion instruction for this instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  void SetParentFusion(HloInstruction* fusion_instruction) {
-    CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
-    parent_fusion_instruction_ = fusion_instruction;
-  }
+  // CHECKs various invariants of a fusion instruction.
+  void CheckFusionInstruction() const;
 
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu
@@ -895,6 +911,12 @@ class HloInstruction {
 
   // Helper class for computing OperandElementUse for kFusion.
   class FusionReusesParamElements;
+
+  // See comments on Identical().
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      std::function<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
@@ -943,9 +965,6 @@ class HloInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // CHECKs various invariants of a fusion instruction.
-  void CheckFusionInstruction() const;
-
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.
   bool CanHaveDimensionsField() const;
@@ -955,14 +974,33 @@ class HloInstruction {
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
+  // Opcode for this instruction.
+  HloOpcode opcode_;
+
+  // Instruction operands.
+  InstructionVector operands_;
+
+  // The set of control predecessors of this instruction.
+  std::vector<HloInstruction*> control_predecessors_;
+
+  // The users of this instruction. Users are HLOs where this instruction is an
+  // operand. The vector users_ and the set user_set_ contain identical
+  // members. The set enables fast membership testing and the vector enables
+  // fast, stable iteration.
+  std::vector<HloInstruction*> users_;
+  std::unordered_set<const HloInstruction*> user_set_;
+
+  // The set of control successors of this instruction.
+  std::vector<HloInstruction*> control_successors_;
+
+  // The computation in which this instruction is contained.
+  HloComputation* parent_ = nullptr;
+
   // Shape of outfeed request.
   Shape outfeed_shape_;
 
   // Result shape of this instruction.
   Shape shape_;
-
-  // Opcode for this instruction.
-  HloOpcode opcode_;
 
   // Literal, only present for kConstant.
   std::unique_ptr<Literal> literal_;
@@ -997,10 +1035,6 @@ class HloInstruction {
   // padding of this pad instruction. Only set for pad instructions.
   std::unique_ptr<PaddingConfig> padding_config_;
 
-  // If this instruction is fused into a fusion instruction, this field points
-  // to the fusion instruction.
-  HloInstruction* parent_fusion_instruction_ = nullptr;
-
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
 
@@ -1029,22 +1063,6 @@ class HloInstruction {
   // Outfeed configuration information, only present for kOutfeed.
   string outfeed_config_;
 
-  // Instruction operands.
-  std::vector<HloInstruction*> operands_;
-
-  // The users of this instruction. Users are HLOs where this instruction is an
-  // operand. The vector users_ and the set user_set_ contain identical
-  // members. The set enables fast membership testing and the vector enables
-  // fast, stable iteration.
-  std::vector<HloInstruction*> users_;
-  std::unordered_set<const HloInstruction*> user_set_;
-
-  // The set of control predecessors of this instruction.
-  std::vector<HloInstruction*> control_predecessors_;
-
-  // The set of control successors of this instruction.
-  std::vector<HloInstruction*> control_successors_;
-
   // A trace instruction that consumes this instruction.
   //
   // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
@@ -1072,9 +1090,6 @@ class HloInstruction {
 
   // String identifier for instruction.
   string name_;
-
-  // The computation in which this instruction is contained.
-  HloComputation* parent_ = nullptr;
 
   // Metadata for debugging.
   OpMetadata metadata_;

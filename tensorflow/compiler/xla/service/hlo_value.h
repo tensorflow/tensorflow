@@ -225,6 +225,9 @@ class HloValueSet {
   // already exist in the set.
   bool AddValue(const HloValue* value);
 
+  // Clear all values from the set.
+  void Clear() { values_.clear(); }
+
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
   const HloValue& GetUniqueValue() const {

@@ -82,6 +82,7 @@ function(AddTest)
   set_tests_properties(${_AT_TARGET}
     PROPERTIES ENVIRONMENT "TEST_TMPDIR=${tempdir};TEST_SRCDIR=${testdir}"
   )
+  set_tests_properties(${_AT_TARGET} PROPERTIES TIMEOUT "600")
 
   foreach(datafile ${_AT_DATA})
     file(RELATIVE_PATH datafile_rel ${tensorflow_source_dir} ${datafile})
@@ -117,6 +118,7 @@ function(AddPythonTests)
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
+    set_tests_properties(${sourcefile} PROPERTIES TIMEOUT "600")
   endforeach()
 endfunction(AddPythonTests)
 
@@ -149,6 +151,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
@@ -240,6 +243,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
       # Broken tensorboard test due to cmake issues.
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/dataset_constructor_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"  # Needs portpicker
       # tensor_forest tests (also note that we exclude the hybrid tests for now)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/count_extremely_random_stats_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
@@ -287,6 +291,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Failing with TF 1.3 (TODO)
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/sinh_arcsinh_test.py"
+      # Test should only be run manually
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reduction_ops_test_big.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
@@ -341,6 +347,7 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/user_ops/*_test.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/rnn/*_test.cc"
   )
 

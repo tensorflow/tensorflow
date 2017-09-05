@@ -134,7 +134,7 @@ The heart of every Estimator--whether pre-made or custom--is its
 evaluation, and prediction. When you are using a pre-made Estimator,
 someone else has already implemented the model function. When relying
 on a custom Estimator, you must write the model function yourself. A
-${$extend/estimators$companion document)
+@{$extend/estimators$companion document}
 explains how to write the model function.
 
 

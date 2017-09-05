@@ -925,8 +925,84 @@ class NaryGradTest : public ::testing::Test {
     EXPECT_LT(max_error, 1e-3);
   }
 
+  void RunTest(const Output& x, const Tensor& x_init_value, const Output& y,
+               const TensorShape& y_shape) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, x, x_init_value, y, y_shape, &max_error));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
   Scope scope_;
 };
+
+TEST_F(NaryGradTest, Sum) {
+  TensorShape x_shape({2, 3, 5, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Sum(scope_, x, {1, -1});
+  // y's shape is the result of reducing x along axes 1 and -1 (= 3)
+  TensorShape y_shape({2, 5});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Mean) {
+  TensorShape x_shape({2, 3, 5, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Mean(scope_, x, {1, -1});
+  // y's shape is the result of reducing x along axes 1 and -1 (= 3)
+  TensorShape y_shape({2, 5});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Min) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Min(scope_, x, {-1});
+  // y's shape is the result of reducing x along axes -1 (= 1)
+  TensorShape y_shape({2});
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 0.7f, 0.2f, 1.0f, 1.5f, -2.8f}, x_shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, Max) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Max(scope_, x, {-1});
+  // y's shape is the result of reducing x along axes -1 (= 1)
+  TensorShape y_shape({2});
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 0.7f, 0.2f, 1.0f, 1.5f, -2.8f}, x_shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, MinMulti) {
+  // Test gradient when there are multiple minima.
+  // Note that we cannot directly use a test Tensor with multiple
+  // minima, as the numeric estimator will calculate incorrect
+  // gradients when perturbing each entry in the Tensor (which then
+  // changes how many minima exist.)
+  // Instead, we use a single input that broadcast-multiplies a larger
+  // tensor with equal values, and apply reduce_min to the multiplied
+  // result.
+  TensorShape x_shape({1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto all_same = Mul(scope_, Const(scope_, {1.f, 1.f, 1.f}), x);
+  auto y = Min(scope_, all_same, {0});
+  // y is a [3] shaped tensor reduced along dimension 0, so it is [1] shaped
+  TensorShape y_shape({1});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, MaxMulti) {
+  TensorShape x_shape({1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto all_same = Mul(scope_, Const(scope_, {1.f, 1.f, 1.f}), x);
+  auto y = Max(scope_, all_same, {0});
+  TensorShape y_shape({1});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
 
 TEST_F(NaryGradTest, AddN) {
   TensorShape shape({3, 2, 5});
@@ -936,6 +1012,83 @@ TEST_F(NaryGradTest, AddN) {
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
   auto y = AddN(scope_, xs);
   RunTest(xs, {shape, shape, shape}, {y}, {shape});
+}
+
+TEST_F(NaryGradTest, Add) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Add(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Sub) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Sub(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Mul) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Mul(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Div) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y = Div(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, RealDiv) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y =
+      RealDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, SquaredDifference) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = SquaredDifference(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Maximum) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Maximum(scope_, x, Const(scope_, 1.0f));
+  // Select values away from 1.0f to avoid instability when computing
+  // finite differences.
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NaryGradTest, Minimum) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Minimum(scope_, x, Const(scope_, 1.0f));
+  // Select values away from 1.0f to avoid instability when computing
+  // finite differences.
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
 }
 
 }  // namespace

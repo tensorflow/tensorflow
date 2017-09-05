@@ -34,7 +34,8 @@ void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
   ::grpc::Slice slice(proto.ByteSizeLong());
   proto.SerializeWithCachedSizesToArray(
       const_cast<uint8*>(reinterpret_cast<const uint8*>(slice.begin())));
-  *result = ::grpc::ByteBuffer(&slice, 1);
+  ::grpc::ByteBuffer tmp(&slice, 1);
+  result->Swap(&tmp);
 }
 
 // We generate a RecvTensorResponse protocol buffer encoding into "*result",
@@ -237,7 +238,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     }
     CHECK_EQ(total_bytes, expected_size);
 
-    *result = ::grpc::ByteBuffer(&slices[0], num_slices);
+    ::grpc::ByteBuffer tmp(&slices[0], num_slices);
+    result->Swap(&tmp);
   }
 }
 

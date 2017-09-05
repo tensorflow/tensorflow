@@ -241,7 +241,7 @@ Status Executor::Run() {
         completion_queue_.pop_front();
         break;
       }
-    } while (1);
+    } while (true);
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment_->GetUniqueTopLevelSlice(instruction));
     void* result_buffer =
@@ -566,7 +566,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
                 if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
+                  const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton.

@@ -60,7 +60,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
 
-  Status FoldNode(const NodeDef& node, GraphDef* output);
+  Status FoldNode(NodeDef* node);
 
   Status FoldGraph(GraphDef* output);
 
@@ -73,7 +73,9 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<ResourceMgr> resource_mgr_;
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
-  std::set<string> nodes_to_preserve_;
+  std::unordered_set<string> nodes_to_preserve_;
+  GraphDef added_graph_;
+  bool has_fetch_;
 };
 
 }  // end namespace grappler

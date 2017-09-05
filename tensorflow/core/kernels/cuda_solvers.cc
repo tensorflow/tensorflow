@@ -30,9 +30,12 @@
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
 
 namespace tensorflow {
 namespace {
@@ -148,7 +151,12 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   // This callback checks that all batch items in all calls were processed
   // successfully and passes status to the info_checker_callback accordingly.
   auto wrapped_info_checker_callback =
-      [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
+      [](OpKernelContext* context,
+         std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+             info_checker_callback,
+         std::vector<HostLapackInfo> host_lapack_infos) {
+        auto stream = context->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
@@ -156,7 +164,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
             if (info_value != 0) {
               status = errors::InvalidArgument(
                   "Got info = ", info_value, " for batch index ", i,
-                  ", expected info = 0. Debug_info =",
+                  ", expected info = 0. Debug_info = ",
                   host_lapack_info.debug_info());
             }
           }
@@ -166,8 +174,10 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         }
         info_checker_callback(status, host_lapack_infos);
       };
+
   auto cb =
-      std::bind(wrapped_info_checker_callback, std::move(host_lapack_infos));
+      std::bind(wrapped_info_checker_callback, context_,
+                std::move(info_checker_callback), std::move(host_lapack_infos));
   auto stream = context_->op_device_context()->stream();
   context_->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
       stream, std::move(cb));
@@ -354,6 +364,47 @@ static inline Status GetrfBatchedImpl(
   }
 
 TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
+
+template <typename Scalar, typename SolverFnT>
+static inline Status GetrsBatchedImpl(
+    SolverFnT solver, OpKernelContext* context, cublasHandle_t cublas_handle,
+    cublasOperation_t trans, int n, int nrhs, const Scalar* host_a_dev_ptrs[],
+    int lda, const int* dev_pivots, const Scalar* host_b_dev_ptrs[], int ldb,
+    DeviceLapackInfo* dev_lapack_info, int batch_size) {
+  using CudaScalar = typename CUDAComplexT<Scalar>::type;
+  ScratchSpace<uint8> dev_a_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
+                                     /* on_host */ false);
+  ScratchSpace<uint8> dev_b_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
+                                     /* on_host */ false);
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
+    return errors::Internal("GetrsBatched: failed to copy pointers to device");
+  }
+  if (!CopyHostToDevice(context, dev_b_dev_ptrs.mutable_data() /* dest */,
+                        host_b_dev_ptrs /* source */, dev_b_dev_ptrs.bytes())) {
+    return errors::Internal("GetrsBatched: failed to copy pointers to device");
+  }
+  TF_RETURN_IF_CUBLAS_ERROR(solver(
+      cublas_handle, trans, n, nrhs, (const CudaScalar**)dev_a_dev_ptrs.data(),
+      lda, dev_pivots, (CudaScalar**)dev_b_dev_ptrs.mutable_data(), ldb,
+      dev_lapack_info->mutable_data(), batch_size));
+  return Status::OK();
+}
+
+#define GETRS_BATCHED_INSTANCE(Scalar, lapack_prefix)                          \
+  template <>                                                                  \
+  Status CudaSolver::GetrsBatched(                                             \
+      cublasOperation_t trans, int n, int nrhs,                                \
+      const Scalar* host_a_dev_ptrs[], int lda, const int* dev_pivots,         \
+      const Scalar* host_b_dev_ptrs[], int ldb,                                \
+      DeviceLapackInfo* dev_lapack_info, int batch_size) const {               \
+    return GetrsBatchedImpl(BLAS_SOLVER_FN(getrsBatched, lapack_prefix),       \
+                            context_, cublas_handle_, trans, n, nrhs,          \
+                            host_a_dev_ptrs, lda, dev_pivots, host_b_dev_ptrs, \
+                            ldb, dev_lapack_info, batch_size);                 \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
 
 template <typename Scalar, typename SolverFnT>
 static inline Status GetriBatchedImpl(

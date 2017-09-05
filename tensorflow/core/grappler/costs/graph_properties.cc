@@ -209,6 +209,38 @@ Status GraphProperties::InferStatically() {
         }
       }
     }
+
+    // Infer output shape for Restore op.
+    if (node->op_def().name() == "Restore" ||
+        node->op_def().name() == "RestoreV2" ||
+        node->op_def().name() == "RestoreSlice") {
+      auto ctx = shape_refiner.GetContext(node);
+      for (const Edge* out_edge : node->out_edges()) {
+        const Node* output = out_edge->dst();
+        int output_idx = out_edge->src_output();
+        if (!ctx->FullyDefined(ctx->output(output_idx)) &&
+            output->op_def().name() == "Assign") {
+          if (!output->attrs().Find("validate_shape") ||
+              !output->attrs().Find("validate_shape")->b()) {
+            continue;
+          }
+          auto output_ctx = shape_refiner.GetContext(output);
+          if (output_ctx->FullyDefined(output_ctx->output(0))) {
+            ctx->set_output(output_idx, output_ctx->output(0));
+            output_ctx->MergeInput(1, output_ctx->output(0));
+          } else {
+            const Node* var;
+            TF_CHECK_OK(node->input_node(0, &var));
+            if (node->IsVariable()) {
+              auto var_ctx = shape_refiner.GetContext(var);
+              CHECK(var_ctx->FullyDefined(var_ctx->output(0)));
+              ctx->set_output(output_idx, var_ctx->output(0));
+              output_ctx->MergeInput(1, var_ctx->output(0));
+            }
+          }
+        }
+      }
+    }
   }
 
   // Propagate the initial shapes of Enter nodes manually (the Enter shape
@@ -363,6 +395,18 @@ Status GraphProperties::InferStatically() {
         }
       }
       input_properties.push_back(properties);
+    }
+    for (const auto& edge : node->in_edges()) {
+      if (!edge->src()->IsConstant()) {
+        continue;
+      }
+      const int input_id = edge->dst_input();
+      if (input_id >= input_properties.size()) {
+        continue;
+      }
+      const NodeDef& node = edge->src()->def();
+      const TensorProto& raw_val = node.attr().at("value").tensor();
+      *input_properties[input_id].mutable_value() = raw_val;
     }
     input_properties_[node->name()] = input_properties;
 

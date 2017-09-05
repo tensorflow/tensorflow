@@ -57,6 +57,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import control_flow_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1812,6 +1813,11 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
+  if context.in_eager_mode():
+    if pred:
+      return true_fn()
+    return false_fn()
+
   with ops.name_scope(name, "cond", [pred]):
     # Add the Switch to the graph.
     if isinstance(pred, bool):
@@ -2670,8 +2676,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
   call to `while_loop`, and not at all during `Session.run()`). `while_loop`
   stitches together the graph fragments created during the `cond` and `body`
-  calls with some additional graph nodes to make something the repeats
-  `body` until `cond` returns false.
+  calls with some additional graph nodes to create the graph flow that
+  repeats `body` until `cond` returns false.
 
   For correctness, `tf.while_loop()` strictly enforces shape invariants for
   the loop variables. A shape invariant is a (possibly partial) shape that
@@ -2707,11 +2713,11 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   memory consumption and execution order. For correct programs, `while_loop`
   should return the same result for any parallel_iterations > 0.
 
-  For training, TensorFlow remembers the tensors that are produced in the
-  forward inference but needed in back propagation. These tensors can be a
-  main source of memory consumption and often cause OOM problems when training
-  on GPUs.  When the flag swap_memory is true, we swap out these tensors from
-  GPU to CPU.  This for example allows us to train RNN models with very long
+  For training, TensorFlow stores the tensors that are produced in the
+  forward inference and are needed in back propagation. These tensors are a
+  main source of memory consumption and often cause OOM errors when training
+  on GPUs. When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU. This for example allows us to train RNN models with very long
   sequences and large batches.
 
   Args:
@@ -2778,12 +2784,17 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    if context.in_eager_mode():
+      while cond(*loop_vars):
+        loop_vars = body(*loop_vars)
+      return loop_vars
+
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    context = WhileContext(parallel_iterations, back_prop, swap_memory)
-    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
-    result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
+    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
+    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
+    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
 
 
@@ -2849,6 +2860,8 @@ def with_dependencies(dependencies, output_tensor, name=None):
   Raises:
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
+  if context.in_eager_mode():
+    return output_tensor
   with ops.name_scope(name, "control_dependency",
                       list(dependencies) + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
@@ -2892,6 +2905,8 @@ def group(*inputs, **kwargs):
   Raises:
     ValueError: If an unknown keyword argument is provided.
   """
+  if context.in_eager_mode():
+    return None
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
@@ -2959,6 +2974,8 @@ def tuple(tensors, name=None, control_inputs=None):
       objects.
 
   """
+  if context.in_eager_mode():
+    return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
@@ -3084,12 +3101,18 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
     TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
+    ValueError: If in eager mode and all predicates are false and no
+               default is provided.
+    ValueError: If in eager mode and is passed a dictionary.
   """
   pfp = pred_fn_pairs  # For readability
   if not (isinstance(pfp, list) or isinstance(pfp, _basetuple)
           or isinstance(pfp, dict)):
     raise TypeError("fns must be a list, tuple, or dict")
   if isinstance(pfp, dict):
+    if context.in_eager_mode():
+      raise ValueError(
+          "In eager mode the predicates must be a list, not a dictionary.")
     if isinstance(pfp, collections.OrderedDict):
       pfp = pfp.items()
     else:
@@ -3109,6 +3132,14 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
 
   if default is not None and not callable(default):
     raise TypeError("default must be callable.")
+
+  if context.in_eager_mode():
+    for pred, fn in pfp:
+      if pred:
+        return fn()
+    if default is None:
+      raise ValueError("tf.case received all false predicates and no default.")
+    return default()
 
   preds, fns = map(list, zip(*pfp))
   del pfp  # From now on, preds and fns form the source of truth.

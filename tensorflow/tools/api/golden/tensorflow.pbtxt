@@ -1,6 +1,10 @@
 path: "tensorflow"
 tf_module {
   member {
+    name: "AUTO_REUSE"
+    mtype: "<enum \'_ReuseMode\'>"
+  }
+  member {
     name: "AggregationMethod"
     mtype: "<type \'type\'>"
   }
@@ -362,6 +366,10 @@ tf_module {
   }
   member {
     name: "layers"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "linalg"
     mtype: "<type \'module\'>"
   }
   member {
@@ -1878,7 +1886,7 @@ tf_module {
   }
   member_method {
     name: "string_split"
-    argspec: "args=[\'source\', \'delimiter\'], varargs=None, keywords=None, defaults=[\' \'], "
+    argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
   }
   member_method {
     name: "string_to_hash_bucket"
