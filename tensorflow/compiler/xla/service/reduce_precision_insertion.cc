@@ -123,7 +123,8 @@ StatusOr<bool> ReducePrecisionInsertion::insert_on_inputs(
       }
 
       if (instruction->opcode() == HloOpcode::kFusion &&
-          instruction->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+          (instruction->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+           instruction->fusion_kind() == HloInstruction::FusionKind::kInput)) {
         // Insert the reduce-precision operation inside the fusion computation,
         // after the corresponding parameter instruction.
         TF_ASSIGN_OR_RETURN(
@@ -173,7 +174,8 @@ StatusOr<bool> ReducePrecisionInsertion::insert_on_outputs(
     }
 
     if (instruction->opcode() == HloOpcode::kFusion &&
-        instruction->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+        (instruction->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+         instruction->fusion_kind() == HloInstruction::FusionKind::kOutput)) {
       // Insert the reduce-precision operation as the last operation inside
       // the fusion computation.
       HloInstruction* fusion_root = instruction->fused_expression_root();
