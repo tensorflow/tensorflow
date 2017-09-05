@@ -20,6 +20,7 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/mutex.h"
 
 #define EIGEN_USE_THREADS
@@ -131,7 +132,7 @@ struct CollectiveOpRecord {
     OpKernelContext *context;
 
     // Data type of the op
-    MPIDataType dtype;
+    DataType dtype;
 
     // The input tensor
     const Tensor *in_t;
@@ -293,9 +294,9 @@ MPIResponse ConstructMPIResponse(std::unique_ptr<MessageTable>& message_table,
             error = true;
             error_message_stream
                 << "Mismatched data types: One rank had type "
-                << MPIDataType_Name(data_type)
+                << DataType_Name(data_type)
                 << ", but another rank had type "
-                << MPIDataType_Name(request_type)
+                << DataType_Name(request_type)
                 << ".";
             break;
         }
@@ -324,21 +325,13 @@ MPIResponse ConstructMPIResponse(std::unique_ptr<MessageTable>& message_table,
     // If we are doing an allreduce, check that all tensor shapes
     // are identical
     if (message_type == MPIRequest::ALLREDUCE) {
-        TensorShape tensor_shape;
-        for (auto it = requests[0].tensor_shape().begin();
-            it != requests[0].tensor_shape().end(); it++) {
-            tensor_shape.AddDim(*it);
-        }
+        TensorShape tensor_shape = requests[0].tensor_shape();
         for (unsigned int i = 1; i < requests.size(); i++) {
             if (error) {
                 break;
             }
 
-            TensorShape request_shape;
-            for (auto it = requests[i].tensor_shape().begin();
-                it != requests[i].tensor_shape().end(); it++) {
-                request_shape.AddDim(*it);
-            }
+            TensorShape request_shape = requests[i].tensor_shape();
             if (tensor_shape != request_shape) {
                 error = true;
                 error_message_stream
@@ -357,11 +350,7 @@ MPIResponse ConstructMPIResponse(std::unique_ptr<MessageTable>& message_table,
     // the same. The first dimension may be different and the output tensor is
     // the sum of the first dimension. Collect the sizes by rank.
     if (message_type == MPIRequest::ALLGATHER) {
-        TensorShape tensor_shape;
-        for (auto it = requests[0].tensor_shape().begin();
-             it != requests[0].tensor_shape().end(); it++) {
-            tensor_shape.AddDim(*it);
-        }
+        TensorShape tensor_shape = requests[0].tensor_shape();
 
         if (tensor_shape.dims() == 0) {
             error = true;
@@ -374,11 +363,7 @@ MPIResponse ConstructMPIResponse(std::unique_ptr<MessageTable>& message_table,
                 break;
             }
 
-            TensorShape request_shape;
-            for (auto it = requests[i].tensor_shape().begin();
-                it != requests[i].tensor_shape().end(); it++) {
-                request_shape.AddDim(*it);
-            }
+            TensorShape request_shape = requests[i].tensor_shape();
             if (tensor_shape.dims() != request_shape.dims()) {
                 error = true;
                 error_message_stream
@@ -833,20 +818,6 @@ Status IsMPIInitialized() {
     return Status::OK();
 }
 
-// Convert a TensorFlow DataType to our MPIDataType.
-Status DataTypeToMPIType(DataType tf_dtype, MPIDataType* mpi_dtype) {
-    if (tf_dtype == DT_FLOAT) {
-        *mpi_dtype = TF_MPI_FLOAT32;
-    } else if (tf_dtype == DT_INT32) {
-        *mpi_dtype = TF_MPI_INT32;
-    } else if (tf_dtype == DT_INT64) {
-        *mpi_dtype = TF_MPI_INT64;
-    } else {
-        return errors::FailedPrecondition("Invalid tensor type passed.");
-    }
-    return Status::OK();
-}
-
 // This function (called from the callback set up in MPIAll*Op::ComputeAsync)
 // only adds the op's record into the local op queue (to track the op's
 // progress), and sends a message to the coordinator indicating that this rank
@@ -859,9 +830,7 @@ void EnqueueTensorCollective(CollectiveOpRecord record,
     message.set_tensor_name(record.name);
     message.set_tensor_type(record.dtype);
     message.set_request_type(rtype);
-    for (int i = 0; i < input_tensor->shape().dims(); i++) {
-        message.add_tensor_shape(input_tensor->shape().dim_size(i));
-    }
+    input_tensor->shape().AsProto(message.mutable_tensor_shape());
 
     mutex_lock guard(mpi_global.mu);
     mpi_global.tensor_table.emplace(record.name, record);
@@ -1065,11 +1034,7 @@ class MPIAllreduceOp : public AsyncOpKernel {
       record.in_t = input_tensor;
       record.out_t = output_tensor;
       record.on_gpu = IsGPUDevice<Device>();
-
-      record.dtype = TF_MPI_INVALID_TYPE;
-      OP_REQUIRES_OK_ASYNC(context, DataTypeToMPIType(input_tensor->dtype(),
-                                                      &record.dtype),
-                           done);
+      record.dtype = input_tensor->dtype();
 
       const size_t temp_size =
           (input_tensor->NumElements() + mpi_global.size - 1)
@@ -1197,11 +1162,7 @@ class MPIAllgatherOp : public AsyncOpKernel {
                            done);
 
       record.out_t = output_tensor;
-
-      record.dtype = TF_MPI_INVALID_TYPE;
-      OP_REQUIRES_OK_ASYNC(context, DataTypeToMPIType(input_tensor->dtype(),
-                                                      &record.dtype),
-                           done);
+      record.dtype = input_tensor->dtype();
 
       auto allgather_done_callback = [done, context](StatusOr<Tensor> status) {
         context->SetStatus(status.status());

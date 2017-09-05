@@ -26,6 +26,7 @@ load(
 tf_proto_library_cc(
     name = "mpi_message_proto",
     srcs = ["mpi_message.proto"],
+    protodeps = ["//tensorflow/core:protos_all"],
     cc_api_version = 2,
     visibility = [
         "//tensorflow:__subpackages__",

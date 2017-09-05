@@ -2,19 +2,8 @@ syntax = "proto3";
 
 package tensorflow.contrib.mpi;
 
-// We would like to just use DataType here, but since this
-// is a contrib package, linking directly to TensorFlow protos seems to be
-// impossible. Doing so compiles, but fails with a cryptic error at runtime
-// about a pointer that was passed to free() but not created by malloc().
-//
-// Since using the tensorflow/core protos seems to cause issues, we use our own,
-// which also has the benefit of supporting only the data types we want to support.
-enum MPIDataType {
-    TF_MPI_INVALID_TYPE = 0;
-    TF_MPI_FLOAT32 = 1;
-    TF_MPI_INT32 = 2;
-    TF_MPI_INT64 = 3;
-};
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
 
 // An MPIRequest is a message sent from a rank greater than zero to the
 // coordinator (rank zero), informing the coordinator of an operation that
@@ -30,12 +19,9 @@ message MPIRequest {
   // by rank.
   int32 request_rank = 1;
   RequestType request_type = 2;
-  MPIDataType tensor_type = 3;
+  DataType tensor_type = 3;
   string tensor_name = 4;
-
-  // We use a repeated integer instead of a TensorShapeProto because linking directly
-  // to TensorFlow protos causes issues. See the comment for MPIDataType.
-  repeated int64 tensor_shape = 5;
+  TensorShapeProto tensor_shape = 5;
 };
 
 // An MPIResponse is a message sent from the coordinator (rank zero) to a rank
