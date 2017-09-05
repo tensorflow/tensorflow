@@ -53,7 +53,7 @@ def tf_java_op_gen_srcjar(name,
 
   native.genrule(
       name=name,
-      srcs=["@local_jdk//:jar"],
+      srcs=["@local_jdk//:jar"] + ["@local_jdk//:jdk"],
       outs=[gen_srcjar],
       tools=gen_tools,
       cmd='&&'.join(gen_cmds))
