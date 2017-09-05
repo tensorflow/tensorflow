@@ -232,7 +232,8 @@ CreateConv2D(poplar::Graph &graph,
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
-    poplar::Tensor conv_in = popconv::createInput(graph, params, "", opts);
+    auto name = port::StrCat(inst->name(), "_input_copy");
+    poplar::Tensor conv_in = popconv::createInput(graph, params, name, opts);
     prog.add(poplar::program::Copy(in, conv_in));
     in = conv_in;
   }
@@ -245,7 +246,8 @@ CreateConv2D(poplar::Graph &graph,
   if (!is_identity_shuffle(shuffle)) {
     kernel = kernel.dimShuffle(shuffle);
     kernel = AddGroupsDimensionToWeights(kernel);
-    poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
+    auto name = port::StrCat(inst->name(), "_weights_copy");
+    poplar::Tensor conv_kernel = popconv::createWeights(graph, params, name, opts);
     prog.add(poplar::program::Copy(kernel, conv_kernel));
     kernel = conv_kernel;
   } else {
@@ -333,7 +335,8 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
-    poplar::Tensor conv_in = popconv::createInput(graph, params, "", opts);
+    auto name = port::StrCat(root->name(), "_input_copy");
+    poplar::Tensor conv_in = popconv::createInput(graph, params, name, opts);
     prog.add(poplar::program::Copy(in, conv_in));
     in = conv_in;
   }
@@ -347,7 +350,8 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
     kernel = kernel.dimShuffle(shuffle);
     kernel = AddGroupsDimensionToWeights(kernel);
     kernel = kernel.dimShuffle({4, 1, 2, 3, 0});
-    poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
+    auto name = port::StrCat(root->name(), "_weights_copy");
+    poplar::Tensor conv_kernel = popconv::createWeights(graph, params, name, opts);
     prog.add(poplar::program::Copy(kernel, conv_kernel));
     kernel = conv_kernel;
   } else {

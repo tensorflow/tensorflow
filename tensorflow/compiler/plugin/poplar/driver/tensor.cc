@@ -153,7 +153,8 @@ AddConvolutionInput(poplar::Graph& graph,
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
 
-  poplar::Tensor out = popconv::createInput(graph, params, inst->name(), opts);
+  auto name = port::StrCat(inst->name(), "_input");
+  poplar::Tensor out = popconv::createInput(graph, params, name, opts);
   return ShuffleConvolutionInput(target, out);
 }
 
@@ -168,8 +169,8 @@ AddConvolutionWeights(poplar::Graph& graph,
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
 
-  poplar::Tensor out = popconv::createWeights(graph, params, inst->name(),
-                                              opts);
+  auto name = port::StrCat(inst->name(), "_weights");
+  poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
   out = RemoveGroupsDimensionFromWeights(out);
   return ShuffleConvolutionWeights(target, out);
 }
@@ -185,8 +186,8 @@ AddLeftMatMul(poplar::Graph& graph,
   opts.cache = &resources.dot_cache;
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  return poplin::createMatMulInputLHS(graph,type,aShape,bShape, inst->name(),
-                                      opts);
+  auto name = port::StrCat(inst->name(), "_lhs");
+  return poplin::createMatMulInputLHS(graph,type,aShape,bShape, name, opts);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -200,8 +201,8 @@ AddRightMatMul(poplar::Graph& graph,
   opts.cache = &resources.dot_cache;
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  return poplin::createMatMulInputRHS(graph,type,aShape,bShape, inst->name(),
-                                      opts);
+  auto name = port::StrCat(inst->name(), "_rhs");
+  return poplin::createMatMulInputRHS(graph,type,aShape,bShape, name, opts);
 }
 
 
