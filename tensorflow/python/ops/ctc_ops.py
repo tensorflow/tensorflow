@@ -127,6 +127,7 @@ def ctc_loss(labels, inputs, sequence_length,
       transposes at the beginning of the ctc_loss calculation.  However, most
       TensorFlow data is batch-major, so by this function also accepts inputs
       in batch-major form.
+    name: A name for the operation (optional).
 
   Returns:
     A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
