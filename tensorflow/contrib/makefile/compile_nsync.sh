@@ -215,12 +215,12 @@ for arch in $archs; do
                 armeabi-v7a)            toolchain="arm-linux-androideabi-4.9"
                                         sysroot_arch="arm"
                                         bin_prefix="arm-linux-androideabi"
-                                        march_option="-march=armv7-a"
+                                        march_option="-march=armv7-a -mfloat-abi=softfp -mfpu=neon"
                                         ;;
                 armeabi-v7a-hard)       toolchain="arm-linux-androideabi-4.9"
                                         sysroot_arch="arm"
                                         bin_prefix="arm-linux-androideabi"
-                                        march_option="-march=armv7-a"
+                                        march_option="-march=armv7-a -mfpu=neon"
                                         ;;
                 mips)                   toolchain="mipsel-linux-android-4.9"
                                         sysroot_arch="mips"
@@ -266,8 +266,7 @@ for arch in $archs; do
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/'"$arch"'/include \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
-                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' \
-                                        -mfloat-abi=softfp -mfpu=neon -fPIE
+                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
                         PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \
