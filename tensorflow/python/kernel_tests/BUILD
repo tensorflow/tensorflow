@@ -528,6 +528,7 @@ tf_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 tf_py_test(

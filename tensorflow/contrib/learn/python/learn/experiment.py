@@ -33,6 +33,7 @@ from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -220,6 +221,14 @@ class Experiment(object):
         raise ValueError(
             "`estimator` must implement `tf.contrib.learn.Trainable`"
             "or `tf.estimator.`Estimator`.")
+
+    if isinstance(estimator, tpu_estimator.TPUEstimator):
+      raise ValueError(
+          "`Experiment` class cannot work with `tf.contrib.tpu.TPUEstimator`. "
+          "Please call `TPUEstimator` train/evaluate directly. \n"
+          "Details: `Experiment` class is designed for between-graph "
+          "distributed training, while `TPUEstimator` is working in in-graph "
+          "distributed mode.")
 
     super(Experiment, self).__init__()
     # Immutable fields.

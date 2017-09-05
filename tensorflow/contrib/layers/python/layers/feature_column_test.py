@@ -912,8 +912,7 @@ class FeatureColumnTest(test.TestCase):
             parsing_ops.VarLenFeature(dtype=dtypes.float32),
         "real_valued_var_len_dense_column":
             parsing_ops.FixedLenSequenceFeature(
-                shape=[], dtype=dtypes.float32, allow_missing=True,
-                default_value=4.0),
+                shape=[], dtype=dtypes.float32, allow_missing=True),
     }
 
     self.assertDictEqual(expected_feature_spec, feature_spec)

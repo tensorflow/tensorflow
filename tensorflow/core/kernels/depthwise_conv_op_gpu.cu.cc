@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -689,21 +690,27 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& d, const DepthwiseArgs args,
 
 // A simple launch pad to launch the Cuda kernel for depthwise convolution.
 template <typename T>
-struct DepthwiseConv2dGPULaunch {
-  static void Run(const GpuDevice& d, const DepthwiseArgs args, const T* input,
-                  const T* filter, T* output, TensorFormat data_format) {
-    if (args.filter_rows == 3 && args.filter_cols == 3) {
-      LaunchDepthwiseConv2dGPU<T, 3, 3>(d, args, input, filter, output,
+void LaunchDepthwiseConvOp<GPUDevice, T>::operator()(OpKernelContext* ctx,
+                                                     const DepthwiseArgs args,
+                                                     const T* input,
+                                                     const T* filter, T* output,
+                                                     TensorFormat data_format) {
+  const GPUDevice& d = ctx->eigen_device<GPUDevice>();
+  if (args.filter_rows == 3 && args.filter_cols == 3) {
+    LaunchDepthwiseConv2dGPU<T, 3, 3>(d, args, input, filter, output,
+                                      data_format);
+  } else {
+    LaunchDepthwiseConv2dGPU<T, -1, -1>(d, args, input, filter, output,
                                         data_format);
-    } else {
-      LaunchDepthwiseConv2dGPU<T, -1, -1>(d, args, input, filter, output,
-                                          data_format);
-    }
   }
-};
+  auto stream = ctx->op_device_context()->stream();
+  OP_REQUIRES(ctx, stream->ok(),
+              errors::Internal(
+                  "Launch of gpu kernel for DepthwiseConv2dGPULaunch failed"));
+}
 
-template struct DepthwiseConv2dGPULaunch<float>;
-template struct DepthwiseConv2dGPULaunch<double>;
+template struct LaunchDepthwiseConvOp<GPUDevice, float>;
+template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. input.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -893,22 +900,26 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& d,
 
 // A simple launch pad to launch the Cuda kernel for depthwise convolution.
 template <typename T>
-struct DepthwiseConv2dBackpropInputGPULaunch {
-  static void Run(const GpuDevice& d, const DepthwiseArgs args,
-                  const T* out_backprop, const T* filter, T* in_backprop,
-                  TensorFormat data_format) {
-    if (args.filter_rows == 3 && args.filter_cols == 3) {
-      LaunchDepthwiseConv2dBackpropInputGPU<T, 3, 3>(
-          d, args, out_backprop, filter, in_backprop, data_format);
-    } else {
-      LaunchDepthwiseConv2dBackpropInputGPU<T, -1, -1>(
-          d, args, out_backprop, filter, in_backprop, data_format);
-    }
+void LaunchDepthwiseConvBackpropInputOp<GPUDevice, T>::operator()(
+    OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
+    const T* filter, T* in_backprop, TensorFormat data_format) {
+  const GPUDevice& d = ctx->eigen_device<GPUDevice>();
+  if (args.filter_rows == 3 && args.filter_cols == 3) {
+    LaunchDepthwiseConv2dBackpropInputGPU<T, 3, 3>(
+        d, args, out_backprop, filter, in_backprop, data_format);
+  } else {
+    LaunchDepthwiseConv2dBackpropInputGPU<T, -1, -1>(
+        d, args, out_backprop, filter, in_backprop, data_format);
   }
-};
+  auto stream = ctx->op_device_context()->stream();
+  OP_REQUIRES(ctx, stream->ok(),
+              errors::Internal("Launch of gpu kernel for "
+                               "DepthwiseConv2dBackpropInp"
+                               "utGPULaunch failed"));
+}
 
-template struct DepthwiseConv2dBackpropInputGPULaunch<float>;
-template struct DepthwiseConv2dBackpropInputGPULaunch<double>;
+template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
+template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -1580,21 +1591,33 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& d,
 
 // A simple launch pad to launch the Cuda kernel for depthwise convolution.
 template <typename T>
-struct DepthwiseConv2dBackpropFilterGPULaunch {
-  static void Run(const GpuDevice& d, const DepthwiseArgs args,
-                  const T* out_backprop, const T* input, T* filter_backprop,
-                  TensorFormat data_format) {
-    if (args.filter_rows == 3 && args.filter_cols == 3) {
-      LaunchDepthwiseConv2dBackpropFilterGPU<T, 3, 3>(
-          d, args, out_backprop, input, filter_backprop, data_format);
-    } else {
-      LaunchDepthwiseConv2dBackpropFilterGPU<T, -1, -1>(
-          d, args, out_backprop, input, filter_backprop, data_format);
-    }
-  }
-};
+void LaunchDepthwiseConvBackpropFilterOp<GPUDevice, T>::operator()(
+    OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
+    const T* input, T* filter_backprop, TensorFormat data_format) {
+  const GPUDevice& d = ctx->eigen_device<GPUDevice>();
+  auto stream = ctx->op_device_context()->stream();
 
-template struct DepthwiseConv2dBackpropFilterGPULaunch<float>;
-template struct DepthwiseConv2dBackpropFilterGPULaunch<double>;
+  // Initialize the results to 0.
+  int num_filter_backprop =
+      args.filter_rows * args.filter_cols * args.out_depth;
+  perftools::gputools::DeviceMemoryBase filter_bp_ptr(filter_backprop,
+                                                      num_filter_backprop);
+  stream->ThenMemset32(&filter_bp_ptr, 0, num_filter_backprop * sizeof(T));
+
+  if (args.filter_rows == 3 && args.filter_cols == 3) {
+    LaunchDepthwiseConv2dBackpropFilterGPU<T, 3, 3>(
+        d, args, out_backprop, input, filter_backprop, data_format);
+  } else {
+    LaunchDepthwiseConv2dBackpropFilterGPU<T, -1, -1>(
+        d, args, out_backprop, input, filter_backprop, data_format);
+  }
+  OP_REQUIRES(ctx, stream->ok(),
+              errors::Internal("Launch of gpu kernel for "
+                               "DepthwiseConv2dBackpropFil"
+                               "terGPULaunch failed"));
+}
+
+template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
+template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA
