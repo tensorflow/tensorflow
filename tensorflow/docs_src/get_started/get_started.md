@@ -493,8 +493,8 @@ When run, it produces something like
 
 输出如下：
 ```
-train metrics: {'average_loss': 1.4833182e-08, 'global_step': 1000, 'loss': 5.9332727e-08}
-eval metrics: {'average_loss': 0.0025353201, 'global_step': 1000, 'loss': 0.01014128}
+train metrics: {'loss': 7.8912095e-09, 'average_loss': 1.9728024e-09, 'global_step': 1000}
+eval metrics: {'loss': 0.010116501, 'average_loss': 0.0025291252, 'global_step': 1000}
 ```
 Notice how our eval data has a higher loss, but it is still close to zero.
 That means we are learning properly.
