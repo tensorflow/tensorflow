@@ -107,7 +107,7 @@ class _Head(object):
       update_op = tf.contrib.layers.optimize_loss(optimizer=sync,
                                                   loss=estimator_spec.loss, ...)
       hooks = [sync.make_session_run_hook(is_chief)]
-      ... upate train_op and hooks in EstimatorSpec and return
+      ... update train_op and hooks in EstimatorSpec and return
     ```
   """
   __metaclass__ = abc.ABCMeta
