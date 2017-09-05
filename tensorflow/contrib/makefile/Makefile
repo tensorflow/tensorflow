@@ -264,7 +264,7 @@ ifeq ($(TARGET),ANDROID)
 		TOOLCHAIN := arm-linux-androideabi-4.9
 		SYSROOT_ARCH := arm
 		BIN_PREFIX := arm-linux-androideabi
-		MARCH_OPTION := -march=armv7-a
+		MARCH_OPTION := -march=armv7-a -mfloat-abi=softfp -mfpu=neon
 	endif
 	ifeq ($(ANDROID_ARCH),mips)
 		TOOLCHAIN := mipsel-linux-android-4.9
@@ -300,8 +300,6 @@ ifeq ($(TARGET),ANDROID)
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-$(SYSROOT_ARCH) \
 -Wno-narrowing \
 $(MARCH_OPTION) \
--mfloat-abi=softfp \
--mfpu=neon \
 -fPIE
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
