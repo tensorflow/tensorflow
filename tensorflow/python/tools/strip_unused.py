@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Removes unneeded nodes from a GraphDef file.
+"""Removes unneeded nodes from a GraphDef file.
 
 This script is designed to help streamline models, by taking the input and
 output nodes that will be used by an application and figuring out the smallest
