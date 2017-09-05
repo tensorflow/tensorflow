@@ -505,6 +505,8 @@ class ResourceVariable(variables.Variable):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
+      if self._trainable:
+        tape.watch(self._handle)
       value = resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
