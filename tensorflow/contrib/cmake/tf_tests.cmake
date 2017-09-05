@@ -82,6 +82,7 @@ function(AddTest)
   set_tests_properties(${_AT_TARGET}
     PROPERTIES ENVIRONMENT "TEST_TMPDIR=${tempdir};TEST_SRCDIR=${testdir}"
   )
+  set_tests_properties(${_AT_TARGET} PROPERTIES TIMEOUT "600")
 
   foreach(datafile ${_AT_DATA})
     file(RELATIVE_PATH datafile_rel ${tensorflow_source_dir} ${datafile})
@@ -117,6 +118,7 @@ function(AddPythonTests)
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
+    set_tests_properties(${sourcefile} PROPERTIES TIMEOUT "600")
   endforeach()
 endfunction(AddPythonTests)
 
@@ -289,6 +291,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Failing with TF 1.3 (TODO)
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/sinh_arcsinh_test.py"
+      # Test should only be run manually
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reduction_ops_test_big.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

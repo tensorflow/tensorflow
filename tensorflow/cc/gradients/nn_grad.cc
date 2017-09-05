@@ -95,12 +95,21 @@ Status SeluGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Selu", SeluGradHelper);
 
+Status L2LossGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Mul(scope, op.input(0), grad_inputs[0]));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("L2Loss", L2LossGrad);
+
 Status BiasAddGradHelper(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
   string data_format;
   BiasAddGrad::Attrs input_attrs;
-  GetNodeAttr(op.output(0).node()->attrs(), "data_format", &data_format);
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), "data_format", &data_format));
   input_attrs.DataFormat(data_format);
   auto dx_1 = BiasAddGrad(scope, grad_inputs[0], input_attrs);
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));

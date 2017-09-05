@@ -40,21 +40,6 @@ typedef tensorflow::gtl::InlinedVector<PyObject*, 8> PyObjectVector;
 // A TF_TensorVector is a vector of borrowed pointers to TF_Tensors.
 typedef gtl::InlinedVector<TF_Tensor*, 8> TF_TensorVector;
 
-// Safe container for an owned PyObject. On destruction, the reference count of
-// the contained object will be decremented.
-inline void Py_DECREF_wrapper(PyObject* o) { Py_DECREF(o); }
-// Note: can't use decltype(&Py_DECREF_wrapper) due to SWIG
-typedef void (*Py_DECREF_wrapper_type)(PyObject*);
-typedef std::unique_ptr<PyObject, Py_DECREF_wrapper_type> Safe_PyObjectPtr;
-Safe_PyObjectPtr make_safe(PyObject* o);
-
-// Safe containers for an owned TF_Tensor. On destruction, the tensor will be
-// deleted by TF_DeleteTensor.
-// Note: can't use decltype(&TF_DeleteTensor) due to SWIG
-typedef void (*TF_DeleteTensor_type)(TF_Tensor*);
-typedef std::unique_ptr<TF_Tensor, TF_DeleteTensor_type> Safe_TF_TensorPtr;
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor);
-
 // Run the graph associated with the session starting with the
 // supplied inputs[].  Regardless of success or failure, inputs[] are
 // stolen by the implementation (i.e. the implementation will
@@ -163,6 +148,16 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper);
 
+// `opers` equaling NULL are converted to `nopers = -1`.
+// `output_names` must be empty or have the same length as `outputs`.
+TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
+                                        const char* fn_name,
+                                        const std::vector<TF_Operation*>* opers,
+                                        const std::vector<TF_Output>& inputs,
+                                        const std::vector<TF_Output>& outputs,
+                                        const NameVector& output_names,
+                                        const TF_FunctionOptions* opts,
+                                        TF_Status* out_status);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

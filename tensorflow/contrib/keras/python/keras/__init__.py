@@ -37,4 +37,4 @@ from tensorflow.contrib.keras.python.keras import utils
 from tensorflow.contrib.keras.python.keras import wrappers
 from tensorflow.contrib.keras.python.keras.layers import Input
 
-__version__ = '2.0.6-tf'
+__version__ = '2.0.8-tf'

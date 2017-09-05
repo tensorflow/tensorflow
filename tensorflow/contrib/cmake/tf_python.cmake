@@ -315,6 +315,7 @@ add_python_module("tensorflow/contrib/framework/ops")
 add_python_module("tensorflow/contrib/framework/python")
 add_python_module("tensorflow/contrib/framework/python/framework")
 add_python_module("tensorflow/contrib/framework/python/ops")
+add_python_module("tensorflow/contrib/gan")
 add_python_module("tensorflow/contrib/graph_editor")
 add_python_module("tensorflow/contrib/graph_editor/examples")
 add_python_module("tensorflow/contrib/graph_editor/tests")
@@ -782,6 +783,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
@@ -817,6 +820,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_profiler>
         $<TARGET_OBJECTS:tf_cc>
         $<TARGET_OBJECTS:tf_cc_ops>
+        $<TARGET_OBJECTS:tf_cc_while_loop>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_grappler>
@@ -866,6 +870,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_profiler>
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_ops>
+    $<TARGET_OBJECTS:tf_cc_while_loop>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_grappler>

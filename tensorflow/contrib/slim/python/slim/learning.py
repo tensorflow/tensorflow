@@ -551,6 +551,7 @@ def train(train_op,
           save_interval_secs=600,
           sync_optimizer=None,
           session_config=None,
+          session_wrapper=None,
           trace_every_n_steps=None):
   """Runs a training loop using a TensorFlow supervisor.
 
@@ -607,6 +608,10 @@ def train(train_op,
       If left as `None`, gradient updates will be asynchronous.
     session_config: An instance of `tf.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
+    session_wrapper: A function that takes a `tf.Session` object as the only
+      argument and returns a wrapped session object that has the same methods
+      that the original object has, or `None`. Iff not `None`, the wrapped
+      object will be used for training.
     trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
       and add it to the summaries every `trace_every_n_steps`. If None, no trace
       information will be produced or saved.
@@ -736,6 +741,10 @@ def train(train_op,
       with sv.managed_session(
           master, start_standard_services=False, config=session_config) as sess:
         logging.info('Starting Session.')
+        if session_wrapper is not None:
+          logging.info(
+              'Wrapping session with wrapper function: %s', session_wrapper)
+          sess = session_wrapper(sess)
         if is_chief:
           if logdir:
             sv.start_standard_services(sess)

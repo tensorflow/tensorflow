@@ -137,8 +137,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
               });
           opts.step_container = &step_container;
           std::vector<Tensor> return_values;
-          TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(
-              opts, args, &return_values, prefix()));
+          TF_RETURN_IF_ERROR(
+              dataset()->captured_func_->Run(opts, args, &return_values));
 
           if (!(return_values.size() == 1 &&
                 return_values[0].dtype() == DT_RESOURCE &&

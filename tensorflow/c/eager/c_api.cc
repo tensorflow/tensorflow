@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -150,10 +151,11 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return TF_SessionListDevices(ctx->session, status);
 }
 
-TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t) {
-  return new TFE_TensorHandle(
-      tensorflow::TensorCApi::MakeTensor(t->dtype, t->shape, t->buffer),
-      nullptr);
+TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
+  tensorflow::Tensor tensor;
+  status->status = tensorflow::TF_TensorToTensor(t, &tensor);
+  if (!status->status.ok()) return nullptr;
+  return new TFE_TensorHandle(tensor, nullptr);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) { delete h; }
@@ -451,8 +453,9 @@ tensorflow::Status ValidateInputTypeAndPlacement(
       return tensorflow::errors::InvalidArgument(
           "cannot compute ", op->name, " as input #", i,
           " was expected to be a ",
-          tensorflow::DataType_Name(kernel->input_type(i)), " tensor but is a ",
-          tensorflow::DataType_Name(op->inputs[i].dtype()), " tensor");
+          tensorflow::DataTypeString(kernel->input_type(i)),
+          " tensor but is a ",
+          tensorflow::DataTypeString(op->inputs[i].dtype()), " tensor");
     }
   }
   return tensorflow::Status::OK();

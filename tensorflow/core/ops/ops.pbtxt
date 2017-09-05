@@ -7806,6 +7806,35 @@ op {
   summary: "Extract `patches` from `images` and put them in the \"depth\" output dimension."
 }
 op {
+  name: "ExtractJpegShape"
+  input_arg {
+    name: "contents"
+    description: "0-D. The JPEG-encoded image."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "image_shape"
+    description: "1-D. The image shape with format [height, width, channels]."
+    type_attr: "output_type"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    description: "(Optional) The output type of the operation (int32 or int64).\nDefaults to int32."
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Extract the shape information of a JPEG-encoded image."
+  description: "This op only parses the image header, so it is much faster than DecodeJpeg."
+}
+op {
   name: "FFT"
   input_arg {
     name: "input"
@@ -9582,8 +9611,8 @@ op {
     type_list_attr: "Treduce_func_other_arguments"
   }
   input_arg {
-    name: "window_size"
-    type: DT_INT64
+    name: "window_size_func_other_arguments"
+    type_list_attr: "Twindow_size_func_other_arguments"
   }
   output_arg {
     name: "handle"
@@ -9599,12 +9628,21 @@ op {
     type: "func"
   }
   attr {
+    name: "window_size_func"
+    type: "func"
+  }
+  attr {
     name: "Tkey_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
   attr {
     name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Twindow_size_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
@@ -22065,6 +22103,19 @@ op {
   is_stateful: true
 }
 op {
+  name: "RestoreIterator"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  summary: "Restores the state of the `iterator` from the checkpoint saved at `path` using \"SaveIterator\"."
+  is_stateful: true
+}
+op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"
@@ -22160,6 +22211,8 @@ op {
       list {
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
@@ -22262,6 +22315,8 @@ op {
       list {
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
@@ -22618,6 +22673,20 @@ op {
   }
   summary: "Saves the input tensors to disk."
   description: "The size of `tensor_names` must match the number of tensors in `data`. `data[i]`\nis written to `filename` with name `tensor_names[i]`.\n\nSee also `SaveSlices`."
+  is_stateful: true
+}
+op {
+  name: "SaveIterator"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  summary: "Saves the state of the `iterator` at `path`."
+  description: "This state can be restored using \"RestoreIterator\"."
   is_stateful: true
 }
 op {
@@ -24617,7 +24686,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients / (1 + abs(-features)) ** 2`."
+    description: "The gradients: `gradients / (1 + abs(features)) ** 2`."
     type_attr: "T"
   }
   attr {
@@ -27699,6 +27768,42 @@ op {
     }
   }
   summary: "Splits a tensor into `num_split` tensors along one dimension."
+}
+op {
+  name: "SqlDataset"
+  input_arg {
+    name: "driver_name"
+    description: "The database type. Currently, the only supported type is \'sqlite\'."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_source_name"
+    description: "A connection string to connect to the database."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "query"
+    description: "A SQL query to execute."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that executes a SQL query and emits rows of the result set."
+  is_stateful: true
 }
 op {
   name: "Sqrt"

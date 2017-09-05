@@ -54,6 +54,10 @@ class KerasActivationsTest(test.TestCase):
     expected = _ref_softmax(test_values[0])
     self.assertAllClose(result[0], expected, rtol=1e-05)
 
+    with self.assertRaises(ValueError):
+      x = keras.backend.placeholder(ndim=1)
+      keras.activations.softmax(x)
+
   def test_temporal_softmax(self):
     with self.test_session():
       x = keras.backend.placeholder(shape=(2, 2, 3))
@@ -168,6 +172,13 @@ class KerasActivationsTest(test.TestCase):
   def test_linear(self):
     x = np.random.random((10, 5))
     self.assertAllClose(x, keras.activations.linear(x))
+
+  def test_invalid_usage(self):
+    with self.assertRaises(ValueError):
+      keras.activations.get('unknown')
+
+    # The following should be possible but should raise a warning:
+    keras.activations.get(keras.layers.LeakyReLU())
 
 if __name__ == '__main__':
   test.main()

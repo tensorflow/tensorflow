@@ -53,6 +53,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -64,7 +65,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return x.name
+      return compat.as_str(x.name)
   return ""
 
 
@@ -275,7 +276,8 @@ def enable_c_api(fn):
 
 
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
-                                 use_gpu=False, force_gpu=False):
+                                 use_gpu=False, force_gpu=False,
+                                 reset_test=True):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -285,6 +287,7 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
       session.
     use_gpu: If True, attempt to run as many ops as possible on GPU.
     force_gpu: If True, pin all ops to `/device:GPU:0`.
+    reset_test: If True, tearDown and SetUp the test case again.
 
   Returns:
     Returns a decorator that will run the decorated test function
@@ -301,6 +304,12 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
         with self.test_session(graph, config, use_gpu, force_gpu):
           f(self)
 
+      if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
+        self.tearDown()
+        self.setUp()
+
       def run_eager_mode():
         if force_gpu:
           gpu_name = gpu_device_name()
@@ -315,12 +324,10 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
           with context.device("/device:CPU:0"):
             f(self)
 
+      eager_graph = graph or ops.Graph()
       with context.eager_mode():
-        if graph is None:
+        with eager_graph.as_default():
           run_eager_mode()
-        else:
-          with graph.as_default():
-            run_eager_mode()
 
     return decorated
   return decorator
@@ -487,21 +494,33 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
+  def _eval_helper(self, tensors):
+    if isinstance(tensors, ops.EagerTensor):
+      return tensors.numpy()
+    if isinstance(tensors, resource_variable_ops.ResourceVariable):
+      return tensors.read_value().numpy()
+
+    if isinstance(tensors, tuple):
+      return tuple([self._eval_helper(t) for t in tensors])
+    elif isinstance(tensors, list):
+      return [self._eval_helper(t) for t in tensors]
+    elif isinstance(tensors, dict):
+      assert not tensors, "Only support empty dict now."
+      return dict()
+    else:
+      raise ValueError("Unsupported type.")
+
   def evaluate(self, tensors):
     """Evaluates tensors and returns numpy values.
 
     Args:
-      tensors: A Tensor or a list of Tensors.
+      tensors: A Tensor or a nested list/tuple of Tensors.
 
     Returns:
       tensors numpy values.
     """
     if context.in_eager_mode():
-      if isinstance(tensors, list):
-        assert all(isinstance(t, ops.EagerTensor) for t in tensors)
-        return [t.numpy() for t in tensors]
-      assert isinstance(tensors, ops.EagerTensor), "Must be list or EagerTensor"
-      return tensors.numpy()
+      return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
       return sess.run(tensors)
@@ -576,6 +595,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
       config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 

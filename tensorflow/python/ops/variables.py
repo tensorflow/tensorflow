@@ -858,6 +858,18 @@ class Variable(object):
     return self._variable.name
 
   @property
+  def _shared_name(self):
+    """The shared name of the variable.
+
+      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
+      name with name scope prefix.
+
+    Returns:
+      variable name.
+    """
+    return self.name[:-2]
+
+  @property
   def initializer(self):
     """The initializer operation for this variable."""
     return self._initializer_op
@@ -1364,7 +1376,7 @@ def variables_initializer(var_list, name="init"):
   Returns:
     An Op that run the initializers of all the specified variables.
   """
-  if var_list:
+  if var_list and context.in_graph_mode():
     return control_flow_ops.group(*[v.initializer for v in var_list], name=name)
   return control_flow_ops.no_op(name=name)
 

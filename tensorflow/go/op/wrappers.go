@@ -209,6 +209,95 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 	return op.Output(0)
 }
 
+// Writes a `Summary` protocol buffer with scalar values.
+//
+// The input `tag` and `value` must have the scalars.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	global_step: The step to write the summary for.
+//	tag: Tag for the summary.
+//	value: Value for the summary.
+//
+// Returns the created operation.
+func WriteScalarSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, value tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteScalarSummary",
+		Input: []tf.Input{
+			writer, global_step, tag, value,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Outputs a `Summary` protocol buffer with a tensor.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	global_step: The step to write the summary for.
+//	tensor: A tensor to serialize.
+//	tag: The summary's tag.
+//	summary_metadata: Serialized SummaryMetadata protocol buffer containing
+// plugin-related metadata for this summary.
+//
+// Returns the created operation.
+func WriteSummary(scope *Scope, writer tf.Output, global_step tf.Output, tensor tf.Output, tag tf.Output, summary_metadata tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteSummary",
+		Input: []tf.Input{
+			writer, global_step, tensor, tag, summary_metadata,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Flushes and closes the summary writer.
+//
+// Also removes it from the resource manager. To reopen, use another
+// CreateSummaryFileWriter op.
+//
+// Arguments:
+//	writer: A handle to the summary writer resource.
+//
+// Returns the created operation.
+func CloseSummaryWriter(scope *Scope, writer tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CloseSummaryWriter",
+		Input: []tf.Input{
+			writer,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Flushes the writer's unwritten events.
+//
+// Arguments:
+//	writer: A handle to the summary writer resource.
+//
+// Returns the created operation.
+func FlushSummaryWriter(scope *Scope, writer tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FlushSummaryWriter",
+		Input: []tf.Input{
+			writer,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // FakeQuantWithMinMaxVarsPerChannelGradientAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannelGradient.
 type FakeQuantWithMinMaxVarsPerChannelGradientAttr func(optionalAttr)
 
@@ -2147,6 +2236,34 @@ func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset
 		return
 	}
 	return offset
+}
+
+// Writes a `Summary` protocol buffer with a histogram.
+//
+// The generated
+// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+// has one summary value containing a histogram for `values`.
+//
+// This op reports an `InvalidArgument` error if any value is not finite.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	global_step: The step to write the summary for.
+//	tag: Scalar.  Tag to use for the `Summary.Value`.
+//	values: Any shape. Values to use to build the histogram.
+//
+// Returns the created operation.
+func WriteHistogramSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteHistogramSummary",
+		Input: []tf.Input{
+			writer, global_step, tag, values,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Concatenates tensors along one dimension.
@@ -4944,88 +5061,6 @@ func PriorityQueueV2(scope *Scope, shapes []tf.Shape, optional ...PriorityQueueV
 	return op.Output(0)
 }
 
-// PaddingFIFOQueueV2Attr is an optional argument to PaddingFIFOQueueV2.
-type PaddingFIFOQueueV2Attr func(optionalAttr)
-
-// PaddingFIFOQueueV2Shapes sets the optional shapes attribute to value.
-//
-// value: The shape of each component in a value. The length of this attr must
-// be either 0 or the same as the length of component_types.
-// Shapes of fixed rank but variable size are allowed by setting
-// any shape dimension to -1.  In this case, the inputs' shape may vary along
-// the given dimension, and DequeueMany will pad the given dimension with
-// zeros up to the maximum shape of all elements in the given batch.
-// If the length of this attr is 0, different queue elements may have
-// different ranks and shapes, but only one element may be dequeued at a time.
-// If not specified, defaults to <>
-//
-// REQUIRES: len(value) >= 0
-func PaddingFIFOQueueV2Shapes(value []tf.Shape) PaddingFIFOQueueV2Attr {
-	return func(m optionalAttr) {
-		m["shapes"] = value
-	}
-}
-
-// PaddingFIFOQueueV2Capacity sets the optional capacity attribute to value.
-//
-// value: The upper bound on the number of elements in this queue.
-// Negative numbers mean no limit.
-// If not specified, defaults to -1
-func PaddingFIFOQueueV2Capacity(value int64) PaddingFIFOQueueV2Attr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// PaddingFIFOQueueV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this queue is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func PaddingFIFOQueueV2Container(value string) PaddingFIFOQueueV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// PaddingFIFOQueueV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this queue will be shared under the given name
-// across multiple sessions.
-// If not specified, defaults to ""
-func PaddingFIFOQueueV2SharedName(value string) PaddingFIFOQueueV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// A queue that produces elements in first-in first-out order.
-//
-// Variable-size shapes are allowed by setting the corresponding shape dimensions
-// to 0 in the shape attr.  In this case DequeueMany will pad up to the maximum
-// size of any given element in the minibatch.  See below for details.
-//
-// Arguments:
-//	component_types: The type of each component in a value.
-//
-// Returns The handle to the queue.
-func PaddingFIFOQueueV2(scope *Scope, component_types []tf.DataType, optional ...PaddingFIFOQueueV2Attr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"component_types": component_types}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "PaddingFIFOQueueV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // FIFOQueueV2Attr is an optional argument to FIFOQueueV2.
 type FIFOQueueV2Attr func(optionalAttr)
 
@@ -5696,6 +5731,40 @@ func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataTyp
 	return components
 }
 
+// Restores the state of the `iterator` from the checkpoint saved at `path` using "SaveIterator".
+//
+// Returns the created operation.
+func RestoreIterator(scope *Scope, iterator tf.Output, path tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RestoreIterator",
+		Input: []tf.Input{
+			iterator, path,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Saves the state of the `iterator` at `path`.
+//
+// This state can be restored using "RestoreIterator".
+//
+// Returns the created operation.
+func SaveIterator(scope *Scope, iterator tf.Output, path tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SaveIterator",
+		Input: []tf.Input{
+			iterator, path,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Makes a new iterator from the given `dataset` and stores it in `iterator`.
 //
 // This operation may be executed multiple times. Each execution will reset the
@@ -5785,6 +5854,30 @@ func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf
 		Input: []tf.Input{
 			filenames, header_bytes, record_bytes, footer_bytes, buffer_size,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that executes a SQL query and emits rows of the result set.
+//
+// Arguments:
+//	driver_name: The database type. Currently, the only supported type is 'sqlite'.
+//	data_source_name: A connection string to connect to the database.
+//	query: A SQL query to execute.
+//
+//
+func SqlDataset(scope *Scope, driver_name tf.Output, data_source_name tf.Output, query tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SqlDataset",
+		Input: []tf.Input{
+			driver_name, data_source_name, query,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -6788,6 +6881,129 @@ func AdjustContrastv2(scope *Scope, images tf.Output, contrast_factor tf.Output)
 	return op.Output(0)
 }
 
+// PaddingFIFOQueueV2Attr is an optional argument to PaddingFIFOQueueV2.
+type PaddingFIFOQueueV2Attr func(optionalAttr)
+
+// PaddingFIFOQueueV2Shapes sets the optional shapes attribute to value.
+//
+// value: The shape of each component in a value. The length of this attr must
+// be either 0 or the same as the length of component_types.
+// Shapes of fixed rank but variable size are allowed by setting
+// any shape dimension to -1.  In this case, the inputs' shape may vary along
+// the given dimension, and DequeueMany will pad the given dimension with
+// zeros up to the maximum shape of all elements in the given batch.
+// If the length of this attr is 0, different queue elements may have
+// different ranks and shapes, but only one element may be dequeued at a time.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func PaddingFIFOQueueV2Shapes(value []tf.Shape) PaddingFIFOQueueV2Attr {
+	return func(m optionalAttr) {
+		m["shapes"] = value
+	}
+}
+
+// PaddingFIFOQueueV2Capacity sets the optional capacity attribute to value.
+//
+// value: The upper bound on the number of elements in this queue.
+// Negative numbers mean no limit.
+// If not specified, defaults to -1
+func PaddingFIFOQueueV2Capacity(value int64) PaddingFIFOQueueV2Attr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// PaddingFIFOQueueV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this queue is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func PaddingFIFOQueueV2Container(value string) PaddingFIFOQueueV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// PaddingFIFOQueueV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this queue will be shared under the given name
+// across multiple sessions.
+// If not specified, defaults to ""
+func PaddingFIFOQueueV2SharedName(value string) PaddingFIFOQueueV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// A queue that produces elements in first-in first-out order.
+//
+// Variable-size shapes are allowed by setting the corresponding shape dimensions
+// to 0 in the shape attr.  In this case DequeueMany will pad up to the maximum
+// size of any given element in the minibatch.  See below for details.
+//
+// Arguments:
+//	component_types: The type of each component in a value.
+//
+// Returns The handle to the queue.
+func PaddingFIFOQueueV2(scope *Scope, component_types []tf.DataType, optional ...PaddingFIFOQueueV2Attr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"component_types": component_types}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "PaddingFIFOQueueV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ExtractJpegShapeAttr is an optional argument to ExtractJpegShape.
+type ExtractJpegShapeAttr func(optionalAttr)
+
+// ExtractJpegShapeOutputType sets the optional output_type attribute to value.
+//
+// value: (Optional) The output type of the operation (int32 or int64).
+// Defaults to int32.
+// If not specified, defaults to DT_INT32
+func ExtractJpegShapeOutputType(value tf.DataType) ExtractJpegShapeAttr {
+	return func(m optionalAttr) {
+		m["output_type"] = value
+	}
+}
+
+// Extract the shape information of a JPEG-encoded image.
+//
+// This op only parses the image header, so it is much faster than DecodeJpeg.
+//
+// Arguments:
+//	contents: 0-D. The JPEG-encoded image.
+//
+// Returns 1-D. The image shape with format [height, width, channels].
+func ExtractJpegShape(scope *Scope, contents tf.Output, optional ...ExtractJpegShapeAttr) (image_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ExtractJpegShape",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DecodeJpegAttr is an optional argument to DecodeJpeg.
 type DecodeJpegAttr func(optionalAttr)
 
@@ -6982,6 +7198,48 @@ func ResizeNearestNeighbor(scope *Scope, images tf.Output, size tf.Output, optio
 		Input: []tf.Input{
 			images, size,
 		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// SummaryWriterAttr is an optional argument to SummaryWriter.
+type SummaryWriterAttr func(optionalAttr)
+
+// SummaryWriterSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func SummaryWriterSharedName(value string) SummaryWriterAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// SummaryWriterContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func SummaryWriterContainer(value string) SummaryWriterAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// Returns a handle to be used to access a summary writer.
+//
+// The summary writer is an in-graph resource which can be used by ops to write
+// summaries to event files.
+//
+// Returns the summary writer resource. Scalar handle.
+func SummaryWriter(scope *Scope, optional ...SummaryWriterAttr) (writer tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SummaryWriter",
+
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
@@ -10469,6 +10727,61 @@ func Restore(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, dt tf.
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// WriteAudioSummaryAttr is an optional argument to WriteAudioSummary.
+type WriteAudioSummaryAttr func(optionalAttr)
+
+// WriteAudioSummaryMaxOutputs sets the optional max_outputs attribute to value.
+//
+// value: Max number of batch elements to generate audio for.
+// If not specified, defaults to 3
+//
+// REQUIRES: value >= 1
+func WriteAudioSummaryMaxOutputs(value int64) WriteAudioSummaryAttr {
+	return func(m optionalAttr) {
+		m["max_outputs"] = value
+	}
+}
+
+// Writes a `Summary` protocol buffer with audio.
+//
+// The summary has up to `max_outputs` summary values containing audio. The
+// audio is built from `tensor` which must be 3-D with shape `[batch_size,
+// frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
+// assumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.
+//
+// The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
+// build the `tag` of the summary values:
+//
+// *  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
+// *  If `max_outputs` is greater than 1, the summary value tags are
+//    generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	global_step: The step to write the summary for.
+//	tag: Scalar. Used to build the `tag` attribute of the summary values.
+//	tensor: 2-D of shape `[batch_size, frames]`.
+//	sample_rate: The sample rate of the signal in hertz.
+//
+// Returns the created operation.
+func WriteAudioSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, tensor tf.Output, sample_rate tf.Output, optional ...WriteAudioSummaryAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteAudioSummary",
+		Input: []tf.Input{
+			writer, global_step, tag, tensor, sample_rate,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
@@ -15698,6 +16011,30 @@ func Dilation2D(scope *Scope, input tf.Output, filter tf.Output, strides []int64
 	return op.Output(0)
 }
 
+// Creates a summary file writer accessible by the given resource handle.
+//
+// Arguments:
+//	writer: A handle to the summary writer resource
+//	logdir: Directory where the event file will be written.
+//	max_queue: Size of the queue of pending events and summaries.
+//	flush_millis: How often, in milliseconds, to flush the pending events and
+// summaries to disk.
+//	filename_suffix: Every event file's name is suffixed with this suffix.
+//
+// Returns the created operation.
+func CreateSummaryFileWriter(scope *Scope, writer tf.Output, logdir tf.Output, max_queue tf.Output, flush_millis tf.Output, filename_suffix tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CreateSummaryFileWriter",
+		Input: []tf.Input{
+			writer, logdir, max_queue, flush_millis, filename_suffix,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // EncodeBase64Attr is an optional argument to EncodeBase64.
 type EncodeBase64Attr func(optionalAttr)
 
@@ -17071,6 +17408,84 @@ func Cumsum(scope *Scope, x tf.Output, axis tf.Output, optional ...CumsumAttr) (
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// WriteImageSummaryAttr is an optional argument to WriteImageSummary.
+type WriteImageSummaryAttr func(optionalAttr)
+
+// WriteImageSummaryMaxImages sets the optional max_images attribute to value.
+//
+// value: Max number of batch elements to generate images for.
+// If not specified, defaults to 3
+//
+// REQUIRES: value >= 1
+func WriteImageSummaryMaxImages(value int64) WriteImageSummaryAttr {
+	return func(m optionalAttr) {
+		m["max_images"] = value
+	}
+}
+
+// Writes a `Summary` protocol buffer with images.
+//
+// The summary has up to `max_images` summary values containing images. The
+// images are built from `tensor` which must be 4-D with shape `[batch_size,
+// height, width, channels]` and where `channels` can be:
+//
+// *  1: `tensor` is interpreted as Grayscale.
+// *  3: `tensor` is interpreted as RGB.
+// *  4: `tensor` is interpreted as RGBA.
+//
+// The images have the same number of channels as the input tensor. For float
+// input, the values are normalized one image at a time to fit in the range
+// `[0, 255]`.  `uint8` values are unchanged.  The op uses two different
+// normalization algorithms:
+//
+// *  If the input values are all positive, they are rescaled so the largest one
+//    is 255.
+//
+// *  If any input value is negative, the values are shifted so input value 0.0
+//    is at 127.  They are then rescaled so that either the smallest value is 0,
+//    or the largest one is 255.
+//
+// The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
+// build the `tag` of the summary values:
+//
+// *  If `max_images` is 1, the summary value tag is '*tag*/image'.
+// *  If `max_images` is greater than 1, the summary value tags are
+//    generated sequentially as '*tag*/image/0', '*tag*/image/1', etc.
+//
+// The `bad_color` argument is the color to use in the generated images for
+// non-finite input values.  It is a `unit8` 1-D tensor of length `channels`.
+// Each element must be in the range `[0, 255]` (It represents the value of a
+// pixel in the output image).  Non-finite values in the input tensor are
+// replaced by this tensor in the output image.  The default value is the color
+// red.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	global_step: The step to write the summary for.
+//	tag: Scalar. Used to build the `tag` attribute of the summary values.
+//	tensor: 4-D of shape `[batch_size, height, width, channels]` where
+// `channels` is 1, 3, or 4.
+//	bad_color: Color to use for pixels with non-finite values.
+//
+// Returns the created operation.
+func WriteImageSummary(scope *Scope, writer tf.Output, global_step tf.Output, tag tf.Output, tensor tf.Output, bad_color tf.Output, optional ...WriteImageSummaryAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteImageSummary",
+		Input: []tf.Input{
+			writer, global_step, tag, tensor, bad_color,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Pads a tensor with zeros.
@@ -20207,7 +20622,7 @@ func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional .
 //	gradients: The backpropagated gradients to the corresponding softsign operation.
 //	features: The features passed as input to the corresponding softsign operation.
 //
-// Returns The gradients: `gradients / (1 + abs(-features)) ** 2`.
+// Returns The gradients: `gradients / (1 + abs(features)) ** 2`.
 func SoftsignGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
 	if scope.Err() != nil {
 		return

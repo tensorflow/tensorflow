@@ -55,10 +55,6 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.summary_writer_resource = 'mock'
     self.assertEqual('mock', ctx.summary_writer_resource)
 
-    self.assertFalse(ctx.recording_summaries)
-    ctx.recording_summaries = True
-    self.assertTrue(ctx.recording_summaries)
-
     self.assertEqual('', ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
     with ctx.device('GPU:0'):
@@ -95,8 +91,7 @@ class TFETest(test_util.TensorFlowTestCase):
       return [
           ctx.in_graph_mode(),
           ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
-          ctx.recording_summaries, ctx.device_name,
-          ctx.num_gpus()
+          ctx.device_name, ctx.num_gpus()
       ]
 
     def get_values(ctx, values):

@@ -8289,6 +8289,30 @@ op {
   }
 }
 op {
+  name: "ExtractJpegShape"
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "image_shape"
+    type_attr: "output_type"
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "FFT"
   input_arg {
     name: "input"
@@ -10443,8 +10467,8 @@ op {
     type_list_attr: "Treduce_func_other_arguments"
   }
   input_arg {
-    name: "window_size"
-    type: DT_INT64
+    name: "window_size_func_other_arguments"
+    type_list_attr: "Twindow_size_func_other_arguments"
   }
   output_arg {
     name: "handle"
@@ -10459,12 +10483,21 @@ op {
     type: "func"
   }
   attr {
+    name: "window_size_func"
+    type: "func"
+  }
+  attr {
     name: "Tkey_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
   attr {
     name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Twindow_size_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
@@ -22371,6 +22404,18 @@ op {
   is_stateful: true
 }
 op {
+  name: "RestoreIterator"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"
@@ -22550,6 +22595,42 @@ op {
   }
 }
 op {
+  name: "Reverse"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dims"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_STRING
+      }
+    }
+  }
+}
+op {
   name: "ReverseSequence"
   input_arg {
     name: "input"
@@ -22672,6 +22753,55 @@ op {
       list {
         type: DT_UINT8
         type: DT_INT8
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_STRING
+      }
+    }
+  }
+}
+op {
+  name: "ReverseV2"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
@@ -23005,6 +23135,18 @@ op {
     type: "list(type)"
     has_minimum: true
     minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "SaveIterator"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
   }
   is_stateful: true
 }
@@ -27584,6 +27726,38 @@ op {
       }
     }
   }
+}
+op {
+  name: "SqlDataset"
+  input_arg {
+    name: "driver_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_source_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "query"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "Sqrt"

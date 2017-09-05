@@ -75,8 +75,10 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_OperationBuilder_finish(
   TF_Status* status = TF_NewStatus();
   TF_Operation* op = TF_FinishOperation(d, status);
   if (throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
     return reinterpret_cast<jlong>(op);
   }
+  TF_DeleteStatus(status);
   return 0;
 }
 
@@ -211,6 +213,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensor(
   TF_Status* status = TF_NewStatus();
   TF_SetAttrTensor(d, cname, t, status);
   throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(name, cname);
 }
 
@@ -234,6 +237,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensorList(
   TF_Status* status = TF_NewStatus();
   TF_SetAttrTensorList(d, cname, tensors.get(), n, status);
   throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(name, cname);
 }
 
@@ -259,7 +263,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
-        JNIEnv* env, jclass object, jlong handle, jstring name, jobjectArray values) {
+    JNIEnv* env, jclass object, jlong handle, jstring name,
+    jobjectArray values) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
   const char* cname = env->GetStringUTFChars(name, nullptr);
@@ -267,12 +272,13 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
   static_assert(sizeof(jbyte) == 1,
                 "Require Java byte to be represented as a single byte");
   std::unique_ptr<jbyteArray[]> jarrays(new jbyteArray[num_values]);
-  std::unique_ptr<jbyte*[]> jvalues(new jbyte*[num_values]);
-  std::unique_ptr<void*[]> cvalues(new void*[num_values]);
+  std::unique_ptr<jbyte* []> jvalues(new jbyte*[num_values]);
+  std::unique_ptr<void* []> cvalues(new void*[num_values]);
   std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
 
   for (int i = 0; i < num_values; ++i) {
-    jbyteArray v = static_cast<jbyteArray>(env->GetObjectArrayElement(values, i));
+    jbyteArray v =
+        static_cast<jbyteArray>(env->GetObjectArrayElement(values, i));
     jarrays[i] = v;
     jvalues[i] = env->GetByteArrayElements(v, nullptr);
     cvalues[i] = jvalues[i];

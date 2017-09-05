@@ -36,22 +36,6 @@ namespace xla {
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
-void HloBuffer::AddValue(const HloValue& value) {
-  values_.push_back(&value);
-  // Sort vector and remove duplicates.
-  std::sort(values_.begin(), values_.end(), HloValue::IdLessThan);
-  values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
-                values_.end());
-}
-
-void HloBuffer::RemoveValue(const HloValue& value) {
-  // The values are sorted, so finding the value could be done in log(n) time
-  // with a binary search.
-  auto it = std::find(values_.begin(), values_.end(), &value);
-  CHECK(it != values_.end());
-  values_.erase(it);
-}
-
 bool HloBuffer::operator==(const HloBuffer& other) const {
   bool equal = id() == other.id();
   if (equal) {

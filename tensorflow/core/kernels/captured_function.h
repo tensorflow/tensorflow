@@ -61,12 +61,10 @@ class CapturedFunction {
                        std::unique_ptr<CapturedFunction>* out_function);
 
   Status Run(FunctionLibraryRuntime::Options f_opts,
-             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-             const string& prefix);
+             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets);
 
   void RunAsync(FunctionLibraryRuntime::Options f_opts,
                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-                const string& prefix,
                 FunctionLibraryRuntime::DoneCallback done);
 
   const Device* device() const { return device_; }
