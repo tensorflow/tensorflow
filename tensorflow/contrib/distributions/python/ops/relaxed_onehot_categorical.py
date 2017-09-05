@@ -150,7 +150,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
         `N - 1` dimensions index into a batch of independent distributions and
         the last dimension represents a vector of probabilities for each
         class. Only one of `logits` or `probs` should be passed in.
-      dtype: The type of the event samples (default: int32).
+      dtype: The type of the event samples (default: float32).
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -388,7 +388,7 @@ class RelaxedOneHotCategorical(
         dimensions index into a batch of independent distributions and the last
         dimension represents a vector of probabilities for each class. Only one
         of `logits` or `probs` should be passed in.
-      dtype: The type of the event samples (default: int32).
+      dtype: The type of the event samples (default: float32).
       validate_args: Unused in this distribution.
       allow_nan_stats: Python `bool`, default `True`. If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
