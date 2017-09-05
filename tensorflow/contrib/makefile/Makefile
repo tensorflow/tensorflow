@@ -311,7 +311,7 @@ $(MARCH_OPTION) \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
--I$(MAKEFILE_DIR)/gen/protobuf/include \
+-I$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 
@@ -327,7 +327,7 @@ $(TARGET_NSYNC_LIB) \
 
 	LDFLAGS := \
 $(MARCH_OPTION) \
--L$(MAKEFILE_DIR)/gen/protobuf/lib \
+-L$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/lib \
 -L$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/$(ANDROID_ARCH) \
 -fPIE \
 -pie \
@@ -703,7 +703,7 @@ clean:
 # Gets rid of all generated files except protobuf libs generated
 # before calling make.  This allows users not to recompile proto libs everytime.
 clean_except_protobuf_libs:
-	find $(MAKEFILE_DIR)/gen -mindepth 1 -maxdepth 1 ! -name "protobuf" ! -name "protobuf-host" -exec rm -r "{}" \;
+	find $(MAKEFILE_DIR)/gen -mindepth 1 -maxdepth 1 ! -name "protobuf*" -exec rm -r "{}" \;
 	rm -rf tensorflow/core/util/version_info.cc
 
 # Gets rid of target files only, leaving the host alone. Also leaves the lib
