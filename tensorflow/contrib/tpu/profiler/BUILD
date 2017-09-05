@@ -14,19 +14,30 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-cc_binary(
-    name = "capture_tpu_profile",
-    srcs = ["capture_tpu_profile.cc"],
-    visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
+cc_library(
+    name = "dump_tpu_profile",
+    srcs = ["dump_tpu_profile.cc"],
+    hdrs = ["dump_tpu_profile.h"],
     deps = [
         ":op_profile_proto_cc",
         ":tpu_profiler_proto_cc",
         ":trace_events_proto_cc",
         ":trace_events_to_json",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_binary(
+    name = "capture_tpu_profile",
+    srcs = ["capture_tpu_profile.cc"],
+    visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
+    deps = [
+        ":dump_tpu_profile",
+        ":tpu_profiler_proto_cc",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/platform/cloud:gcs_file_system",
         "@grpc//:grpc++_unsecure",
