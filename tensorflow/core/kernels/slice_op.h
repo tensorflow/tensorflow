@@ -44,14 +44,34 @@ void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();
 
+  std::vector<int64> i_idx(nelem, 0);
+  std::vector<int64> t(nelem, 0);
+
   for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
-    int64 i_idx = 0;
-    int64 t = o_idx;
-    for (int i = 0; i < ndims; ++i) {
-      i_idx += (t / out_strides[i] + slice_indices[i]) * in_strides[i];
-      t %= out_strides[i];
+    t[o_idx] = o_idx;
+  }
+  for (int i = 0; i < ndims; ++i) {
+    int64 n = (nelem + 7) / 8;
+    int64 o_idx = 0;
+    switch (nelem % 8) {
+#define CALC_INPUT_IDX                                                            \
+  i_idx[o_idx] += (t[o_idx] / out_strides[i] + slice_indices[i]) * in_strides[i]; \
+  t[o_idx] %= out_strides[i];                                                     \
+  ++o_idx;
+      case 0: do { CALC_INPUT_IDX;
+      case 7:      CALC_INPUT_IDX;
+      case 6:      CALC_INPUT_IDX;
+      case 5:      CALC_INPUT_IDX;
+      case 4:      CALC_INPUT_IDX;
+      case 3:      CALC_INPUT_IDX;
+      case 2:      CALC_INPUT_IDX;
+      case 1:      CALC_INPUT_IDX;
+#undef CALC_INPUT_IDX
+              } while (--n > 0);
     }
-    q[o_idx] = p[i_idx];
+  }
+  for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
+    q[o_idx] = p[i_idx[o_idx]];
   }
 }
 

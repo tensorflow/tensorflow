@@ -190,11 +190,11 @@ class SliceOp : public OpKernel {
         }
         return;
       }
-#define HANDLE_DIM(NDIM)                            \
-  if (input_dims == NDIM) {                         \
-    functor::Slice<Device, T, NDIM>()(         \
+#define HANDLE_DIM(NDIM)                                              \
+  if (input_dims == NDIM) {                                           \
+    functor::Slice<Device, T, NDIM>()(                                \
         context->eigen_device<Device>(), result, input, begin, size); \
-    return;                                         \
+    return;                                                           \
   }
       HANDLE_DIM(1);
       HANDLE_DIM(2);
