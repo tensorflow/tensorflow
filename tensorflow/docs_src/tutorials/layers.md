@@ -79,7 +79,7 @@ relative measurements of how likely it is that the image falls into each target
 class.
 
 > Note: For a more comprehensive walkthrough of CNN architecture, see Stanford
-> University's <a href="http://cs231n.github.io/convolutional-networks/">
+> University's <a href="https://cs231n.github.io/convolutional-networks/">
 > Convolutional Neural Networks for Visual Recognition course materials</a>.</p>
 
 ## Building the CNN MNIST Classifier {#building_the_cnn_mnist_classifier}

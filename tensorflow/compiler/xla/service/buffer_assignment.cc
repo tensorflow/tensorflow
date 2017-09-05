@@ -200,15 +200,20 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
   return const_cast<BufferAllocation*>(&GetAllocation(index));
 }
 
-bool BufferAssignment::HasTopLevelAllocation(
-    const HloInstruction* instruction) const {
+bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
+                                       const ShapeIndex& index) const {
   for (const LogicalBuffer* buffer :
-       GetPointsToSet(instruction).element(/*index=*/{})) {
+       GetPointsToSet(instruction).element(index)) {
     if (allocation_index_for_buffer_.count(buffer) > 0) {
       return true;
     }
   }
   return false;
+}
+
+bool BufferAssignment::HasTopLevelAllocation(
+    const HloInstruction* instruction) const {
+  return HasAllocationAt(instruction, /*index=*/{});
 }
 
 StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
@@ -440,23 +445,25 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   // the buffer_size_ call might fail for some backends.
   const TuplePointsToAnalysis& points_to_analysis =
       liveness_->points_to_analysis();
-  for (const auto& buffer : points_to_analysis.logical_buffers()) {
-    if (HasAllocation(*buffer)) {
-      LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
+  for (LogicalBuffer::Id id = 0; id < points_to_analysis.num_logical_buffers();
+       id++) {
+    auto& buffer = points_to_analysis.logical_buffer(id);
+    if (HasAllocation(buffer)) {
+      LogicalBufferProto proto_buffer = buffer.ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);
 
       // Fill buffer aliases.
       for (const BufferAlias& alias :
-           points_to_analysis.GetBufferAliases(*buffer)) {
-        if (alias.instruction() == buffer->instruction() &&
-            alias.index() == buffer->index()) {
+           points_to_analysis.GetBufferAliases(buffer)) {
+        if (alias.instruction() == buffer.instruction() &&
+            alias.index() == buffer.index()) {
           continue;  // skip self-aliases
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto.add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
             LogicalBuffer::ToLocationProto(*alias.instruction(), alias.index());
-        proto_alias->set_source_buffer_id(buffer->id());
+        proto_alias->set_source_buffer_id(buffer.id());
         proto_alias->mutable_location()->Swap(&proto_alias_location);
       }
     }
@@ -585,7 +592,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
-    bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
+    bool allow_input_output_aliasing, BufferLiveness::Colorer colorer) {
   BufferAssigner assigner(allow_input_output_aliasing, std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
@@ -804,6 +811,17 @@ Status BufferAssigner::AssignBuffersForComputation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for thread-local/CustomCall: " << *buffer;
+      continue;
+    }
+
+    if (instruction->opcode() == HloOpcode::kRecv) {
+      // Make sure that recv operations get a new unique allocation so that
+      // don't share their buffer with any other operations.
+      BufferAllocation* allocation = assignment->NewAllocation(
+          *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
+      allocation_indices.push_back(allocation->index());
+      VLOG(3) << "New allocation #" << allocation->index()
+              << " for recv: " << *buffer;
       continue;
     }
 
@@ -1138,8 +1156,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
         // predecessor set, and must be unambiguous.
         const PointsToSet& init_points_to =
             points_to_analysis.GetPointsToSet(instruction->operand(0));
-        const std::vector<const LogicalBuffer*>& init_buffers =
-            init_points_to.element(buffer->index());
+        const auto& init_buffers = init_points_to.element(buffer->index());
         CHECK_EQ(init_buffers.size(), 1);
         CHECK_GT(predecessor_set.count(init_buffers[0]), 0);
         predecessor_while_buffers.push_back(init_buffers[0]);
@@ -1202,8 +1219,8 @@ const LogicalBuffer* AddBufferToColocatedSet(
     std::vector<const LogicalBuffer*>* colocated_set) {
   // CopyInsertion ensures root points-to set is unambiguous and distinct.
   const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
-  CHECK(!points_to.IsAmbiguous());
-  CHECK(points_to.IsDistinct());
+  DCHECK(!points_to.IsAmbiguous());
+  DCHECK(points_to.IsDistinct());
   colocated_set->push_back(points_to.element(index)[0]);
   return colocated_set->back();
 }
@@ -1219,6 +1236,9 @@ void BufferAssigner::BuildColocatedBufferSets(
   const TuplePointsToAnalysis& points_to_analysis =
       buffer_liveness.points_to_analysis();
   for (const HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       const HloOpcode opcode = instruction->opcode();
@@ -1351,7 +1371,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
-  TF_RETURN_IF_ERROR(colorer_(&assignment->mutable_points_to_analysis()));
+  TF_RETURN_IF_ERROR(colorer_(assignment->liveness()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3, assignment->points_to_analysis().ToString());
 
@@ -1386,6 +1406,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // their own BufferAllocation.
   for (auto* computation : thread_local_computations) {
     TF_RET_CHECK(computation != module->entry_computation());
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
         computation, module->config().debug_options(),
         /*is_thread_local=*/true, colocated_buffers, colocated_allocations,

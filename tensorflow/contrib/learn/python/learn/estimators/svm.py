@@ -43,9 +43,9 @@ class SVM(estimator.Estimator):
   num_loss_partitions is larger or equal to this value, convergence is
   guaranteed but becomes slower as num_loss_partitions increases. If it is set
   to a smaller value, the optimizer is more aggressive in reducing the global
-  loss but convergence is not guaranteed. The recommended value in tf.learn
-  (where there is one process per worker) is the number of workers running the
-  train steps. It defaults to 1 (single machine).
+  loss but convergence is not guaranteed. The recommended value in an
+  `Estimator` (where there is one process per worker) is the number of workers
+  running the train steps. It defaults to 1 (single machine).
 
   Example:
 

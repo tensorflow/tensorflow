@@ -68,7 +68,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
       invalid.
     """
     if initial_gradient_squared_accumulator_value <= 0.0:
-      raise ValueError("initial_gradient_squared_accumulator_value must be"
+      raise ValueError("initial_gradient_squared_accumulator_value must be "
                        "positive: %s" %
                        initial_gradient_squared_accumulator_value)
     super(AdagradDAOptimizer, self).__init__(use_locking, name)

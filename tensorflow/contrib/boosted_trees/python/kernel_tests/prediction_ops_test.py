@@ -163,7 +163,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
       self.assertAllEqual([[0], [0]], result.eval())
       self.assertAllEqual(result_no_dropout.eval(), result.eval())
       # Empty dropout.
@@ -200,7 +201,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
       self.assertAllClose([[-0.4], [-0.4]], result.eval())
       self.assertAllEqual(result_no_dropout.eval(), result.eval())
 
@@ -240,7 +242,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
       self.assertAllClose([[-0.4, 0.9], [-0.4, 0.9]], result.eval())
       self.assertAllEqual(result_no_dropout.eval(), result.eval())
 
@@ -294,7 +297,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       # The first example will get bias -0.4 from first tree and
       # leaf 4 payload of -0.9 hence -1.3, the second example will
@@ -340,6 +344,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Prepare learner config.
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 2
+      learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
 
       result, result_no_dropout, dropout_info = (
           prediction_ops.gradient_trees_prediction(
@@ -353,7 +358,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       # All the examples should get only the bias since the second tree is
       # non-finalized
@@ -411,7 +417,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       # The first example will get bias -0.4 from first tree and
       # leaf 4 payload of -0.9 hence -1.3, the second example will
@@ -471,7 +478,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       # The first example will get bias -0.4 from first tree and
       # leaf 4 payload of -0.9 hence -1.3, the second example will
@@ -530,7 +538,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
       # The first example will get bias class 1 -0.2 from first tree and
       # leaf 2 payload (sparse feature missing) of 0.5 hence [0.5, -0.2],
       # the second example will get the same bias class 1 -0.2 and leaf 3
@@ -541,7 +550,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Empty dropout.
       self.assertAllEqual([[], []], dropout_info.eval())
 
-  # For all non-tree-per class multiclass handling strategies, predictions vec
+  # For tree-per-class multiclass handling strategies, predictions vec
   # will have the size of the number of classes.
   # This test is when leafs have SPARSE weights stored (class id and
   # contribution).
@@ -591,7 +600,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=False))
       # The first example will get bias class 1 -0.2 from first tree and
       # leaf 2 payload (sparse feature missing) of 0.5 hence [0.5, -0.2],
       # the second example will get the same bias class 1 -0.2 and leaf 3
@@ -651,8 +661,9 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False))
-      # The first example will get bias class 1 -0.2  and -2 for class 2 from
+              center_bias=False,
+              reduce_dim=False))
+      # The first example will get bias class 1 -0.2 and -2 for class 2 from
       # first tree and leaf 2 payload (sparse feature missing) of 0.5 hence
       # 0.5, -0.2], the second example will get the same bias and leaf 3 payload
       # of class 1 1.2 and class 2-0.7 hence [0.0, 1.0, -2.7].
@@ -679,7 +690,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
         learner_config=learner_config.SerializeToString(),
         apply_dropout=apply_dropout,
         apply_averaging=apply_averaging,
-        center_bias=center_bias)
+        center_bias=center_bias,
+        reduce_dim=True)
 
   def testDropout(self):
     with self.test_session():
@@ -918,7 +930,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=True,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       _, result_no_dropout_2, dropout_info_2 = (
           prediction_ops.gradient_trees_prediction(
@@ -932,7 +945,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=True,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       # Different seed.
       _, result_no_dropout_3, dropout_info_3 = (
@@ -947,7 +961,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=True,
               apply_averaging=False,
-              center_bias=False))
+              center_bias=False,
+              reduce_dim=True))
 
       # First seed with centering bias.
       _, result_no_dropout_4, dropout_info_4 = (
@@ -962,7 +977,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=True,
               apply_averaging=False,
-              center_bias=True))
+              center_bias=True,
+              reduce_dim=True))
 
       # The same seed returns the same results.
       self.assertAllEqual(dropout_info_1.eval(), dropout_info_2.eval())
@@ -987,7 +1003,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
           learner_config=learner_config.SerializeToString(),
           apply_dropout=False,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
 
       self.assertAllCloseAccordingToType(result.eval(),
                                          result_no_dropout.eval())

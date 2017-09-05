@@ -16,8 +16,8 @@ limitations under the License.
 package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
-import android.os.Trace;
 import android.os.Build.VERSION;
+import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.FileInputStream;
@@ -27,6 +27,7 @@ import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import org.tensorflow.DataType;
@@ -54,23 +55,7 @@ public class TensorFlowInferenceInterface {
    * @param model The filepath to the GraphDef proto representing the model.
    */
   public TensorFlowInferenceInterface(AssetManager assetManager, String model) {
-    Log.i(TAG, "Checking to see if TensorFlow native methods are already loaded");
-    try {
-      // Hack to see if the native libraries have been loaded.
-      new RunStats();
-      Log.i(TAG, "TensorFlow native methods already loaded");
-    } catch (UnsatisfiedLinkError e1) {
-      Log.i(
-          TAG, "TensorFlow native methods not found, attempting to load via tensorflow_inference");
-      try {
-        System.loadLibrary("tensorflow_inference");
-        Log.i(TAG, "Successfully loaded TensorFlow native methods (RunStats error may be ignored)");
-      } catch (UnsatisfiedLinkError e2) {
-        throw new RuntimeException(
-            "Native TF methods not found; check that the correct native"
-                + " libraries are present in the APK.");
-      }
-    }
+    prepareNativeRuntime();
 
     this.modelName = model;
     this.g = new Graph();
@@ -99,6 +84,31 @@ public class TensorFlowInferenceInterface {
       Log.i(TAG, "Successfully loaded model from '" + model + "'");
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from '" + model + "'", e);
+    }
+  }
+
+  /*
+   * Load a TensorFlow model from provided InputStream.
+   * Note: The InputStream will not be closed after loading model, users need to
+   * close it themselves.
+   *
+   * @param is The InputStream to use to load the model.
+   */
+  public TensorFlowInferenceInterface(InputStream is) {
+    prepareNativeRuntime();
+
+    // modelName is redundant for model loading from input stream, here is for
+    // avoiding error in initialization as modelName is marked final.
+    this.modelName = "";
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+
+    try {
+      loadGraph(is, g);
+      Log.i(TAG, "Successfully loaded model from the input stream");
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load model from the input stream", e);
     }
   }
 
@@ -181,8 +191,9 @@ public class TensorFlowInferenceInterface {
   }
 
   /**
-   * Cleans up the state associated with this Object. initializeTensorFlow() can then be called
-   * again to initialize a new session.
+   * Cleans up the state associated with this Object.
+   *
+   * <p>The TenosrFlowInferenceInterface object is no longer usable after this method returns.
    */
   public void close() {
     closeFeeds();
@@ -232,6 +243,16 @@ public class TensorFlowInferenceInterface {
    * as many elements as that of the destination Tensor. If {@link src} has more elements than the
    * destination has capacity, the copy is truncated.
    */
+  public void feed(String inputName, long[] src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, LongBuffer.wrap(src)));
+  }
+
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
   public void feed(String inputName, double[] src, long... dims) {
     addFeed(inputName, Tensor.create(dims, DoubleBuffer.wrap(src)));
   }
@@ -244,6 +265,25 @@ public class TensorFlowInferenceInterface {
    */
   public void feed(String inputName, byte[] src, long... dims) {
     addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
+  }
+
+  /**
+   * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
+   * bytes, not a Java {@code String} (which is a sequence of characters).
+   */
+  public void feedString(String inputName, byte[] src) {
+    addFeed(inputName, Tensor.create(src));
+  }
+
+  /**
+   * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
+   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
+   * characters).
+   */
+  public void feedString(String inputName, byte[][] src) {
+    addFeed(inputName, Tensor.create(src));
   }
 
   // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
@@ -267,6 +307,17 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, IntBuffer src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, src));
+  }
+
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, LongBuffer src, long... dims) {
     addFeed(inputName, Tensor.create(dims, src));
   }
 
@@ -315,6 +366,15 @@ public class TensorFlowInferenceInterface {
    * dst} must have length greater than or equal to that of the source Tensor. This operation will
    * not affect dst's content past the source Tensor's size.
    */
+  public void fetch(String outputName, long[] dst) {
+    fetch(outputName, LongBuffer.wrap(dst));
+  }
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   */
   public void fetch(String outputName, double[] dst) {
     fetch(outputName, DoubleBuffer.wrap(dst));
   }
@@ -354,6 +414,16 @@ public class TensorFlowInferenceInterface {
    * or equal to that of the source Tensor. This operation will not affect dst's content past the
    * source Tensor's size.
    */
+  public void fetch(String outputName, LongBuffer dst) {
+    getTensor(outputName).writeTo(dst);
+  }
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   */
   public void fetch(String outputName, DoubleBuffer dst) {
     getTensor(outputName).writeTo(dst);
   }
@@ -368,11 +438,31 @@ public class TensorFlowInferenceInterface {
     getTensor(outputName).writeTo(dst);
   }
 
+  private void prepareNativeRuntime() {
+    Log.i(TAG, "Checking to see if TensorFlow native methods are already loaded");
+    try {
+      // Hack to see if the native libraries have been loaded.
+      new RunStats();
+      Log.i(TAG, "TensorFlow native methods already loaded");
+    } catch (UnsatisfiedLinkError e1) {
+      Log.i(
+          TAG, "TensorFlow native methods not found, attempting to load via tensorflow_inference");
+      try {
+        System.loadLibrary("tensorflow_inference");
+        Log.i(TAG, "Successfully loaded TensorFlow native methods (RunStats error may be ignored)");
+      } catch (UnsatisfiedLinkError e2) {
+        throw new RuntimeException(
+            "Native TF methods not found; check that the correct native"
+                + " libraries are present in the APK.");
+      }
+    }
+  }
+
   private void loadGraph(InputStream is, Graph g) throws IOException {
     final long startMs = System.currentTimeMillis();
 
     if (VERSION.SDK_INT >= 18) {
-      Trace.beginSection("initializeTensorFlow");
+      Trace.beginSection("loadGraph");
       Trace.beginSection("readGraphDef");
     }
 
@@ -400,7 +490,7 @@ public class TensorFlowInferenceInterface {
 
     if (VERSION.SDK_INT >= 18) {
       Trace.endSection(); // importGraphDef.
-      Trace.endSection(); // initializeTensorFlow.
+      Trace.endSection(); // loadGraph.
     }
 
     final long endMs = System.currentTimeMillis();
@@ -471,7 +561,7 @@ public class TensorFlowInferenceInterface {
     fetchNames.clear();
   }
 
-  // State immutable between initializeTensorFlow calls.
+  // Immutable state.
   private final String modelName;
   private final Graph g;
   private final Session sess;

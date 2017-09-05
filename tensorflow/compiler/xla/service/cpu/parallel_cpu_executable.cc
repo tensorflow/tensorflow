@@ -24,7 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -62,7 +62,7 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
-    : Executable(std::move(hlo_module), ParallelCpuExecutable::ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       functions_names_(std::move(function_names)),
@@ -241,7 +241,7 @@ Status Executor::Run() {
         completion_queue_.pop_front();
         break;
       }
-    } while (1);
+    } while (true);
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment_->GetUniqueTopLevelSlice(instruction));
     void* result_buffer =
@@ -566,7 +566,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
                 if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
+                  const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton.
@@ -620,6 +620,11 @@ ParallelCpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& ParallelCpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> ParallelCpuExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

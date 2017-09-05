@@ -1766,13 +1766,6 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'undefined'):
         _layers.batch_norm(inputs, data_format='NCHW')
 
-  def testWeightedMomentsFused(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
-      batch_weights = array_ops.placeholder(dtype=dtypes.float32)
-      with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
-        _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
-
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
@@ -2772,6 +2765,56 @@ class LayerNormTest(test.TestCase):
     self.doOutputTest((1, 100, 100, 1))
 
 
+class GDNTest(test.TestCase):
+
+  def _runGDN(self, x, shape, inverse, data_format):
+    inputs = array_ops.placeholder(dtypes.float32, shape)
+    outputs = _layers.gdn(inputs, inverse=inverse, data_format=data_format)
+    with self.test_session() as sess:
+      variables_lib.global_variables_initializer().run()
+      y, = sess.run([outputs], {inputs: x})
+    return y
+
+  def testInvalidDataFormat(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    with self.assertRaises(ValueError):
+      self._runGDN(x, x.shape, False, 'NHWC')
+
+  def testUnknownDim(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    with self.assertRaises(ValueError):
+      self._runGDN(x, 4 * [None], False, 'channels_last')
+
+  def testChannelsLast(self):
+    for ndim in [3, 4, 5]:
+      x = np.random.uniform(size=(1, 2, 3, 4)[:ndim])
+      y = self._runGDN(x, x.shape, False, 'channels_last')
+      self.assertEqual(x.shape, y.shape)
+      self.assertAllClose(y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+  def testChannelsFirst(self):
+    # `bias_add` doesn't support NCHW on CPU.
+    if test.is_gpu_available(cuda_only=True):
+      for ndim in [3, 4, 5]:
+        x = np.random.uniform(size=(4, 3, 2, 1)[:ndim])
+        y = self._runGDN(x, x.shape, False, 'channels_first')
+        self.assertEqual(x.shape, y.shape)
+        self.assertAllClose(
+            y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+  def testWrongDims(self):
+    for ndim in [1, 2, 6]:
+      x = np.random.uniform(size=(1, 2, 3, 4, 3, 2)[:ndim])
+      with self.assertRaises(ValueError):
+        self._runGDN(x, x.shape, False, 'channels_last')
+
+  def testIGDN(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    y = self._runGDN(x, x.shape, True, 'channels_last')
+    self.assertEqual(x.shape, y.shape)
+    self.assertAllClose(y, x * np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+
 class MaxPool2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -3177,6 +3220,17 @@ class SeparableConv2dTest(test.TestCase):
           for model_variable in model_variables:
             self.assertEqual(trainable, model_variable in trainable_variables)
 
+  def testConvNCHW(self):
+    for num_filters, correct_output_filters in [(None, 6), (8, 8)]:
+      with self.test_session():
+        batch, height, width = 4, 5, 6
+        images = random_ops.random_uniform((batch, 3, height, width), seed=1)
+        output = layers_lib.separable_conv2d(
+            images, num_filters, [3, 3], 2, padding='VALID', data_format='NCHW')
+        self.assertListEqual(
+            output.get_shape().as_list(), [batch, correct_output_filters,
+                                           height - 2, width - 2])
+
 
 class ScaleGradientTests(test.TestCase):
   """Simple tests of the scale_gradient function."""
@@ -3248,6 +3302,188 @@ class SoftmaxTests(test.TestCase):
     logits = array_ops.placeholder(dtypes.float32)
     with self.assertRaises(ValueError):
       _layers.softmax(logits)
+
+
+class SpatialSoftmaxTests(test.TestCase):
+
+  def _SpatialSoftmax(self, x_loc, y_loc, height, width, batch_size, nchannels):
+    # Convert specified activation locations to range [-1, 1].
+    height_lin = np.linspace(-1, 1, height)
+    width_lin = np.linspace(-1, 1, width)
+    x_lin = np.expand_dims(np.array([height_lin[i] for i in x_loc]), 1)
+    y_lin = np.expand_dims(np.array([width_lin[i] for i in y_loc]), 1)
+    np_keypoints = np.array(
+        [np.concatenate([x_lin, y_lin], axis=1) for i in range(batch_size)])
+    np_keypoints = np.reshape(np_keypoints, [-1, nchannels * 2])
+    return np_keypoints
+
+  def testSpatialSoftmaxShape(self):
+    batch_shape = (2, 35, 30, 2)
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    spatial_softmax = _layers.spatial_softmax(features)
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllEqual(keypoints.shape,
+                          (batch_shape[0], batch_shape[3] * 2))
+
+  def testSpatialSoftmaxShapeNCHW(self):
+    batch_shape = (2, 2, 35, 35)
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    spatial_softmax = _layers.spatial_softmax(features, data_format='NCHW')
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllEqual(keypoints.shape,
+                          (batch_shape[0], batch_shape[1] * 2))
+
+  def testTwoMaxActivationsSameChannel(self):
+    batch_size, height, width, nchannels = (2, 35, 35, 1)
+    batch_shape = (batch_size, height, width, nchannels)
+
+    # Put high equal activations on different locations in the same channel.
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(features)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    x0, y0 = (10, 10)
+    x1, y1 = (20, 20)
+    avg_x = (x0 + x1) // 2
+    avg_y = (y0 + y1) // 2
+    np_features[:, x0, y0, :] = 100.
+    np_features[:, x1, y1, :] = 100.
+    x_loc = [avg_x]
+    y_loc = [avg_y]
+
+    np_keypoints = self._SpatialSoftmax(
+        x_loc, y_loc, height, width, batch_size, nchannels)
+
+    # Make sure expected location keypoints matches actual location keypoints.
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(keypoints, np_keypoints)
+
+  def testMaxActivationsAtEdges(self):
+    batch_size, height, width, nchannels = (2, 35, 35, 4)
+    batch_shape = (batch_size, height, width, nchannels)
+
+    # Put high activations on edges of spatial extent.
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(features)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+
+    edges = [(0, 0), (0, width-1), (height-1, 0), (height-1, width-1)]
+    x_loc, y_loc = zip(*edges)
+    for c in range(nchannels):
+      np_features[:, x_loc[c], y_loc[c], c] = 100.
+
+    np_keypoints = self._SpatialSoftmax(
+        x_loc, y_loc, height, width, batch_size, nchannels)
+
+    # Make sure expected location keypoints matches actual location keypoints.
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(keypoints, np_keypoints)
+
+  def testSpatialSoftmaxVariableSized(self):
+    batch_size = 2
+    nchannels = 2
+    height1, width1 = (35, 30)
+    height2, width2 = (20, 20)
+    batch_shape1 = (batch_size, height1, width1, nchannels)
+    batch_shape2 = (batch_size, height2, width2, nchannels)
+    variable_sized_shape = (None, None, None, 2)
+
+    # Put high activations on single spatial locations.
+    features = array_ops.placeholder(dtypes.float32, shape=variable_sized_shape)
+    spatial_softmax = _layers.spatial_softmax(features)
+    np_features1 = np.zeros(batch_shape1, dtype=np.float32)
+    np_features2 = np.zeros(batch_shape2, dtype=np.float32)
+    x_loc = [15, 2]
+    y_loc = [10, 9]
+    for c in range(nchannels):
+      np_features1[:, x_loc[c], y_loc[c], c] = 100.
+      np_features2[:, x_loc[c], y_loc[c], c] = 100.
+
+    np_keypoints1 = self._SpatialSoftmax(
+        x_loc, y_loc, height1, width1, batch_size, nchannels)
+    np_keypoints2 = self._SpatialSoftmax(
+        x_loc, y_loc, height2, width2, batch_size, nchannels)
+
+    # Make sure expected location keypoints matches actual location keypoints.
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features1}
+      tf_keypoints1 = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(tf_keypoints1, np_keypoints1)
+
+      feed_dict = {features: np_features2}
+      tf_keypoints2 = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(tf_keypoints2, np_keypoints2)
+
+  def testSpatialSoftmax(self):
+    batch_size, height, width, nchannels = (2, 35, 35, 2)
+    batch_shape = (batch_size, height, width, nchannels)
+
+    # Put high activations on single spatial locations.
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(features)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    x_loc = [15, 2]
+    y_loc = [10, 28]
+    for c in range(nchannels):
+      np_features[:, x_loc[c], y_loc[c], c] = 100.
+
+    np_keypoints = self._SpatialSoftmax(
+        x_loc, y_loc, height, width, batch_size, nchannels)
+
+    # Make sure expected location keypoints matches actual location keypoints.
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(keypoints, np_keypoints)
+
+  def testSpatialSoftmaxNCHW(self):
+    batch_size, nchannels, height, width = (2, 2, 35, 35)
+    batch_shape = (batch_size, nchannels, height, width)
+
+    # Put high activations on single spatial locations.
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(features, data_format='NCHW')
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    x_loc = [15, 2]
+    y_loc = [10, 28]
+    for c in range(nchannels):
+      np_features[:, c, x_loc[c], y_loc[c]] = 100.
+
+    np_keypoints = self._SpatialSoftmax(
+        x_loc, y_loc, height, width, batch_size, nchannels)
+
+    # Make sure expected location keypoints matches actual location keypoints.
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(keypoints, np_keypoints)
+
+  def testSpatialSoftmaxToFullyConnected(self):
+    batch_shape = (2, 35, 35, 2)
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(features)
+    net = _layers.fully_connected(spatial_softmax, 10)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      sess.run(net, feed_dict)
 
 
 class StackTests(test.TestCase):

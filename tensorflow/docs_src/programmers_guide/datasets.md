@@ -1,4 +1,4 @@
-# Using the `Dataset` API for TensorFlow Input Pipelines
+# Importing Data
 
 The `Dataset` API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
@@ -17,14 +17,14 @@ The `Dataset` API introduces two new abstractions to TensorFlow:
   pipeline, an element might be a single training example, with a pair of
   tensors representing the image data and a label. There are two distinct
   ways to create a dataset:
-  
-  * Creating a **source* (e.g. `Dataset.from_tensor_slices()`) constructs a
+
+  * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
     dataset from
     one or more `tf.Tensor` objects.
-  
+
   * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
     from one or more `tf.contrib.data.Dataset` objects.
-  
+
 * A `tf.contrib.data.Iterator` provides the main way to extract elements from a
   dataset. The operation returned by `Iterator.get_next()` yields the next
   element of a `Dataset` when executed, and typically acts as the interface
@@ -49,7 +49,7 @@ data are on disk in the recommend TFRecord format, you can construct a
 
 Once you have a `Dataset` object, you can *transform* it into a new `Dataset` by
 chaining method calls on the `tf.contrib.data.Dataset` object. For example, you
-c an apply per-element transformations such as `Dataset.map()` (to apply a
+can apply per-element transformations such as `Dataset.map()` (to apply a
 function to each element), and multi-element transformations such as
 `Dataset.batch()`. See the documentation for @{tf.contrib.data.Dataset}
 for a complete list of transformations.
@@ -120,14 +120,15 @@ dataset3 = dataset3.filter(lambda x, (y, z): ...)
 
 ### Creating an iterator
 
-One you have built a `Dataset` to represent your input data, the next step is to
+Once you have built a `Dataset` to represent your input data, the next step is to
 create an `Iterator` to access elements from that dataset.  The `Dataset` API
-currently supports three kinds of iterator, in increasing level of
+currently supports the following iterators, in increasing level of
 sophistication:
 
 * **one-shot**,
-* **initializable**, and
-* **reinitializable**.
+* **initializable**,
+* **reinitializable**, and
+* **feedable**.
 
 A **one-shot** iterator is the simplest form of iterator, which only supports
 iterating once through a dataset, with no need for explicit initialization.
@@ -178,6 +179,7 @@ pipelines will typically use different `Dataset` objects that have the same
 structure (i.e. the same types and compatible shapes for each component).
 
 ```python
+# Define training and validation datasets with the same structure.
 training_dataset = tf.contrib.data.Dataset.range(100).map(
     lambda x: x + tf.random_uniform([], -10, 10, tf.int64))
 validation_dataset = tf.contrib.data.Dataset.range(50)
@@ -204,6 +206,54 @@ for _ in range(20):
   sess.run(validation_init_op)
   for _ in range(50):
     sess.run(next_element)
+```
+
+A **feedable** iterator can be used together with @{tf.placeholder} to select
+what `Iterator` to use in each call to @{tf.Session.run}, via the familiar
+`feed_dict` mechanism. It offers the same functionality as a reinitializable
+iterator, but it does not require you to initialize the iterator from the start
+of a dataset when you switch between iterators. For example, using the same
+training and validation example from above, you can use
+@{tf.contrib.data.Iterator.from_string_handle} to define a feedable iterator
+that allows you to switch between the two datasets:
+
+```python
+# Define training and validation datasets with the same structure.
+training_dataset = tf.contrib.data.Dataset.range(100).map(
+    lambda x: x + tf.random_uniform([], -10, 10, tf.int64)).repeat()
+validation_dataset = tf.contrib.data.Dataset.range(50)
+
+# A feedable iterator is defined by a handle placeholder and its structure. We
+# could use the `output_types` and `output_shapes` properties of either
+# `training_dataset` or `validation_dataset` here, because they have
+# identical structure.
+handle = tf.placeholder(tf.string, shape=[])
+iterator = tf.contrib.data.Iterator.from_string_handle(
+    handle, training_dataset.output_types, training_dataset.output_shapes)
+next_element = iterator.get_next()
+
+# You can use feedable iterators with a variety of different kinds of iterator
+# (such as one-shot and initializable iterators).
+training_iterator = training_dataset.make_one_shot_iterator()
+validation_iterator = validation_dataset.make_initializable_iterator()
+
+# The `Iterator.string_handle()` method returns a tensor that can be evaluated
+# and used to feed the `handle` placeholder.
+training_handle = sess.run(training_iterator.string_handle())
+validation_handle = sess.run(validation_iterator.string_handle())
+
+# Loop forever, alternating between training and validation.
+while True:
+  # Run 200 steps using the training dataset. Note that the training dataset is
+  # infinite, and we resume from where we left off in the previous `while` loop
+  # iteration.
+  for _ in range(200):
+    sess.run(next_element, feed_dict={handle: training_handle})
+
+  # Run one pass over the validation dataset.
+  sess.run(validation_iterator.initializer)
+  for _ in range(50):
+    sess.run(next_element, feed_dict={handle: validation_handle})
 ```
 
 ### Consuming values from an iterator
@@ -397,7 +447,7 @@ dataset = tf.contrib.data.Dataset.from_tensor_slices(filenames)
 # * Filter out lines beginning with "#" (comments).
 dataset = dataset.flat_map(
     lambda filename: (
-        tf.contrib.data.Dataset.TextLineDataset(filename)
+        tf.contrib.data.TextLineDataset(filename)
         .skip(1)
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
@@ -498,8 +548,8 @@ labels = [0, 37, 29, 1, ...]
 
 dataset = tf.contrib.data.Dataset.from_tensor_slices((filenames, labels))
 dataset = dataset.map(
-    lambda filename, label: tf.py_func(
-        _read_py_function, [filename, label], [tf.uint8, label.dtype]))
+    lambda filename, label: tuple(tf.py_func(
+        _read_py_function, [filename, label], [tf.uint8, label.dtype])))
 dataset = dataset.map(_resize_function)
 ```
 
@@ -682,10 +732,10 @@ def dataset_input_fn():
     image = tf.decode_jpeg(parsed["image_data"])
     image = tf.reshape(image, [299, 299, 1])
     label = tf.cast(parsed["label"], tf.int32)
-    
+
     return {"image_data": image, "date_time": parsed["date_time"]}, label
 
-  # Use `Dataset.map()` to build a pair of a feature dictionary and a label 
+  # Use `Dataset.map()` to build a pair of a feature dictionary and a label
   # tensor for each example.
   dataset = dataset.map(parser)
   dataset = dataset.shuffle(buffer_size=10000)

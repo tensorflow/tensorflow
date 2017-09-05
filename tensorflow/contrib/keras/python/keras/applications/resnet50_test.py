@@ -38,5 +38,14 @@ class ResNet50Test(test.TestCase):
                                         pooling='avg')
     self.assertEqual(model.output_shape, (None, 2048))
 
+  def test_weight_loading(self):
+    with self.assertRaises(ValueError):
+      keras.applications.ResNet50(weights='unknown',
+                                  include_top=False)
+
+    with self.assertRaises(ValueError):
+      keras.applications.ResNet50(weights='imagenet',
+                                  classes=2000)
+
 if __name__ == '__main__':
   test.main()

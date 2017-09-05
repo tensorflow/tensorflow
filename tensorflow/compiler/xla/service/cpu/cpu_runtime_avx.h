@@ -28,23 +28,24 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-constexpr char kExpV8F32[] = "__xla_cpu_runtime_ExpV8F32";
-constexpr char kLogV8F32[] = "__xla_cpu_runtime_LogV8F32";
-constexpr char kTanhV8F32[] = "__xla_cpu_runtime_TanhV8F32";
+extern const char *const kExpV8F32AVXSymbolName;
+extern const char *const kLogV8F32AVXSymbolName;
 
-typedef float V8F32 __attribute__((__vector_size__(32)));
+typedef float V8F32AVX __attribute__((__vector_size__(32)));
+}  // namespace runtime
+}  // namespace cpu
+}  // namespace xla
+
+extern "C" {
 
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
-V8F32 ExpV8F32(V8F32 x) TF_ATTRIBUTE_WEAK;
+xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_ExpV8F32AVX(
+    xla::cpu::runtime::V8F32AVX x) TF_ATTRIBUTE_WEAK;
 
-V8F32 LogV8F32(V8F32 x) TF_ATTRIBUTE_WEAK;
-
-V8F32 TanhV8F32(V8F32 x) TF_ATTRIBUTE_WEAK;
-
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
+xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_LogV8F32AVX(
+    xla::cpu::runtime::V8F32AVX x) TF_ATTRIBUTE_WEAK;
+}
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_AVX_H_

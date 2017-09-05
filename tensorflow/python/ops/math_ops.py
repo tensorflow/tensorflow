@@ -100,6 +100,7 @@ See the @{$python/math_ops} guide.
 @@complex
 @@conj
 @@imag
+@@angle
 @@real
 @@fft
 @@ifft
@@ -143,9 +144,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from autograd import core as ag_core
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -233,9 +236,9 @@ def abs(x, name=None):
   `float32` or `float64` that is the absolute value of each element in `x`. All
   elements in `x` must be complex numbers of the form \\(a + bj\\). The
   absolute value is computed as \\( \sqrt{a^2 + b^2}\\).  For example:
-  ```
-  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
-  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```python
+  x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
+  tf.abs(x)  # [5.25594902, 6.60492229]
   ```
 
   Args:
@@ -524,10 +527,10 @@ def pow(x, y, name=None):
   Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
-  ```
-  # tensor 'x' is [[2, 2], [3, 3]]
-  # tensor 'y' is [[8, 16], [2, 3]]
-  tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+  ```python
+  x = tf.constant([[2, 2], [3, 3]])
+  y = tf.constant([[8, 16], [2, 3]])
+  tf.pow(x, y)  # [[256, 65536], [9, 27]]
   ```
 
   Args:
@@ -557,10 +560,10 @@ def complex(real, imag, name=None):
 
   For example:
 
-  ```
-  # tensor 'real' is [2.25, 3.25]
-  # tensor `imag` is [4.75, 5.75]
-  tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
+  ```python
+  real = tf.constant([2.25, 3.25])
+  imag = tf.constant([4.75, 5.75])
+  tf.complex(real, imag)  # [[2.25 + 4.75j], [3.25 + 5.75j]]
   ```
 
   Args:
@@ -597,9 +600,9 @@ def real(input, name=None):
 
   For example:
 
-  ```
-  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-  tf.real(input) ==> [-2.25, 3.25]
+  ```python
+  x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  tf.real(x)  # [-2.25, 3.25]
   ```
 
   If `input` is already real, it is returned unchanged.
@@ -622,16 +625,15 @@ def imag(input, name=None):
   r"""Returns the imaginary part of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the imaginary part of each element in
-  `input`. All elements in `input` must be complex numbers of the form \\(a +
-  bj\\), where *a* is the real part and *b* is the imaginary part returned by
-  this operation.
+  type `float` that is the argument of each element in `input`. All elements in
+  `input` must be complex numbers of the form \\(a + bj\\), where *a*
+  is the real part and *b* is the imaginary part returned by the operation.
 
   For example:
 
-  ```
-  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-  tf.imag(input) ==> [4.75, 5.75]
+  ```python
+  x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  tf.imag(x)  # [4.75, 5.75]
   ```
 
   Args:
@@ -646,6 +648,35 @@ def imag(input, name=None):
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
 
 
+def angle(input, name=None):
+  r"""Returns the argument of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float32` or `float64` that is the argument of each element in `input`.
+  All elements in `input` must be complex numbers of the form \\(a + bj\\),
+  where *a* is the real part and *b* is the imaginary part.
+
+  The argument returned by this function is of the form \\(atan2(b, a)\\).
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.angle(input) ==> [2.0132, 1.056]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`,
+      `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32` or `float64`.
+  """
+  with ops.name_scope(name, "Angle", [input]) as name:
+    return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
+
+
 # pylint: enable=redefined-outer-name,redefined-builtin
 
 
@@ -657,8 +688,8 @@ def round(x, name=None):
   For example:
 
   ```python
-  # 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
-  tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
+  x = tf.constant([0.9, 2.5, 2.3, 1.5, -4.5])
+  tf.round(x)  # [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
   Args:
@@ -684,8 +715,8 @@ def cast(x, dtype, name=None):
   For example:
 
   ```python
-  # tensor `a` is [1.8, 2.2], dtype=tf.float
-  tf.cast(a, tf.int32) ==> [1, 2]  # dtype=tf.int32
+  x = tf.constant([1.8, 2.2], dtype=tf.float32)
+  tf.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
   ```
 
   Args:
@@ -1083,11 +1114,12 @@ floormod = gen_math_ops._floor_mod
 
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
-  is_tensor_y = isinstance(y, ops.Tensor)
+  is_tensor_y = isinstance(ag_core.getval(y), ops.Tensor)
   if is_tensor_y:
     return gen_math_ops._mul(x, y, name=name)
   else:
-    assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
+    assert isinstance(ag_core.getval(y),
+                      sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)
@@ -1147,18 +1179,18 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
   For example:
 
   ```python
-  # 'start' is 3
-  # 'limit' is 18
-  # 'delta' is 3
-  tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
+  start = 3
+  limit = 18
+  delta = 3
+  tf.range(start, limit, delta)  # [3, 6, 9, 12, 15]
 
-  # 'start' is 3
-  # 'limit' is 1
-  # 'delta' is -0.5
-  tf.range(start, limit, delta) ==> [3, 2.5, 2, 1.5]
+  start = 3
+  limit = 1
+  delta = -0.5
+  tf.range(start, limit, delta)  # [3, 2.5, 2, 1.5]
 
-  # 'limit' is 5
-  tf.range(limit) ==> [0, 1, 2, 3, 4]
+  limit = 5
+  tf.range(limit)  # [0, 1, 2, 3, 4]
   ```
 
   Args:
@@ -1247,19 +1279,19 @@ def reduce_sum(input_tensor,
   For example:
 
   ```python
-  # 'x' is [[1, 1, 1]
-  #         [1, 1, 1]]
-  tf.reduce_sum(x) ==> 6
-  tf.reduce_sum(x, 0) ==> [2, 2, 2]
-  tf.reduce_sum(x, 1) ==> [3, 3]
-  tf.reduce_sum(x, 1, keep_dims=True) ==> [[3], [3]]
-  tf.reduce_sum(x, [0, 1]) ==> 6
+  x = tf.constant([[1, 1, 1], [1, 1, 1]])
+  tf.reduce_sum(x)  # 6
+  tf.reduce_sum(x, 0)  # [2, 2, 2]
+  tf.reduce_sum(x, 1)  # [3, 3]
+  tf.reduce_sum(x, 1, keep_dims=True)  # [[3], [3]]
+  tf.reduce_sum(x, [0, 1])  # 6
   ```
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1301,19 +1333,19 @@ def count_nonzero(input_tensor,
   For example:
 
   ```python
-  # 'x' is [[0, 1, 0]
-  #         [1, 1, 0]]
-  tf.count_nonzero(x) ==> 3
-  tf.count_nonzero(x, 0) ==> [1, 2, 0]
-  tf.count_nonzero(x, 1) ==> [1, 2]
-  tf.count_nonzero(x, 1, keep_dims=True) ==> [[1], [2]]
-  tf.count_nonzero(x, [0, 1]) ==> 3
+  x = tf.constant([[0, 1, 0], [1, 1, 0]])
+  tf.count_nonzero(x)  # 3
+  tf.count_nonzero(x, 0)  # [1, 2, 0]
+  tf.count_nonzero(x, 1)  # [1, 2]
+  tf.count_nonzero(x, 1, keep_dims=True)  # [[1], [2]]
+  tf.count_nonzero(x, [0, 1])  # 3
   ```
 
   Args:
     input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
@@ -1353,17 +1385,17 @@ def reduce_mean(input_tensor,
   For example:
 
   ```python
-  # 'x' is [[1., 1.]
-  #         [2., 2.]]
-  tf.reduce_mean(x) ==> 1.5
-  tf.reduce_mean(x, 0) ==> [1.5, 1.5]
-  tf.reduce_mean(x, 1) ==> [1.,  2.]
+  x = tf.constant([[1., 1.], [2., 2.]])
+  tf.reduce_mean(x)  # 1.5
+  tf.reduce_mean(x, 0)  # [1.5, 1.5]
+  tf.reduce_mean(x, 1)  # [1.,  2.]
   ```
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1400,7 +1432,8 @@ def reduce_prod(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1437,7 +1470,8 @@ def reduce_min(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1474,7 +1508,8 @@ def reduce_max(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1511,17 +1546,17 @@ def reduce_all(input_tensor,
   For example:
 
   ```python
-  # 'x' is [[True,  True]
-  #         [False, False]]
-  tf.reduce_all(x) ==> False
-  tf.reduce_all(x, 0) ==> [False, False]
-  tf.reduce_all(x, 1) ==> [True, False]
+  x = tf.constant([[True,  True], [False, False]])
+  tf.reduce_all(x)  # False
+  tf.reduce_all(x, 0)  # [False, False]
+  tf.reduce_all(x, 1)  # [True, False]
   ```
 
   Args:
     input_tensor: The boolean tensor to reduce.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1558,17 +1593,17 @@ def reduce_any(input_tensor,
   For example:
 
   ```python
-  # 'x' is [[True,  True]
-  #         [False, False]]
-  tf.reduce_any(x) ==> True
-  tf.reduce_any(x, 0) ==> [True, True]
-  tf.reduce_any(x, 1) ==> [True, False]
+  x = tf.constant([[True,  True], [False, False]])
+  tf.reduce_any(x)  # True
+  tf.reduce_any(x, 0)  # [True, True]
+  tf.reduce_any(x, 1)  # [True, False]
   ```
 
   Args:
     input_tensor: The boolean tensor to reduce.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1609,19 +1644,19 @@ def reduce_logsumexp(input_tensor,
   For example:
 
   ```python
-  # 'x' is [[0, 0, 0]]
-  #         [0, 0, 0]]
-  tf.reduce_logsumexp(x) ==> log(6)
-  tf.reduce_logsumexp(x, 0) ==> [log(2), log(2), log(2)]
-  tf.reduce_logsumexp(x, 1) ==> [log(3), log(3)]
-  tf.reduce_logsumexp(x, 1, keep_dims=True) ==> [[log(3)], [log(3)]]
-  tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
+  x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
+  tf.reduce_logsumexp(x)  # log(6)
+  tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
+  tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
+  tf.reduce_logsumexp(x, 1, keep_dims=True)  # [[log(3)], [log(3)]]
+  tf.reduce_logsumexp(x, [0, 1])  # log(6)
   ```
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1630,12 +1665,16 @@ def reduce_logsumexp(input_tensor,
     The reduced tensor.
   """
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
+    raw_max = reduce_max(
+        input_tensor,
+        axis=axis,
+        reduction_indices=reduction_indices,
+        keep_dims=True)
     my_max = array_ops.stop_gradient(
-        reduce_max(
-            input_tensor,
-            axis=axis,
-            reduction_indices=reduction_indices,
-            keep_dims=True))
+        array_ops.where(
+            gen_math_ops.is_finite(raw_max),
+            raw_max,
+            array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
@@ -1661,22 +1700,21 @@ def trace(x, name=None):
   For example:
 
   ```python
-  # 'x' is [[1, 2],
-  #         [3, 4]]
-  tf.trace(x) ==> 5
+  x = tf.constant([[1, 2], [3, 4]])
+  tf.trace(x)  # 5
 
-  # 'x' is [[1,2,3],
-  #         [4,5,6],
-  #         [7,8,9]]
-  tf.trace(x) ==> 15
+  x = tf.constant([[1, 2, 3],
+                   [4, 5, 6],
+                   [7, 8, 9]])
+  tf.trace(x)  # 15
 
-  # 'x' is [[[1,2,3],
-  #          [4,5,6],
-  #          [7,8,9]],
-  #         [[-1,-2,-3],
-  #          [-4,-5,-6],
-  #          [-7,-8,-9]]]
-  tf.trace(x) ==> [15,-15]
+  x = tf.constant([[[1, 2, 3],
+                    [4, 5, 6],
+                    [7, 8, 9]],
+                   [[-1, -2, -3],
+                    [-4, -5, -6],
+                    [-7, -8, -9]]])
+  tf.trace(x)  # [15, -15]
   ```
 
   Args:
@@ -1723,35 +1761,46 @@ def matmul(a,
 
   ```python
   # 2-D tensor `a`
-  a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3]) => [[1. 2. 3.]
-                                                        [4. 5. 6.]]
+  # [[1, 2, 3],
+  #  [4, 5, 6]]
+  a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+
   # 2-D tensor `b`
-  b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2]) => [[7. 8.]
-                                                           [9. 10.]
-                                                           [11. 12.]]
-  c = tf.matmul(a, b) => [[58 64]
-                          [139 154]]
+  # [[ 7,  8],
+  #  [ 9, 10],
+  #  [11, 12]]
+  b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2])
+
+  # `a` * `b`
+  # [[ 58,  64],
+  #  [139, 154]]
+  c = tf.matmul(a, b)
 
 
   # 3-D tensor `a`
+  # [[[ 1,  2,  3],
+  #   [ 4,  5,  6]],
+  #  [[ 7,  8,  9],
+  #   [10, 11, 12]]]
   a = tf.constant(np.arange(1, 13, dtype=np.int32),
-                  shape=[2, 2, 3])                  => [[[ 1.  2.  3.]
-                                                         [ 4.  5.  6.]],
-                                                        [[ 7.  8.  9.]
-                                                         [10. 11. 12.]]]
+                  shape=[2, 2, 3])
 
   # 3-D tensor `b`
+  # [[[13, 14],
+  #   [15, 16],
+  #   [17, 18]],
+  #  [[19, 20],
+  #   [21, 22],
+  #   [23, 24]]]
   b = tf.constant(np.arange(13, 25, dtype=np.int32),
-                  shape=[2, 3, 2])                   => [[[13. 14.]
-                                                          [15. 16.]
-                                                          [17. 18.]],
-                                                         [[19. 20.]
-                                                          [21. 22.]
-                                                          [23. 24.]]]
-  c = tf.matmul(a, b) => [[[ 94 100]
-                           [229 244]],
-                          [[508 532]
-                           [697 730]]]
+                  shape=[2, 3, 2])
+
+  # `a` * `b`
+  # [[[ 94, 100],
+  #   [229, 244]],
+  #  [[508, 532],
+  #   [697, 730]]]
+  c = tf.matmul(a, b)
 
   # Since python >= 3.5 the @ operator is supported (see PEP 465).
   # In TensorFlow, it simply calls the `tf.matmul()` function, so the
@@ -1971,13 +2020,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   For example:
 
   ```python
-  # tensor 'a' is [[1, 2], [3, 4]]
-  # tensor `b` is [[5, 0], [0, 6]]
-  tf.accumulate_n([a, b, a]) ==> [[7, 4], [6, 14]]
+  a = tf.constant([[1, 2], [3, 4]])
+  b = tf.constant([[5, 0], [0, 6]])
+  tf.accumulate_n([a, b, a])  # [[7, 4], [6, 14]]
 
   # Explicitly pass shape and type
-  tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
-    ==> [[7, 4], [6, 14]]
+  tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)  # [[7,  4],
+                                                                   #  [6, 14]]
   ```
 
   Args:
@@ -1993,6 +2042,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+  if context.in_eager_mode():
+    # TODO(apassos) remove this once the lifetime of eager variables gets
+    # addressed.
+    raise ValueError("accumulate_n not supported in eager mode")
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise ValueError("inputs must be a list of at least one Tensor with the "
                      "same dtype and shape")
@@ -2010,10 +2063,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   for input_tensor in inputs:
     if isinstance(input_tensor, ops.Tensor):
       shape = shape.merge_with(input_tensor.get_shape())
-  if len(inputs) == 1:
-    return inputs[0]
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
+  if tensor_dtype != inputs[0].dtype:
+    raise TypeError("tensor_dtype is {}, but input is of type {}"
+                    .format(tensor_dtype, inputs[0].dtype))
+  if len(inputs) == 1:
+    return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:
     var = gen_state_ops._temporary_variable(
         shape=tensor_shape.vector(0), dtype=tensor_dtype)
@@ -2142,21 +2198,21 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   element of the input is identical to the first element of the output:
 
   ```python
-  tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
+  tf.cumsum([a, b, c])  # [a, a + b, a + b + c]
   ```
 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
 
   ```python
-  tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
+  tf.cumsum([a, b, c], exclusive=True)  # [0, a, a + b]
   ```
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
 
   ```python
-  tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
+  tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
   ```
 
   This is more efficient than using separate `tf.reverse` ops.
@@ -2164,14 +2220,15 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   The `reverse` and `exclusive` kwargs can also be combined:
 
   ```python
-  tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
+  tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
   ```
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+      `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumsum.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
@@ -2192,7 +2249,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   first element of the input is identical to the first element of the output:
 
   ```python
-  tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
+  tf.cumprod([a, b, c])  # [a, a * b, a * b * c]
   ```
 
   By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
@@ -2200,28 +2257,29 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   instead:
 
   ```python
-  tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
+  tf.cumprod([a, b, c], exclusive=True)  # [1, a, a * b]
   ```
 
   By setting the `reverse` kwarg to `True`, the cumprod is performed in the
   opposite direction:
 
   ```python
-  tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
+  tf.cumprod([a, b, c], reverse=True)  # [a * b * c, b * c, c]
   ```
 
   This is more efficient than using separate `tf.reverse` ops.
   The `reverse` and `exclusive` kwargs can also be combined:
 
   ```python
-  tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
+  tf.cumprod([a, b, c], exclusive=True, reverse=True)  # [b * c, c, 1]
   ```
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+      `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumprod.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
@@ -2327,8 +2385,8 @@ def tensordot(a, b, axes, name=None):
   Example 2: When `a` and `b` are matrices (order 2), the case
   `axes = [[1], [0]]` is equivalent to matrix multiplication.
 
-  Example 3: Suppose that \\(a_ijk\\) and \\(b_lmn\\) represent two
-  tensors of order 3. Then, `contract(a, b, [0], [2])` is the order 4 tensor
+  Example 3: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
+  tensors of order 3. Then, `contract(a, b, [[0], [2]])` is the order 4 tensor
   \\(c_{jklm}\\) whose entry
   corresponding to the indices \\((j,k,l,m)\\) is given by:
 
@@ -2437,10 +2495,14 @@ def tensordot(a, b, axes, name=None):
         raise ValueError("'axes' must be an integer or have length 2.")
       a_axes = axes[0]
       b_axes = axes[1]
+      if isinstance(a_axes, compat.integral_types) and \
+          isinstance(b_axes, compat.integral_types):
+        a_axes = [a_axes]
+        b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
         raise ValueError(
-            "Different number of contraction axes 'a' and 'b', %s != %s.",
-            len(a_axes), len(b_axes))
+            "Different number of contraction axes 'a' and 'b', %s != %s." %
+            (len(a_axes), len(b_axes)))
       return a_axes, b_axes
     else:
       axes = ops.convert_to_tensor(axes, name="axes", dtype=dtypes.int32)

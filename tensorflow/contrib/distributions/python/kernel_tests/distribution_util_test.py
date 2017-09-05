@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
@@ -28,6 +30,187 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+
+
+def _powerset(x):
+  s = list(x)
+  return itertools.chain.from_iterable(
+      itertools.combinations(s, r) for r in range(len(s) + 1))
+
+
+def _matrix_diag(d):
+  """Batch version of np.diag."""
+  orig_shape = d.shape
+  d = np.reshape(d, (int(np.prod(d.shape[:-1])), d.shape[-1]))
+  diag_list = []
+  for i in range(d.shape[0]):
+    diag_list.append(np.diag(d[i, ...]))
+  return np.reshape(diag_list, orig_shape + (d.shape[-1],))
+
+
+def _make_tril_scale(
+    loc=None,
+    scale_tril=None,
+    scale_diag=None,
+    scale_identity_multiplier=None,
+    shape_hint=None):
+  if scale_tril is not None:
+    scale_tril = np.tril(scale_tril)
+    if scale_diag is not None:
+      scale_tril += _matrix_diag(np.array(scale_diag, dtype=np.float32))
+    if scale_identity_multiplier is not None:
+      scale_tril += (
+          scale_identity_multiplier * _matrix_diag(np.ones(
+              [scale_tril.shape[-1]], dtype=np.float32)))
+    return scale_tril
+  return _make_diag_scale(
+      loc, scale_diag, scale_identity_multiplier, shape_hint)
+
+
+def _make_diag_scale(
+    loc=None,
+    scale_diag=None,
+    scale_identity_multiplier=None,
+    shape_hint=None):
+  if scale_diag is not None:
+    scale_diag = np.asarray(scale_diag)
+    if scale_identity_multiplier is not None:
+      scale_diag += scale_identity_multiplier
+    return _matrix_diag(scale_diag)
+
+  if loc is None and shape_hint is None:
+    return None
+
+  if shape_hint is None:
+    shape_hint = loc.shape[-1]
+  if scale_identity_multiplier is None:
+    scale_identity_multiplier = 1.
+  return scale_identity_multiplier * np.diag(np.ones(shape_hint))
+
+
+class MakeTrilScaleTest(test.TestCase):
+
+  def _testLegalInputs(
+      self, loc=None, shape_hint=None, scale_params=None):
+    for args in _powerset(scale_params.items()):
+      with self.test_session():
+        args = dict(args)
+
+        scale_args = dict({
+            "loc": loc,
+            "shape_hint": shape_hint}, **args)
+        expected_scale = _make_tril_scale(**scale_args)
+        if expected_scale is None:
+          # Not enough shape information was specified.
+          with self.assertRaisesRegexp(ValueError, ("is specified.")):
+            scale = distribution_util.make_tril_scale(**scale_args)
+            scale.to_dense().eval()
+        else:
+          scale = distribution_util.make_tril_scale(**scale_args)
+          self.assertAllClose(expected_scale, scale.to_dense().eval())
+
+  def testLegalInputs(self):
+    self._testLegalInputs(
+        loc=np.array([-1., -1.], dtype=np.float32),
+        shape_hint=2,
+        scale_params={
+            "scale_identity_multiplier": 2.,
+            "scale_diag": [2., 3.],
+            "scale_tril": [[1., 0.],
+                           [-3., 3.]],
+        })
+
+  def testLegalInputsMultidimensional(self):
+    self._testLegalInputs(
+        loc=np.array([[[-1., -1., 2.], [-2., -3., 4.]]], dtype=np.float32),
+        shape_hint=3,
+        scale_params={
+            "scale_identity_multiplier": 2.,
+            "scale_diag": [[[2., 3., 4.], [3., 4., 5.]]],
+            "scale_tril": [[[[1., 0., 0.],
+                             [-3., 3., 0.],
+                             [1., -2., 1.]],
+                            [[2., 1., 0.],
+                             [-4., 7., 0.],
+                             [1., -1., 1.]]]]
+        })
+
+  def testZeroTriU(self):
+    with self.test_session():
+      scale = distribution_util.make_tril_scale(scale_tril=[[1., 1], [1., 1.]])
+      self.assertAllClose([[1., 0], [1., 1.]], scale.to_dense().eval())
+
+  def testValidateArgs(self):
+    with self.test_session():
+      with self.assertRaisesOpError("diagonal part must be non-zero"):
+        scale = distribution_util.make_tril_scale(
+            scale_tril=[[0., 1], [1., 1.]], validate_args=True)
+        scale.to_dense().eval()
+
+  def testAssertPositive(self):
+    with self.test_session():
+      with self.assertRaisesOpError("diagonal part must be positive"):
+        scale = distribution_util.make_tril_scale(
+            scale_tril=[[-1., 1], [1., 1.]],
+            validate_args=True,
+            assert_positive=True)
+        scale.to_dense().eval()
+
+
+class MakeDiagScaleTest(test.TestCase):
+
+  def _testLegalInputs(
+      self, loc=None, shape_hint=None, scale_params=None):
+    for args in _powerset(scale_params.items()):
+      with self.test_session():
+        args = dict(args)
+
+        scale_args = dict({
+            "loc": loc,
+            "shape_hint": shape_hint}, **args)
+        expected_scale = _make_diag_scale(**scale_args)
+        if expected_scale is None:
+          # Not enough shape information was specified.
+          with self.assertRaisesRegexp(ValueError, ("is specified.")):
+            scale = distribution_util.make_diag_scale(**scale_args)
+            scale.to_dense().eval()
+        else:
+          scale = distribution_util.make_diag_scale(**scale_args)
+          self.assertAllClose(expected_scale, scale.to_dense().eval())
+
+  def testLegalInputs(self):
+    self._testLegalInputs(
+        loc=np.array([-1., -1.], dtype=np.float32),
+        shape_hint=2,
+        scale_params={
+            "scale_identity_multiplier": 2.,
+            "scale_diag": [2., 3.]
+        })
+
+  def testLegalInputsMultidimensional(self):
+    self._testLegalInputs(
+        loc=np.array([[[-1., -1., 2.], [-2., -3., 4.]]], dtype=np.float32),
+        shape_hint=3,
+        scale_params={
+            "scale_identity_multiplier": 2.,
+            "scale_diag": [[[2., 3., 4.], [3., 4., 5.]]]
+        })
+
+  def testValidateArgs(self):
+    with self.test_session():
+      with self.assertRaisesOpError("diagonal part must be non-zero"):
+        scale = distribution_util.make_diag_scale(
+            scale_diag=[[0., 1], [1., 1.]], validate_args=True)
+        scale.to_dense().eval()
+
+  def testAssertPositive(self):
+    with self.test_session():
+      with self.assertRaisesOpError("diagonal part must be positive"):
+        scale = distribution_util.make_diag_scale(
+            scale_diag=[[-1., 1], [1., 1.]],
+            validate_args=True,
+            assert_positive=True)
+        scale.to_dense().eval()
 
 
 class ShapesFromLocAndScaleTest(test.TestCase):
@@ -154,6 +337,42 @@ class TridiagTest(test.TestCase):
                     [0.7, 0.6, 0.5, 0.4]]).eval(),
           rtol=1e-5, atol=0.)
 
+
+class MixtureStddevTest(test.TestCase):
+
+  def test_mixture_dev(self):
+    mixture_weights = np.array([
+        [1.0/3, 1.0/3, 1.0/3],
+        [0.750, 0.250, 0.000]
+    ])
+    component_means = np.array([
+        [1.0, 1.0, 1.0],
+        [-5, 0, 1.25]
+    ])
+    component_devs = np.array([
+        [1.0, 1.0, 1.0],
+        [0.01, 2.0, 0.1]
+    ])
+
+    # The first case should trivially have a standard deviation of 1.0 because
+    # all components are identical and have that standard deviation.
+    # The second case was computed by hand.
+    expected_devs = np.array([
+        1.0,
+        2.3848637277
+    ])
+
+    weights_tf = array_ops.constant(mixture_weights)
+    means_tf = array_ops.constant(component_means)
+    sigmas_tf = array_ops.constant(component_devs)
+    mix_dev = distribution_util.mixture_stddev(weights_tf,
+                                               means_tf,
+                                               sigmas_tf)
+
+    with self.test_session() as sess:
+      actual_devs = sess.run(mix_dev)
+
+    self.assertAllClose(actual_devs, expected_devs)
 
 if __name__ == "__main__":
   test.main()

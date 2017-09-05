@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -1367,20 +1368,21 @@ def _flatten_outer_dims(logits):
   output = array_ops.reshape(logits, array_ops.concat([[-1], last_dim_size], 0))
 
   # Set output shape if known.
-  shape = logits.get_shape()
-  if shape is not None and shape.dims is not None:
-    shape = shape.as_list()
-    product = 1
-    product_valid = True
-    for d in shape[:-1]:
-      if d is None:
-        product_valid = False
-        break
-      else:
-        product *= d
-    if product_valid:
-      output_shape = [product, shape[-1]]
-      output.set_shape(output_shape)
+  if context.in_graph_mode():
+    shape = logits.get_shape()
+    if shape is not None and shape.dims is not None:
+      shape = shape.as_list()
+      product = 1
+      product_valid = True
+      for d in shape[:-1]:
+        if d is None:
+          product_valid = False
+          break
+        else:
+          product *= d
+      if product_valid:
+        output_shape = [product, shape[-1]]
+        output.set_shape(output_shape)
 
   return output
 
@@ -1603,7 +1605,7 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
-  if shape is not None and shape.dims is not None:
+  if context.in_graph_mode() and shape is not None and shape.dims is not None:
     shape = shape.as_list()
     del shape[dim]
     cost.set_shape(shape)
@@ -1721,9 +1723,9 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
       `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
-    ksize: A list of ints that has length >= 4.
+    ksize: A 1-D int Tensor of 4 elements.
       The size of the window for each dimension of the input tensor.
-    strides: A list of ints that has length >= 4.
+    strides: A 1-D int Tensor of 4 elements
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
@@ -1750,9 +1752,9 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
       type `tf.float32`.
-    ksize: A list of ints that has length >= 4.  The size of the window for
+    ksize: A 1-D int Tensor of 4 elements.  The size of the window for
       each dimension of the input tensor.
-    strides: A list of ints that has length >= 4.  The stride of the sliding
+    strides: A 1-D int Tensor of 4 elements.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
@@ -1877,7 +1879,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
   kept independently and each row and column will be kept or not kept together.
 
   Args:
-    x: A tensor.
+    x: A floating point tensor.
     keep_prob: A scalar `Tensor` with the same type as x. The probability
       that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
@@ -1891,10 +1893,14 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]`.
+    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+      point tensor.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if not x.dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going to"
+                       " be scaled. Got a %s tensor instead." % x.dtype)
     if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
@@ -1916,7 +1922,8 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
     ret = math_ops.div(x, keep_prob) * binary_tensor
-    ret.set_shape(x.get_shape())
+    if context.in_graph_mode():
+      ret.set_shape(x.get_shape())
     return ret
 
 
@@ -2085,3 +2092,36 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                               rates=rates,
                               padding=padding,
                               name=name))
+
+def in_top_k(predictions, targets, k, name=None):
+  r"""Says whether the targets are in the top `K` predictions.
+
+  This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+  prediction for the target class is among the top `k` predictions among
+  all predictions for example `i`. Note that the behavior of `InTopK` differs
+  from the `TopK` op in its handling of ties; if multiple classes have the
+  same prediction value and straddle the top-`k` boundary, all of those
+  classes are considered to be in the top `k`.
+
+  More formally, let
+
+    \\(predictions_i\\) be the predictions for all classes for example `i`,
+    \\(targets_i\\) be the target class for example `i`,
+    \\(out_i\\) be the output for example `i`,
+
+  $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+  Args:
+    predictions: A `Tensor` of type `float32`.
+      A `batch_size` x `classes` tensor.
+    targets: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      A `batch_size` vector of class ids.
+    k: An `int`. Number of top elements to look at for computing precision.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
+  """
+  with ops.name_scope(name, 'in_top_k'):
+    # TODO (yongtang): Need to switch to v2 after 3 weeks.
+    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)

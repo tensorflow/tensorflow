@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import marshal
+import os
 import sys
 import time
 import types as python_types
@@ -195,7 +196,11 @@ def func_dump(func):
   Returns:
       A tuple `(code, defaults, closure)`.
   """
-  code = marshal.dumps(func.__code__).decode('raw_unicode_escape')
+  if os.name == 'nt':
+    code = marshal.dumps(
+        func.__code__).replace(b'\\', b'/').decode('raw_unicode_escape')
+  else:
+    code = marshal.dumps(func.__code__).decode('raw_unicode_escape')
   defaults = func.__defaults__
   if func.__closure__:
     closure = tuple(c.cell_contents for c in func.__closure__)
@@ -327,7 +332,7 @@ class Progbar(object):
       for k in self.unique_values:
         info += ' - %s:' % k
         if isinstance(self.sum_values[k], list):
-          avg = self.sum_values[k][0] / max(1, self.sum_values[k][1])
+          avg = np.mean(self.sum_values[k][0] / max(1, self.sum_values[k][1]))
           if abs(avg) > 1e-3:
             info += ' %.4f' % avg
           else:
@@ -350,7 +355,7 @@ class Progbar(object):
         info = '%ds' % (now - self.start)
         for k in self.unique_values:
           info += ' - %s:' % k
-          avg = self.sum_values[k][0] / max(1, self.sum_values[k][1])
+          avg = np.mean(self.sum_values[k][0] / max(1, self.sum_values[k][1]))
           if avg > 1e-3:
             info += ' %.4f' % avg
           else:

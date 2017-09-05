@@ -938,6 +938,12 @@ TEST(FunctionLibraryDefinitionTest, LookUp) {
   ASSERT_NE(op_def, nullptr);
   EXPECT_EQ(op_def->DebugString(),
             test::function::XTimesTwo().signature().DebugString());
+
+  const OpRegistrationData* op_reg_data;
+  TF_EXPECT_OK(lib_def.LookUp("XTimesTwo", &op_reg_data));
+  ASSERT_NE(op_reg_data, nullptr);
+  // Shape inference function is initialized to UnknownShape.
+  ASSERT_NE(op_reg_data->shape_inference_fn, nullptr);
 }
 
 TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
@@ -1046,6 +1052,123 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
 
   // OK to add the same functions and gradients twice
   TF_EXPECT_OK(lib_def.AddLibrary(lib_def));
+}
+
+GradientDef MakeGradDef(const string& f, const string& g) {
+  GradientDef grad;
+  grad.set_function_name(f);
+  grad.set_gradient_func(g);
+  return grad;
+}
+
+TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
+  // Create lib def containing two functions with equal names
+  FunctionDefLibrary proto;
+  const string x2_name = test::function::XTimesTwo().signature().name();
+  const string x4_name = test::function::XTimesFour().signature().name();
+  *proto.add_function() = test::function::XTimesTwo();
+  FunctionDef fdef = test::function::XTimesFour();
+  fdef.mutable_signature()->set_name(x2_name);
+  *proto.add_function() = fdef;
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+
+  // Try adding the two functions to lib_def
+  Status s = lib_def.AddLibrary(proto);
+  EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(
+      "Cannot add function 'XTimesTwo' because a different function with "
+      "the same name already exists.",
+      s.error_message());
+
+  // Verify that none of the functions are added
+  EXPECT_TRUE(lib_def.Find(x2_name) == nullptr);
+
+  // Fix the name in proto but add two gradient names for it
+  proto.mutable_function(1)->mutable_signature()->set_name(x4_name);
+  *proto.add_gradient() = MakeGradDef(x2_name, x4_name);
+  *proto.add_gradient() = MakeGradDef(x2_name, "SecondGradName");
+
+  // Try adding the library and check that nothing was added
+  s = lib_def.AddLibrary(proto);
+  EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(s.error_message(),
+            "Cannot assign gradient function 'SecondGradName' to 'XTimesTwo' "
+            "because it already has gradient function 'XTimesFour'");
+  EXPECT_TRUE(lib_def.Find(x2_name) == nullptr);
+  EXPECT_EQ(0, lib_def.ToProto().function_size());
+  EXPECT_EQ(0, lib_def.ToProto().gradient_size());
+}
+
+TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_FuncConflict) {
+  const string x2_name = test::function::XTimesTwo().signature().name();
+  const string x4_name = test::function::XTimesFour().signature().name();
+  const string wx_name = test::function::WXPlusB().signature().name();
+
+  // Create FunctionLibraryDefinition with
+  // (func = XTimesTwo, grad = XTimesFour)
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_gradient() = MakeGradDef(x2_name, x4_name);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+  EXPECT_EQ(1, lib_def.ToProto().function_size());
+  EXPECT_EQ(1, lib_def.ToProto().gradient_size());
+
+  // Create FunctionLibraryDefinition with (func = WXPlusB, grad = XTimesTwo)
+  // and function (name = XTimesTwo, body = XTimeFour)
+  FunctionDefLibrary proto2;
+  *proto2.add_function() = test::function::WXPlusB();
+  *proto2.add_gradient() = MakeGradDef(wx_name, x2_name);
+  *proto2.add_function() = test::function::XTimesFour();
+  proto2.mutable_function(1)->mutable_signature()->set_name(x2_name);
+  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto2);
+
+  // Verify that adding lib_def2 will fail because of function conflict
+  // and WXPlusB is not added.
+  Status s = lib_def.AddLibrary(lib_def2);
+  EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(
+      "Cannot add function 'XTimesTwo' because a different function "
+      "with the same name already exists.",
+      s.error_message());
+  EXPECT_TRUE(lib_def.Find(wx_name) == nullptr);
+  EXPECT_EQ(1, lib_def.ToProto().function_size());
+  EXPECT_EQ(1, lib_def.ToProto().gradient_size());
+}
+
+TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
+  const string x2_name = test::function::XTimesTwo().signature().name();
+  const string x4_name = test::function::XTimesFour().signature().name();
+  const string wx_name = test::function::WXPlusB().signature().name();
+
+  // Create FunctionLibraryDefinition with
+  // (func = XTimesTwo, grad = XTimesFour)
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_gradient() = MakeGradDef(x2_name, x4_name);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+  EXPECT_EQ(1, lib_def.ToProto().function_size());
+  EXPECT_EQ(1, lib_def.ToProto().gradient_size());
+
+  // Create FunctionLibraryDefinition with (func = WXPlusB, grad = XTimesTwo)
+  // and (func = XTimesTwo, grad = WXPlusB)
+  FunctionDefLibrary proto2;
+  *proto2.add_function() = test::function::WXPlusB();
+  *proto2.add_gradient() = MakeGradDef(wx_name, x2_name);
+  *proto2.add_function() = test::function::XTimesTwo();
+  *proto2.add_gradient() = MakeGradDef(x2_name, wx_name);
+  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto2);
+
+  // Verify that adding lib_def2 will fail because of gradient conflict
+  // and WXPlusB is not added.
+  Status s = lib_def.AddLibrary(lib_def2);
+  EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(
+      "Cannot assign gradient function 'WXPlusB' to 'XTimesTwo'"
+      " because it already has gradient function 'XTimesFour'",
+      s.error_message());
+  EXPECT_TRUE(lib_def.Find(wx_name) == nullptr);
+  EXPECT_EQ(1, lib_def.ToProto().function_size());
+  EXPECT_EQ(1, lib_def.ToProto().gradient_size());
 }
 
 TEST(FunctionLibraryDefinitionTest, ToProto) {

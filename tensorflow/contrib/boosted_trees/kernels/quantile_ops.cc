@@ -382,6 +382,11 @@ class MakeQuantileSummariesOp : public OpKernel {
               sparse_float_feature_values_list[sparse_index].flat<float>();
           const auto sparse_indices =
               sparse_float_feature_indices_list[sparse_index].matrix<int64>();
+          const auto dense_shape =
+              sparse_float_feature_shapes_list[sparse_index].flat<int64>();
+          OP_REQUIRES(context, batch_size == dense_shape(0),
+                      errors::InvalidArgument(
+                          "Sparse column shape doesn't match the batch size."));
           QuantileStream stream(epsilon_, batch_size + 1);
           // Run quantile summary generation.
           const int64 num_sparse_rows =
@@ -542,7 +547,7 @@ REGISTER_KERNEL_BUILDER(
     Name("QuantileAccumulatorDeserialize").Device(DEVICE_CPU),
     QuantileAccumulatorDeserializeOp);
 
-// Adds a summary to the quantile summary stream.
+// Flushes the quantile summary stream resource.
 class QuantileAccumulatorFlushOp : public OpKernel {
  public:
   explicit QuantileAccumulatorFlushOp(OpKernelConstruction* const context)
@@ -580,6 +585,56 @@ class QuantileAccumulatorFlushOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("QuantileAccumulatorFlush").Device(DEVICE_CPU),
                         QuantileAccumulatorFlushOp);
+
+// Flushes the quantile summary stream resource. This version computes the
+// summary.
+class QuantileAccumulatorFlushSummaryOp : public OpKernel {
+ public:
+  explicit QuantileAccumulatorFlushSummaryOp(
+      OpKernelConstruction* const context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    QuantileStreamResource* streams_resource;
+    // Create a reference to the underlying resource using the handle.
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &streams_resource));
+    // Remove the reference at the end of this scope.
+    mutex_lock l(*streams_resource->mutex());
+    core::ScopedUnref unref_me(streams_resource);
+
+    const Tensor* next_stamp_token_t;
+    OP_REQUIRES_OK(context,
+                   context->input(kNextStampTokenName, &next_stamp_token_t));
+    int64 next_stamp_token = next_stamp_token_t->scalar<int64>()();
+
+    const Tensor* stamp_token_t;
+    OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
+    int64 stamp_token = stamp_token_t->scalar<int64>()();
+    CHECK(streams_resource->is_stamp_valid(stamp_token))
+        << "Invalid stamp token in QuantileAccumulatorFlushSummaryOp. "
+        << "Passed stamp token: " << stamp_token << " "
+        << "Current token: " << streams_resource->stamp();
+    QuantileStream* stream = streams_resource->stream(stamp_token);
+    stream->Finalize();
+    protobuf::Arena arena;
+    ::boosted_trees::QuantileSummaryState* summary_proto =
+        protobuf::Arena::CreateMessage<::boosted_trees::QuantileSummaryState>(
+            &arena);
+    const auto& summary = stream->GetFinalSummary();
+    CopySummaryToProto(summary, summary_proto);
+    // Output to tensor.
+    Tensor* output_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output_t));
+    summary_proto->SerializeToString(&output_t->scalar<string>()());
+    streams_resource->Reset(next_stamp_token);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("QuantileAccumulatorFlushSummary").Device(DEVICE_CPU),
+    QuantileAccumulatorFlushSummaryOp);
 
 // Get bucket boundaries from summaries.
 class QuantileAccumulatorGetBucketsOp : public OpKernel {
@@ -818,5 +873,64 @@ class QuantilesOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Quantiles").Device(DEVICE_CPU), QuantilesOp);
+
+template <typename T>
+class BucketizeWithInputBoundariesOp : public OpKernel {
+ public:
+  explicit BucketizeWithInputBoundariesOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& boundaries_tensor = context->input(1);
+    VLOG(1) << "boundaries has shape: "
+            << boundaries_tensor.shape().DebugString();
+    auto boundaries = boundaries_tensor.flat<float>();
+    boundaries_.clear();
+    for (size_t i = 0; i < boundaries.size(); i++) {
+      boundaries_.push_back(boundaries(i));
+      VLOG(1) << "boundaries(" << i << ") : " << boundaries(i);
+    }
+    OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
+                errors::InvalidArgument("Expected sorted boundaries"));
+
+    const Tensor& input_tensor = context->input(0);
+    VLOG(1) << "Inputs has shape: " << input_tensor.shape().DebugString()
+            << " Dtype: " << tensorflow::DataTypeString(input_tensor.dtype());
+    auto input = input_tensor.flat<T>();
+
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
+                                                     &output_tensor));
+    auto output = output_tensor->template flat<int32>();
+
+    for (size_t i = 0; i < input.size(); i++) {
+      output(i) = CalculateBucketIndex(input(i));
+    }
+  }
+
+ private:
+  int32 CalculateBucketIndex(const T value) {
+    auto first_bigger_it =
+        std::upper_bound(boundaries_.begin(), boundaries_.end(), value);
+    int32 index = first_bigger_it - boundaries_.begin();
+    CHECK(index >= 0 && index <= boundaries_.size())
+        << "Invalid bucket index: " << index
+        << " boundaries_.size(): " << boundaries_.size();
+    return index;
+  }
+  std::vector<T> boundaries_;
+};
+
+#define REGISTER_KERNEL(T)                                     \
+  REGISTER_KERNEL_BUILDER(Name("BucketizeWithInputBoundaries") \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T"),         \
+                          BucketizeWithInputBoundariesOp<T>);
+
+REGISTER_KERNEL(int32);
+REGISTER_KERNEL(int64);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
+#undef REGISTER_KERNEL
 
 }  // namespace tensorflow

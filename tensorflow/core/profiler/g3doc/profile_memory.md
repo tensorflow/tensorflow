@@ -1,4 +1,4 @@
-##Profile Memory
+## Profile Memory
 
 It is generally a good idea to visualize the memory usage in timeline.
 It allows you to see the memory consumption of each GPU over time.
@@ -15,7 +15,6 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ```
 
 <left>
-TODO(xpan): Show the image correctly in github.
 ![Timeline](graph_timeline.png)
 </left>
 
@@ -26,7 +25,7 @@ TODO(xpan): Show the image correctly in github.
 # With op view, it shows you the aggregated output tensor bytes of each
 # operation type.
 tfprof> op -select bytes -order_by bytes
-node name | output bytes
+node name | requested bytes
 Identity                   32515.37MB (100.00%, 27.02%)
 FusedBatchNormGrad           10802.14MB (72.98%, 8.98%)
 FusedBatchNorm               10517.52MB (64.01%, 8.74%)
@@ -41,7 +40,7 @@ AddN                           2741.49MB (8.56%, 2.28%)
 
 # With scope view, you can see the operations that outputs largest tensors.
 tfprof> scope -order_by bytes -select bytes -min_bytes 100000000
-node name | output bytes
+node name | requested bytes
 _TFProfRoot (--/120356.38MB)
   tower_3/SepConv2d_2b_3x3/separable_conv2d (346.85MB/854.00MB)
     tower_3/SepConv2d_2b_3x3/separable_conv2d/depthwise (507.15MB/507.15MB)
@@ -61,7 +60,7 @@ _TFProfRoot (--/120356.38MB)
 
 # code view.
 tfprof> code  -max_depth 10 -select bytes -order_by bytes -start_name_regexes .*seq2seq.* -min_bytes 1
-node name | output bytes
+node name | requested bytes
 _TFProfRoot (--/74148.60MB)
   seq2seq_attention.py'>:168:run_filename_from...:none (0B/74148.60MB)
     seq2seq_attention.py'>:33:_run_code_in_main:none (0B/74148.60MB)

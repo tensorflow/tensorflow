@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from autograd import core as ag_core
 import numpy as np
 import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -234,7 +236,9 @@ def _FilterTuple(v):
 def _FilterInt(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(v, compat.integral_types) else _NotNone(v)
+  return None if isinstance(
+          v,
+          (compat.integral_types, tensor_shape.Dimension)) else _NotNone(v)
 
 
 def _FilterFloat(v):
@@ -312,10 +316,13 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
-    A TensorProto. Depending on the type, it may contain data in the
+    A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with tensor_util.MakeNdarray(proto).
+    with `tensor_util.MakeNdarray(proto)`.
+
+    If `values` is a `TensorProto`, it is immediately returned; `dtype` and
+    `shape` are ignored.
 
   Raises:
     TypeError:  if unsupported types are provided.
@@ -343,6 +350,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
+  if isinstance(values, tensor_pb2.TensorProto):
+    return values
+
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
@@ -407,7 +417,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
 
   if dtype is not None and (not hasattr(dtype, "base_dtype") or
                             dtype.base_dtype != numpy_dtype.base_dtype):
-    raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
+    raise TypeError("Incompatible types: %s vs. %s. Value is %s"
+                    % (dtype, nparray.dtype, values))
 
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
@@ -595,9 +606,9 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def _ConstantValue(tensor):
+def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
-  if not isinstance(tensor, ops.Tensor):
+  if not isinstance(ag_core.getval(tensor), ops.Tensor):
     raise TypeError("tensor is not a Tensor")
   if tensor.op.type == "Const":
     return MakeNdarray(tensor.op.get_attr("value"))
@@ -668,8 +679,8 @@ def _ConstantValue(tensor):
     if not tensor.op.inputs:
       return None
     for x in tensor.op.inputs:
-      value = constant_value(x)
-      if value is None:
+      value = constant_value(x, partial)
+      if value is None and not partial:
         return None
       values.append(value)
     return np.array(values)
@@ -680,11 +691,27 @@ def _ConstantValue(tensor):
       return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
     else:
       return None
+  elif tensor.op.type == "Equal":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.equal(value1, value2)
+  elif tensor.op.type == "NotEqual":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.not_equal(value1, value2)
   else:
     return None
 
 
-def constant_value(tensor):
+def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
@@ -701,6 +728,8 @@ def constant_value(tensor):
 
   Args:
     tensor: The Tensor to be evaluated.
+    partial: If True, the returned numpy array is allowed to have partially
+      evaluated values. Values that can't be evaluated will be None.
 
   Returns:
     A numpy ndarray containing the constant value of the given `tensor`,
@@ -709,7 +738,9 @@ def constant_value(tensor):
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  ret = _ConstantValue(tensor)
+  if isinstance(ag_core.getval(tensor), ops.EagerTensor):
+    return tensor.numpy()
+  ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
     # conservatively prevent it from being fed.

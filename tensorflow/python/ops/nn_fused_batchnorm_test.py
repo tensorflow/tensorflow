@@ -23,8 +23,9 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import nn_grad
 from tensorflow.python.ops import nn_impl
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
@@ -123,7 +124,8 @@ class BatchNormalizationTest(test.TestCase):
                      x_shape,
                      scale_shape,
                      use_gpu=True,
-                     data_format='NHWC'):
+                     data_format='NHWC',
+                     is_training=True):
     np.random.seed(1)
     x_val = np.random.random_sample(x_shape).astype(np.float32)
     scale_val = np.random.random_sample(scale_shape).astype(np.float32)
@@ -133,8 +135,20 @@ class BatchNormalizationTest(test.TestCase):
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
+      if is_training:
+        pop_mean = None
+        pop_var = None
+      else:
+        pop_mean = np.random.random_sample(scale_shape).astype(np.float32)
+        pop_var = np.random.random_sample(scale_shape).astype(np.float32)
       y, _, _ = nn_impl.fused_batch_norm(
-          x, scale, offset, data_format=data_format)
+          x,
+          scale,
+          offset,
+          mean=pop_mean,
+          variance=pop_var,
+          data_format=data_format,
+          is_training=is_training)
       err_x = gradient_checker.compute_gradient_error(x, x_shape, y, x_shape)
       err_scale = gradient_checker.compute_gradient_error(scale, scale_shape, y,
                                                           x_shape)
@@ -144,6 +158,75 @@ class BatchNormalizationTest(test.TestCase):
     self.assertLess(err_x, err_tolerance)
     self.assertLess(err_scale, err_tolerance)
     self.assertLess(err_offset, err_tolerance)
+
+  def _test_grad_grad(self,
+                      x_shape,
+                      scale_shape,
+                      use_gpu=True,
+                      data_format='NHWC',
+                      is_training=True,
+                      err_tolerance=1e-3):
+    np.random.seed(1)
+    x_val = np.random.random_sample(x_shape).astype(np.float32)
+    grad_y_val = np.random.random_sample(x_shape).astype(np.float32)
+    scale_val = np.random.random_sample(scale_shape).astype(np.float32)
+    offset_val = np.random.random_sample(scale_shape).astype(np.float32)
+
+    with self.test_session(use_gpu=use_gpu) as sess:
+      x = constant_op.constant(x_val, name='x')
+      grad_y = constant_op.constant(grad_y_val, name='grad_y')
+      scale = constant_op.constant(scale_val, name='scale')
+      offset = constant_op.constant(offset_val, name='offset')
+      if is_training:
+        pop_mean = None
+        pop_var = None
+      else:
+        pop_mean = np.random.random_sample(scale_shape).astype(np.float32)
+        pop_var = np.random.random_sample(scale_shape).astype(np.float32)
+      y, _, _ = nn_impl.fused_batch_norm(
+          x,
+          scale,
+          offset,
+          mean=pop_mean,
+          variance=pop_var,
+          data_format=data_format,
+          is_training=is_training)
+      grad_x, grad_scale, grad_offset = gradients_impl.gradients(
+          y, [x, scale, offset], grad_y)
+
+      if is_training:
+        epsilon = y.op.get_attr('epsilon')
+        data_format = y.op.get_attr('data_format')
+        grad_vals = sess.run([grad_x, grad_scale, grad_offset])
+        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, epsilon,
+                                               data_format)
+        grad_internal_vals = sess.run(list(grad_internal))
+        for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
+          self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
+
+      err_grad_grad_y_1 = gradient_checker.compute_gradient_error(
+          grad_y, x_shape, grad_x, x_shape)
+      err_grad_grad_y_2 = gradient_checker.compute_gradient_error(
+          grad_y, x_shape, grad_scale, scale_shape)
+      err_grad_grad_y_3 = gradient_checker.compute_gradient_error(
+          grad_y, x_shape, grad_offset, scale_shape)
+      # In freeze mode, grad_x is not a function of x.
+      if is_training:
+        err_grad_x_1 = gradient_checker.compute_gradient_error(
+            x, x_shape, grad_x, x_shape)
+      err_grad_x_2 = gradient_checker.compute_gradient_error(
+          x, x_shape, grad_scale, scale_shape)
+
+      err_grad_scale = gradient_checker.compute_gradient_error(
+          scale, scale_shape, grad_x, x_shape)
+
+    self.assertLess(err_grad_grad_y_1, err_tolerance)
+    self.assertLess(err_grad_grad_y_2, err_tolerance)
+    self.assertLess(err_grad_grad_y_3, err_tolerance)
+    if is_training:
+      self.assertLess(err_grad_x_1, err_tolerance)
+    self.assertLess(err_grad_x_2, err_tolerance)
+    self.assertLess(err_grad_scale, err_tolerance)
 
   def testInference(self):
     x_shape = [1, 1, 6, 1]
@@ -190,26 +273,98 @@ class BatchNormalizationTest(test.TestCase):
     self._test_training(x_shape, [6], use_gpu=False, data_format='NHWC')
 
   def testBatchNormGrad(self):
-    x_shape = [1, 1, 6, 1]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [1], use_gpu=True, data_format='NHWC')
-      self._test_gradient(x_shape, [1], use_gpu=True, data_format='NCHW')
-    self._test_gradient(x_shape, [1], use_gpu=False, data_format='NHWC')
+    for is_training in [True, False]:
+      x_shape = [1, 1, 6, 1]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [1],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training)
+        self._test_gradient(
+            x_shape, [1],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training)
+      self._test_gradient(
+          x_shape, [1],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training)
 
-    x_shape = [1, 1, 6, 2]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [2], use_gpu=True, data_format='NHWC')
-    self._test_gradient(x_shape, [2], use_gpu=False, data_format='NHWC')
+      x_shape = [1, 1, 6, 2]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [2],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training)
+      self._test_gradient(
+          x_shape, [2],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training)
 
-    x_shape = [1, 2, 1, 6]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [2], use_gpu=True, data_format='NCHW')
+      x_shape = [1, 2, 1, 6]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [2],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training)
 
-    x_shape = [7, 9, 13, 6]
-    if test.is_gpu_available(cuda_only=True):
-      self._test_gradient(x_shape, [9], use_gpu=True, data_format='NCHW')
-      self._test_gradient(x_shape, [6], use_gpu=True, data_format='NHWC')
-    self._test_gradient(x_shape, [6], use_gpu=False, data_format='NHWC')
+      x_shape = [7, 9, 13, 6]
+      if test.is_gpu_available(cuda_only=True):
+        self._test_gradient(
+            x_shape, [9],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training)
+        self._test_gradient(
+            x_shape, [6],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training)
+      self._test_gradient(
+          x_shape, [6],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training)
+
+  def _testBatchNormGradGrad(self, config):
+    shape = config['shape']
+    err_tolerance = config['err_tolerance']
+    for is_training in [True, False]:
+      if test.is_gpu_available(cuda_only=True):
+        self._test_grad_grad(
+            shape, [shape[3]],
+            use_gpu=True,
+            data_format='NHWC',
+            is_training=is_training,
+            err_tolerance=err_tolerance)
+        self._test_grad_grad(
+            shape, [shape[1]],
+            use_gpu=True,
+            data_format='NCHW',
+            is_training=is_training,
+            err_tolerance=err_tolerance)
+      self._test_grad_grad(
+          shape, [shape[3]],
+          use_gpu=False,
+          data_format='NHWC',
+          is_training=is_training,
+          err_tolerance=err_tolerance)
+
+  def testBatchNormGradGrad(self):
+    configs = [{
+        'shape': [2, 3, 4, 5],
+        'err_tolerance': 1e-2
+    }, {
+        'shape': [2, 3, 2, 2],
+        'err_tolerance': 1e-3
+    }]
+    for config in configs:
+      self._testBatchNormGradGrad(config)
 
 
 if __name__ == '__main__':

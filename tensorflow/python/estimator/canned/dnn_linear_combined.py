@@ -23,14 +23,12 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.estimator.canned import linear
 from tensorflow.python.estimator.canned import optimizers
-from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
@@ -85,7 +83,7 @@ def _dnn_linear_combined_model_fn(
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
-    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    features: dict of `Tensor`.
     labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of dtype
       `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
@@ -114,8 +112,12 @@ def _dnn_linear_combined_model_fn(
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
-      are empty at the same time, or `input_layer_partitioner` is missing.
+      are empty at the same time, or `input_layer_partitioner` is missing,
+      or features has the wrong type.
   """
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
         'Either linear_feature_columns or dnn_feature_columns must be defined.')
@@ -145,36 +147,15 @@ def _dnn_linear_combined_model_fn(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=dnn_partitioner):
-      with variable_scope.variable_scope('input',
-                                         partitioner=input_layer_partitioner):
-        net = feature_column_lib.input_layer(
-            features=features,
-            feature_columns=dnn_feature_columns)
 
-      for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
-        with variable_scope.variable_scope(
-            'hiddenlayer_%d' % layer_id,
-            values=(net,)) as dnn_hidden_layer_scope:
-          net = core_layers.dense(
-              net,
-              units=num_hidden_units,
-              activation=dnn_activation_fn,
-              kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=dnn_hidden_layer_scope)
-          if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-            net = core_layers.dropout(net, rate=dnn_dropout, training=True)
-        _add_layer_summary(net, dnn_hidden_layer_scope.name)
-
-      with variable_scope.variable_scope(
-          'logits',
-          values=(net,)) as dnn_logits_scope:
-        dnn_logits = core_layers.dense(
-            net,
-            units=head.logits_dimension,
-            activation=None,
-            kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=dnn_logits_scope)
-      _add_layer_summary(dnn_logits, dnn_logits_scope.name)
+      dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
+          units=head.logits_dimension,
+          hidden_units=dnn_hidden_units,
+          feature_columns=dnn_feature_columns,
+          activation_fn=dnn_activation_fn,
+          dropout=dnn_dropout,
+          input_layer_partitioner=input_layer_partitioner)
+      dnn_logits = dnn_logit_fn(features=features, mode=mode)
 
   linear_parent_scope = 'linear'
 
@@ -189,10 +170,10 @@ def _dnn_linear_combined_model_fn(
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
-      linear_logits = feature_column_lib.linear_model(
-          features=features,
-          feature_columns=linear_feature_columns,
-          units=head.logits_dimension)
+      logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
+          units=head.logits_dimension,
+          feature_columns=linear_feature_columns)
+      linear_logits = logit_fn(features=features)
       _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.

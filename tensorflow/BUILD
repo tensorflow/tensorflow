@@ -9,6 +9,9 @@ licenses(["notice"])  # Apache 2.0
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
 ])
 
 # Config setting for determining if we are building for Android.
@@ -59,6 +62,24 @@ config_setting(
     values = {
         "crosstool_top": "//external:android/crosstool",
         "cpu": "arm64-v8a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_mips",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_mips64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips64",
     },
     visibility = ["//visibility:public"],
 )
@@ -165,6 +186,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_gdr_support",
+    values = {"define": "with_gdr_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
@@ -244,6 +271,7 @@ filegroup(
         "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/boosted_trees:all_files",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:all_files",
         "//tensorflow/contrib/boosted_trees/lib:all_files",
         "//tensorflow/contrib/boosted_trees/proto:all_files",
         "//tensorflow/contrib/boosted_trees/resources:all_files",
@@ -261,11 +289,14 @@ filegroup(
         "//tensorflow/contrib/data/python/util:all_files",
         "//tensorflow/contrib/decision_trees/proto:all_files",
         "//tensorflow/contrib/distributions:all_files",
+        "//tensorflow/contrib/eager/python:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
+        "//tensorflow/contrib/fused_conv:all_files",
+        "//tensorflow/contrib/gan:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/hooks:all_files",
@@ -286,11 +317,15 @@ filegroup(
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
+        "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
+        "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
+        "//tensorflow/contrib/receptive_field:all_files",
+        "//tensorflow/contrib/reduce_slice_ops:all_files",
         "//tensorflow/contrib/remote_fused_graph/pylib:all_files",
         "//tensorflow/contrib/resampler:all_files",
         "//tensorflow/contrib/rnn:all_files",
@@ -309,6 +344,7 @@ filegroup(
         "//tensorflow/contrib/staging:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/stateless:all_files",
+        "//tensorflow/contrib/summary:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensor_forest/kernels/v4:all_files",
@@ -337,6 +373,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
         "//tensorflow/core/ops/compat:all_files",
@@ -350,11 +387,13 @@ filegroup(
         "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
         "//tensorflow/examples/benchmark:all_files",
+        "//tensorflow/examples/get_started/regression:all_files",
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
         "//tensorflow/examples/label_image:all_files",
         "//tensorflow/examples/learn:all_files",
         "//tensorflow/examples/saved_model:all_files",
+        "//tensorflow/examples/speech_commands:all_files",
         "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
@@ -365,6 +404,7 @@ filegroup(
         "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
+        "//tensorflow/python/eager:all_files",
         "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/feature_column:all_files",
         "//tensorflow/python/kernel_tests:all_files",
@@ -439,6 +479,7 @@ cc_binary(
         "//tensorflow/c:c_api",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -448,6 +489,7 @@ cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",

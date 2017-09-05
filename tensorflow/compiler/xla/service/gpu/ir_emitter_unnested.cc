@@ -17,13 +17,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/StringRef.h"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -894,7 +894,7 @@ Status IrEmitterUnnested::EmitColumnReduction(
     llvm_ir::SetToFirstInsertPoint(if_tile_in_bounds_data.after_block,
                                    &ir_builder_);
     const HloInstruction* output =
-        reduce->IsFused() ? reduce->fusion_instruction() : reduce;
+        reduce->IsFused() ? reduce->parent()->FusionInstruction() : reduce;
     llvm::Value* output_address = GetIrArray(*output).EmitArrayElementAddress(
         llvm_ir::IrArray::Index(x, output->shape(), &ir_builder_), &ir_builder_,
         "output_element_address");
@@ -1142,7 +1142,7 @@ Status IrEmitterUnnested::EmitRowReduction(
     }
 
     const HloInstruction* output =
-        reduce->IsFused() ? reduce->fusion_instruction() : reduce;
+        reduce->IsFused() ? reduce->parent()->FusionInstruction() : reduce;
 
     // Emit an atomic operation that accumulates the partial reduction result of
     // lane 0 (which holds the partially accumulated result for its warp) to the
@@ -1913,10 +1913,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
   }
   ir_builder_.SetInsertPoint(ir_builder_.GetInsertBlock()->getTerminator());
-  //  const HloInstruction* root = hlo.fused_expression_root();
-  llvm_ir::EmitTuple(
-      GetIrArray(*hlo.fused_expression_root()->fusion_instruction()),
-      tuple_operand_ptrs, &ir_builder_);
+  llvm_ir::EmitTuple(GetIrArray(hlo), tuple_operand_ptrs, &ir_builder_);
   return Status::OK();
 }
 

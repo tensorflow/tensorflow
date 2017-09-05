@@ -352,9 +352,9 @@ class ResourceApplyRMSProp : public XlaOpKernel {
                b->Sub(XlaHelpers::FloatLiteral(b, type, 1.0), rho)));
     xla::ComputationDataHandle new_mom =
         b->Add(b->Mul(mom, momentum),
-               b->Div(b->Mul(grad, lr),
+               b->Mul(b->Mul(grad, lr),
                       b->Pow(b->Add(new_ms, epsilon),
-                             XlaHelpers::FloatLiteral(b, type, 0.5))));
+                             XlaHelpers::FloatLiteral(b, type, -0.5))));
     xla::ComputationDataHandle new_var = b->Sub(var, new_mom);
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, new_var));
@@ -455,11 +455,10 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
   // linear += grad_to_use -
   //     (new_accum^(-lr_power) - accum^(-lr_power)) / lr * var
   // quadratic = (new_accum^(-lr_power) / lr) + 2 * l2
-  // var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+  // linear_clipped = clamp linear in [-l1, l1]
+  // var = (linear_clipped - linear) / quadratic
   // accum = new_accum
 
-  xla::ComputationDataHandle zero_broadcast = b->Broadcast(
-      XlaHelpers::FloatLiteral(b, dtype, 0.0), var_shape.dim_sizes());
   xla::ComputationDataHandle two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
   xla::ComputationDataHandle grad_to_use;
   if (has_l2_shrinkage) {
@@ -477,11 +476,10 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
       linear,
       b->Sub(grad_to_use,
              b->Mul(b->Div(b->Sub(new_accum_lr_pow, accum_lr_pow), lr), var)));
+  xla::ComputationDataHandle linear_clipped = b->Clamp(b->Neg(l1), linear, l1);
   xla::ComputationDataHandle quadratic =
       b->Add(b->Div(new_accum_lr_pow, lr), b->Mul(two, l2));
-  xla::ComputationDataHandle pre_shrink =
-      b->Div(b->Sub(b->Mul(l1, b->Sign(linear)), linear), quadratic);
-  var = b->Select(b->Gt(b->Abs(linear), l1), pre_shrink, zero_broadcast);
+  var = b->Div(b->Sub(linear_clipped, linear), quadratic);
   accum = new_accum;
 
   OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype, var));

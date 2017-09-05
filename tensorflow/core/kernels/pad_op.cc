@@ -146,9 +146,9 @@ class PadOp : public OpKernel {
                Tensor* output) {
     CHECK_EQ(Dims, paddings.dimension(0));
     CHECK_EQ(2, paddings.dimension(1));
-    Eigen::array<std::pair<int32, int32>, Dims> paddings_array;
+    Eigen::array<Eigen::IndexPair<int32>, Dims> paddings_array;
     for (int i = 0; i < Dims; ++i) {
-      paddings_array[i] = std::make_pair(paddings(i, 0), paddings(i, 1));
+      paddings_array[i] = {paddings(i, 0), paddings(i, 1)};
     }
     functor::Pad<Device, T, Dims> functor;
     functor(context->eigen_device<Device>(), output->tensor<T, Dims>(), input,
@@ -180,7 +180,7 @@ namespace functor {
   void Pad<GPUDevice, T, Dims>::operator()(                               \
       const GPUDevice& d, typename TTypes<T, Dims>::Tensor output,        \
       typename TTypes<T, Dims>::ConstTensor input,                        \
-      Eigen::array<std::pair<int32, int32>, Dims> paddings, T pad_value); \
+      Eigen::array<Eigen::IndexPair<int32>, Dims> paddings, T pad_value); \
   extern template struct Pad<GPUDevice, T, Dims>;
 
 #define DECLARE_GPU_SPECS(T) \

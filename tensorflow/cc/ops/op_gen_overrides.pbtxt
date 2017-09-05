@@ -143,6 +143,31 @@ op { name: "SelfAdjointEigV2" rename_to: "SelfAdjointEig" }
 
 # logging_ops
 op { name: "AudioSummaryV2" rename_to: "AudioSummary" }
+
+# lookup_ops
+op { name: "LookupTableFind" skip: true }
+op { name: "LookupTableFindV2" rename_to: "LookupTableFind" }
+op { name: "LookupTableInsert" skip: true }
+op { name: "LookupTableInsertV2" rename_to: "LookupTableInsert" }
+op { name: "LookupTableSize" skip: true }
+op { name: "LookupTableSizeV2" rename_to: "LookupTableSize" }
+op { name: "LookupTableExport" skip: true }
+op { name: "LookupTableExportV2" rename_to: "LookupTableExport" }
+op { name: "LookupTableImport" skip: true }
+op { name: "LookupTableImportV2" rename_to: "LookupTableImport" }
+op { name: "HashTable" skip: true }
+op { name: "HashTableV2" rename_to: "HashTable" }
+op { name: "MutableHashTable" skip: true }
+op { name: "MutableHashTableV2" rename_to: "MutableHashTable" }
+op { name: "MutableHashTableOfTensors" skip: true }
+op { name: "MutableHashTableOfTensorsV2" rename_to: "MutableHashTableOfTensors" }
+op { name: "MutableDenseHashTable" skip: true }
+op { name: "MutableDenseHashTableV2" rename_to: "MutableDenseHashTable" }
+op { name: "InitializeTable" skip: true }
+op { name: "InitializeTableV2" rename_to: "InitializeTable" }
+op { name: "InitializeTableFromTextFile" skip: true }
+op { name: "InitializeTableFromTextFileV2" rename_to: "InitializeTableFromTextFile" }
+
 # math_ops
 op { name: "All" alias: "ReduceAll" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to: "axis" } }
@@ -177,6 +202,7 @@ op { name: "MaxPoolGradWithArgmax" hide: true }
 op { name: "ReluGrad" hide: true }
 op { name: "Relu6Grad" hide: true }
 op { name: "EluGrad" hide: true }
+op { name: "SeluGrad" hide: true }
 op { name: "SoftplusGrad" hide: true }
 op { name: "SoftsignGrad" hide: true }
 op { name: "FractionalAvgPoolGrad" hide: true }

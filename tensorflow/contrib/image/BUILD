@@ -105,6 +105,9 @@ tf_custom_op_library(
         "kernels/single_image_random_dot_stereograms_ops.cc",
         "ops/single_image_random_dot_stereograms_ops.cc",
     ],
+    deps = [
+        "@protobuf_archive//:protobuf",
+    ],
 )
 
 tf_gen_op_libs(
@@ -114,6 +117,16 @@ tf_gen_op_libs(
 tf_gen_op_wrapper_py(
     name = "single_image_random_dot_stereograms_ops",
     deps = [":single_image_random_dot_stereograms_ops_op_lib"],
+)
+
+cc_library(
+    name = "image_ops_cc",
+    srcs = ["ops/image_ops.cc"],
+    deps = [
+        ":image_ops_kernels",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
 )
 
 py_library(

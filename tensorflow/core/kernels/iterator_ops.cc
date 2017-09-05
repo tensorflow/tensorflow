@@ -89,6 +89,31 @@ class IteratorResource : public ResourceBase {
     }
   }
 
+  Status SaveState(OpKernelContext* ctx, StringPiece path) {
+    std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+    if (captured_iterator) {
+      return captured_iterator->SaveState(ctx, path);
+    } else {
+      return errors::FailedPrecondition(
+          "SaveState() failed because the iterator has not been initialized. "
+          "Ensure that you have run the initializer operation for this "
+          "iterator before getting the next element.");
+    }
+  }
+
+  Status RestoreState(OpKernelContext* ctx, StringPiece path) {
+    std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+    if (captured_iterator) {
+      return captured_iterator->RestoreState(ctx, path);
+    } else {
+      return errors::FailedPrecondition(
+          "RestoreState() failed because the iterator has not been "
+          "initialized. "
+          "Ensure that you have run the initializer operation for this "
+          "iterator before getting the next element.");
+    }
+  }
+
   // Transfers ownership of iterator to this. This method is thread-safe.
   Status set_iterator(std::unique_ptr<IteratorBase> iterator) {
     if (iterator) {
@@ -155,9 +180,35 @@ class MakeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-    OP_REQUIRES_OK(ctx,
-                   iterator_resource->set_iterator(dataset->MakeIterator()));
+    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
+                            dataset->MakeIterator("Iterator")));
     iterator_resource->Unref();
+  }
+};
+
+class SaveIteratorOp : public OpKernel {
+ public:
+  explicit SaveIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    const string& path = ctx->input(1).scalar<string>()();
+    OP_REQUIRES_OK(ctx, iterator_resource->SaveState(ctx, path));
+  }
+};
+
+class RestoreIteratorOp : public OpKernel {
+ public:
+  explicit RestoreIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    const string& path = ctx->input(1).scalar<string>()();
+    OP_REQUIRES_OK(ctx, iterator_resource->RestoreState(ctx, path));
   }
 };
 
@@ -311,7 +362,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // Create an iterator for the dataset that was created in the
     // factory function. This transfers ownership of the dataset to
     // the iterator, so we can delete it from the resource manager.
-    TF_RETURN_IF_ERROR((*iterator)->set_iterator(dataset->MakeIterator()));
+    TF_RETURN_IF_ERROR(
+        (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
     TF_RETURN_IF_ERROR(DeleteResource<DatasetBase>(ctx, dataset_resource));
 
     (*iterator)->Ref();
@@ -415,15 +467,108 @@ class IteratorDisposeOp : public OpKernel {
   }
 };
 
+class IteratorToStringHandleOp : public OpKernel {
+ public:
+  explicit IteratorToStringHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& resource_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
+                errors::InvalidArgument("resource_handle must be a scalar"));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    iterator_resource->Unref();
+
+    Tensor* string_handle_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &string_handle_t));
+    string_handle_t->scalar<string>()() =
+        resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
+  }
+};
+
+class IteratorFromStringHandleOp : public OpKernel {
+ public:
+  explicit IteratorFromStringHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES(
+        ctx,
+        output_dtypes_.empty() || output_shapes_.empty() ||
+            output_dtypes_.size() == output_shapes_.size(),
+        errors::InvalidArgument("If both 'output_types' and 'output_shapes' "
+                                "are set, they must have the same length."));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& string_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(string_handle_t.shape()),
+                errors::InvalidArgument("string_handle must be a scalar"));
+
+    ResourceHandle resource_handle;
+    OP_REQUIRES(
+        ctx,
+        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        errors::InvalidArgument(
+            "Could not parse string_handle as a valid ResourceHandle"));
+
+    OP_REQUIRES(
+        ctx, resource_handle.device() == ctx->device()->attributes().name(),
+        errors::InvalidArgument("Attempted create an iterator on device \"",
+                                ctx->device()->attributes().name(),
+                                "\" from handle defined on device \"",
+                                resource_handle.device(), "\""));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, resource_handle, &iterator_resource));
+    core::ScopedUnref unref_iterator(iterator_resource);
+    if (!output_dtypes_.empty()) {
+      OP_REQUIRES_OK(ctx, VerifyTypesMatch(output_dtypes_,
+                                           iterator_resource->output_dtypes()));
+    }
+    if (!output_shapes_.empty()) {
+      OP_REQUIRES_OK(
+          ctx, VerifyShapesCompatible(output_shapes_,
+                                      iterator_resource->output_shapes()));
+    }
+
+    Tensor* resource_handle_t;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({}), &resource_handle_t));
+    resource_handle_t->scalar<ResourceHandle>()() = resource_handle;
+  }
+
+ private:
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
+};
+
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("SaveIterator").Device(DEVICE_CPU),
+                        SaveIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("RestoreIterator").Device(DEVICE_CPU),
+                        RestoreIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorDispose").Device(DEVICE_CPU),
                         IteratorDisposeOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
+                        IteratorToStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
+                        IteratorFromStringHandleOp);
 
 }  // namespace
 

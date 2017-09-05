@@ -27,6 +27,7 @@ import uuid
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -390,8 +391,8 @@ def rename(oldname, newname, overwrite=False):
   Args:
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+    overwrite: boolean, if false it's an error for `newname` to be occupied by
+        an existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -401,7 +402,7 @@ def rename(oldname, newname, overwrite=False):
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
 
 
-def atomic_write_string_to_file(filename, contents):
+def atomic_write_string_to_file(filename, contents, overwrite=True):
   """Writes to `filename` atomically.
 
   This means that when `filename` appears in the filesystem, it will contain
@@ -413,10 +414,16 @@ def atomic_write_string_to_file(filename, contents):
   Args:
     filename: string, pathname for a file
     contents: string, contents that need to be written to the file
+    overwrite: boolean, if false it's an error for `filename` to be occupied by
+        an existing file.
   """
   temp_pathname = filename + ".tmp" + uuid.uuid4().hex
   write_string_to_file(temp_pathname, contents)
-  rename(temp_pathname, filename, overwrite=True)
+  try:
+    rename(temp_pathname, filename, overwrite)
+  except errors.OpError:
+    delete_file(temp_pathname)
+    raise
 
 
 def delete_recursively(dirname):
@@ -441,11 +448,8 @@ def is_directory(dirname):
   Returns:
     True, if the path is a directory; False otherwise
   """
-  try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+  status = c_api_util.ScopedTFStatus()
+  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
 
 
 def list_directory(dirname):

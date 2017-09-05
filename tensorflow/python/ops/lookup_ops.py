@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -152,9 +153,13 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
+    if context.in_graph_mode():
+      name = table_ref.op.name.split("/")[-1]
+    else:
+      name = context.context().scope_name
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
-                         table_ref.op.name.split("/")[-1])
+                         name)
     self._table_ref = table_ref
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
@@ -236,9 +241,9 @@ class HashTable(InitializableLookupTableBase):
   Example usage:
 
   ```python
-  table = tf.contrib.lookup.HashTable(
-      tf.contrib.lookup.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor).
+  table = tf.HashTable(
+      tf.KeyValueTensorInitializer(keys, values), -1)
+  out = table.lookup(input_tensor)
   table.init.run()
   print(out.eval())
   ```

@@ -1,6 +1,10 @@
 path: "tensorflow"
 tf_module {
   member {
+    name: "AUTO_REUSE"
+    mtype: "<enum \'_ReuseMode\'>"
+  }
+  member {
     name: "AggregationMethod"
     mtype: "<type \'type\'>"
   }
@@ -205,6 +209,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "SummaryMetadata"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
     name: "TFRecordReader"
     mtype: "<type \'type\'>"
   }
@@ -285,6 +293,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
+    name: "distributions"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "double"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -333,6 +345,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "initializers"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "int16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -350,6 +366,10 @@ tf_module {
   }
   member {
     name: "layers"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "linalg"
     mtype: "<type \'module\'>"
   }
   member {
@@ -485,6 +505,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "variant"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }
@@ -541,12 +565,16 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "angle"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "arg_max"
-    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "arg_min"
-    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "argmax"
@@ -562,7 +590,7 @@ tf_module {
   }
   member_method {
     name: "as_string"
-    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
   }
   member_method {
     name: "asin"
@@ -627,6 +655,10 @@ tf_module {
   member_method {
     name: "assert_rank_at_least"
     argspec: "args=[\'x\', \'rank\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "assert_rank_in"
+    argspec: "args=[\'x\', \'ranks\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "assert_same_float_dtype"
@@ -702,7 +734,7 @@ tf_module {
   }
   member_method {
     name: "case"
-    argspec: "args=[\'pred_fn_pairs\', \'default\', \'exclusive\', \'strict\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'case\'], "
+    argspec: "args=[\'pred_fn_pairs\', \'default\', \'exclusive\', \'strict\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\', \'case\'], "
   }
   member_method {
     name: "cast"
@@ -739,6 +771,10 @@ tf_module {
   member_method {
     name: "clip_by_value"
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "colocate_with"
+    argspec: "args=[\'op\', \'ignore_existing\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "complex"
@@ -822,7 +858,7 @@ tf_module {
   }
   member_method {
     name: "decode_csv"
-    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\'], "
   }
   member_method {
     name: "decode_json_example"
@@ -830,7 +866,7 @@ tf_module {
   }
   member_method {
     name: "decode_raw"
-    argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "delete_session_tensor"
@@ -842,7 +878,7 @@ tf_module {
   }
   member_method {
     name: "dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
   }
   member_method {
     name: "deserialize_many_sparse"
@@ -886,11 +922,11 @@ tf_module {
   }
   member_method {
     name: "einsum"
-    argspec: "args=[\'equation\'], varargs=inputs, keywords=None, defaults=None"
+    argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "encode_base64"
-    argspec: "args=[\'input\', \'pad\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'pad\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "equal"
@@ -926,27 +962,27 @@ tf_module {
   }
   member_method {
     name: "fake_quant_with_min_max_args"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'-6\', \'6\', \'8\', \'False\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_args_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'-6\', \'6\', \'8\', \'False\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_per_channel"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_per_channel_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
   }
   member_method {
     name: "fft"
@@ -1034,7 +1070,7 @@ tf_module {
   }
   member_method {
     name: "get_variable"
-    argspec: "args=[\'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_variable_scope"
@@ -1046,7 +1082,7 @@ tf_module {
   }
   member_method {
     name: "global_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "global_variables_initializer"
@@ -1086,6 +1122,10 @@ tf_module {
   }
   member_method {
     name: "identity"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "identity_n"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -1198,7 +1238,7 @@ tf_module {
   }
   member_method {
     name: "local_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "local_variables_initializer"
@@ -1274,7 +1314,7 @@ tf_module {
   }
   member_method {
     name: "matrix_inverse"
-    argspec: "args=[\'input\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "matrix_set_diag"
@@ -1282,7 +1322,7 @@ tf_module {
   }
   member_method {
     name: "matrix_solve"
-    argspec: "args=[\'matrix\', \'rhs\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'matrix\', \'rhs\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "matrix_solve_ls"
@@ -1294,7 +1334,7 @@ tf_module {
   }
   member_method {
     name: "matrix_triangular_solve"
-    argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "maximum"
@@ -1318,11 +1358,11 @@ tf_module {
   }
   member_method {
     name: "model_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "moving_average_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "multinomial"
@@ -1418,11 +1458,11 @@ tf_module {
   }
   member_method {
     name: "qr"
-    argspec: "args=[\'input\', \'full_matrices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'full_matrices\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "quantize_v2"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
   }
   member_method {
     name: "quantized_concat"
@@ -1570,15 +1610,15 @@ tf_module {
   }
   member_method {
     name: "scatter_add"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "scatter_div"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "scatter_mul"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "scatter_nd"
@@ -1586,23 +1626,23 @@ tf_module {
   }
   member_method {
     name: "scatter_nd_add"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "scatter_nd_sub"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "scatter_nd_update"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "scatter_sub"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "scatter_update"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "segment_max"
@@ -1658,7 +1698,7 @@ tf_module {
   }
   member_method {
     name: "shape_n"
-    argspec: "args=[\'input\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "sigmoid"
@@ -1714,7 +1754,7 @@ tf_module {
   }
   member_method {
     name: "sparse_matmul"
-    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "sparse_maximum"
@@ -1842,11 +1882,11 @@ tf_module {
   }
   member_method {
     name: "string_join"
-    argspec: "args=[\'inputs\', \'separator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'separator\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "string_split"
-    argspec: "args=[\'source\', \'delimiter\'], varargs=None, keywords=None, defaults=[\' \'], "
+    argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
   }
   member_method {
     name: "string_to_hash_bucket"
@@ -1862,7 +1902,7 @@ tf_module {
   }
   member_method {
     name: "string_to_number"
-    argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "substr"
@@ -1922,7 +1962,7 @@ tf_module {
   }
   member_method {
     name: "trainable_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "transpose"
@@ -1950,11 +1990,11 @@ tf_module {
   }
   member_method {
     name: "unique"
-    argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "unique_with_counts"
-    argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "unsorted_segment_max"
@@ -1974,11 +2014,11 @@ tf_module {
   }
   member_method {
     name: "variable_op_scope"
-    argspec: "args=[\'values\', \'name_or_scope\', \'default_name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'values\', \'name_or_scope\', \'default_name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "variable_scope"
-    argspec: "args=[\'name_or_scope\', \'default_name\', \'values\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'name_or_scope\', \'default_name\', \'values\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "variables_initializer"

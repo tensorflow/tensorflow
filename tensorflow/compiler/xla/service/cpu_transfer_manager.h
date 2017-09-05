@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -50,9 +51,24 @@ class CpuTransferManager : public GenericTransferManager {
   StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
       perftools::gputools::StreamExecutor* executor, int64 size,
       const void* source);
-  Status TransferBufferFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, int64 size,
-      void* destination);
+
+  // Helper that transfers a tuple of element buffers from the device's outfeed.
+  StatusOr<Shape> TransferTupleBuffersFromOutfeed(
+      perftools::gputools::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data);
+
+  // Helper that transfers an array buffer from the device's outfeed.
+  StatusOr<Shape> TransferArrayBufferFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, void* destination,
+      int64 size_bytes);
+
+  // On success, returns the shape that was transferred from the outfeed -- if
+  // is_tuple is true, the returned shape will be a tuple of the returned shapes
+  // for the given buffers.
+  StatusOr<Shape> TransferBuffersFromOutfeedInternal(
+      perftools::gputools::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data,
+      bool is_tuple);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
 };

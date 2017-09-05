@@ -479,6 +479,27 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   set_op({{1, 1, 1, 2}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,4,4];[2,1,1,1]", "[d0_0,d1_3,3,2]");
 
+  // Tests for NCHW_VECT_C
+  // 1x1 filter
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,4]");
+
+  // 2x2 filter
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,4]");
+
+  // 3x3 input, 1x1 filter, 2x2 stride
+  set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,4]");
+
+  // 3x3 input, 1x1 filter, 2x1 stride
+  set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,4]");
+
+  // 4x4 input, 2x1 filter, 1x2 stride
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,4]");
+
   // Some tests for "SAME" padding
 
   // 4x4 input, 1x1 filter, 1x1 stride
@@ -675,8 +696,15 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,4,4]", "[d0_0,d0_1,3,2]");
 
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C test
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,4,6,4]");
+  INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,?,?,4]");
+  INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,?,?,4]");
+  INFER_ERROR("Dimension must be 4 but is 3", op, "[2,5,7,11,3]");
+
   // Invalid rank for input
-  INFER_ERROR("must be rank 4", op, "[4,4]");
+  INFER_ERROR("must be at least rank 4", op, "[4,4]");
 }
 
 TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
@@ -704,6 +732,13 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   // depth 3 stride, 1x1x1 filter, NCHW
   set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,7,5,5]", "[d0_0,3,5,5]");
+
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C tests
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "SAME", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8]");
 }
 
 TEST(CommonShapeFnsTest, Pool3DShapeTest) {

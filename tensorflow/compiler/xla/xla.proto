@@ -20,6 +20,44 @@ import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
 
+// Options for the HLO insert-reduce-precision-operations pass.
+message HloReducePrecisionOptions {
+  // Where and when the reduce-precision operations will be added.
+  enum Location {
+    // Add reduce-precision operations to the inputs of selected instructions.
+    // This is done before any optimization occurs.
+    OP_INPUTS = 0;
+    // Add reduce-precision operations to the outputs of selected instructions.
+    // This is done before any optimization occurs.
+    OP_OUTPUTS = 1;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any selected instructions that have not been fused into
+    // fusion instructions.
+    UNFUSED_OP_OUTPUTS = 2;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any fusion instructions that contain operations matching the
+    // selection criteria.
+    FUSION_INPUTS_BY_CONTENT = 3;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any fusion instructions that contain operations matching the
+    // selection criteria.
+    FUSION_OUTPUTS_BY_CONTENT = 4;
+  }
+  Location location = 1;
+
+  // Exponent and mantissa bit counts for the reduced precision.
+  uint32 exponent_bits = 2;
+  uint32 mantissa_bits = 3;
+
+  // Operations matching these opcodes should be suffixed with reduce-precision
+  // operations.
+  repeated uint32 opcodes_to_suffix = 4;
+
+  // Operations with names containing these substrings should be suffixed with
+  // reduce-precision operations.
+  repeated string opname_substrings_to_suffix = 5;
+}
+
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
 message DebugOptions {
@@ -30,9 +68,6 @@ message DebugOptions {
 
   // Show addresses of HLO ops in graph dump.
   bool xla_hlo_graph_addresses = 2;
-
-  // Show layout of HLO ops in graph dump.
-  bool xla_hlo_graph_layout = 3;
 
   // Path to dump HLO graphs to.
   string xla_hlo_graph_path = 4;
@@ -49,6 +84,16 @@ message DebugOptions {
 
   // Dump compilation artifacts as JSON into this directory.
   string xla_dump_debug_json_to = 8;
+
+  // Instrument the computation to collect per-HLO cycle counts.
+  bool xla_hlo_profile = 9;
+
+  // Dumps computations that XLA executes into the provided directory path.
+  string xla_dump_computations_to = 10;
+
+  // Dumps parameters and results of computations that XLA executes into the
+  // provided directory path.
+  string xla_dump_executions_to = 11;
 
   // List of HLO passes to disable. These names must exactly match the pass
   // names as specified by the HloPassInterface::name() method.
@@ -87,23 +132,40 @@ message DebugOptions {
   // Enable flush-to-zero semantics in the GPU backend.
   bool xla_gpu_ftz = 62;
 
+  // Disable multi-streaming in the GPU backend.
+  bool xla_gpu_disable_multi_streaming = 63;
+
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
-  bool xla_llvm_enable_alias_scope_metadata = 63;
+  bool xla_llvm_enable_alias_scope_metadata = 70;
 
   // If true, in LLVM-based backends, emit !noalias metadata in the
   // generated IR.
-  bool xla_llvm_enable_noalias_metadata = 64;
+  bool xla_llvm_enable_noalias_metadata = 71;
 
   // If true, in LLVM-based backends, emit !invariant.load metadata in
   // the generated IR.
-  bool xla_llvm_enable_invariant_load_metadata = 65;
+  bool xla_llvm_enable_invariant_load_metadata = 72;
+
+  // If true, a set of expensive LLVM optimization passes will not be run.
+  bool xla_llvm_disable_expensive_passes = 73;
+
+  // Options for inserting reduce-precision operations for numerical
+  // experimentation.  This is a repeated field, as we may want to have
+  // multiple passes with different parameters.
+  repeated HloReducePrecisionOptions hlo_reduce_precision_options = 80;
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
   // computation will run n! times with all permunations of layouts for the
   // output shape in rank n. For example, with a 3D shape, all permutations of
   // the set {0, 1, 2} are tried.
-  bool xla_test_all_output_layouts = 70;
+  bool xla_test_all_output_layouts = 90;
+
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run for all permunations of layouts of all input
+  // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
+  // computation will run 2! * 4! times.
+  bool xla_test_all_input_layouts = 91;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
@@ -311,7 +373,9 @@ message ComputeConstantRequest {
 }
 
 message ComputeConstantResponse {
-  GlobalDataHandle output = 1;
+  // A LiteralProto is returned directly for this request, instead of a
+  // ComputationDataHandle.
+  LiteralProto literal = 1;
 }
 
 message DeconstructTupleRequest {

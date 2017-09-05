@@ -25,8 +25,10 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -327,6 +329,150 @@ class IteratorTest(test.TestCase):
           dataset_ops.Dataset.from_tensors((constant_op.constant(
               [1, 2, 3], dtype=dtypes.int64), constant_op.constant(
                   [4., 5., 6., 7.], dtype=dtypes.float64))))
+
+  def testIteratorStringHandle(self):
+    dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
+
+    iterator_3 = dataset_3.make_one_shot_iterator()
+    iterator_4 = dataset_4.make_one_shot_iterator()
+
+    handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+    feedable_iterator = dataset_ops.Iterator.from_string_handle(
+        handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+    next_element = feedable_iterator.get_next()
+
+    self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
+    self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
+    self.assertEqual([], feedable_iterator.output_shapes)
+
+    with self.test_session() as sess:
+      iterator_3_handle = sess.run(iterator_3.string_handle())
+      iterator_4_handle = sess.run(iterator_4.string_handle())
+
+      self.assertEqual(
+          10, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          1, sess.run(next_element,
+                      feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          20, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          2, sess.run(next_element,
+                      feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          30, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          3, sess.run(next_element,
+                      feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          40, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element,
+                 feed_dict={handle_placeholder: iterator_3_handle})
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element,
+                 feed_dict={handle_placeholder: iterator_4_handle})
+
+  def testIteratorStringHandleError(self):
+    dataset_int_scalar = (dataset_ops.Dataset.from_tensor_slices([1, 2,
+                                                                  3]).repeat())
+    dataset_float_vector = (dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0]))
+
+    handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+
+    feedable_int_scalar = dataset_ops.Iterator.from_string_handle(
+        handle_placeholder, dtypes.int32, [])
+    feedable_int_vector = dataset_ops.Iterator.from_string_handle(
+        handle_placeholder, dtypes.int32, [None])
+    feedable_int_any = dataset_ops.Iterator.from_string_handle(
+        handle_placeholder, dtypes.int32)
+
+    with self.test_session() as sess:
+      handle_int_scalar = sess.run(
+          dataset_int_scalar.make_one_shot_iterator().string_handle())
+      handle_float_vector = sess.run(
+          dataset_float_vector.make_one_shot_iterator().string_handle())
+
+      self.assertEqual(1,
+                       sess.run(
+                           feedable_int_scalar.get_next(),
+                           feed_dict={handle_placeholder: handle_int_scalar}))
+
+      self.assertEqual(2,
+                       sess.run(
+                           feedable_int_any.get_next(),
+                           feed_dict={handle_placeholder: handle_int_scalar}))
+
+      with self.assertRaises(errors.InvalidArgumentError):
+        print(sess.run(
+            feedable_int_vector.get_next(),
+            feed_dict={handle_placeholder: handle_int_scalar}))
+
+      with self.assertRaises(errors.InvalidArgumentError):
+        print(sess.run(
+            feedable_int_vector.get_next(),
+            feed_dict={handle_placeholder: handle_float_vector}))
+
+  def testRemoteIteratorUsingRemoteCallOpDirectSession(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:1"):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3_handle = iterator_3.string_handle()
+
+    @function.Defun(dtypes.string)
+    def _remote_fn(h):
+      remote_iterator = dataset_ops.Iterator.from_string_handle(
+          h, dataset_3.output_types, dataset_3.output_shapes)
+      return remote_iterator.get_next()
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      target_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      remote_op = functional_ops.remote_call(
+          args=[iterator_3_handle],
+          Tout=[dtypes.int32],
+          f=_remote_fn,
+          target=target_placeholder)
+
+    with self.test_session(config=worker_config) as sess:
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+          })
+      self.assertEqual(elem, [1])
+      # Fails when target is cpu:0 where the resource is not located.
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(
+            remote_op,
+            feed_dict={
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+            })
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+          })
+      self.assertEqual(elem, [2])
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+          })
+      self.assertEqual(elem, [3])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(
+            remote_op,
+            feed_dict={
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+            })
 
 
 if __name__ == "__main__":

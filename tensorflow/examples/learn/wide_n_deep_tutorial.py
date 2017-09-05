@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import shutil
 import sys
 import tempfile
 
@@ -175,6 +176,7 @@ def input_fn(data_file, num_epochs, shuffle):
 def train_and_eval(model_dir, model_type, train_steps, train_data, test_data):
   """Train and evaluate the model."""
   train_file_name, test_file_name = maybe_download(train_data, test_data)
+  # Specify file path below if want to find the output easily
   model_dir = tempfile.mkdtemp() if not model_dir else model_dir
 
   m = build_estimator(model_dir, model_type)
@@ -189,6 +191,8 @@ def train_and_eval(model_dir, model_type, train_steps, train_data, test_data):
   print("model directory = %s" % model_dir)
   for key in sorted(results):
     print("%s: %s" % (key, results[key]))
+  # Manual cleanup
+  shutil.rmtree(model_dir)
 
 
 FLAGS = None

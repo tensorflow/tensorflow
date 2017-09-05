@@ -64,7 +64,7 @@ class TaskType(object):
 class ClusterConfig(object):
   """This class specifies the configurations for a distributed run.
 
-  If you're using `tf.learn` `Estimators`, you should probably use the subclass
+  If you're using an `Estimator`, you should probably use the subclass
   RunConfig instead.
   """
 
@@ -211,12 +211,7 @@ class ClusterConfig(object):
 class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
 
-  This class is the implementation of ${tf.estimator.RunConfig} interface.
-
-  If you're a Google-internal user using command line flags with
-  `learn_runner.py` (for instance, to do distributed training or to use
-  parameter servers), you probably want to use `learn_runner.EstimatorConfig`
-  instead.
+  This class is the implementation of @{tf.estimator.RunConfig} interface.
   """
   _USE_DEFAULT = 0
 
@@ -237,10 +232,18 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                session_config=None):
     """Constructor.
 
-    Note that the superclass `ClusterConfig` may set properties like
-    `cluster_spec`, `is_chief`, `master` (if `None` in the args),
-    `num_ps_replicas`, `task_id`, and `task_type` based on the `TF_CONFIG`
-    environment variable. See `ClusterConfig` for more details.
+    The superclass `ClusterConfig` may set properties like `cluster_spec`,
+    `is_chief`, `master` (if `None` in the args), `num_ps_replicas`, `task_id`,
+    and `task_type` based on the `TF_CONFIG` environment variable. See
+    `ClusterConfig` for more details.
+
+    N.B.: If `save_checkpoints_steps` or `save_checkpoints_secs` is set,
+    `keep_checkpoint_max` might need to be adjusted accordingly, especially in
+    distributed training. For example, setting `save_checkpoints_secs` as 60
+    without adjusting `keep_checkpoint_max` (defaults to 5) leads to situation
+    that checkpoint would be garbage collected after 5 minutes. In distributed
+    training, the evaluation job starts asynchronously and might fail to load or
+    find the checkpoint due to race condition.
 
     Args:
       master: TensorFlow master. Defaults to empty string for local.
@@ -332,7 +335,9 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # For class instance without __repr__, some special cares are required.
     # Otherwise, the object address will be used.
     if '_cluster_spec' in ordered_state:
-      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
+      ordered_state['_cluster_spec'] = collections.OrderedDict(
+          sorted(ordered_state['_cluster_spec'].as_dict().items(),
+                 key=lambda t: t[0]))
     return ', '.join(
         '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 

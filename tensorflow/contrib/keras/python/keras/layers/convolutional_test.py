@@ -65,8 +65,7 @@ class Convolution1DTest(test.TestCase):
               },
               input_shape=(batch_size, steps, input_dim))
 
-  def test_conv_1d_regularization(self):
-    # regularizers
+  def test_conv_1d_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -83,19 +82,23 @@ class Convolution1DTest(test.TestCase):
       layer(keras.backend.variable(np.ones((1, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-    # constraints
+  def test_conv_1d_constraints(self):
+    k_constraint = lambda x: x
+    b_constraint = lambda x: x
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
         'padding': 'valid',
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
         'strides': 1
     }
     with self.test_session(use_gpu=True):
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
 
 class Conv2DTest(test.TestCase):
@@ -128,8 +131,7 @@ class Conv2DTest(test.TestCase):
                 },
                 input_shape=(num_samples, stack_size, num_row, num_col))
 
-  def test_convolution_2d_regularization(self):
-    # regularizers
+  def test_convolution_2d_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -146,19 +148,23 @@ class Conv2DTest(test.TestCase):
       layer(keras.backend.variable(np.ones((1, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-    # constraints
+  def test_convolution_2d_constraints(self):
+    k_constraint = lambda x: x
+    b_constraint = lambda x: x
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
         'padding': 'valid',
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
         'strides': 1
     }
     with self.test_session(use_gpu=True):
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_dilated_conv_2d(self):
     num_samples = 2
@@ -206,8 +212,7 @@ class Conv2DTransposeTest(test.TestCase):
               },
               input_shape=(num_samples, num_row, num_col, stack_size))
 
-  def test_conv2dtranspose_regularization(self):
-    # regularizers
+  def test_conv2dtranspose_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -224,19 +229,23 @@ class Conv2DTransposeTest(test.TestCase):
       layer(keras.backend.variable(np.ones((1, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-    # constraints
+  def test_conv2dtranspose_constraints(self):
+    k_constraint = lambda x: x
+    b_constraint = lambda x: x
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
         'padding': 'valid',
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
         'strides': 1
     }
     with self.test_session(use_gpu=True):
       layer = keras.layers.Conv2DTranspose(**kwargs)
       layer.build((None, 5, 5, 2))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
 
 class Conv3DTransposeTest(test.TestCase):
@@ -266,8 +275,7 @@ class Conv3DTransposeTest(test.TestCase):
               },
               input_shape=(num_samples, depth, num_row, num_col, stack_size))
 
-  def test_conv3dtranspose_regularization(self):
-    # regularizers
+  def test_conv3dtranspose_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -284,19 +292,23 @@ class Conv3DTransposeTest(test.TestCase):
       layer(keras.backend.variable(np.ones((1, 5, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-    # constraints
+  def test_conv3dtranspose_constraints(self):
+    k_constraint = lambda x: x
+    b_constraint = lambda x: x
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
         'padding': 'valid',
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
         'strides': 1
     }
     with self.test_session(use_gpu=True):
       layer = keras.layers.Conv3DTranspose(**kwargs)
       layer.build((None, 5, 5, 5, 2))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
 
 class SeparableConv2DTest(test.TestCase):
@@ -326,8 +338,7 @@ class SeparableConv2DTest(test.TestCase):
                 },
                 input_shape=(num_samples, num_row, num_col, stack_size))
 
-  def test_separable_conv2d_regularization(self):
-    # regularizers
+  def test_separable_conv2d_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -345,19 +356,26 @@ class SeparableConv2DTest(test.TestCase):
       layer(keras.backend.variable(np.ones((1, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 4)
 
-    # constraints
+  def test_separable_conv2d_constraints(self):
+    d_constraint = lambda x: x
+    p_constraint = lambda x: x
+    b_constraint = lambda x: x
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
         'padding': 'valid',
-        'pointwise_constraint': 'unit_norm',
-        'depthwise_constraint': 'unit_norm',
+        'pointwise_constraint': p_constraint,
+        'depthwise_constraint': d_constraint,
+        'bias_constraint': b_constraint,
         'strides': 1
     }
     with self.test_session(use_gpu=True):
       layer = keras.layers.SeparableConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.depthwise_kernel.constraint, d_constraint)
+      self.assertEqual(layer.pointwise_kernel.constraint, p_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
 
 class Conv3DTest(test.TestCase):
@@ -388,8 +406,7 @@ class Conv3DTest(test.TestCase):
               input_shape=(num_samples, input_len_dim1, input_len_dim2,
                            input_len_dim3, stack_size))
 
-  def test_convolution_3d_regularization(self):
-    # regularizers
+  def test_convolution_3d_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -407,19 +424,23 @@ class Conv3DTest(test.TestCase):
       layer(keras.backend.variable(np.ones((1, 5, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-    # constraints
+  def test_convolution_3d_constraints(self):
+    k_constraint = lambda x: x
+    b_constraint = lambda x: x
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
         'padding': 'valid',
-        'kernel_constraint': 'max_norm',
-        'bias_constraint': 'max_norm',
+        'kernel_constraint': k_constraint,
+        'bias_constraint': b_constraint,
         'strides': 1
     }
     with self.test_session(use_gpu=True):
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
-      self.assertEqual(len(layer.constraints), 2)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
 
 class ZeroPaddingTest(test.TestCase):
@@ -462,6 +483,12 @@ class ZeroPaddingTest(test.TestCase):
         np.testing.assert_allclose(np_output[:, right_offset, :], 0.)
       np.testing.assert_allclose(np_output[:, 1:-2, :], 1.)
       layer.get_config()
+
+    # test incorrect use
+    with self.assertRaises(ValueError):
+      keras.layers.ZeroPadding1D(padding=(1, 1, 1))
+    with self.assertRaises(ValueError):
+      keras.layers.ZeroPadding1D(padding=None)
 
   def test_zero_padding_2d(self):
     num_samples = 2
@@ -529,6 +556,12 @@ class ZeroPaddingTest(test.TestCase):
             np.testing.assert_allclose(np_output[:, :, :, right_offset], 0.)
           np.testing.assert_allclose(np_output[:, :, 1:-2, 3:-4], 1.)
 
+      # test incorrect use
+      with self.assertRaises(ValueError):
+        keras.layers.ZeroPadding2D(padding=(1, 1, 1))
+      with self.assertRaises(ValueError):
+        keras.layers.ZeroPadding2D(padding=None)
+
   def test_zero_padding_3d(self):
     num_samples = 2
     stack_size = 2
@@ -557,6 +590,12 @@ class ZeroPaddingTest(test.TestCase):
         np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
         np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
       np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, 2:-2, :], 1.)
+
+    # test incorrect use
+    with self.assertRaises(ValueError):
+      keras.layers.ZeroPadding3D(padding=(1, 1))
+    with self.assertRaises(ValueError):
+      keras.layers.ZeroPadding3D(padding=None)
 
 
 class UpSamplingTest(test.TestCase):
@@ -680,6 +719,12 @@ class CroppingTest(test.TestCase):
           kwargs={'cropping': (2, 2)},
           input_shape=inputs.shape)
 
+    # test incorrect use
+    with self.assertRaises(ValueError):
+      keras.layers.Cropping1D(cropping=(1, 1, 1))
+    with self.assertRaises(ValueError):
+      keras.layers.Cropping1D(cropping=None)
+
   def test_cropping_2d(self):
     num_samples = 2
     stack_size = 2
@@ -735,48 +780,62 @@ class CroppingTest(test.TestCase):
         # compare with input
         np.testing.assert_allclose(np_output, inputs)
 
+    # test incorrect use
+    with self.assertRaises(ValueError):
+      keras.layers.Cropping2D(cropping=(1, 1, 1))
+    with self.assertRaises(ValueError):
+      keras.layers.Cropping2D(cropping=None)
+
   def test_cropping_3d(self):
     num_samples = 2
     stack_size = 2
     input_len_dim1 = 8
     input_len_dim2 = 8
     input_len_dim3 = 8
-    cropping = ((2, 2), (1, 1), (2, 3))
+    croppings = [((2, 2), (1, 1), (2, 3)), 3, (0, 1, 1)]
 
-    for data_format in ['channels_last', 'channels_first']:
-      if data_format == 'channels_first':
-        inputs = np.random.rand(num_samples, stack_size, input_len_dim1,
-                                input_len_dim2, input_len_dim3)
-      else:
-        inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
-                                input_len_dim3, stack_size)
-      # basic test
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.Cropping3D,
-            kwargs={'cropping': cropping,
-                    'data_format': data_format},
-            input_shape=inputs.shape)
-      # correctness test
-      with self.test_session(use_gpu=True):
-        layer = keras.layers.Cropping3D(
-            cropping=cropping, data_format=data_format)
-        layer.build(inputs.shape)
-        output = layer(keras.backend.variable(inputs))
-        np_output = keras.backend.eval(output)
-        # compare with numpy
+    for cropping in croppings:
+      for data_format in ['channels_last', 'channels_first']:
         if data_format == 'channels_first':
-          expected_out = inputs[:, :,
-                                cropping[0][0]:-cropping[0][1],
-                                cropping[1][0]:-cropping[1][1],
-                                cropping[2][0]:-cropping[2][1]]
+          inputs = np.random.rand(num_samples, stack_size, input_len_dim1,
+                                  input_len_dim2, input_len_dim3)
         else:
-          expected_out = inputs[:,
-                                cropping[0][0]:-cropping[0][1],
-                                cropping[1][0]:-cropping[1][1],
-                                cropping[2][0]:-cropping[2][1], :]
-        print(expected_out.shape)
-        np.testing.assert_allclose(np_output, expected_out)
+          inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
+                                  input_len_dim3, stack_size)
+        # basic test
+        with self.test_session(use_gpu=True):
+          testing_utils.layer_test(
+              keras.layers.Cropping3D,
+              kwargs={'cropping': cropping,
+                      'data_format': data_format},
+              input_shape=inputs.shape)
+
+        if len(croppings) == 3 and len(croppings[0]) == 2:
+          # correctness test
+          with self.test_session(use_gpu=True):
+            layer = keras.layers.Cropping3D(
+                cropping=cropping, data_format=data_format)
+            layer.build(inputs.shape)
+            output = layer(keras.backend.variable(inputs))
+            np_output = keras.backend.eval(output)
+            # compare with numpy
+            if data_format == 'channels_first':
+              expected_out = inputs[:, :,
+                                    cropping[0][0]:-cropping[0][1],
+                                    cropping[1][0]:-cropping[1][1],
+                                    cropping[2][0]:-cropping[2][1]]
+            else:
+              expected_out = inputs[:,
+                                    cropping[0][0]:-cropping[0][1],
+                                    cropping[1][0]:-cropping[1][1],
+                                    cropping[2][0]:-cropping[2][1], :]
+            np.testing.assert_allclose(np_output, expected_out)
+
+     # test incorrect use
+    with self.assertRaises(ValueError):
+      keras.layers.Cropping3D(cropping=(1, 1))
+    with self.assertRaises(ValueError):
+      keras.layers.Cropping3D(cropping=None)
 
 
 if __name__ == '__main__':

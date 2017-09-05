@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -36,7 +37,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -81,11 +85,6 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
 
   // Inline all functions.
   GraphDef inlined_graph_def(graph_def);
-  for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
-    FunctionDef* fdef =
-        inlined_graph_def.mutable_library()->mutable_function(i);
-    SetAttrValue(false, &((*fdef->mutable_attr())[kNoInlineAttr]));
-  }
 
   // Instantiate all variables for function library runtime creation.
   std::vector<Device*> devices;
@@ -107,21 +106,27 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
   // Create the function library runtime.
-  std::unique_ptr<FunctionLibraryRuntime> flib(NewFunctionLibraryRuntime(
-      dvc_mgr.get(), env, devices[0], inlined_graph_def.versions().producer(),
-      &function_library, *optimizer_opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
+                                        inlined_graph_def.versions().producer(),
+                                        &function_library, *optimizer_opts));
+  FunctionLibraryRuntime* flr = pflr->GetFLR(devices[0]->name());
 
   // Create the GraphOptimizer to optimize the graph def.
   GraphConstructorOptions graph_ctor_opts;
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
+  // Populate default attrs to the NodeDefs in the GraphDef.
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
+                                               *graphptr->op_registry(), 0));
+
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_ctor_opts, inlined_graph_def,
                                             graphptr.get()));
 
   // Optimize the graph.
   GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flib.get(), env, devices[0], &graphptr);
+  optimizer.Optimize(flr, env, devices[0], &graphptr, /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
   return Status::OK();
@@ -158,6 +163,104 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   if (new_item->fetch.empty()) {
     LOG(ERROR) << "Failed to detect the fetch node(s), skipping this input";
     return nullptr;
+  }
+
+  // TODO(yuefengz): consider handling saved_model_main_op and legacy_init_op.
+  // The reason why they are difficult to handle is because they may not intend
+  // to initialize all variables that are required to run fetch nodes. We may
+  // have to run restore op first.
+
+  // Try to find initializers from variables and tables as init ops.
+  for (const string& var_collection :
+       {"variables", "local_variables", "model_variables",
+        "trainable_variables"}) {
+    if (meta_graph.collection_def().count(var_collection) == 0) {
+      continue;
+    }
+    const CollectionDef& vars = meta_graph.collection_def().at(var_collection);
+    for (const auto& raw_var : vars.bytes_list().value()) {
+      VariableDef var;
+      var.ParseFromString(raw_var);
+      if (!var.initializer_name().empty()) {
+        new_item->init_ops.push_back(NodeName(var.initializer_name()));
+      }
+    }
+  }
+
+  if (meta_graph.collection_def().count("table_initializer") > 0) {
+    const CollectionDef& inits =
+        meta_graph.collection_def().at("table_initializer");
+    if (inits.has_node_list()) {
+      for (const auto& node : inits.node_list().value()) {
+        new_item->init_ops.push_back(NodeName(node));
+        // Tables are initialized from files, which can take a long time. Add
+        // 30 minutes to the initialization time for each table to avoid
+        // timing out.
+        // TODO(bsteiner): adjust the timeout based on the file size.
+        new_item->expected_init_time += 30 * 60;
+      }
+    }
+  }
+
+  // We keep the mapping from asset node to asset files. This should have been
+  // used as feed but since asset node is usually a constant node, we will fill
+  // the values of these constant nodes with their actual asset file paths.
+  std::unordered_map<string, string> asset_node_to_value;
+
+  // Assets file may have changed their directory, we assemble their new paths
+  // if assets_directory_override is set. We also make sure we still can
+  // access these asset files.
+  if (!cfg.assets_directory_override.empty()) {
+    if (meta_graph.collection_def().count("saved_model_assets") > 0) {
+      const CollectionDef& collection =
+          meta_graph.collection_def().at("saved_model_assets");
+      const auto& any_assets = collection.any_list().value();
+      for (const auto& any_asset : any_assets) {
+        AssetFileDef asset_file_def;
+        if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
+                 .ok()) {
+          LOG(ERROR) << "Failed to parse AssetFile.";
+          continue;
+        }
+        string asset_filepath = io::JoinPath(cfg.assets_directory_override,
+                                             asset_file_def.filename());
+        if (!FilesExist({asset_filepath}, nullptr)) {
+          LOG(ERROR) << "Can't access one or more of the asset files "
+                     << asset_filepath << ", skipping this input";
+          return nullptr;
+        }
+        asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
+            asset_filepath;
+      }
+    }
+  } else if (meta_graph.collection_def().count("asset_filepaths") > 0) {
+    const CollectionDef& file_paths =
+        meta_graph.collection_def().at("asset_filepaths");
+    std::vector<string> paths;
+    for (const auto& raw_path : file_paths.bytes_list().value()) {
+      paths.push_back(raw_path);
+    }
+    if (!FilesExist(paths, nullptr)) {
+      LOG(ERROR) << "Can't access one or more of the asset files, skipping "
+                    "this input";
+      return nullptr;
+    }
+  }
+
+  if (meta_graph.collection_def().count("queue_runners") > 0) {
+    const CollectionDef& vars = meta_graph.collection_def().at("queue_runners");
+    for (const auto& raw : vars.bytes_list().value()) {
+      QueueRunnerDef queue_runner;
+      if (!queue_runner.ParseFromString(raw)) {
+        LOG(ERROR) << "Could not parse queue_runners, skipping this input";
+        return nullptr;
+      }
+      if (queue_runner.cancel_op_name().empty()) {
+        LOG(ERROR) << "Queue without a cancel op, skipping this input";
+        return nullptr;
+      }
+      new_item->queue_runners.push_back(queue_runner);
+    }
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
@@ -245,6 +348,24 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       // inferring shapes and is a no-op when dynamically inferring shapes as
       // the Placeholder shape will match the shape passed from new_item->feed.
       *(node.mutable_attr()->at("shape").mutable_shape()) = shape_proto;
+    } else if (IsConstant(node)) {
+      auto it = asset_node_to_value.find(node.name());
+      if (it != asset_node_to_value.end()) {
+        auto iter = node.mutable_attr()->find("value");
+        if (iter == node.attr().end()) {
+          LOG(ERROR) << "Value attribute expected in const op for asset files";
+          return nullptr;
+        }
+        if (!iter->second.has_tensor() ||
+            iter->second.tensor().string_val_size() != 1) {
+          LOG(INFO) << "Unexected AttrValue proto: "
+                    << iter->second.DebugString();
+          return nullptr;
+        }
+        LOG(INFO) << "Using asset file " << it->second << " for node "
+                  << node.name();
+        *(iter->second.mutable_tensor()->mutable_string_val(0)) = it->second;
+      }
     }
 
     // Erase the recorded result of any previous shape inference to start again
@@ -265,69 +386,30 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
 
-  for (const string& var_collection :
-       {"variables", "local_variables", "model_variables",
-        "trainable_variables"}) {
-    if (meta_graph.collection_def().count(var_collection) == 0) {
-      continue;
-    }
-    const CollectionDef& vars = meta_graph.collection_def().at(var_collection);
-    for (const auto& raw_var : vars.bytes_list().value()) {
-      VariableDef var;
-      var.ParseFromString(raw_var);
-      if (!var.initializer_name().empty()) {
-        new_item->init_ops.push_back(var.initializer_name());
+  if (meta_graph.collection_def().count("savers") > 0) {
+    const CollectionDef& savers = meta_graph.collection_def().at("savers");
+    for (const auto& raw : savers.bytes_list().value()) {
+      SaverDef saver;
+      // Skip bad savers since we don't need saves/restores to be able to run a
+      // graph.
+      if (!saver.ParseFromString(raw)) {
+        continue;
       }
-    }
-  }
-
-  if (meta_graph.collection_def().count("table_initializer") > 0) {
-    const CollectionDef& inits =
-        meta_graph.collection_def().at("table_initializer");
-    if (inits.has_node_list()) {
-      for (const auto& node : inits.node_list().value()) {
-        new_item->init_ops.push_back(node);
-        // Tables are initialized from files, which can take a long time. Add 30
-        // minutes to the initialization time for each table to avoid timing
-        // out.
-        // TODO(bsteiner): adjust the timeout based on the file size.
-        new_item->expected_init_time += 30 * 60;
+      if (saver.filename_tensor_name().empty()) {
+        continue;
       }
+      new_item->save_op = saver.save_tensor_name();
+      new_item->restore_op = saver.restore_op_name();
+      new_item->save_restore_loc_tensor = saver.filename_tensor_name();
+      // Only use the first saver since it's not clear what to do if there's
+      // more than one.
+      break;
     }
-  }
-
-  if (meta_graph.collection_def().count("queue_runners") > 0) {
-    const CollectionDef& vars = meta_graph.collection_def().at("queue_runners");
-    for (const auto& raw : vars.bytes_list().value()) {
-      QueueRunnerDef queue_runner;
-      if (!queue_runner.ParseFromString(raw)) {
-        LOG(ERROR) << "Could parse queue_runners, skipping this input";
-        return nullptr;
-      }
-      if (queue_runner.cancel_op_name().empty()) {
-        LOG(ERROR) << "Queue without a cancel op, skipping this input";
-        return nullptr;
-      }
-      new_item->queue_runners.push_back(queue_runner);
-    }
-  }
-
-  // Make sure we still can access the input files (aka "asset_filepaths") since
-  // these might have been moved or deleted, the cns cell might have been shut
-  // down, or we might be running as a user who does not have access to the
-  // files.
-  if (meta_graph.collection_def().count("asset_filepaths") > 0) {
-    const CollectionDef& file_paths =
-        meta_graph.collection_def().at("asset_filepaths");
-    std::vector<string> paths;
-    for (const auto& raw_path : file_paths.bytes_list().value()) {
-      paths.push_back(raw_path);
-    }
-    if (!FilesExist(paths, nullptr)) {
-      LOG(ERROR)
-          << "Can't access one or more of the asset files, skipping this input";
-      return nullptr;
-    }
+  } else {
+    const SaverDef& saver = meta_graph.saver_def();
+    new_item->save_op = saver.save_tensor_name();
+    new_item->restore_op = saver.restore_op_name();
+    new_item->save_restore_loc_tensor = saver.filename_tensor_name();
   }
 
   // Optimize the graph (function inlining, l1 optimizations, etc).

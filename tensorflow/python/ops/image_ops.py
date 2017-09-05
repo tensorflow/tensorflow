@@ -22,6 +22,7 @@ See the @{$python/image} guide.
 @@decode_gif
 @@decode_jpeg
 @@encode_jpeg
+@@extract_jpeg_shape
 @@decode_png
 @@encode_png
 @@decode_image
@@ -60,7 +61,6 @@ See the @{$python/image} guide.
 @@per_image_standardization
 @@draw_bounding_boxes
 @@non_max_suppression
-@@non_max_suppression_v2
 @@sample_distorted_bounding_box
 @@total_variation
 """

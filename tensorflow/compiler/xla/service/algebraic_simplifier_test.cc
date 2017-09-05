@@ -199,21 +199,22 @@ TEST_F(AlgebraicSimplifierTest, RhsDivOfDiv) {
 // Test that (A/B)/(C/D) is simplified to (A*D)/(B*C).
 TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {42, 123});
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, r0f32, "param1"));
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
   HloInstruction* param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, r0f32, "param2"));
+      HloInstruction::CreateParameter(2, r2f32, "param2"));
   HloInstruction* param3 = builder.AddInstruction(
       HloInstruction::CreateParameter(3, r0f32, "param3"));
   HloInstruction* div0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, param1));
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, param0, param1));
   HloInstruction* div1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param2, param3));
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, param2, param3));
   builder.AddInstruction(
-      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, div0, div1));
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, div0, div1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -229,6 +230,8 @@ TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
   EXPECT_THAT(
       computation->root_instruction(),
       op::Divide(op::Multiply(param0, param3), op::Multiply(param1, param2)));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(computation->root_instruction()->shape(), r2f32));
 }
 
 // Test that A/exp(B) is simplified to A*exp(-B).
@@ -995,7 +998,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeToScalarNotHoistedAfterEffectiveUnary) {
   HloInstruction* zero = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR1<float>({1., 2., 3.})));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, reshape, zero));
+      ShapeUtil::MakeShape(F32, {3}), HloOpcode::kMaximum, reshape, zero));
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
@@ -1392,7 +1395,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
           0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
   builder.AddInstruction(HloInstruction::CreateSlice(
       ShapeUtil::MakeShape(F32, {dim0, dim1}), param, /*start_indices=*/{0, 0},
-      /*limit_indices=*/{dim0, dim1}, /*slices=*/{1, 1}));
+      /*limit_indices=*/{dim0, dim1}, /*strides=*/{1, 1}));
 
   HloModule module(TestName());
   HloComputation* computation = module.AddEntryComputation(builder.Build());

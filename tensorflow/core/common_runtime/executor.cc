@@ -158,10 +158,9 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
     auto sizes = allocator_pair.second->GetSizesAndUnRef();
     memory->set_allocator_name(allocator_pair.first->Name());
     memory->set_total_bytes(std::get<0>(sizes));
-    if (allocator_pair.first->TracksAllocationSizes()) {
-      memory->set_peak_bytes(std::get<1>(sizes));
-      memory->set_live_bytes(std::get<2>(sizes));
-    }
+    memory->set_peak_bytes(std::get<1>(sizes));
+    memory->set_live_bytes(std::get<2>(sizes));
+
     AllocatorStats stats;
     allocator_pair.first->GetStats(&stats);
     memory->set_allocator_bytes_in_use(stats.bytes_in_use);
@@ -1514,6 +1513,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
+  params.stats_collector = stats_collector_;
 
   Status s;
   NodeExecStats* stats = nullptr;
@@ -1719,8 +1719,8 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
     // Only merge and transfer nodes can have no-value inputs.
     if (!entry->has_value) {
       if (!is_merge) {
-        DCHECK(IsTransferNode(node));
-        DCHECK(!entry->val_field_is_set);
+        DCHECK(IsTransferNode(node)) << node->name() << " - input " << i;
+        DCHECK(!entry->val_field_is_set) << node->name() << " - input " << i;
         entry->has_value = true;
         entry->val_field_is_set = true;
         entry->val.Init(*kEmptyTensor);

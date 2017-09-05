@@ -6,7 +6,7 @@ work by taking a fully-trained model for a set of categories like ImageNet, and
 retrains from the existing weights for new classes. In this example we'll be
 retraining the final layer from scratch, while leaving all the others untouched.
 For more information on the approach you can see
-[this paper on Decaf](http://arxiv.org/pdf/1310.1531v1.pdf).
+[this paper on Decaf](https://arxiv.org/pdf/1310.1531v1.pdf).
 
 Though it's not as good as a full training run, this is surprisingly effective
 for many applications, and can be run in as little as thirty minutes on a
@@ -137,7 +137,7 @@ Once TensorBoard is running, navigate your web browser to `localhost:6006` to vi
 
 The script will log TensorBoard summaries to `/tmp/retrain_logs` by default. You can change the directory with the `--summaries_dir` flag.
 
-The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
+The [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
 
 ## Using the Retrained Model
 
@@ -213,7 +213,7 @@ the object you actually care about. To avoid this, try to take pictures in as
 wide a variety of situations as you can, at different times, and with different
 devices. If you want to know more about this problem, you can read about the
 classic (and possibly apocryphal)
-[tank recognition problem](http://www.jefftk.com/p/detecting-tanks).
+[tank recognition problem](https://www.jefftk.com/p/detecting-tanks).
 
 You may also want to think about the categories you use. It might be worth
 splitting big categories that cover a lot of different physical forms into
@@ -337,7 +337,7 @@ the (much larger) training set.
 
 By default the script uses a pretrained version of the Inception v3 model
 architecture. This is a good place to start because it provides high accuracy
-results, but if you intend to deploy your model on mobile devices or other 
+results, but if you intend to deploy your model on mobile devices or other
 resource-constrained environments you may want to trade off a little accuracy
 for much smaller file sizes or faster speeds. To help with that, the
 [retrain.py script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/image_retraining/retrain.py)

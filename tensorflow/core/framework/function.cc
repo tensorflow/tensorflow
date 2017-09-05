@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <map>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -270,12 +272,17 @@ class FunctionInstantiationHelper {
       int nid = -1;
       const string node_name = input.substr(1);
       const string node_colon = node_name + ":";
-      for (const auto& p : index_) {
-        if (p.first == node_name ||
-            tensorflow::StringPiece(p.first).starts_with(node_colon)) {
-          nid = p.second.nid;
+      const string node_colon_bound = node_name + ";";
+      // index_ is a map sorted lexicographically, so the key we are looking for
+      // must lie in the range [node_name, node_colon_bound).
+      auto it = index_.lower_bound(node_name);
+      while (it != index_.end() && it->first <= node_colon_bound) {
+        if (it->first == node_name ||
+            tensorflow::StringPiece(it->first).starts_with(node_colon)) {
+          nid = it->second.nid;
           break;
         }
+        ++it;
       }
       if (nid == -1) {
         return errors::InvalidArgument("input[", i, "] == '", input,
@@ -420,7 +427,7 @@ class FunctionInstantiationHelper {
   GetFunctionSignature get_function_;
   InstantiationResult& result_;
   // A small index for all names that can be used as a node's input arguments.
-  std::unordered_map<string, NameInfoItem> index_;
+  std::map<string, NameInfoItem> index_;
   // This contains information about a node in the new graph including the node
   // names and input nodes' indexes.
   struct NodeInfo {
@@ -867,6 +874,11 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   return Status::OK();
 }
 
+FunctionLibraryDefinition::FunctionDefAndOpRegistration::
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+    : fdef(fdef_in),
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
+
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
     : default_registry_(other.default_registry_), func_grad_(other.func_grad_) {
@@ -902,6 +914,13 @@ const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
+  bool added;
+  return AddFunctionDefHelper(fdef, &added);
+}
+
+Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
+                                                       bool* added) {
+  *added = false;
   std::unique_ptr<FunctionDefAndOpRegistration>* entry =
       &function_defs_[fdef.signature().name()];
   if (*entry != nullptr) {
@@ -921,10 +940,18 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
         "' because an op with the same name already exists.");
   }
   entry->reset(new FunctionDefAndOpRegistration(fdef));
+  *added = true;
   return Status::OK();
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
+  bool added;
+  return AddGradientDefHelper(grad, &added);
+}
+
+Status FunctionLibraryDefinition::AddGradientDefHelper(const GradientDef& grad,
+                                                       bool* added) {
+  *added = false;
   string* entry = &func_grad_[grad.function_name()];
   if (!entry->empty()) {
     if (*entry != grad.gradient_func()) {
@@ -937,33 +964,96 @@ Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
     return Status::OK();
   }
   *entry = grad.gradient_func();
+  *added = true;
   return Status::OK();
 }
 
-// TODO(skyewm): don't modify FunctionLibraryDefinition in case of error
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionLibraryDefinition& other) {
+  // Remember the funcs and grads that we added successfully so that
+  // we can roll them back on error.
+  std::vector<string> funcs;
+  std::vector<string> funcs_with_grads;
+  Status s;
+  bool added;
   for (auto iter : other.function_defs_) {
-    TF_RETURN_IF_ERROR(AddFunctionDef(iter.second->fdef));
+    s = AddFunctionDefHelper(iter.second->fdef, &added);
+    if (!s.ok()) {
+      Remove(funcs, funcs_with_grads);
+      return s;
+    }
+    if (added) {
+      funcs.push_back(iter.second->fdef.signature().name());
+    }
   }
   for (auto iter : other.func_grad_) {
     GradientDef grad;
     grad.set_function_name(iter.first);
     grad.set_gradient_func(iter.second);
-    TF_RETURN_IF_ERROR(AddGradientDef(grad));
+    s = AddGradientDefHelper(grad, &added);
+    if (!s.ok()) {
+      Remove(funcs, funcs_with_grads);
+      return s;
+    }
+    if (added) {
+      funcs_with_grads.push_back(grad.function_name());
+    }
   }
   return Status::OK();
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionDefLibrary& lib_def) {
+  // Remember the funcs and grads that we added successfully so that
+  // we can roll them back on error.
+  std::vector<string> funcs;
+  std::vector<string> funcs_with_grads;
+  Status s;
+  bool added;
   for (const FunctionDef& fdef : lib_def.function()) {
-    TF_RETURN_IF_ERROR(AddFunctionDef(fdef));
+    s = AddFunctionDefHelper(fdef, &added);
+    if (!s.ok()) {
+      Remove(funcs, funcs_with_grads);
+      return s;
+    }
+    if (added) {
+      funcs.push_back(fdef.signature().name());
+    }
   }
   for (const GradientDef& grad : lib_def.gradient()) {
-    TF_RETURN_IF_ERROR(AddGradientDef(grad));
+    s = AddGradientDefHelper(grad, &added);
+    if (!s.ok()) {
+      Remove(funcs, funcs_with_grads);
+      return s;
+    }
+    if (added) {
+      funcs_with_grads.push_back(grad.function_name());
+    }
   }
   return Status::OK();
+}
+
+void FunctionLibraryDefinition::RemoveFunction(const string& func) {
+  const auto& i = function_defs_.find(func);
+  DCHECK(i != function_defs_.end());
+  function_defs_.erase(i);
+}
+
+void FunctionLibraryDefinition::RemoveGradient(const string& func) {
+  const auto& i = func_grad_.find(func);
+  DCHECK(i != func_grad_.end());
+  func_grad_.erase(i);
+}
+
+void FunctionLibraryDefinition::Remove(
+    const std::vector<string>& funcs,
+    const std::vector<string>& funcs_with_grads) {
+  for (const string& f : funcs) {
+    RemoveFunction(f);
+  }
+  for (const string& f : funcs_with_grads) {
+    RemoveGradient(f);
+  }
 }
 
 string FunctionLibraryDefinition::FindGradient(const string& func) const {

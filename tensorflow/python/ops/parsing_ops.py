@@ -206,21 +206,21 @@ def _features_to_raw_params(features, types):
       feature = features[key]
       if isinstance(feature, VarLenFeature):
         if VarLenFeature not in types:
-          raise ValueError("Unsupported VarLenFeature %s.", feature)
+          raise ValueError("Unsupported VarLenFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         sparse_keys.append(key)
         sparse_types.append(feature.dtype)
       elif isinstance(feature, SparseFeature):
         if SparseFeature not in types:
-          raise ValueError("Unsupported SparseFeature %s.", feature)
+          raise ValueError("Unsupported SparseFeature %s." % feature)
 
         if not feature.index_key:
           raise ValueError(
-              "Missing index_key for SparseFeature %s.", feature)
+              "Missing index_key for SparseFeature %s." % feature)
         if not feature.value_key:
           raise ValueError(
-              "Missing value_key for SparseFeature %s.", feature)
+              "Missing value_key for SparseFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         index_keys = feature.index_key
@@ -249,7 +249,7 @@ def _features_to_raw_params(features, types):
           sparse_types.append(feature.dtype)
       elif isinstance(feature, FixedLenFeature):
         if FixedLenFeature not in types:
-          raise ValueError("Unsupported FixedLenFeature %s.", feature)
+          raise ValueError("Unsupported FixedLenFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -270,7 +270,7 @@ def _features_to_raw_params(features, types):
           dense_defaults[key] = feature.default_value
       elif isinstance(feature, FixedLenSequenceFeature):
         if FixedLenSequenceFeature not in types:
-          raise ValueError("Unsupported FixedLenSequenceFeature %s.", feature)
+          raise ValueError("Unsupported FixedLenSequenceFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -417,7 +417,7 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   then the output will look like:
 
-  ```
+  ```python
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
                       dense_shape=(3, 2)) }
@@ -426,7 +426,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   If instead a `FixedLenSequenceFeature` with `default_value = -1.0` and
   `shape=[]` is used then the output will look like:
 
-  ```
+  ```python
   {"ft": [[1.0, 2.0], [3.0, -1.0]]}
   ```
 

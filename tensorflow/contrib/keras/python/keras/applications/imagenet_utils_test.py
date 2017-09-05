@@ -27,27 +27,25 @@ from tensorflow.python.platform import test
 class ImageNetUtilsTest(test.TestCase):
 
   def test_preprocess_input(self):
-    x = np.random.uniform(0, 255, (2, 3, 2, 3))
+    # Test batch of images
+    x = np.random.uniform(0, 255, (2, 10, 10, 3))
     self.assertEqual(
         keras.applications.imagenet_utils.preprocess_input(x).shape, x.shape)
-
     out1 = keras.applications.imagenet_utils.preprocess_input(
         x, 'channels_last')
     out2 = keras.applications.imagenet_utils.preprocess_input(
         np.transpose(x, (0, 3, 1, 2)), 'channels_first')
     self.assertAllClose(out1, out2.transpose(0, 2, 3, 1))
 
-  def test_decode_predictions(self):
-    x = np.zeros((2, 1000))
-    x[0, 372] = 1.0
-    x[1, 549] = 1.0
-    outs = keras.applications.imagenet_utils.decode_predictions(x, top=1)
-    scores = [out[0][2] for out in outs]
-    self.assertEqual(scores[0], scores[1])
-
-    # the numbers of columns and ImageNet classes are not identical.
-    with self.assertRaises(ValueError):
-      keras.applications.imagenet_utils.decode_predictions(np.ones((2, 100)))
+    # Test single image
+    x = np.random.uniform(0, 255, (10, 10, 3))
+    self.assertEqual(
+        keras.applications.imagenet_utils.preprocess_input(x).shape, x.shape)
+    out1 = keras.applications.imagenet_utils.preprocess_input(
+        x, 'channels_last')
+    out2 = keras.applications.imagenet_utils.preprocess_input(
+        np.transpose(x, (2, 0, 1)), 'channels_first')
+    self.assertAllClose(out1, out2.transpose(1, 2, 0))
 
   def test_obtain_input_shape(self):
     # input_shape and default_size are not identical.
@@ -57,7 +55,8 @@ class ImageNetUtilsTest(test.TestCase):
           default_size=299,
           min_size=139,
           data_format='channels_last',
-          include_top=True)
+          require_flatten=True,
+          weights='imagenet')
 
     # Test invalid use cases
     for data_format in ['channels_last', 'channels_first']:
@@ -73,7 +72,7 @@ class ImageNetUtilsTest(test.TestCase):
             default_size=None,
             min_size=139,
             data_format=data_format,
-            include_top=False)
+            require_flatten=False)
 
       # shape is 1D.
       shape = (100,)
@@ -87,7 +86,7 @@ class ImageNetUtilsTest(test.TestCase):
             default_size=None,
             min_size=139,
             data_format=data_format,
-            include_top=False)
+            require_flatten=False)
 
       # the number of channels is 5 not 3.
       shape = (100, 100)
@@ -101,39 +100,60 @@ class ImageNetUtilsTest(test.TestCase):
             default_size=None,
             min_size=139,
             data_format=data_format,
-            include_top=False)
+            require_flatten=False)
+
+      # require_flatten=True with dynamic input shape.
+      with self.assertRaises(ValueError):
+        keras.applications.imagenet_utils._obtain_input_shape(
+            input_shape=None,
+            default_size=None,
+            min_size=139,
+            data_format='channels_first',
+            require_flatten=True)
+
+    assert keras.applications.imagenet_utils._obtain_input_shape(
+        input_shape=(3, 200, 200),
+        default_size=None,
+        min_size=139,
+        data_format='channels_first',
+        require_flatten=True) == (3, 200, 200)
 
     assert keras.applications.imagenet_utils._obtain_input_shape(
         input_shape=None,
         default_size=None,
         min_size=139,
         data_format='channels_last',
-        include_top=False) == (None, None, 3)
+        require_flatten=False) == (None, None, 3)
 
     assert keras.applications.imagenet_utils._obtain_input_shape(
         input_shape=None,
         default_size=None,
         min_size=139,
         data_format='channels_first',
-        include_top=False) == (3, None, None)
+        require_flatten=False) == (3, None, None)
 
     assert keras.applications.imagenet_utils._obtain_input_shape(
         input_shape=None,
         default_size=None,
         min_size=139,
         data_format='channels_last',
-        include_top=False) == (None, None, 3)
+        require_flatten=False) == (None, None, 3)
 
     assert keras.applications.imagenet_utils._obtain_input_shape(
         input_shape=(150, 150, 3),
         default_size=None,
         min_size=139,
         data_format='channels_last',
-        include_top=False) == (150, 150, 3)
+        require_flatten=False) == (150, 150, 3)
 
     assert keras.applications.imagenet_utils._obtain_input_shape(
         input_shape=(3, None, None),
         default_size=None,
         min_size=139,
         data_format='channels_first',
-        include_top=False) == (3, None, None)
+        require_flatten=False) == (3, None, None)
+
+
+if __name__ == '__main__':
+  test.main()
+

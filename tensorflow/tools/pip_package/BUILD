@@ -61,6 +61,7 @@ py_binary(
     data = [
         "//tensorflow:all_opensource_files",
     ],
+    srcs_version = "PY2AND3",
 )
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -81,7 +82,9 @@ py_binary(
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:debug_pip",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/tools:tools_pip",
+        "//tensorflow/python/eager:eager_pip",
         # These targets don't build on Windows yet. Exclude them for now.
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
@@ -117,14 +120,18 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@nanopb_git//:LICENSE.txt",
+        "@grpc//third_party/nanopb:LICENSE.txt",
+        "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
-    ] + if_not_windows([
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]) + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
@@ -151,6 +158,7 @@ sh_binary(
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
+            "//tensorflow/contrib/receptive_field:receptive_field_pip",
             "//tensorflow/contrib/session_bundle:session_bundle_pip",
             "//tensorflow/contrib/signal:signal_py",
             "//tensorflow/contrib/slim:slim",
@@ -160,16 +168,17 @@ sh_binary(
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/contrib/timeseries:timeseries_pip",
-            "//tensorflow/contrib/tpu:tpu_estimator",
-            "//tensorflow/contrib/tpu:tpu_helper_library",
-            "//tensorflow/contrib/tpu:tpu_py",
+            "//tensorflow/contrib/tpu",
             "//tensorflow/examples/tutorials/mnist:package",
             "//tensorflow/python:distributed_framework_test_lib",
             "//tensorflow/python:meta_graph_testdata",
+            "//tensorflow/python:spectral_ops_test_util",
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:debug_pip",
+            "//tensorflow/python/eager:eager_pip",
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python/tools:tools_pip",
+            "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

@@ -121,7 +121,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   const TensorShape kBadTensorShape({40, 100});
   const TensorShape kTestTensorShapeT({1, 4});
 
-  auto root = Scope::NewRootScope().ExitOnError();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
   auto node1 =
       ops::ImmutableConst(root, DT_FLOAT, kBadTensorShape, "test:///2");
   auto node2 =

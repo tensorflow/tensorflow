@@ -70,6 +70,32 @@ class BaseBuildSplitOp : public OpKernel {
                      multiclass_strategy_, grad_stats);
   }
 
+  void ReadClassId(OpKernelContext* const context, int32* class_id) {
+    const Tensor* class_id_t;
+    OP_REQUIRES_OK(context, context->input("class_id", &class_id_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(class_id_t->shape()),
+                errors::InvalidArgument("class_id must be a scalar."));
+    *class_id = class_id_t->scalar<int32>()();
+  }
+
+  void FillLeaf(const int class_id, const NodeStats& best_node_stats,
+                boosted_trees::trees::Leaf* leaf) const {
+    if (class_id == -1) {
+      // This would be the case either for TREE_PER_CLASS with only 2 classes,
+      // or for other multiclass strategies.
+      for (float f : best_node_stats.weight_contribution) {
+        leaf->mutable_vector()->add_value(f);
+      }
+    } else {
+      CHECK(best_node_stats.weight_contribution.size() == 1)
+          << "Weight contribution size = "
+          << best_node_stats.weight_contribution.size();
+      leaf->mutable_sparse_vector()->add_index(class_id);
+      leaf->mutable_sparse_vector()->add_value(
+          best_node_stats.weight_contribution[0]);
+    }
+  }
+
  protected:
   LearnerConfig_MultiClassStrategy multiclass_strategy_;
   int32 feature_column_group_id_;
@@ -109,6 +135,9 @@ class BuildDenseInequalitySplitsOp : public BaseBuildSplitOp {
 
     const Tensor* hessians_t;
     OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
+
+    int class_id;
+    ReadClassId(context, &class_id);
 
     // Find the number of unique partitions before we allocate the output.
     std::vector<int32> partition_boundaries;
@@ -194,12 +223,9 @@ class BuildDenseInequalitySplitsOp : public BaseBuildSplitOp {
 
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();
-      for (float f : best_left_node_stats.weight_contribution) {
-        left_child->mutable_vector()->add_value(f);
-      }
-      for (float f : best_right_node_stats.weight_contribution) {
-        right_child->mutable_vector()->add_value(f);
-      }
+
+      FillLeaf(class_id, best_left_node_stats, left_child);
+      FillLeaf(class_id, best_right_node_stats, right_child);
       split_info.SerializeToString(&output_splits(root_idx));
       gains(root_idx) =
           best_gain - root_stats.gain - tree_complexity_regularization_;
@@ -243,6 +269,9 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
 
     const Tensor* hessians_t;
     OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
+
+    int class_id;
+    ReadClassId(context, &class_id);
 
     // Find the number of unique partitions before we allocate the output.
     std::vector<int32> partition_boundaries;
@@ -369,12 +398,8 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
 
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();
-      for (float f : best_left_node_stats.weight_contribution) {
-        left_child->mutable_vector()->add_value(f);
-      }
-      for (float f : best_right_node_stats.weight_contribution) {
-        right_child->mutable_vector()->add_value(f);
-      }
+      FillLeaf(class_id, best_left_node_stats, left_child);
+      FillLeaf(class_id, best_right_node_stats, right_child);
       split_info.SerializeToString(&output_splits(root_idx));
       gains(root_idx) =
           best_gain - root_stats.gain - tree_complexity_regularization_;
@@ -416,6 +441,9 @@ class BuildCategoricalEqualitySplitsOp : public BaseBuildSplitOp {
 
     const Tensor* hessians_t;
     OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
+
+    int class_id;
+    ReadClassId(context, &class_id);
 
     // Find the number of unique partitions before we allocate the output.
     std::vector<int32> partition_boundaries;
@@ -494,12 +522,8 @@ class BuildCategoricalEqualitySplitsOp : public BaseBuildSplitOp {
       equality_split->set_feature_id(feature_ids(best_feature_idx));
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();
-      for (float f : best_left_node_stats.weight_contribution) {
-        left_child->mutable_vector()->add_value(f);
-      }
-      for (float f : best_right_node_stats.weight_contribution) {
-        right_child->mutable_vector()->add_value(f);
-      }
+      FillLeaf(class_id, best_left_node_stats, left_child);
+      FillLeaf(class_id, best_right_node_stats, right_child);
       split_info.SerializeToString(&output_splits(root_idx));
       gains(root_idx) =
           best_gain - root_stats.gain - tree_complexity_regularization_;

@@ -379,6 +379,37 @@ TEST_F(GraphTest, NewName) {
   EXPECT_TRUE(StringPiece(a1).starts_with("A")) << a1;
 }
 
+TEST_F(GraphTest, IsValidNode) {
+  // Add 1 node to graph_
+  Node* g1_node1;
+  TF_CHECK_OK(NodeBuilder("g1_node1", "NoOp").Finalize(&graph_, &g1_node1));
+
+  // Add 2 nodes to graph2
+  Graph graph2(OpRegistry::Global());
+  Node* g2_node1;
+  Node* g2_node2;
+  TF_CHECK_OK(NodeBuilder("g2_node1", "NoOp").Finalize(&graph2, &g2_node1));
+  TF_CHECK_OK(NodeBuilder("g2_node2", "NoOp").Finalize(&graph2, &g2_node2));
+
+  // nullptr
+  Status s = graph_.IsValidNode(nullptr);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("Node is null"), s.error_message());
+
+  // node id_ is too high
+  s = graph_.IsValidNode(g2_node2);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("node id 3 is >= than number of nodes in graph 3"),
+            s.error_message());
+
+  // valid id_ but different ptr
+  s = graph_.IsValidNode(g2_node1);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
+                   "Does it belong to a different graph?"),
+            s.error_message());
+}
+
 TEST_F(GraphTest, InputEdges) {
   Node* a = FromNodeDef("A", "OneOutput", 0);
   Node* b = FromNodeDef("B", "TwoInputsOneOutput", 2);

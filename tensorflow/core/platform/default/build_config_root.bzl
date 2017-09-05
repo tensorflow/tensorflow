@@ -3,10 +3,10 @@
 # be separate to avoid cyclic references.
 
 def tf_cuda_tests_tags():
-  return ["local"]
+  return ["requires-gpu"]
 
 def tf_sycl_tests_tags():
-  return ["local"]
+  return ["requires-gpu"]
 
 def tf_additional_plugin_deps():
   return select({
@@ -36,6 +36,14 @@ def tf_additional_mpi_deps():
   return select({
       "//tensorflow:with_mpi_support": [
           "//tensorflow/contrib/mpi:mpi_server_lib",
+      ],
+      "//conditions:default": [],
+  })
+
+def tf_additional_gdr_deps():
+  return select({
+      "//tensorflow:with_gdr_support": [
+          "//tensorflow/contrib/gdr:gdr_server_lib",
       ],
       "//conditions:default": [],
   })

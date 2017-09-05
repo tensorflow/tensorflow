@@ -69,6 +69,7 @@ namespace xla {
     case HloOpcode::kReverse:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
@@ -77,6 +78,7 @@ namespace xla {
 
     // Expensive instructions.
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kCall:
     case HloOpcode::kConvolution:
@@ -109,19 +111,11 @@ namespace xla {
   return false;
 }
 
-namespace {
-// Returns true if fusing producer into consumer would cause producer to be
-// duplicated. This is the case if producer has uses other than consumer.
-bool FusionWouldDuplicate(const HloInstruction& producer,
-                          const HloInstruction& consumer) {
-  return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
-}
-
 // An "effectively unary" operation is one that has one "large"
 // input with the others being negligible in terms of memory usage.
 // We use "has a smaller true rank than the output" as a heuristic
 // for "negligible" memory usage.
-bool EffectivelyUnary(HloInstruction* hlo) {
+bool InstructionFusion::EffectivelyUnary(HloInstruction* hlo) {
   int64 output_rank = 0;
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
@@ -143,7 +137,6 @@ bool EffectivelyUnary(HloInstruction* hlo) {
                                 output_rank;
                        }) <= 1;
 }
-}  // namespace
 
 bool InstructionFusion::CanFuseOnAllPaths(
     const HloReachabilityMap& reachability_map, HloInstruction* producer,
@@ -210,8 +203,17 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
+  module_ = module;
+  std::vector<HloComputation*> computations;
   for (auto& computation : module->computations()) {
-    computation_ = computation.get();
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+    computations.push_back(computation.get());
+  }
+  for (auto& computation : computations) {
+    CHECK(!computation->IsFusionComputation());
+    computation_ = computation;
 
     // We want to be able to remove arbitrary instructions from the post order
     // and also compare positions of instructions in the post order. To make
@@ -232,7 +234,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     DoNotFuseSet do_not_fuse;
     auto reachability = computation->ComputeReachability();
 
-    auto cheap_to_duplicate = [](HloInstruction* producer) {
+    auto cheap_to_duplicate = [this](HloInstruction* producer) {
       if (producer->opcode() == HloOpcode::kBroadcast) {
         return true;
       }
@@ -382,18 +384,21 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
   HloInstruction* fusion_instruction;
 
-  VLOG(2) << "Fusing " << producer << " into " << consumer;
-
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
     fusion_instruction = consumer;
+    if (kind != fusion_instruction->fusion_kind()) {
+      fusion_instruction->set_fusion_kind(kind);
+    }
   } else {
-    fusion_instruction =
-        computation_->AddInstruction(HloInstruction::CreateFusion(
-            consumer->shape(), ChooseKind(producer, consumer), consumer));
+    fusion_instruction = computation_->AddInstruction(
+        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
   }
-  fusion_instruction->FuseInstruction(producer);
 
+  fusion_instruction->FuseInstruction(producer);
   return fusion_instruction;
 }
 
@@ -408,13 +413,15 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   if (consumer->opcode() == HloOpcode::kFusion &&
       consumer->fusion_kind() != HloInstruction::FusionKind::kLoop &&
-      consumer->fusion_kind() != HloInstruction::FusionKind::kInput) {
+      consumer->fusion_kind() != HloInstruction::FusionKind::kInput &&
+      consumer->fusion_kind() != HloInstruction::FusionKind::kOutput) {
     return false;
   }
 
-  // Cost condition: not fuse (expensive producers) and (consumers who reuse
-  // operand elements).
-  if (consumer->ReusesOperandElements(operand_index) &&
+  // Cost condition: not fuse (simple, expensive producers) and (consumers who
+  // reuse operand elements).
+  if (producer->opcode() != HloOpcode::kFusion &&
+      consumer->ReusesOperandElements(operand_index) &&
       is_expensive_(*producer)) {
     return false;
   }

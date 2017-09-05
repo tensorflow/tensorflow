@@ -25,10 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -74,7 +74,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
   ComputationBuilder builder_;
 };
 
-TEST_F(ReduceWindowTest, DISABLED_ON_CPU(DISABLED_ON_GPU(Min3In5Stride2))) {
+TEST_F(ReduceWindowTest, Min3In5Stride2) {
   const auto input = builder_.ConstantR1<float>({10000, 1000, 100, 10, 1});
   ReduceWindowMin(input, {3}, {2}, Padding::kValid);
   ComputeAndCompareR1<float>(&builder_, {100, 1}, {}, ErrorSpec(0.0001));
@@ -314,10 +314,72 @@ TEST_F(ReduceWindowTest, R4UnitWindow) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(input_array, 0.0f, {1, 1, 7, 1},
                                               {1, 4, 1, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(HloTestBase, R6Add) {
+  auto b = HloComputation::Builder(TestName());
+
+  std::vector<int64> input_dims(6, 8);
+  std::unique_ptr<Literal> arg_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+  auto input =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+
+  auto module = CreateNewModule();
+  auto add_func = module->AddEmbeddedComputation(add_computation.Build());
+
+  WindowDimension trivial_dim;
+  trivial_dim.set_size(1);
+  trivial_dim.set_stride(1);
+  trivial_dim.set_padding_low(0);
+  trivial_dim.set_padding_high(0);
+  trivial_dim.set_window_dilation(1);
+  trivial_dim.set_base_dilation(1);
+
+  WindowDimension active_dim;
+  active_dim.set_size(3);
+  active_dim.set_stride(1);
+  active_dim.set_padding_low(0);
+  active_dim.set_padding_high(0);
+  active_dim.set_window_dilation(1);
+  active_dim.set_base_dilation(1);
+
+  Window window;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8, 8, 6, 6, 8, 8});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(shape, input, init_value,
+                                                      window, add_func));
+
+  std::vector<int64> output_dims = {8, 8, 6, 6, 8, 8};
+  std::unique_ptr<Literal> expected =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 9.0f);
+
+  module->AddEntryComputation(b.Build());
+  auto actual = ExecuteAndTransfer(std::move(module), {});
+
+  LiteralTestUtil::ExpectNear(*actual, *expected, ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(ReduceWindowTest, R4SecondMinorStride) {
@@ -337,8 +399,8 @@ XLA_TEST_F(ReduceWindowTest, R4SecondMinorStride) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(
       input_array, 0.0f, {1, 1, win_len, 1}, {1, 1, stride, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -360,8 +422,8 @@ XLA_TEST_F(ReduceWindowTest, R4SecondMinorUnitStride) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(
       input_array, 0.0f, {1, 1, win_len, 1}, {1, 1, stride, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -383,8 +445,8 @@ XLA_TEST_F(ReduceWindowTest, R4SecondMinorWin) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(
       input_array, 0.0f, {1, 1, win_len, 1}, {1, 1, stride, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -507,8 +569,8 @@ class R4ReduceWindowTest
     input.FillIota(1);
     std::unique_ptr<Literal> input_literal =
         Literal::CreateR4FromArray4D(input);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
-                           client_->TransferToServer(*input_literal));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
+                            client_->TransferToServer(*input_literal));
 
     std::vector<std::pair<int64, int64>> padding(4);
     for (int i = 0; i < 4; ++i) {
@@ -541,7 +603,8 @@ class R4ReduceWindowTest
             /*window=*/param.window_bounds,
             /*stride=*/param.strides,
             /*padding=*/padding);
-    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()});
+    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()},
+                               ErrorSpec(1e-3, 1e-3));
   }
 };
 
@@ -773,8 +836,8 @@ TEST_P(R2ReduceWindowTest, Add) {
   std::unique_ptr<Literal> input_literal =
       Literal::CreateR2FromArray2DWithLayout(
           input, LayoutUtil::MakeLayout(param.layout));
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
+                          client_->TransferToServer(*input_literal));
   b.ReduceWindow(/*operand=*/
                  b.Parameter(0, input_literal->shape(), "p0"),
                  /*init_value=*/b.ConstantR0<float>(kInitValue),
@@ -877,8 +940,8 @@ TEST_P(R1ReduceWindowTest, DoIt) {
   std::iota(std::begin(input_vector), std::end(input_vector), 0);
   std::unique_ptr<Literal> input_literal =
       Literal::CreateR1(tensorflow::gtl::ArraySlice<float>(input_vector));
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
+                          client_->TransferToServer(*input_literal));
 
   auto computation = param.reducer == kAdd
                          ? CreateScalarAddComputation(F32, &b)
@@ -909,20 +972,3 @@ INSTANTIATE_TEST_CASE_P(R1ReduceWindowTestInstantiation, R1ReduceWindowTest,
                         R1ReduceWindowTestDataToString);
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

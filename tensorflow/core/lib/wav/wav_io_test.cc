@@ -99,25 +99,25 @@ TEST(WavIO, EncodeThenDecode) {
 
 TEST(WavIO, BasicMono) {
   std::vector<uint8> wav_data = {
-      'R',  'I',  'F', 'F', // ChunkID
-      44, 0, 0, 0,          // ChunkSize: 36 + SubChunk2Size
-      'W', 'A', 'V', 'E',   // Format
-      'f', 'm', 't', ' ',   // Subchunk1ID
-      16, 0, 0, 0,          // Subchunk1Size
-      1, 0,                 // AudioFormat: 1=PCM
-      1, 0,                 // NumChannels
-      0x44, 0xac, 0, 0,     // SampleRate: 44100
-      0x88, 0x58, 0x1, 0,   // BytesPerSecond: SampleRate * NumChannels *
-                            //                 BitsPerSample/8
-      2, 0,                 // BytesPerSample: NumChannels * BitsPerSample/8
-      16, 0,                // BitsPerSample
-      'd', 'a', 't', 'a',   // Subchunk2ID
-      8, 0, 0, 0,           // Subchunk2Size: NumSamples * NumChannels *
-                            //                BitsPerSample/8
-      0, 0,                 // Sample 1: 0
-      0xff, 0x7f,           // Sample 2: 32767 (saturated)
-      0, 0,                 // Sample 3: 0
-      0x00, 0x80,           // Sample 4: -32768 (saturated)
+      'R', 'I', 'F', 'F',  // ChunkID
+      44, 0, 0, 0,         // ChunkSize: 36 + SubChunk2Size
+      'W', 'A', 'V', 'E',  // Format
+      'f', 'm', 't', ' ',  // Subchunk1ID
+      16, 0, 0, 0,         // Subchunk1Size
+      1, 0,                // AudioFormat: 1=PCM
+      1, 0,                // NumChannels
+      0x44, 0xac, 0, 0,    // SampleRate: 44100
+      0x88, 0x58, 0x1, 0,  // BytesPerSecond: SampleRate * NumChannels *
+                           //                 BitsPerSample/8
+      2, 0,                // BytesPerSample: NumChannels * BitsPerSample/8
+      16, 0,               // BitsPerSample
+      'd', 'a', 't', 'a',  // Subchunk2ID
+      8, 0, 0, 0,          // Subchunk2Size: NumSamples * NumChannels *
+                           //                BitsPerSample/8
+      0, 0,                // Sample 1: 0
+      0xff, 0x7f,          // Sample 2: 32767 (saturated)
+      0, 0,                // Sample 3: 0
+      0x00, 0x80,          // Sample 4: -32768 (saturated)
   };
   string expected(wav_data.begin(), wav_data.end());
   float audio[] = {0.0f, 1.0f, 0.0f, -1.0f};
@@ -128,25 +128,25 @@ TEST(WavIO, BasicMono) {
 
 TEST(WavIO, BasicStereo) {
   std::vector<uint8> wav_data = {
-      'R',  'I',  'F', 'F', // ChunkID
-      44, 0, 0, 0,          // ChunkSize: 36 + SubChunk2Size
-      'W', 'A', 'V', 'E',   // Format
-      'f', 'm', 't', ' ',   // Subchunk1ID
-      16, 0, 0, 0,          // Subchunk1Size
-      1, 0,                 // AudioFormat: 1=PCM
-      2, 0,                 // NumChannels
-      0x44, 0xac, 0, 0,     // SampleRate: 44100
-      0x10, 0xb1, 0x2, 0,   // BytesPerSecond: SampleRate * NumChannels *
-                            //                 BitsPerSample/8
-      4, 0,                 // BytesPerSample: NumChannels * BitsPerSample/8
-      16, 0,                // BitsPerSample
-      'd', 'a', 't', 'a',   // Subchunk2ID
-      8, 0, 0, 0,           // Subchunk2Size: NumSamples * NumChannels *
-                            //                BitsPerSample/8
-      0, 0,                 // Sample 1: 0
-      0xff, 0x7f,           // Sample 2: 32767 (saturated)
-      0, 0,                 // Sample 3: 0
-      0x00, 0x80,           // Sample 4: -32768 (saturated)
+      'R', 'I', 'F', 'F',  // ChunkID
+      44, 0, 0, 0,         // ChunkSize: 36 + SubChunk2Size
+      'W', 'A', 'V', 'E',  // Format
+      'f', 'm', 't', ' ',  // Subchunk1ID
+      16, 0, 0, 0,         // Subchunk1Size
+      1, 0,                // AudioFormat: 1=PCM
+      2, 0,                // NumChannels
+      0x44, 0xac, 0, 0,    // SampleRate: 44100
+      0x10, 0xb1, 0x2, 0,  // BytesPerSecond: SampleRate * NumChannels *
+                           //                 BitsPerSample/8
+      4, 0,                // BytesPerSample: NumChannels * BitsPerSample/8
+      16, 0,               // BitsPerSample
+      'd', 'a', 't', 'a',  // Subchunk2ID
+      8, 0, 0, 0,          // Subchunk2Size: NumSamples * NumChannels *
+                           //                BitsPerSample/8
+      0, 0,                // Sample 1: 0
+      0xff, 0x7f,          // Sample 2: 32767 (saturated)
+      0, 0,                // Sample 3: 0
+      0x00, 0x80,          // Sample 4: -32768 (saturated)
   };
   string expected(wav_data.begin(), wav_data.end());
   float audio[] = {0.0f, 1.0f, 0.0f, -1.0f};

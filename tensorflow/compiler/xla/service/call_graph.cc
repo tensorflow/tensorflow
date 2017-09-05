@@ -313,6 +313,49 @@ Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
   return Status::OK();
 }
 
+bool CallGraph::IsFlattened() const {
+  for (const CallGraphNode& node : nodes_) {
+    if (node.context() == CallContext::kBoth) {
+      return false;
+    }
+    if (node.context() == CallContext::kSequential &&
+        node.caller_callsites().size() > 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::pair<HloInstruction*, HloInstruction*>
+CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
+                                             HloInstruction* b) const {
+  // Lambda which returns the next instruction in the callee->caller chain in
+  // the call graph. This is the unique instruction which calls the computation
+  // containing 'instruction'. If more than one instruction calls the
+  // computation containing 'instruction' or no instructions call the
+  // computation then nullptr is returned.
+  auto next_caller = [this](HloInstruction* instruction) -> HloInstruction* {
+    const CallGraphNode& node = GetNode(instruction->parent());
+    if (node.caller_callsites().size() != 1) {
+      return nullptr;
+    }
+    return node.caller_callsites()[0].instruction();
+  };
+
+  // Iterate through the callee->caller chains and find the earliest common
+  // element.
+  for (HloInstruction* a_ancestor = a; a_ancestor != nullptr;
+       a_ancestor = next_caller(a_ancestor)) {
+    for (HloInstruction* b_ancestor = b; b_ancestor != nullptr;
+         b_ancestor = next_caller(b_ancestor)) {
+      if (a_ancestor->parent() == b_ancestor->parent()) {
+        return {a_ancestor, b_ancestor};
+      }
+    }
+  }
+  return {nullptr, nullptr};
+}
+
 string CallGraph::ToString() const {
   string out;
   Appendf(&out, "Call graph for module %s:\n", module_->name().c_str());

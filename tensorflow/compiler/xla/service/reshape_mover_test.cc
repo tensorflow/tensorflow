@@ -351,16 +351,15 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossFusion) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
-  auto module = CreateNewModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  auto fusion = computation->AddInstruction(HloInstruction::CreateFusion(
-      add->shape(), HloInstruction::FusionKind::kLoop, add));
-  TF_CHECK_OK(computation->ReplaceInstruction(add, fusion));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(builder.Build());
+  computation->CreateFusionInstruction({add},
+                                       HloInstruction::FusionKind::kLoop);
 
   EXPECT_THAT(computation->root_instruction(),
               op::Fusion(op::Reshape(param0), op::Reshape(param1)));
 
-  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(&module).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Fusion(param0, param1)));

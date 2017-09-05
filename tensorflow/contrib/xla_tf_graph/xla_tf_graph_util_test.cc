@@ -108,7 +108,7 @@ TEST(XlaTfGraphUtil, ConvertTfGraphToSessionModule) {
   std::vector<XlaCompiler::Argument> args = BuildAddGraphArguments();
   std::unique_ptr<Graph> graph = BuildAddGraph();
 
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::SessionModule> session_module,
       ConvertTfGraphToXlaSessionModule(args, std::move(graph)));
 
@@ -122,11 +122,11 @@ TEST(XlaTfGraphUtil, ConvertTfGraphToSessionModule) {
 TEST(XlaTfGraphUtil, ConvertXlaSessionModuleToXlaNodes) {
   std::vector<XlaCompiler::Argument> args = BuildAddGraphArguments();
   std::unique_ptr<Graph> graph = BuildAddGraph();
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::SessionModule> session_module,
       ConvertTfGraphToXlaSessionModule(args, std::move(graph)));
-  TF_ASSIGN_OR_ASSERT_OK(auto xla_nodes,
-                         ConvertXlaSessionModuleToXlaNodes(*session_module));
+  TF_ASSERT_OK_AND_ASSIGN(auto xla_nodes,
+                          ConvertXlaSessionModuleToXlaNodes(*session_module));
   EXPECT_EQ(session_module->entry().requests_size(), xla_nodes.size());
 }
 

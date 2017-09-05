@@ -41,15 +41,10 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-)
-
-cc_library(
-    name = "depthwise_conv2d_test_kernel",
-    testonly = 1,
-    srcs = ["depthwise_conv2d_test_kernel.cc"],
-    deps = ["//tensorflow/core:framework_lite"],
 )
 
 tf_xla_py_test(
@@ -147,6 +142,27 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["conv3d_test.py"],
     shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "depthwise_conv_op_test",
+    size = "medium",
+    srcs = ["depthwise_conv_op_test.py"],
+    shard_count = 5,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -353,6 +369,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "segment_reduction_ops_test",
+    size = "medium",
+    srcs = ["segment_reduction_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "spacetobatch_op_test",
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
@@ -362,6 +392,19 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "stack_ops_test",
+    size = "small",
+    srcs = ["stack_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -414,6 +457,23 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "fused_batchnorm_test",
+    size = "small",
+    srcs = ["fused_batchnorm_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "variable_ops_test",
     size = "small",
     srcs = ["variable_ops_test.py"],
@@ -427,6 +487,23 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "gather_test",
+    size = "small",
+    srcs = ["gather_test.py"],
+    # Gather needs CustomCall on CPU, which is not available in normal
+    # (not precompiled) TensorFlow. The flag below excludes the CPU
+    # backend.
+    disabled_backends = "cpu",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
     ],
 )
 

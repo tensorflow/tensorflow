@@ -32,6 +32,8 @@ See the @{$python/contrib.layers} guide.
 @@embedding_lookup_unique
 @@flatten
 @@fully_connected
+@@GDN
+@@gdn
 @@layer_norm
 @@linear
 @@max_pool2d
@@ -113,6 +115,7 @@ _allowed_symbols = ['bias_add',
                     'legacy_linear',
                     'legacy_relu',
                     'OPTIMIZER_CLS_NAMES',
+                    'OPTIMIZER_SUMMARIES',
                     'regression_target',
                     'SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY',
                     'summaries']

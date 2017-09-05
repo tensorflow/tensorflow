@@ -70,7 +70,7 @@ StatusOr<bool> ParallelizationPreparation::Run(HloModule* module) {
     while (CanOutlineWithUser(outline_candidate)) {
       HloInstruction* prior_candidate = outline_candidate;
       outline_candidate = *outline_candidate->users().begin();
-      all_bitcasts |= outline_candidate->opcode() == HloOpcode::kBitcast;
+      all_bitcasts &= outline_candidate->opcode() == HloOpcode::kBitcast;
       if (std::any_of(outline_candidate->operands().begin(),
                       outline_candidate->operands().end(),
                       [&](const HloInstruction* operand) {
@@ -125,6 +125,9 @@ StatusOr<bool> ParallelizationPreparation::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     HloInstruction* root = computation->root_instruction();
     // Copy root instruction if it does not define its own top-level buffer.
     // TODO(b/32885001) Remove these copies (at least for the unambiguous case).

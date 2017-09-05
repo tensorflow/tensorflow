@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/dense_update_ops.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -522,16 +522,6 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPECS_INDEX
 #undef DECLARE_GPU_SPECS_INDEX_OP
-
-#define REGISTER_GPU_KERNELS(type)                         \
-  template <>                                              \
-  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(   \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs, \
-      typename TTypes<type>::ConstFlat rhs);               \
-  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>;
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-#undef REGISTER_GPU_KERNELS
 
 }  // namespace functor
 

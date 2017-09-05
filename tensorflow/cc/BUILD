@@ -228,6 +228,26 @@ tf_cc_test(
     ],
 )
 
+cc_library_with_android_deps(
+    name = "while_loop",
+    srcs = ["ops/while_loop.cc"],
+    hdrs = ["ops/while_loop.h"],
+    android_deps = [
+        "//tensorflow/core:android_tensorflow_lib",
+    ],
+    common_deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":ops",
+        ":scope",
+        ":scope_internal",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
 cc_library(
     name = "grad_op_registry",
     srcs = ["framework/grad_op_registry.cc"],
@@ -248,6 +268,7 @@ cc_library(
         ":gradients",
         "//tensorflow/core:lib_proto_parsing",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -273,8 +294,11 @@ cc_library(
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
+        ":gradients",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -285,6 +309,7 @@ tf_cc_test(
         ":cc_ops",
         ":grad_op_registry",
         ":grad_testutil",
+        ":gradient_checker",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",
@@ -302,6 +327,7 @@ cc_library(
         ":cc_ops_internal",
         ":grad_op_registry",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -334,6 +360,7 @@ tf_gen_op_wrappers_cc(
         "io_ops",
         "linalg_ops",
         "logging_ops",
+        "lookup_ops",
         "math_ops",
         "nn_ops",
         "no_op",

@@ -835,8 +835,8 @@ TEST_F(LiteralUtilTest, ConvertR4) {
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
   // clang-format on
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<Literal> converted,
-                         original->Convert(U32));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
+                          original->Convert(U32));
 
   EXPECT_TRUE(expected->Equal(*converted));
 }
@@ -878,6 +878,14 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 1, 0, 1}, {1, 0, 1, 0}},
     {{1, 0, 1, 0}, {0, 1, 0, 1}},
   }}, layout_r4_dim0major_);
+  auto f16 = Literal::CreateR4WithLayout<half>({{
+    {{half(10.0), half(0.0), half(12.0), half(0.0)},
+     {half(0.0), half(15.0), half(0.0), half(17.0)}},
+    {{half(0.0), half(19.0), half(0.0), half(21.0)},
+     {half(22.0), half(0.0), half(24.0), half(0.0)}},
+    {{half(26.0), half(0.0), half(28.0), half(0.0)},
+     {half(0.0), half(31.0), half(0.0), half(33.0)}},
+  }}, layout_r4_dim0major_);
   auto f32 = Literal::CreateR4WithLayout<float>({{
     {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
     {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
@@ -918,9 +926,19 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   conv = s32->Convert(F32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*f32));
 
+  conv = f32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
+  conv = f64->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
+  conv = s32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
+  conv = u32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
-  EXPECT_EQ(s32->Convert(F16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
   EXPECT_EQ(s32->Convert(S16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);

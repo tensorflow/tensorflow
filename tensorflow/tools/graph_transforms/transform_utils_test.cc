@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace graph_transforms {
@@ -624,7 +622,7 @@ class TransformUtilsTest : public ::testing::Test {
   }
 
   void TestRenameNodeInputsWithWildcard() {
-    auto root = tensorflow::Scope::NewRootScope();
+    auto root = tensorflow::Scope::DisabledShapeInferenceScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     const int width = 10;
@@ -1066,50 +1064,6 @@ class TransformUtilsTest : public ::testing::Test {
     TF_EXPECT_OK(context.GetOneBoolParameter("not_present", true, &value));
     EXPECT_TRUE(value);
   }
-
-  void TestLoadTextOrBinaryGraphFile() {
-    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-    const int width = 10;
-
-    auto root = tensorflow::Scope::NewRootScope();
-    Tensor a_data(DT_FLOAT, TensorShape({width}));
-    test::FillIota<float>(&a_data, 1.0f);
-    Output a_const = Const(root.WithOpName("a"), Input::Initializer(a_data));
-    GraphDef graph_def;
-    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
-
-    const string text_file =
-        io::JoinPath(testing::TmpDir(), "text_graph.pbtxt");
-    TF_ASSERT_OK(WriteTextProto(Env::Default(), text_file, graph_def));
-
-    const string binary_file =
-        io::JoinPath(testing::TmpDir(), "binary_graph.pb");
-    TF_ASSERT_OK(WriteBinaryProto(Env::Default(), binary_file, graph_def));
-
-    const string bogus_file = io::JoinPath(testing::TmpDir(), "bogus_graph.pb");
-    TF_ASSERT_OK(
-        WriteStringToFile(Env::Default(), bogus_file, "Not a !{ proto..."));
-
-    GraphDef text_graph_def;
-    TF_EXPECT_OK(LoadTextOrBinaryGraphFile(text_file, &text_graph_def));
-    string text_diff;
-    EXPECT_TRUE(EqualGraphDef(text_graph_def, graph_def, &text_diff))
-        << text_diff;
-
-    GraphDef binary_graph_def;
-    TF_EXPECT_OK(LoadTextOrBinaryGraphFile(binary_file, &binary_graph_def));
-    string binary_diff;
-    EXPECT_TRUE(EqualGraphDef(binary_graph_def, graph_def, &binary_diff))
-        << binary_diff;
-
-    GraphDef no_graph_def;
-    EXPECT_FALSE(
-        LoadTextOrBinaryGraphFile("____non_existent_file_____", &no_graph_def)
-            .ok());
-
-    GraphDef bogus_graph_def;
-    EXPECT_FALSE(LoadTextOrBinaryGraphFile(bogus_file, &bogus_graph_def).ok());
-  }
 };
 
 TEST_F(TransformUtilsTest, TestMapNamesToNodes) { TestMapNamesToNodes(); }
@@ -1204,10 +1158,6 @@ TEST_F(TransformUtilsTest, TestGetOneFloatParameter) {
 
 TEST_F(TransformUtilsTest, TestGetOneBoolParameter) {
   TestGetOneBoolParameter();
-}
-
-TEST_F(TransformUtilsTest, TestLoadTextOrBinaryGraphFile) {
-  TestLoadTextOrBinaryGraphFile();
 }
 
 }  // namespace graph_transforms

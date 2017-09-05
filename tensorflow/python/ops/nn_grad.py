@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
@@ -335,6 +338,16 @@ def _EluGradGrad(op, grad):
                                           dtype=elu_x.dtype)))
 
 
+@ops.RegisterGradient("SeluGrad")
+def _SeluGradGrad(op, grad):
+  x = op.inputs[1]
+  scale_alpha = 1.7580993408473768599402175208123
+  return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
+          array_ops.where(
+              x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + scale_alpha),
+              array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype)))
+
+
 @ops.RegisterGradient("Relu6")
 def _Relu6Grad(op, grad):
   return gen_nn_ops._relu6_grad(grad, op.inputs[0])
@@ -343,6 +356,11 @@ def _Relu6Grad(op, grad):
 @ops.RegisterGradient("Elu")
 def _EluGrad(op, grad):
   return gen_nn_ops._elu_grad(grad, op.outputs[0])
+
+
+@ops.RegisterGradient("Selu")
+def _SeluGrad(op, grad):
+  return gen_nn_ops._selu_grad(grad, op.outputs[0])
 
 
 @ops.RegisterGradient("Softplus")
@@ -357,7 +375,7 @@ def _SoftplusGradGrad(op, grad):
   #   dx = gen_nn_ops._softplus_grad(dy, x) = dy / (1 + exp(-x))
   # This op computes (ddy, d2x) from op.inputs == [dy, x] and grad == ddx.
   dy, x = op.inputs
-  with ops.control_dependencies([grad.op]):
+  with ops.control_dependencies([grad]):
     ddy = gen_nn_ops._softplus_grad(grad, x)  # pylint: disable=protected-access
     d2x = grad * dy / (math_ops.exp(-x) + 2.0 + math_ops.exp(x))
     return (ddy, d2x)
@@ -404,6 +422,8 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
 
   def IsZero(g):
     # Some introspection to check if the gradient is feeding zeros
+    if context.in_eager_mode():
+      return isinstance(g, tensor.LazyZero)
     if g.op.type in ("ZerosLike", "Zeros"):
       return True
     const_fill_value = tensor_util.constant_value(g)
@@ -526,6 +546,19 @@ def _MaxPoolGrad(op, grad):
                                    data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("MaxPoolV2")
+def _MaxPoolGradV2(op, grad):
+  ksize = op.inputs[1]
+  strides = op.inputs[2]
+  return gen_nn_ops.max_pool_grad_v2(op.inputs[0],
+                                     op.outputs[0],
+                                     grad,
+                                     ksize,
+                                     strides,
+                                     padding=op.get_attr("padding"),
+                                     data_format=op.get_attr("data_format")), None, None
+
+
 @ops.RegisterGradient("MaxPoolWithArgmax")
 def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
   return gen_nn_ops._max_pool_grad_with_argmax(op.inputs[0],
@@ -550,6 +583,24 @@ def _MaxPoolGradGrad(op, grad):
               op.get_attr("strides"),
               padding=op.get_attr("padding"),
               data_format=op.get_attr("data_format")))
+
+
+@ops.RegisterGradient("MaxPoolGradV2")
+def _MaxPoolGradGradV2(op, grad):
+  ksize = op.inputs[3]
+  strides = op.inputs[4]
+  return (array_ops.zeros(
+      shape=array_ops.shape(op.inputs[0]),
+      dtype=op.inputs[0].dtype), array_ops.zeros(
+          shape=array_ops.shape(op.inputs[1]), dtype=op.inputs[1].dtype),
+          gen_nn_ops.max_pool_grad_grad_v2(
+              op.inputs[0],
+              op.inputs[1],
+              grad,
+              ksize,
+              strides,
+              padding=op.get_attr("padding"),
+              data_format=op.get_attr("data_format")), None, None)
 
 
 @ops.RegisterGradient("MaxPoolGradGrad")
@@ -655,21 +706,125 @@ def _FusedBatchNormGrad(op, *grad):
     grad_x: gradient for x, which is scale * rsqrt(variance + epsilon) *
             [grad_y - mean(grad_y) - (x - mean(x)) *
             mean(grad_y * (x - mean(x))) / (variance + epsilon)]
+            in training mode; grad_y * scale * rsqrt(pop_variance + epsilon)
+            in freeze mode.
 
     grad_scale: gradient for scale, which is sum(grad_y * (x - mean(x)) *
-                rsqrt(variance + epsilon))
+                rsqrt(variance + epsilon)) in training mode;
+                sum(grad_y * (x - pop_mean) * rsqrt(pop_variance + epsilon))
+                in freeze mode.
 
-    grad_offset: gradient for offset, which is sum(grad_y)
+    grad_offset: gradient for offset, which is sum(grad_y) in training mode;
+                 sum(grad_y) in freeze mode.
   """
-  return gen_nn_ops.fused_batch_norm_grad(
-      grad[0],
-      op.inputs[0],
-      op.inputs[1],
-      op.outputs[3],
-      op.outputs[4],
-      epsilon=op.get_attr("epsilon"),
-      data_format=op.get_attr("data_format"),
-      is_training=op.get_attr("is_training"))
+  x = op.inputs[0]
+  grad_y = grad[0]
+  scale = op.inputs[1]
+  epsilon = op.get_attr("epsilon")
+  data_format = op.get_attr("data_format")
+  is_training = op.get_attr("is_training")
+  if is_training:
+    return gen_nn_ops.fused_batch_norm_grad(
+        grad_y,
+        x,
+        scale,
+        op.outputs[3],
+        op.outputs[4],
+        epsilon=epsilon,
+        data_format=data_format,
+        is_training=is_training)
+  else:
+    pop_mean = op.inputs[3]
+    pop_var = op.inputs[4]
+    if data_format == b"NHWC":
+      reduce_axis = [0, 1, 2]
+    else:
+      reduce_axis = [0, 2, 3]
+      shape = [1, array_ops.size(pop_mean), 1, 1]
+      pop_mean = array_ops.reshape(pop_mean, shape)
+      pop_var = array_ops.reshape(pop_var, shape)
+      scale = array_ops.reshape(scale, shape)
+
+    grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
+    var_rsqrt = math_ops.rsqrt(pop_var + epsilon)
+    grad_scale = math_ops.reduce_sum(
+        grad_y * (x - pop_mean) * var_rsqrt, axis=reduce_axis)
+    grad_x = grad_y * scale * var_rsqrt
+    return grad_x, grad_scale, grad_offset, None, None
+
+
+def _BatchNormGrad(grad_y, x, scale, epsilon, data_format):
+  """Returns the gradients for the 3 inputs of BatchNorm.
+
+  Args:
+    grad_y: A `Tensor` of 4 dimensions for gradient for y.
+    x: A `Tensor` of 4 dimensions for x.
+    scale: A `Tensor` of 1 dimension for scaling.
+    epsilon: A small float number added to the variance of x.
+    data_format: The data format for input. Either b"NHWC" or b"NCHW".
+
+  Returns:
+    A tuple (grad_x, grad_scale, grad_offset), where grad_x is the gradient
+    for x, grad_scale the gradient for scale, and grad_offset the gradient
+    for offset.
+  """
+  if data_format == b"NHWC":
+    keep_dims = False
+    reduce_axis = [0, 1, 2]
+  else:
+    keep_dims = True
+    reduce_axis = [0, 2, 3]
+    shape = [1, array_ops.size(scale), 1, 1]
+    scale = array_ops.reshape(scale, shape)
+  mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keep_dims=keep_dims)
+  mean_x = math_ops.reduce_mean(x, reduce_axis, keep_dims=keep_dims)
+  var_x = math_ops.reduce_mean(
+      math_ops.squared_difference(x, array_ops.stop_gradient(mean_x)),
+      reduce_axis,
+      keep_dims=keep_dims)
+  grad_y_offset = grad_y - mean_grad_y
+  x_offset = x - mean_x
+  mean = math_ops.reduce_mean(
+      grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
+  grad_x = scale * math_ops.rsqrt(var_x + epsilon) * (
+      grad_y_offset - math_ops.reciprocal(var_x + epsilon) * mean * x_offset)
+  grad_scale = math_ops.rsqrt(var_x + epsilon) * math_ops.reduce_sum(
+      grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
+  if data_format == b"NCHW":
+    grad_scale = array_ops.squeeze(grad_scale)
+  grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
+  return grad_x, grad_scale, grad_offset
+
+
+@ops.RegisterGradient("FusedBatchNormGrad")
+def _FusedBatchNormGradGrad(op, *grad):
+  """Returns the gradients for the 3 inputs of FusedBatchNormGrad.
+
+  Args:
+    op: The FusedBatchNormGradOp for which we need to compute gradients.
+    *grad: An argument list for tensors of gradients wrt the outputs
+          with grad[0] as grad_grad_x, grad[1] as grad_grad_scale,
+          grad[2] as grad_grad_offset.
+
+  Returns:
+    A tuple (grad_grad_y, grad_x, grad_scale, None, None), where grad_grad_y
+    is the gradient for grad_y, grad_x the gradient for x, grad_scale the
+    gradient for scale.
+  """
+  data_format = op.get_attr("data_format")
+  epsilon = op.get_attr("epsilon")
+  grad_y = op.inputs[0]
+  x = op.inputs[1]
+  scale = op.inputs[2]
+  grad_grad_x = grad[0]
+  grad_grad_scale = grad[1]
+  grad_grad_offset = grad[2]
+  grad_x, grad_scale, grad_offset = _BatchNormGrad(grad_y, x, scale, epsilon,
+                                                   data_format)
+  grad_initial = [grad_grad_x, grad_grad_scale, grad_grad_offset]
+  grad_grad_y, grad_x, grad_scale = gradients_impl.gradients(
+      [grad_x, grad_scale, grad_offset], [grad_y, x, scale], grad_initial)
+  return grad_grad_y, grad_x, grad_scale, None, None
 
 
 @ops.RegisterGradient("L2Loss")
