@@ -780,7 +780,7 @@ py_test(
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/session_bundle:exporter",
-        "//tensorflow/contrib/session_bundle:manifest_proto_py_pb2",
+        "//tensorflow/contrib/session_bundle:manifest_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
