@@ -9611,8 +9611,8 @@ op {
     type_list_attr: "Treduce_func_other_arguments"
   }
   input_arg {
-    name: "window_size"
-    type: DT_INT64
+    name: "window_size_func_other_arguments"
+    type_list_attr: "Twindow_size_func_other_arguments"
   }
   output_arg {
     name: "handle"
@@ -9628,12 +9628,21 @@ op {
     type: "func"
   }
   attr {
+    name: "window_size_func"
+    type: "func"
+  }
+  attr {
     name: "Tkey_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
   attr {
     name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Twindow_size_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
@@ -24677,7 +24686,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients / (1 + abs(-features)) ** 2`."
+    description: "The gradients: `gradients / (1 + abs(features)) ** 2`."
     type_attr: "T"
   }
   attr {

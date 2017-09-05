@@ -35,7 +35,7 @@ inline Status GetRegularOrVariantShape(OpKernelContext* ctx, int input_index,
   if (ctx->input_dtype(0) == DT_VARIANT) {
     if (inp.dims() != 0) {
       return errors::InvalidArgument(
-          "Shape of non-scalar Variant not supported.");
+          "Shape of non-unary Variant not supported.");
     }
     TF_RETURN_IF_ERROR(GetUnaryVariantShape(inp, shape));
   } else {

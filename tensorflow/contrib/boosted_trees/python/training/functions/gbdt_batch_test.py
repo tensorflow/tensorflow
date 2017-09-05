@@ -164,7 +164,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=1, features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -268,7 +268,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=num_examples_fn,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=1, features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -371,7 +371,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=1, features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -442,7 +442,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=1, features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -505,7 +505,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=1, features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -588,7 +588,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=1, features=features)
 
       # Create predict op.
       mode = model_fn.ModeKeys.EVAL
@@ -627,7 +627,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=5, features=features)
 
       predictions = array_ops.constant(
           [[0.0, -1.0, 0.5, 1.2, 3.1], [1.0, 0.0, 0.8, 0.3, 1.0],
@@ -730,7 +730,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=5, features=features)
 
       predictions = array_ops.constant(
           [[0.0, -1.0, 0.5, 1.2, 3.1], [1.0, 0.0, 0.8, 0.3, 1.0],
@@ -833,7 +833,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          features=features)
+          logits_dimension=5, features=features)
 
       batch_size = 3
       predictions = array_ops.constant(

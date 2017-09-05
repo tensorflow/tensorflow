@@ -396,6 +396,18 @@ Status GraphProperties::InferStatically() {
       }
       input_properties.push_back(properties);
     }
+    for (const auto& edge : node->in_edges()) {
+      if (!edge->src()->IsConstant()) {
+        continue;
+      }
+      const int input_id = edge->dst_input();
+      if (input_id >= input_properties.size()) {
+        continue;
+      }
+      const NodeDef& node = edge->src()->def();
+      const TensorProto& raw_val = node.attr().at("value").tensor();
+      *input_properties[input_id].mutable_value() = raw_val;
+    }
     input_properties_[node->name()] = input_properties;
 
     // TODO(bsteiner): share this code with the input processing above.

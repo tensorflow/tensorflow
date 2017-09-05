@@ -24,6 +24,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -171,7 +172,7 @@ class _Conv(base.Layer):
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, self.rank + 2))
 
-    if self.bias is not None:
+    if self.use_bias:
       if self.data_format == 'channels_first':
         if self.rank == 1:
           # nn.bias_add does not accept a 1D input tensor.
@@ -988,7 +989,7 @@ class SeparableConv2D(Conv2D):
         rate=self.dilation_rate,
         data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    if self.bias is not None:
+    if self.use_bias:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -1293,20 +1294,21 @@ class Conv2DTranspose(Conv2D):
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    # Infer the static output shape:
-    out_shape = inputs.get_shape().as_list()
-    out_shape[c_axis] = self.filters
-    out_shape[h_axis] = utils.deconv_output_length(out_shape[h_axis],
-                                                   kernel_h,
-                                                   self.padding,
-                                                   stride_h)
-    out_shape[w_axis] = utils.deconv_output_length(out_shape[w_axis],
-                                                   kernel_w,
-                                                   self.padding,
-                                                   stride_w)
-    outputs.set_shape(out_shape)
+    if context.in_graph_mode():
+      # Infer the static output shape:
+      out_shape = inputs.get_shape().as_list()
+      out_shape[c_axis] = self.filters
+      out_shape[h_axis] = utils.deconv_output_length(out_shape[h_axis],
+                                                     kernel_h,
+                                                     self.padding,
+                                                     stride_h)
+      out_shape[w_axis] = utils.deconv_output_length(out_shape[w_axis],
+                                                     kernel_w,
+                                                     self.padding,
+                                                     stride_w)
+      outputs.set_shape(out_shape)
 
-    if self.bias:
+    if self.use_bias:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -1591,24 +1593,25 @@ class Conv3DTranspose(Conv3D):
         data_format=utils.convert_data_format(self.data_format, ndim=5),
         padding=self.padding.upper())
 
-    # Infer the static output shape:
-    out_shape = inputs.get_shape().as_list()
-    out_shape[c_axis] = self.filters
-    out_shape[d_axis] = utils.deconv_output_length(out_shape[d_axis],
-                                                   kernel_d,
-                                                   self.padding,
-                                                   stride_d)
-    out_shape[h_axis] = utils.deconv_output_length(out_shape[h_axis],
-                                                   kernel_h,
-                                                   self.padding,
-                                                   stride_h)
-    out_shape[w_axis] = utils.deconv_output_length(out_shape[w_axis],
-                                                   kernel_w,
-                                                   self.padding,
-                                                   stride_w)
-    outputs.set_shape(out_shape)
+    if context.in_graph_mode():
+      # Infer the static output shape:
+      out_shape = inputs.get_shape().as_list()
+      out_shape[c_axis] = self.filters
+      out_shape[d_axis] = utils.deconv_output_length(out_shape[d_axis],
+                                                     kernel_d,
+                                                     self.padding,
+                                                     stride_d)
+      out_shape[h_axis] = utils.deconv_output_length(out_shape[h_axis],
+                                                     kernel_h,
+                                                     self.padding,
+                                                     stride_h)
+      out_shape[w_axis] = utils.deconv_output_length(out_shape[w_axis],
+                                                     kernel_w,
+                                                     self.padding,
+                                                     stride_w)
+      outputs.set_shape(out_shape)
 
-    if self.bias:
+    if self.use_bias:
       outputs_shape = outputs.shape.as_list()
       if self.data_format == 'channels_first':
         outputs_4d = array_ops.reshape(outputs, [

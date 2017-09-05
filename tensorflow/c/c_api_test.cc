@@ -829,7 +829,7 @@ TEST(CAPI, ShapeInferenceError) {
   TF_Operation* vec3 = Const(vec3_tensor.get(), graph, status, "vec3");
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TF_Operation* add = Add(vec2, vec3, graph, status);
+  TF_Operation* add = AddNoCheck(vec2, vec3, graph, status);
   ASSERT_NE(TF_OK, TF_GetCode(status));
   ASSERT_TRUE(add == nullptr);
 
