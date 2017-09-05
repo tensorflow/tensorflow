@@ -473,9 +473,12 @@ class ResourceVariable(variables.Variable):
     return self._save_slice_info
 
   def _read_variable_op(self):
-    if context.in_eager_mode() and self._trainable:
+    if hasattr(self, "_trainable") and self._trainable:
       tape.watch(self._handle)
-    return read_variable_op(self._handle, dtype=self._dtype)
+      return read_variable_op(self._handle, dtype=self._dtype)
+    else:
+      return gen_resource_variable_ops.read_variable_op(self._handle,
+                                                        self._dtype)
 
   def read_value(self):
     """Constructs an op which reads the value of this variable.
