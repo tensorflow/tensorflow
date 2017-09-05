@@ -41,7 +41,7 @@ need to pass in a `tf.name_scope`, manually, to that function to create deduplic
 tags. Otherwise your program would fail with a runtime error due to tag
 collision.
 
-The new summary APIs under tf.summary throw away the "tag" as an independent
+The new summary APIs under `tf.summary` throw away the "tag" as an independent
 concept; instead, the first argument is the node name. So summary tags now 
 automatically inherit the surrounding `tf.name_scope`, and automatically
 are deduplicated if there is a conflict. Now however, the only allowed
@@ -64,25 +64,25 @@ def add_activation_summaries(v):
 ```
 
 Now, so long as the add_activation_summaries function is called from within the
-right namescope, the behavior is the same.
+right `tf.name_scope`, the behavior is the same.
 
 Because this change does modify the behavior and could break tests, we can't
 automatically migrate usage to the new APIs. That is why we are making the old
-APIs temporarily available here at tf.contrib.deprecated.
+APIs temporarily available here at `tf.contrib.deprecated`.
 
 In addition to the name change described above, there are two further changes
 to the new summary ops:
 
-- the "max_images" argument for tf.image_summary was renamed to "max_outputs
-  for tf.summary.image
-- tf.scalar_summary accepted arbitrary tensors of tags and values. However,
-  tf.summary.scalar requires a single scalar name and scalar value. In most
-  cases, you can create tf.summary.scalars in a loop to get the same behavior
+- the "max_images" argument for `tf.image_summary` was renamed to "max_outputs
+  for `tf.summary.image`
+- `tf.scalar_summary` accepted arbitrary tensors of tags and values. But
+  `tf.summary.scalar` requires a single scalar name and scalar value. In most
+  cases, you can create `tf.summary.scalar` in a loop to get the same behavior
 
-As before, TensorBoard groups charts by the top-level namescope. This may
-be inconvenient, since in the new summary ops the summary will inherit that
-namescope without user control. We plan to add more grouping mechanisms to
-TensorBoard, so it will be possible to specify the TensorBoard group for
+As before, TensorBoard groups charts by the top-level `tf.name_scope` which may
+be inconvenient, for in the new summary ops, the summary will inherit that
+`tf.name_scope` without user control. We plan to add more grouping mechanisms
+to TensorBoard, so it will be possible to specify the TensorBoard group for
 each summary via the summary API.
 
 """
