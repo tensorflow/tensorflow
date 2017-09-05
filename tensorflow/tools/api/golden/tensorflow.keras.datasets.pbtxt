@@ -1,0 +1,27 @@
+path: "tensorflow.keras.datasets"
+tf_module {
+  member {
+    name: "boston_housing"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "cifar10"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "cifar100"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "imdb"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "mnist"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "reuters"
+    mtype: "<type \'module\'>"
+  }
+}

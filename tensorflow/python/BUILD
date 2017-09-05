@@ -94,6 +94,7 @@ py_library(
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/keras",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
     ]),

@@ -1,0 +1,13 @@
+path: "tensorflow.keras.preprocessing.image.Iterator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.preprocessing.image.Iterator\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'n\', \'batch_size\', \'shuffle\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

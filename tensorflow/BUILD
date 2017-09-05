@@ -399,6 +399,7 @@ filegroup(
         "//tensorflow/python/eager:all_files",
         "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/feature_column:all_files",
+        "//tensorflow/python/keras:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/ops/distributions:all_files",

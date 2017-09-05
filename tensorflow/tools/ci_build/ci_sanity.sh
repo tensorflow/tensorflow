@@ -96,7 +96,7 @@ do_pylint() {
 "^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
 "^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/contrib/keras/python/keras/callbacks\.py.*\[E1133.*not-an-iterable"
+"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
