@@ -15805,6 +15805,25 @@ op {
   summary: "Transforms a serialized tensorflow.TensorProto proto into a Tensor."
 }
 op {
+  name: "SerializeTensor"
+  input_arg {
+    name: "tensor"
+    description: "A Tensor of type `T`."
+    type: "T"
+  }
+  output_arg {
+    name: "serialized"
+    description: "A serialized TensorProto proto of the input tensor."
+    type_attr: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of the input tensor."
+  }
+  summary: "Transforms a Tensor into a serialized TensorProto proto."
+}
+op {
   name: "Placeholder"
   output_arg {
     name: "output"
