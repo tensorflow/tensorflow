@@ -240,6 +240,13 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
     compute_function_->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 
+  if (hlo_module_config_.debug_options().xla_enable_fast_math()) {
+    compute_function_->addFnAttr("unsafe-fp-math", "true");
+    compute_function_->addFnAttr("no-infs-fp-math", "true");
+    compute_function_->addFnAttr("no-nans-fp-math", "true");
+    compute_function_->addFnAttr("no-signed-zeros-fp-math", "true");
+  }
+
   ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(
       /*Context=*/module_->getContext(),
       /*Name=*/"entry",
