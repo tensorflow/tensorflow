@@ -175,7 +175,7 @@ fi
 
 if [[ ${clean} == true ]]; then
   echo "clean before build"
-  make distclean
+  make clean
 fi
 
 make -j"${JOB_COUNT}"
