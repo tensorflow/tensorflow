@@ -94,11 +94,6 @@ AllocationFinder::FindConsumers(HloInstruction* inst) {
         if (target.first != nullptr) {
           return target;
         }
-        // if nothing appears then check the users of the call
-        target = FindConsumers(user);
-        if (target.first != nullptr) {
-          return target;
-        }
         break;
       }
       case HloOpcode::kBatchNormTraining:
