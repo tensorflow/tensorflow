@@ -20,6 +20,7 @@ cc_library(
         "driver/fuse_ops.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
+        "driver/matcher_predicates.cc",
         "driver/outliner.cc",
     ],
     hdrs = [
@@ -27,6 +28,7 @@ cc_library(
         "driver/fuse_ops.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
+        "driver/matcher_predicates.h",
         "driver/outliner.h",
     ],
     deps = [

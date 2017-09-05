@@ -14,73 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 namespace poplarplugin {
-
-static bool IsTruncatedNormalWhile(HloInstruction* inst) {
-  return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
-}
-
-static bool IsRandomBernoulli(HloInstruction* inst) {
-  return inst->random_distribution() == RandomDistribution::RNG_BERNOULLI;
-}
-
-static bool IsRandomNormal(HloInstruction* inst) {
-  return inst->random_distribution() == RandomDistribution::RNG_NORMAL;
-}
-
-static bool IsRandomUniform(HloInstruction* inst) {
-  return inst->random_distribution() == RandomDistribution::RNG_UNIFORM;
-}
-
-static bool IsConstantZero(HloInstruction* inst) {
-  return !ShapeUtil::HasZeroElements(inst->shape()) &&
-          inst->literal().IsAll(0);
-}
-
-static bool IsConstantHalf(HloInstruction* inst) {
-  return !ShapeUtil::HasZeroElements(inst->shape()) &&
-          inst->literal().IsAllFloat(0.5);
-}
-
-static bool IsPoplarConvolution(HloInstruction* inst) {
-  return inst->to_apply()->name().substr(0, 15) == "pop_convolution";
-}
-
-static bool IsExternalPadding(HloInstruction* inst) {
-  const PaddingConfig& cfg(inst->padding_config());
-  for (auto& d : cfg.dimensions()) {
-    if (d.interior_padding() > 0) return false;
-  }
-  return true;
-}
-
-static bool IsAveragePool(HloInstruction* inst) {
-  return inst->metadata().op_type() == "AvgPool";
-}
-
-static bool IsReductionWindowNYXC(HloInstruction* inst) {
-  const Window& window(inst->window());
-  if (window.dimensions(0).size() != 1 ||
-      window.dimensions(0).stride() != 1 ||
-      window.dimensions(0).padding_low() != 0 ||
-      window.dimensions(0).padding_high() != 0 ||
-      window.dimensions(3).size() != 1 ||
-      window.dimensions(3).stride() != 1 ||
-      window.dimensions(3).padding_low() != 0 ||
-      window.dimensions(3).padding_high() != 0) {
-    return false;
-  }
-  return true;
-}
-
-static bool IsScalarConstant(HloInstruction* inst) {
-  return ShapeUtil::IsScalar(inst->shape());
-}
 
 static const char* names[] = {
   "const_slice_update",
@@ -100,6 +40,7 @@ static const char* names[] = {
   "avgpool_same",
   "avgpool_valid",
   "wide_const",
+  "depthwise_conv",
 };
 
 /*
@@ -212,6 +153,12 @@ static const std::vector<HloMatcherPattern> patterns = {
   // Broadcast scalar constant
   {{HloOpcode::kBroadcast, true, nullptr, {1}},
    {HloOpcode::kConstant, true, IsScalarConstant, {}}},
+
+  // Depthwise convolution (forward pass)
+  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
+   {HloOpcode::kReshape, true, nullptr, {2}},
+   {HloOpcode::kPad, true, IsDepthwisePadding, {-1, 3}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

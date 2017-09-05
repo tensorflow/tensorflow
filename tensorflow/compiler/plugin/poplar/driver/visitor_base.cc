@@ -388,6 +388,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
       return Status::OK();
     }
+    else if (name == "depthwise_conv") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateDepthwiseConvolutionOp(*graph_,
+                                                       resources_,
+                                                       inst,
+                                                       GetOutputShape(inst),
+                                                       tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
     else {
       return port::Status(port::error::FAILED_PRECONDITION,
                           port::StrCat("Unrecognized special call op ",

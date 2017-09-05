@@ -60,6 +60,9 @@ To convert_array(const From& from) {
 port::StatusOr<popconv::ConvParams>
 GetConvolutionParameters(const HloInstruction* inst);
 
+port::StatusOr<popconv::ConvParams>
+GetDepthConvolutionParameters(const HloInstruction* inst);
+
 port::StatusOr<poplar::Tensor>
 ShuffleConvolutionInput(const HloInstruction* inst,
                         const poplar::Tensor& tensor);
@@ -314,6 +317,13 @@ CreateSigmoidOp(poplar::Graph &graph,
                 const HloInstruction *inst,
                 const xla::Shape& output_shape,
                 TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+CreateDepthwiseConvolutionOp(poplar::Graph &graph,
+                             CompilerResources& res,
+                             const HloInstruction *inst,
+                             const xla::Shape& output_shape,
+                             TensorMap& tensor_map);
 
 /* Optimization tests */
 

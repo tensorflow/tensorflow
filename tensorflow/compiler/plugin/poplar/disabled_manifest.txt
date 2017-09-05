@@ -2,4 +2,5 @@ Conv3DTransposeTest.*                     # No 3D conv
 Conv3DBackpropFilterV2GradTest.*          # No 3D conv
 Conv3DTransposeTest.*                     # No 3D conv
 TensorArrayTest.testTensorArrayEvalEmpty  # Test generates invalid graph
-DepthwiseConv2DTest.*                     # Too slow at the moment
+DepthwiseConv2DTest.testDepthwiseConv2DInputGradCompare      # Too slow at the moment
+DepthwiseConv2DTest.testDepthwiseConv2DFilterGradCompare     # Too slow at the moment

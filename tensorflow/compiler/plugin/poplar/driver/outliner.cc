@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -22,10 +23,17 @@ namespace xla {
 namespace poplarplugin {
 
 static const char* names[] = {
+  "pop_depth_conv",
   "pop_convolution",
 };
 
 static const std::vector<HloMatcherPattern> patterns = {
+
+  // Depthwise convolution (forward pass)
+  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
+   {HloOpcode::kReshape, true, nullptr, {2}},
+   {HloOpcode::kPad, true, IsDepthwisePadding, {-1, 3}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Stand-alone convolution
   {{HloOpcode::kConvolution, true, nullptr, {-1, -1}}},
