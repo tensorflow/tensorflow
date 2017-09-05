@@ -48,6 +48,8 @@ tf_cuda_cc_test(
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
         "manual",
+        "no_oss",
+        "noguitar",  # note: is run manually there
         "notap",
     ],
     deps = if_cuda(
@@ -112,25 +114,26 @@ tf_custom_op_py_library(
     ],
 )
 
-# http://b/62064807
-# cuda_py_test(
-#     name = "nccl_ops_test",
-#     size = "small",
-#     srcs = ["python/ops/nccl_ops_test.py"],
-#     additional_deps = [
-#         ":nccl_py",
-#         "//tensorflow/python:array_ops",
-#         "//tensorflow/python:client_testlib",
-#         "//tensorflow/python:framework_for_generated_wrappers",
-#         "//tensorflow/python:framework_test_lib",
-#         "//tensorflow/python:platform_test",
-#     ],
-#     # Disabled on jenkins until errors finding nvmlShutdown are found.
-#     tags = [
-#         "manual",
-#         "notap",
-#     ],
-# )
+cuda_py_test(
+    name = "nccl_ops_test",
+    size = "small",
+    srcs = ["python/ops/nccl_ops_test.py"],
+    additional_deps = [
+        ":nccl_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+    # Disabled on jenkins until errors finding nvmlShutdown are found.
+    tags = [
+        "manual",
+        "no_oss",
+        "noguitar",  # note: is run manually there
+        "notap",
+    ],
+)
 
 filegroup(
     name = "all_files",
