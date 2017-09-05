@@ -144,7 +144,7 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args,
 
 int main(int argc, char** argv) {
   // Flags
-  string fake_infeed_shape;
+  xla::string fake_infeed_shape;
   bool use_fake_data = false;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("use_fake_data", &use_fake_data,
