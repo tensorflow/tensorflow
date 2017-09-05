@@ -810,6 +810,7 @@ def conv3d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

@@ -21,6 +21,8 @@ from __future__ import print_function
 import collections
 import math
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -45,8 +47,16 @@ def GetTestConfigs():
 
 class Conv3DTest(test.TestCase):
 
+  def _DtypesToTest(self, use_gpu):
+    if use_gpu and not test_util.CudaSupportsHalfMatMulAndConv():
+      return [dtypes.float32]
+    else:
+      # It is important that float32 comes before float16 here,
+      # as we will be using its gradients as reference for fp16 gradients.
+      return [dtypes.float32, dtypes.float16]
+
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
-                            padding, data_format, use_gpu):
+                            padding, data_format, dtype, use_gpu):
     total_size_1 = 1
     total_size_2 = 1
     for s in tensor_in_sizes:
@@ -59,8 +69,8 @@ class Conv3DTest(test.TestCase):
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu):
-      t1 = constant_op.constant(x1, shape=tensor_in_sizes)
-      t2 = constant_op.constant(x2, shape=filter_in_sizes)
+      t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
+      t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
 
       if isinstance(stride, collections.Iterable):
         strides = [1] + list(stride) + [1]
@@ -80,23 +90,42 @@ class Conv3DTest(test.TestCase):
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
                     expected):
     results = []
-    for data_format, use_gpu in GetTestConfigs():
-      result = self._SetupValuesForDevice(
-          tensor_in_sizes,
-          filter_in_sizes,
-          stride,
-          padding,
-          data_format,
-          use_gpu=use_gpu)
-      results.append(result)
-      tolerance = 1e-2 if use_gpu else 1e-5
+    for (data_format, use_gpu) in GetTestConfigs():
+      for dtype in self._DtypesToTest(use_gpu):
+        result = self._SetupValuesForDevice(
+            tensor_in_sizes,
+            filter_in_sizes,
+            stride,
+            padding,
+            data_format,
+            dtype,
+            use_gpu=use_gpu)
+        results.append((result, use_gpu, dtype, data_format))
+
       with self.test_session() as sess:
-        values = sess.run(results)
-        for value in values:
+        tensor_results = [result[0] for result in results]
+        test_params = [result[1:] for result in results]
+        values = sess.run(tensor_results)
+        for i in range(len(tensor_results)):
+          value = values[i]
+          print("use_gpu:", test_params[i][0])
+          print("dtype:", test_params[i][1])
+          print("data_format:", test_params[i][2])
+
           print("expected = ", expected)
           print("actual = ", value)
-          self.assertAllClose(expected, value.flatten(), atol=tolerance,
-                              rtol=1e-6)
+          tol = 1e-5
+          if value.dtype == np.float16:
+            tol = 1e-3
+            # fp16 using may result in inf values and large absolute errors
+            # when used with large numbers
+            if np.any(value > 1e4):
+              print("fp16 using may result in inf values and large absolute "
+                    "errors when used with large numbers, skipping")
+              continue
+
+          self.assertAllClose(expected, value.flatten(), atol=tol,
+                              rtol=tol)
 
   def testConv3D1x1x1Filter(self):
     expected_output = [

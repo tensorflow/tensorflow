@@ -236,6 +236,7 @@ class Conv3DBackpropInputOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv3DBackpropInputOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -383,6 +384,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<T>("T"),                        \
                           Conv3DBackpropFilterOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -409,6 +411,7 @@ namespace functor {
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
 
+DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -1099,6 +1102,23 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
   bool takes_shape_;
   bool cudnn_use_autotune_;
 };
+
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    Conv3DBackpropInputOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("input_sizes"),
+                        Conv3DBackpropInputOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3DBackpropFilter").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    Conv3DBackpropFilterOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("filter_sizes"),
+                        Conv3DBackpropFilterOp<GPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(
     Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<float>("T"),
