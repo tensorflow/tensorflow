@@ -170,7 +170,7 @@ void Diagnostician::LogDiagnosticInformation() {
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
     std::vector<string> pieces = port::Split(library_path, ':');
-    for (auto piece : pieces) {
+    for (const auto &piece : pieces) {
       if (piece.empty()) {
         continue;
       }
@@ -369,7 +369,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     LOG(INFO) << "driver version file contents: \"\"\"" << contents.begin()
               << "\"\"\"";
     fclose(driver_version_file);
-    return FindKernelModuleVersion(string{contents.begin()});
+    return FindKernelModuleVersion(contents.begin());
   }
 
   auto status =

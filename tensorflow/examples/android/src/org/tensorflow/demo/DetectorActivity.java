@@ -34,6 +34,8 @@ import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
+import android.widget.Toast;
+import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
@@ -62,26 +64,36 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final String MB_LOCATION_FILE =
       "file:///android_asset/multibox_location_priors.txt";
 
+  private static final int TF_OD_API_INPUT_SIZE = 300;
+  private static final String TF_OD_API_MODEL_FILE =
+      "file:///android_asset/ssd_mobilenet_v1_android_export.pb";
+  private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/coco_labels_list.txt";
+
   // Configuration values for tiny-yolo-voc. Note that the graph is not included with TensorFlow and
   // must be manually placed in the assets/ directory by the user.
   // Graphs and models downloaded from http://pjreddie.com/darknet/yolo/ may be converted e.g. via
   // DarkFlow (https://github.com/thtrieu/darkflow). Sample command:
-  // ./flow --model cfg/tiny-yolo-voc.cfg --load bin/tiny-yolo-voc.weights --savepb --verbalise=True
+  // ./flow --model cfg/tiny-yolo-voc.cfg --load bin/tiny-yolo-voc.weights --savepb --verbalise
   private static final String YOLO_MODEL_FILE = "file:///android_asset/graph-tiny-yolo-voc.pb";
   private static final int YOLO_INPUT_SIZE = 416;
   private static final String YOLO_INPUT_NAME = "input";
   private static final String YOLO_OUTPUT_NAMES = "output";
   private static final int YOLO_BLOCK_SIZE = 32;
 
-  // Default to the included multibox model.
-  private static final boolean USE_YOLO = false;
-
-  private static final int CROP_SIZE = USE_YOLO ? YOLO_INPUT_SIZE : MB_INPUT_SIZE;
+  // Which detection model to use: by default uses Tensorflow Object Detection API frozen
+  // checkpoints.  Optionally use legacy Multibox (trained using an older version of the API)
+  // or YOLO.
+  private enum DetectorMode {
+    TF_OD_API, MULTIBOX, YOLO;
+  }
+  private static final DetectorMode MODE = DetectorMode.TF_OD_API;
 
   // Minimum detection confidence to track a detection.
-  private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.25f : 0.1f;
+  private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.6f;
+  private static final float MINIMUM_CONFIDENCE_MULTIBOX = 0.1f;
+  private static final float MINIMUM_CONFIDENCE_YOLO = 0.25f;
 
-  private static final boolean MAINTAIN_ASPECT = USE_YOLO;
+  private static final boolean MAINTAIN_ASPECT = MODE == DetectorMode.YOLO;
 
   private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
 
@@ -124,9 +136,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
+    tracker = new MultiBoxTracker(this);
 
-    if (USE_YOLO) {
+    int cropSize = TF_OD_API_INPUT_SIZE;
+    if (MODE == DetectorMode.YOLO) {
       detector =
           TensorFlowYoloDetector.create(
               getAssets(),
@@ -135,7 +148,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               YOLO_INPUT_NAME,
               YOLO_OUTPUT_NAMES,
               YOLO_BLOCK_SIZE);
-    } else {
+      cropSize = YOLO_INPUT_SIZE;
+    } else if (MODE == DetectorMode.MULTIBOX) {
       detector =
           TensorFlowMultiBoxDetector.create(
               getAssets(),
@@ -146,6 +160,20 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               MB_INPUT_NAME,
               MB_OUTPUT_LOCATIONS_NAME,
               MB_OUTPUT_SCORES_NAME);
+      cropSize = MB_INPUT_SIZE;
+    } else {
+      try {
+        detector = TensorFlowObjectDetectionAPIModel.create(
+            getAssets(), TF_OD_API_MODEL_FILE, TF_OD_API_LABELS_FILE, TF_OD_API_INPUT_SIZE);
+        cropSize = TF_OD_API_INPUT_SIZE;
+      } catch (final IOException e) {
+        LOGGER.e("Exception initializing classifier!", e);
+        Toast toast =
+            Toast.makeText(
+                getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
+        toast.show();
+        finish();
+      }
     }
 
     previewWidth = size.getWidth();
@@ -161,12 +189,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
     rgbBytes = new int[previewWidth * previewHeight];
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
-    croppedBitmap = Bitmap.createBitmap(CROP_SIZE, CROP_SIZE, Config.ARGB_8888);
+    croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
 
     frameToCropTransform =
         ImageUtils.getTransformationMatrix(
             previewWidth, previewHeight,
-            CROP_SIZE, CROP_SIZE,
+            cropSize, cropSize,
             sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();
@@ -273,13 +301,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           yuvBytes[0],
           yuvBytes[1],
           yuvBytes[2],
-          rgbBytes,
           previewWidth,
           previewHeight,
           yRowStride,
           uvRowStride,
           uvPixelStride,
-          false);
+          rgbBytes);
 
       image.close();
     } catch (final Exception e) {
@@ -320,12 +347,19 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
             paint.setStyle(Style.STROKE);
             paint.setStrokeWidth(2.0f);
 
+            float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+            switch (MODE) {
+                case TF_OD_API: minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API; break;
+                case MULTIBOX: minimumConfidence = MINIMUM_CONFIDENCE_MULTIBOX; break;
+                case YOLO: minimumConfidence = MINIMUM_CONFIDENCE_YOLO; break;
+            }
+
             final List<Classifier.Recognition> mappedRecognitions =
                 new LinkedList<Classifier.Recognition>();
 
             for (final Classifier.Recognition result : results) {
               final RectF location = result.getLocation();
-              if (location != null && result.getConfidence() >= MINIMUM_CONFIDENCE) {
+              if (location != null && result.getConfidence() >= minimumConfidence) {
                 canvas.drawRect(location, paint);
 
                 cropToFrameTransform.mapRect(location);
@@ -344,6 +378,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     Trace.endSection();
   }
+
+  protected void processImageRGBbytes(int[] rgbBytes ) {}
 
   @Override
   protected int getLayoutId() {

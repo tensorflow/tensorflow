@@ -35,6 +35,9 @@ input_mode: Indicate whether there is a linear projection between the input and
     input_size == num_units; otherwise, it implies 'linear_input'.
 direction: Indicates whether a bidirectional model will be used.
     dir = (direction == bidirectional) ? 2 : 1
+dropout: dropout probability. When set to 0., dropout is disabled.
+seed: the 1st part of a seed to initialize dropout.
+seed2: the 2nd part of a seed to initialize dropout.
 )doc";
 
 constexpr auto kCudnnRNNParamsBuffer = R"doc(
@@ -48,7 +51,7 @@ constexpr auto kRNNModeAttrs =
 
 constexpr auto kRNNInputModeAttrs =
     "input_mode: {'linear_input', 'skip_input', 'auto_select'} = "
-    "'auto_select'";
+    "'linear_input'";
 
 constexpr auto kRNNDirectionAttrs =
     "direction: {'unidirectional', 'bidirectional'} = 'unidirectional'";
@@ -72,11 +75,14 @@ REGISTER_OP("CudnnRNNParamsSize")
     .Input("num_layers: int32")
     .Input("num_units: int32")
     .Input("input_size: int32")
-    .Attr("T: {float}")
+    .Attr("T: {float32, float64}")
     .Attr("S: {int32, int64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
     .Output("params_size: S")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(1));
@@ -119,15 +125,16 @@ REGISTER_OP("CudnnRNN")
     .Input("input_h: T")
     .Input("input_c: T")
     .Input("params: T")
+    .SetIsStateful()
     .Output("output: T")
     .Output("output_h: T")
     .Output("output_c: T")
     .Output("reserve_space: T")
-    .Attr("T: {float}")
+    .Attr("T: {float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
-    .Attr("dropout: float")
+    .Attr("dropout: float = 0.0")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("is_training: bool = true")
@@ -158,7 +165,8 @@ REGISTER_OP("CudnnRNN")
 Computes the RNN from the input and initial states, with respect to the params
 buffer.
 )doc",
-                         kCudnnRNNCommonAttrs, CudnnRNNForwardTensors(), R"doc(
+                         kCudnnRNNCommonAttrs, CudnnRNNForwardTensors(),
+                         R"doc(
 is_training: Indicates whether this operation is used for inferenece or
     training.
 reserve_space: an opaque tensor that can be used in backprop calculation. It
@@ -177,14 +185,18 @@ REGISTER_OP("CudnnRNNBackprop")
     .Input("output_h_backprop: T")
     .Input("output_c_backprop: T")
     .Input("reserve_space: T")
+    .SetIsStateful()
     .Output("input_backprop: T")
     .Output("input_h_backprop: T")
     .Output("input_c_backprop: T")
     .Output("params_backprop: T")
-    .Attr("T: {float}")
+    .Attr("T: {float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
@@ -199,7 +211,8 @@ REGISTER_OP("CudnnRNNBackprop")
     .Doc(strings::StrCat(R"doc(
 Compute the backprop of both data and weights in a RNN.
 )doc",
-                         kCudnnRNNCommonAttrs, CudnnRNNForwardTensors(), R"doc(
+                         kCudnnRNNCommonAttrs, CudnnRNNForwardTensors(),
+                         R"doc(
 output_backprop: A 3-D tensor with the same shape as output in the forward pass.
 output_h_backprop: A 3-D tensor with the same shape as output_h in the forward
     pass.
@@ -223,11 +236,14 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
     .Input("params: T")
     .Output("weights: num_params * T")
     .Output("biases: num_params * T")
-    .Attr("T: {float}")
+    .Attr("T: {float32, float64}")
     .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
@@ -263,11 +279,14 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("weights: num_params * T")
     .Input("biases: num_params * T")
     .Output("params: T")
-    .Attr("T: {float}")
+    .Attr("T: {float32, float64}")
     .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
@@ -281,7 +300,6 @@ upcoming training or inferences.
 num_params: number of parameter sets for all layers.
     Each layer may contain multiple parameter sets, with each set consisting of
     a weight matrix and a bias vector.
-)doc",
-                         kCudnnRNNCommonAttrs));
+)doc", kCudnnRNNCommonAttrs));
 
 }  // namespace tensorflow

@@ -35,9 +35,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
@@ -101,9 +101,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call,
-                    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                    HloComputation* computation) override;
+  Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call,
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
@@ -120,8 +118,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                      IrEmitterContext* ir_emitter_context, bool is_nested);
 
   // A convenient helper for calling HloToIrBindings::GetIrArray.
-  llvm_ir::IrArray GetIrArray(const HloInstruction& inst) {
-    return bindings_.GetIrArray(inst);
+  llvm_ir::IrArray GetIrArray(const HloInstruction& inst,
+                              const ShapeIndex& shape_index = {}) {
+    return bindings_.GetIrArray(inst, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
@@ -233,7 +232,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter.
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
   Status HandleDot(HloInstruction* dot, HloInstruction* lhs_instruction,
@@ -249,8 +248,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleTuple(
       HloInstruction* tuple,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                     HloComputation* condition, HloComputation* body) override;
+  Status HandleWhile(HloInstruction* xla_while) override;
+  Status HandleInfeed(HloInstruction* xla_infeed) override;
   Status HandleRng(HloInstruction* random,
                    RandomDistribution distribution) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
@@ -343,6 +342,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns a CopyThunk that calls host-to-device cuMemcpy to implement `inst`.
   std::unique_ptr<Thunk> BuildCopyThunk(const HloInstruction* inst);
+
+  // Returns an InfeedThunk that performs device-to-device memcpy to implement
+  // `inst`.
+  std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.

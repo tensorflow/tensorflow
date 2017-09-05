@@ -97,10 +97,10 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithoutTranspose) {
       activations, gradients, conv_window,
       tf_default_dnums_for_backward_filter_));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
@@ -126,9 +126,9 @@ TEST_F(ConvolutionFoldingTest,
       activations, gradients, conv_window,
       tf_default_dnums_for_backward_filter_));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(&module));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_FALSE(FoldConvolution(module.get()));
 }
 
 // Extracted from block35 training.
@@ -155,10 +155,10 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedActivations) {
   builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(F32, {3, 3, 32, 32}), convolution, {1, 2, 3, 0}));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
@@ -189,10 +189,10 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedGradients) {
   builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(F32, {3, 3, 192, 320}), convolution, {1, 2, 3, 0}));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
@@ -222,10 +222,10 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithUnevenPadding) {
   builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(F32, {2, 2, 32, 32}), convolution, {1, 2, 3, 0}));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
@@ -269,10 +269,10 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveEvenPadding) {
           output->shape(), reverse_kernel->shape(), conv_window, conv_dnums)
           .ValueOrDie()));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
@@ -313,10 +313,10 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolve1x1Filter) {
       /*lhs=*/output, /*rhs=*/kernel, conv_window,
       tf_default_dnums_for_backward_input_));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
@@ -346,9 +346,9 @@ TEST_F(ConvolutionFoldingTest,
       /*lhs=*/output, /*rhs=*/kernel, default_conv_window_,
       tf_default_dnums_for_backward_input_));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(&module));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_FALSE(FoldConvolution(module.get()));
 }
 
 // Extracted from Inception V3 training.
@@ -394,10 +394,10 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveUnevenPaddingOnGradients) {
                          tf_default_dnums_for_backward_input_)
                          .ValueOrDie()));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   EXPECT_EQ(HloOpcode::kFusion,
             entry_computation->root_instruction()->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
@@ -441,9 +441,9 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveLowPaddingTooLarge) {
                          tf_default_dnums_for_backward_input_)
                          .ValueOrDie()));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(&module));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_FALSE(FoldConvolution(module.get()));
 }
 
 // Extracted from //learning/brain/google/xla/benchmarks/resnet.py
@@ -490,10 +490,10 @@ TEST_F(ConvolutionFoldingTest,
                          tf_default_dnums_for_backward_input_)
                          .ValueOrDie()));
 
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   const HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(&module));
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(FoldConvolution(module.get()));
   const HloInstruction* backward_conv = entry_computation->root_instruction();
   EXPECT_EQ(HloOpcode::kFusion, backward_conv->opcode());
   EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
@@ -543,10 +543,14 @@ TEST_F(ConvolutionFoldingTest,
                          tf_default_dnums_for_backward_input_)
                          .ValueOrDie()));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(&module));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_FALSE(FoldConvolution(module.get()));
 }
 
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

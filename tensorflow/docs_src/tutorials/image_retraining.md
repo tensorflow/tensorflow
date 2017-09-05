@@ -6,7 +6,7 @@ work by taking a fully-trained model for a set of categories like ImageNet, and
 retrains from the existing weights for new classes. In this example we'll be
 retraining the final layer from scratch, while leaving all the others untouched.
 For more information on the approach you can see
-[this paper on Decaf](http://arxiv.org/pdf/1310.1531v1.pdf).
+[this paper on Decaf](https://arxiv.org/pdf/1310.1531v1.pdf).
 
 Though it's not as good as a full training run, this is surprisingly effective
 for many applications, and can be run in as little as thirty minutes on a
@@ -14,11 +14,16 @@ laptop, without requiring a GPU. This tutorial will show you how to run the
 example script on your own images, and will explain some of the options you have
 to help control the training process.
 
+Note: This version of the tutorial mainly uses bazel. A bazel free version is
+also available
+[as a codelab](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/#0).
+
 [TOC]
 
 ## Training on Flowers
 
-![Daisies by Kelly Sikkema](../images/daisies.jpg)
+![Daisies by Kelly Sikkema](https://www.tensorflow.org/images/daisies.jpg)
+
 [Image by Kelly Sikkema](https://www.flickr.com/photos/95072945@N05/9922116524/)
 
 Before you start any training, you'll need a set of images to teach the network
@@ -132,7 +137,7 @@ Once TensorBoard is running, navigate your web browser to `localhost:6006` to vi
 
 The script will log TensorBoard summaries to `/tmp/retrain_logs` by default. You can change the directory with the `--summaries_dir` flag.
 
-The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
+The [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
 
 ## Using the Retrained Model
 
@@ -148,10 +153,10 @@ Here's an example of how to build and run the label_image example with your
 retrained graphs:
 
 ```sh
-bazel build tensorflow/examples/label_image:label_image && \
-bazel-bin/tensorflow/examples/label_image/label_image \
+bazel build tensorflow/examples/image_retraining:label_image && \
+bazel-bin/tensorflow/examples/image_retraining/label_image \
 --graph=/tmp/output_graph.pb --labels=/tmp/output_labels.txt \
---output_layer=final_result \
+--output_layer=final_result:0 \
 --image=$HOME/flower_photos/daisy/21652746_cc379e0eea_m.jpg
 ```
 
@@ -160,7 +165,14 @@ You should see a list of flower labels, in most cases with daisy on top
 `--image` parameter with your own images to try those out, and use the C++ code
 as a template to integrate with your own applications.
 
-If you'd like to use the retrained model in a Python program [this example from @eldor4do shows what you'll need to do](https://github.com/eldor4do/TensorFlow-Examples/blob/master/retraining-example.py).
+If you'd like to use the retrained model in your own Python program, then the
+above
+[`label_image` script](https://www.tensorflow.org/code/tensorflow/examples/image_retraining/label_image.py)
+is a reasonable starting point.
+
+If you find the default Inception v3 model is too large or slow for your
+application, take a look at the [Other Model Architectures section](/tutorials/image_retraining#other_model_architectures)
+below for options to speed up and slim down your network.
 
 ## Training on Your Own Categories
 
@@ -174,7 +186,7 @@ you do that and pass the root folder of the subdirectories as the argument to
 Here's what the folder structure of the flowers archive looks like, to give you
 and example of the kind of layout the script is looking for:
 
-![Folder Structure](../images/folder_structure.png)
+![Folder Structure](https://www.tensorflow.org/images/folder_structure.png)
 
 In practice it may take some work to get the accuracy you want. I'll try to
 guide you through some of the common problems you might encounter below.
@@ -201,7 +213,7 @@ the object you actually care about. To avoid this, try to take pictures in as
 wide a variety of situations as you can, at different times, and with different
 devices. If you want to know more about this problem, you can read about the
 classic (and possibly apocryphal)
-[tank recognition problem](http://www.jefftk.com/p/detecting-tanks).
+[tank recognition problem](https://www.jefftk.com/p/detecting-tanks).
 
 You may also want to think about the categories you use. It might be worth
 splitting big categories that cover a lot of different physical forms into
@@ -260,7 +272,7 @@ them destroys their meaning.
 
 There are several other parameters you can try adjusting to see if they help
 your results. The `--learning_rate` controls the magnitude of the updates to the
-final layer during training. Intuitively if this is smaller then the learning
+final layer during training. Intuitively if this is smaller than the learning
 will take longer, but it can end up helping the overall precision. That's not
 always the case though, so you need to experiment carefully to see what works
 for your case. The `--train_batch_size` controls how many images are examined
@@ -320,3 +332,43 @@ errors in the input data set, such as mislabeled, low-quality, or ambiguous
 images. However, one should generally avoid point-fixing individual errors in
 the test set, since they are likely to merely reflect more general problems in
 the (much larger) training set.
+
+## Other Model Architectures
+
+By default the script uses a pretrained version of the Inception v3 model
+architecture. This is a good place to start because it provides high accuracy
+results, but if you intend to deploy your model on mobile devices or other
+resource-constrained environments you may want to trade off a little accuracy
+for much smaller file sizes or faster speeds. To help with that, the
+[retrain.py script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/image_retraining/retrain.py)
+supports 32 different variations on the [Mobilenet architecture](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html).
+
+These are a little less precise than Inception v3, but can result in far
+smaller file sizes (down to less than a megabyte) and can be many times faster
+to run. To train with one of these models, pass in the `--architecture` flag,
+for example:
+
+```
+python tensorflow/examples/image_retraining/retrain.py \
+    --image_dir ~/flower_photos --architecture mobilenet_0.25_128_quantized
+```
+
+This will create a 941KB model file in `/tmp/output_graph.pb`, with 25% of the
+parameters of the full Mobilenet, taking 128x128 sized input images, and with
+its weights quantized down to eight bits on disk. You can choose '1.0', '0.75',
+'0.50', or '0.25' to control the number of weight parameters, and so the file
+size (and to some extent the speed), '224', '192', '160', or '128' for the input
+image size, with smaller sizes giving faster speeds, and an optional
+'_quantized' at the end to indicate whether the file should contain 8-bit or
+32-bit float weights.
+
+The speed and size advantages come at a loss to accuracy of course, but for many
+purposes this isn't critical. They can also be somewhat offset with improved
+training data. For example, training with distortions allows me to get above 80%
+accuracy on the flower data set even with the 0.25/128/quantized graph above.
+
+If you're going to be using the Mobilenet models in label_image or your own
+programs, you'll need to feed in an image of the specified size converted to a
+float range into the 'input' tensor. Typically 24-bit images are in the range
+[0,255], and you must convert them to the [-1,1] float range expected by the
+model with the formula  `(image - 128.)/128.`.

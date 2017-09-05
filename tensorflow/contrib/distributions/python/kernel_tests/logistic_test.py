@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import logistic
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.platform import test
 
 
@@ -70,6 +70,52 @@ class LogisticTest(test.TestCase):
 
       self.assertEqual(cdf.get_shape(), (6,))
       self.assertAllClose(cdf.eval(), expected_cdf)
+
+  def testLogisticLogCDF(self):
+    with self.test_session():
+      batch_size = 6
+      np_loc = np.array([2.0] * batch_size, dtype=np.float32)
+      loc = constant_op.constant(np_loc)
+      scale = 1.5
+
+      dist = logistic.Logistic(loc, scale)
+      x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+      logcdf = dist.log_cdf(x)
+      expected_logcdf = stats.logistic.logcdf(x, np_loc, scale)
+
+      self.assertEqual(logcdf.get_shape(), (6,))
+      self.assertAllClose(logcdf.eval(), expected_logcdf)
+
+  def testLogisticSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 6
+      np_loc = np.array([2.0] * batch_size, dtype=np.float32)
+      loc = constant_op.constant(np_loc)
+      scale = 1.5
+
+      dist = logistic.Logistic(loc, scale)
+      x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+      survival_function = dist.survival_function(x)
+      expected_survival_function = stats.logistic.sf(x, np_loc, scale)
+
+      self.assertEqual(survival_function.get_shape(), (6,))
+      self.assertAllClose(survival_function.eval(), expected_survival_function)
+
+  def testLogisticLogSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 6
+      np_loc = np.array([2.0] * batch_size, dtype=np.float32)
+      loc = constant_op.constant(np_loc)
+      scale = 1.5
+
+      dist = logistic.Logistic(loc, scale)
+      x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+      logsurvival_function = dist.log_survival_function(x)
+      expected_logsurvival_function = stats.logistic.logsf(x, np_loc, scale)
+
+      self.assertEqual(logsurvival_function.get_shape(), (6,))
+      self.assertAllClose(logsurvival_function.eval(),
+                          expected_logsurvival_function)
 
   def testLogisticMean(self):
     with self.test_session():

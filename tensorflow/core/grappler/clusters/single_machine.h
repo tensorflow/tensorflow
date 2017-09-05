@@ -33,6 +33,8 @@ class SingleMachine : public Cluster {
   ~SingleMachine() override;
 
   Status Provision() override;
+  Status Shutdown() override;
+
   Status Initialize(const GrapplerItem& item) override;
   Status Run(const GraphDef& item,
              const std::vector<std::pair<string, Tensor>>& feed,
@@ -42,8 +44,13 @@ class SingleMachine : public Cluster {
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
                         RunMetadata* run_metadata);
+  Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
+                        const std::vector<string>& fetch,
+                        RunMetadata* run_metadata, int64 timeout_s);
   Status ResetSession();
   Status CloseSession(bool use_timeout);
+  void MergeCosts(CostGraphDef* graph_costs, const CostGraphDef& init_costs,
+                  const CostGraphDef& queue_costs);
 
   const int num_gpus_;
   std::unique_ptr<Session> session_;
@@ -52,6 +59,7 @@ class SingleMachine : public Cluster {
   mutex last_graph_mu_;
   const GraphDef* last_graph_ GUARDED_BY(last_graph_mu_) = nullptr;
   std::vector<string> init_ops_;
+  int64 expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 

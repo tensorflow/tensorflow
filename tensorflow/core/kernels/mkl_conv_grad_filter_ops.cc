@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 
 namespace tensorflow {
 
@@ -217,7 +217,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     mkl_context.grad_filter_shape.SetTfLayout(mkl_context.filter_dims,
                                               mkl_context.filter_sizes,
                                               mkl_context.filter_strides);
-    AllocateOutputSetMklshape(context, 0, &grad_filter, filter_shape,
+    AllocateOutputSetMklShape(context, 0, &grad_filter, filter_shape,
                               mkl_context.grad_filter_shape);
 
     // Need to set member variable for TF layout
@@ -266,8 +266,11 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     int input_offsets[2];
     size_t conv_strides[2];
     MklShape input_shape, grad_filter_shape, out_backprop_shape;
-    dnnPrimitive_t prim_conv_bwdfilter, convert_bwdfilter;
-    dnnLayout_t lt_input, lt_grad_filter, lt_out_backprop;
+    dnnPrimitive_t prim_conv_bwdfilter = nullptr;
+    dnnPrimitive_t convert_bwdfilter = nullptr;
+    dnnLayout_t lt_input = nullptr;
+    dnnLayout_t lt_grad_filter = nullptr;
+    dnnLayout_t lt_out_backprop = nullptr;
     void* conv_res[dnnResourceNumber];
 
     void MklCleanup() {
@@ -345,8 +348,9 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
           (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
 
       const Tensor& out_backprop = MklGetInput(context, 2);
-      void* mkl_buf_out_backprop = const_cast<void*>(
-          static_cast<const void*>(out_backprop.flat<T>().data()));
+      void* mkl_buf_out_backprop = const_cast<void*>(static_cast<const void*>(
+                                      out_backprop.flat<T>().data()));
+
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_out_backprop,
                                                 prim_conv_bwdfilter,
                                                 dnnResourceDiffDst),
@@ -355,11 +359,10 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
           !dnnLayoutCompare_F32(mkl_lt_internal_out_backprop, lt_out_backprop);
       if (mkl_convert_out_backprop) {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_out_backprop,
-                                         lt_out_backprop,
-                                         mkl_lt_internal_out_backprop),
+                      lt_out_backprop, mkl_lt_internal_out_backprop),
                  E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_out_backprop_buf_tensor,
-                       lt_out_backprop, &mkl_buf_convert_out_backprop);
+            lt_out_backprop, &mkl_buf_convert_out_backprop);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_out_backprop,
                                           mkl_buf_out_backprop,
                                           mkl_buf_convert_out_backprop),
@@ -408,11 +411,11 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                                    \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropFilter")                 \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_MKL_FILTER_KERNELS(T)                              \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DCustomBackpropFilterOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);

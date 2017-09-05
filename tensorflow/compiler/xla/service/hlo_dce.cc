@@ -38,6 +38,9 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
   bool changed = false;
 
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     std::unordered_set<HloInstruction*> live_instructions;
     TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
         [&live_instructions](HloInstruction* instruction) {
@@ -52,7 +55,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     for (auto& instruction : computation->instructions()) {
       if (instruction->user_count() == 0 &&
           live_instructions.count(instruction.get()) == 0 &&
-          HloComputation::IsRemovable(instruction->opcode())) {
+          computation->IsRemovable(instruction.get())) {
         dead_roots.push_back(instruction.get());
       }
     }

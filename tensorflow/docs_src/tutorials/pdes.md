@@ -93,7 +93,7 @@ for n in range(40):
 DisplayArray(u_init, rng=[-0.1, 0.1])
 ```
 
-![jpeg](../images/pde_output_1.jpg)
+![jpeg](https://www.tensorflow.org/images/pde_output_1.jpg)
 
 
 Now let's specify the details of the differential equation.

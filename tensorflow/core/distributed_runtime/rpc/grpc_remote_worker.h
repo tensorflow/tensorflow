@@ -26,10 +26,12 @@ class CompletionQueue;
 
 namespace tensorflow {
 
+class GrpcCounter;
 class WorkerCacheLogger;
 class WorkerInterface;
 
-WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
+WorkerInterface* NewGrpcRemoteWorker(GrpcCounter* live_rpc_counter,
+                                     SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      WorkerCacheLogger* logger);
 

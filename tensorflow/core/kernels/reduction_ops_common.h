@@ -190,24 +190,24 @@ class ReductionOp : public OpKernel {
       Functor::FillIdentity(d, tmp_out.flat<T>(), reducer);
     } else if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
       // Reduce to a scalar.
-      Functor::Reduce(d, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
+      Functor::Reduce(ctx, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
                       constants.kZero, reducer);
     } else if ((helper.ndims() == 2) && helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a matrix along 1st dimension.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
+      Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
                       constants.kZero, reducer);
     } else if ((helper.ndims() == 2) && !helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a matrix along 2nd dimension.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
+      Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
                       constants.kOne, reducer);
     } else if ((helper.ndims() == 3) && helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a 3D tensor along 1st and 3rd
       // dimensions.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 3>(data),
+      Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 3>(data),
                       constants.kZeroTwo, reducer);
     } else if ((helper.ndims() == 3) && !helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a 3D tensor along 2nd dimension.
-      Functor::Reduce(d, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
+      Functor::Reduce(ctx, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
                       constants.kOne, reducer);
     } else {
       // If we don't hit one of the cases above, transpose the data so that
@@ -223,7 +223,7 @@ class ReductionOp : public OpKernel {
       const int64 unreduced = tmp_out.NumElements();
       const int64 reduced = shuffled.NumElements() / unreduced;
       const Tensor& const_shuffled = shuffled;
-      Functor::Reduce(d, tmp_out.flat<T>(),
+      Functor::Reduce(ctx, tmp_out.flat<T>(),
                       const_shuffled.shaped<T, 2>({unreduced, reduced}),
                       constants.kOne, reducer);
     }
@@ -238,9 +238,11 @@ class ReductionOp : public OpKernel {
     if (ctx->track_allocations()) {
       // The temporary memory becomes the output memory.
       if (ctx->allocate_on_host(alloc_attr)) {
-        ctx->record_host_temp_memory_size(-out.AllocatedBytes());
+        ctx->record_host_temp_memory_size(
+            -static_cast<int64>(out.AllocatedBytes()));
       } else {
-        ctx->record_device_temp_memory_size(-out.AllocatedBytes());
+        ctx->record_device_temp_memory_size(
+            -static_cast<int64>(out.AllocatedBytes()));
       }
     }
     ctx->set_output(0, out);
@@ -256,9 +258,10 @@ namespace functor {
 template <typename Device, typename Reducer>
 struct ReduceFunctorBase {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const Device& d, OUT_T out, IN_T in,
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
+    const Device& d = ctx->eigen_device<Device>();
     ReduceEigenImpl(d, out, in, reduction_axes, reducer);
   }
 
@@ -276,31 +279,6 @@ struct ReduceFunctor<CPUDevice, Reducer>
 template <typename Reducer>
 struct ReduceFunctor<SYCLDevice, Reducer>
         : ReduceFunctorBase<SYCLDevice, Reducer>{};
-
-template <typename T>
-struct ReduceFunctor<SYCLDevice, Eigen::internal::MeanReducer<T> > {
-  template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const SYCLDevice& d, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MeanReducer<T>& reducer) {
-    typedef typename IN_T::Index Index;
-    // Eigen sum reductions are much faster on GPU than mean reductions:
-    // Simply trigger them by computing the sum of the weighted inputs.
-    Index num_coeffs_to_reduce = 1;
-    for (int i = 0; i < Eigen::internal::array_size<ReductionAxes>::value;
-         ++i) {
-      num_coeffs_to_reduce *= in.dimension(reduction_axes[i]);
-    }
-    T scale = T(1.0) / num_coeffs_to_reduce;
-    out.device(d) = (in * scale).sum(reduction_axes);
-  }
-
-  template <typename OUT_T>
-  static void FillIdentity(const SYCLDevice& d, OUT_T out,
-                           const Eigen::internal::MeanReducer<T>& reducer) {
-    FillIdentityEigenImpl(d, out, reducer);
-  }
-};
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace functor

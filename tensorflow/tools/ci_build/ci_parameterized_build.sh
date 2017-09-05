@@ -18,7 +18,7 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | GPU_CLANG | ANDROID | ANDROID_FULL)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
@@ -92,8 +92,15 @@
 #   TF_SKIP_CONTRIB_TESTS:
 #                     If set to any non-empty or non-0 value, will skipp running
 #                     contrib tests.
+#   TF_NIGHTLY:
+#                     If this run is being used to build the tf_nightly pip
+#                     packages.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
+
+# TODO(jhseu): Temporary for the gRPC pull request due to the
+# protobuf -> protobuf_archive rename. Remove later.
+TF_BUILD_BAZEL_CLEAN=1
 
 # Helper function: Convert to lower case
 to_lower () {
@@ -200,8 +207,8 @@ echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
 function get_cuda_capability_version() {
   if [[ ! -z $(which deviceQuery) ]]; then
     # The first listed device is used
-    echo $(deviceQuery | grep "CUDA Capability .* version" | \
-        head -1 | awk '{print $NF}')
+    deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}'
   fi
 }
 
@@ -224,8 +231,13 @@ fi
 # Process container type
 if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]]; then
-  OPT_FLAG="${OPT_FLAG} --config=cuda"
+elif [[ ${CTYPE} == "gpu" ]] || [[ ${CTYPE} == "gpu_clang" ]]; then
+  if [[ ${CTYPE} == "gpu" ]]; then
+    OPT_FLAG="${OPT_FLAG} --config=cuda"
+  else # ${CTYPE} == "gpu_clang"
+    OPT_FLAG="${OPT_FLAG} --config=cuda_clang"
+  fi
+
 
   # Attempt to determine CUDA capability version automatically and use it if
   # CUDA capability version is not specified by the environment variables.
@@ -328,21 +340,35 @@ fi
 OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
 
-# Filter out benchmark tests if this is not a benchmarks job
+# 1) Filter out benchmark tests if this is not a benchmarks job;
+# 2) Filter out tests with the "nomac" tag if the build is on Mac OS X.
 EXTRA_ARGS=""
+IS_MAC=0
+if [[ "$(uname)" == "Darwin" ]]; then
+  IS_MAC=1
+fi
 if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
   ITEMS=(${TF_BUILD_APPEND_ARGUMENTS})
 
   for ITEM in "${ITEMS[@]}"; do
-    if [[ ${ITEM} == *"--test_tag_filters="* ]] &&
-      [[ ${ITEM} != *"benchmark-test"* ]]; then
-      EXTRA_ARGS="${EXTRA_ARGS} ${ITEM},-benchmark-test"
+    if [[ ${ITEM} == *"--test_tag_filters="* ]]; then
+      NEW_ITEM="${ITEM}"
+      if [[ ${NEW_ITEM} != *"benchmark-test"* ]]; then
+        NEW_ITEM="${NEW_ITEM},-benchmark-test"
+      fi
+      if [[ ${IS_MAC} == "1" ]] && [[ ${NEW_ITEM} != *"nomac"* ]]; then
+        NEW_ITEM="${NEW_ITEM},-nomac"
+      fi
+      EXTRA_ARGS="${EXTRA_ARGS} ${NEW_ITEM}"
     else
       EXTRA_ARGS="${EXTRA_ARGS} ${ITEM}"
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
+  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  if [[ ${IS_MAC} == "1" ]]; then
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+  fi
 fi
 
 # For any "tool" dependencies in genrules, Bazel will build them for host
@@ -363,7 +389,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
-  elif [[ ${CTYPE} == "gpu" ]]; then
+  elif [[ ${CTYPE} == "gpu" ]] || [[ ${CTYPE} == "gpu_clang" ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
@@ -422,6 +448,11 @@ elif [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
   MAIN_CMD="${NO_PIP_MAIN_CMD} && ${PIP_MAIN_CMD}"
 else
   die "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
+fi
+
+# Check if this is a tf_nightly build
+if [[ "${TF_NIGHTLY}" == "1" ]]; then
+  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_NIGHTLY=1"
 fi
 
 # Process Python version
@@ -513,11 +544,14 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
   DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
   # Replace a line in the Dockerfile
-  sed -i \
+  if sed -i \
       's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
-      "${DOCKERFILE}" && \
-      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
-      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+      "${DOCKERFILE}"
+  then
+    echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
+  else
+    die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+  fi
 
   DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
 fi
@@ -555,7 +589,7 @@ rm -f ${TMP_SCRIPT}
 END_TIME=$(date +'%s')
 echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
-"(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
+"(Elapsed time: $((END_TIME - START_TIME)) s)"
 
 
 # Clean up temporary directory if it exists

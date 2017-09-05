@@ -21,14 +21,14 @@ def tf_cc_logged_benchmark(
     fail(" ".join(("Target must be a single well-defined test, e.g.,",
                    "//path/to:test. Received: %s" % target)))
 
-  all_tags = list(set(tags) + \
-                  set(["benchmark-test", "local", "manual", "regression-test"]))
+  all_tags = list(depset(tags) + \
+                  depset(["benchmark-test", "local", "manual", "regression-test"]))
 
   tf_py_test(
       name = name,
       tags = all_tags,
       size = "large",
-      srcs = ["//tensorflow/tools/test:run_and_gather_logs.py"],
+      srcs = ["//tensorflow/tools/test:run_and_gather_logs"],
       args = [
           "--name=//%s:%s" % (PACKAGE_NAME, name),
           "--test_name=" + target,

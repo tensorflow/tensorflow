@@ -26,14 +26,14 @@ from tensorflow.python.platform import test
 class GlobalPoolingTest(test.TestCase):
 
   def test_globalpooling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(keras.layers.pooling.GlobalMaxPooling1D,
                                input_shape=(3, 4, 5))
       testing_utils.layer_test(
           keras.layers.pooling.GlobalAveragePooling1D, input_shape=(3, 4, 5))
 
   def test_globalpooling_2d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.pooling.GlobalMaxPooling2D,
           kwargs={'data_format': 'channels_first'},
@@ -52,7 +52,7 @@ class GlobalPoolingTest(test.TestCase):
           input_shape=(3, 5, 6, 4))
 
   def test_globalpooling_3d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.pooling.GlobalMaxPooling3D,
           kwargs={'data_format': 'channels_first'},
@@ -75,7 +75,7 @@ class Pooling2DTest(test.TestCase):
 
   def test_maxpooling_2d(self):
     pool_size = (3, 3)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for strides in [(1, 1), (2, 2)]:
         testing_utils.layer_test(
             keras.layers.MaxPooling2D,
@@ -87,7 +87,7 @@ class Pooling2DTest(test.TestCase):
             input_shape=(3, 5, 6, 4))
 
   def test_averagepooling_2d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.AveragePooling2D,
           kwargs={'strides': (2, 2),
@@ -100,22 +100,25 @@ class Pooling2DTest(test.TestCase):
                   'padding': 'valid',
                   'pool_size': (3, 3)},
           input_shape=(3, 5, 6, 4))
-      testing_utils.layer_test(
-          keras.layers.AveragePooling2D,
-          kwargs={
-              'strides': (1, 1),
-              'padding': 'valid',
-              'pool_size': (2, 2),
-              'data_format': 'channels_first'
-          },
-          input_shape=(3, 4, 5, 6))
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      if test.is_gpu_available(cuda_only=True):
+        testing_utils.layer_test(
+            keras.layers.AveragePooling2D,
+            kwargs={
+                'strides': (1, 1),
+                'padding': 'valid',
+                'pool_size': (2, 2),
+                'data_format': 'channels_first'
+            },
+            input_shape=(3, 4, 5, 6))
 
 
 class Pooling3DTest(test.TestCase):
 
   def test_maxpooling_3d(self):
     pool_size = (3, 3, 3)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.MaxPooling3D,
           kwargs={'strides': 2,
@@ -134,7 +137,7 @@ class Pooling3DTest(test.TestCase):
 
   def test_averagepooling_3d(self):
     pool_size = (3, 3, 3)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.AveragePooling3D,
           kwargs={'strides': 2,
@@ -155,7 +158,7 @@ class Pooling3DTest(test.TestCase):
 class Pooling1DTest(test.TestCase):
 
   def test_maxpooling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for padding in ['valid', 'same']:
         for stride in [1, 2]:
           testing_utils.layer_test(
@@ -165,7 +168,7 @@ class Pooling1DTest(test.TestCase):
               input_shape=(3, 5, 4))
 
   def test_averagepooling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for padding in ['valid', 'same']:
         for stride in [1, 2]:
           testing_utils.layer_test(

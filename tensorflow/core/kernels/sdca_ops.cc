@@ -64,7 +64,7 @@ using sdca::ExampleStatistics;
 using sdca::ModelWeights;
 
 struct ComputeOptions {
-  ComputeOptions(OpKernelConstruction* const context) {
+  explicit ComputeOptions(OpKernelConstruction* const context) {
     string loss_type;
     OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {

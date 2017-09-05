@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -40,15 +41,25 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   // Default action performed on HloInstruction.
   virtual Status DefaultAction(HloInstruction* hlo_instruction) = 0;
 
-  Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode,
-                                HloInstruction* operand) override {
+  Status HandleElementwiseUnary(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleElementwiseBinary(HloInstruction* hlo, HloOpcode opcode,
-                                 HloInstruction* lhs,
-                                 HloInstruction* rhs) override {
+  Status HandleElementwiseBinary(HloInstruction* hlo) override {
     return DefaultAction(hlo);
   }
+
+  Status HandleBatchNormTraining(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
+  Status HandleBatchNormInference(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
+  Status HandleBatchNormGrad(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
   Status HandleClamp(HloInstruction* clamp, HloInstruction* /*min*/,
                      HloInstruction* /*arg*/,
                      HloInstruction* /*max*/) override {
@@ -59,12 +70,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
       tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
     return DefaultAction(concatenate);
   }
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* /*operand*/) override {
+  Status HandleConvert(HloInstruction* convert) override {
     return DefaultAction(convert);
   }
-  Status HandleCopy(HloInstruction* copy,
-                    HloInstruction* /*operand*/) override {
+  Status HandleCopy(HloInstruction* copy) override {
     return DefaultAction(copy);
   }
   Status HandleSelect(HloInstruction* select, HloInstruction* /*pred*/,
@@ -121,9 +130,7 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   Status HandleFusion(HloInstruction* fusion) override {
     return DefaultAction(fusion);
   }
-  Status HandleCall(HloInstruction* call,
-                    tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/,
-                    HloComputation* /*computation*/) override {
+  Status HandleCall(HloInstruction* call) override {
     return DefaultAction(call);
   }
   Status HandleCustomCall(
@@ -136,10 +143,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
                      HloInstruction* /*operand*/) override {
     return DefaultAction(slice);
   }
-  Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
-    return DefaultAction(slice);
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* /*operand*/,
+                            HloInstruction* /*start_indices*/) override {
+    return DefaultAction(dynamic_slice);
   }
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* /*operand*/,
@@ -188,9 +195,7 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   Status HandleTranspose(HloInstruction* transpose) override {
     return DefaultAction(transpose);
   }
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* /*init*/,
-                     HloComputation* /*condition*/,
-                     HloComputation* /*body*/) override {
+  Status HandleWhile(HloInstruction* xla_while) override {
     return DefaultAction(xla_while);
   }
   Status HandleSend(HloInstruction* send) override {

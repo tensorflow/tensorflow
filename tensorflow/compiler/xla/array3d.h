@@ -20,9 +20,9 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <numeric>
 #include <random>
-#include <vector>
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -39,11 +39,15 @@ class Array3D {
  public:
   // Creates an array of dimensions n1 x n2 x n3, uninitialized values.
   Array3D(const int64 n1, const int64 n2, const int64 n3)
-      : n1_(n1), n2_(n2), n3_(n3), values_(n1 * n2 * n3) {}
+      : n1_(n1), n2_(n2), n3_(n3), values_(new T[n1 * n2 * n3]) {
+    Fill(T());
+  }
 
   // Creates an array of dimensions n1 x n2 x n3, initialized to value.
   Array3D(const int64 n1, const int64 n2, const int64 n3, const T value)
-      : n1_(n1), n2_(n2), n3_(n3), values_(n1 * n2 * n3, value) {}
+      : n1_(n1), n2_(n2), n3_(n3), values_(new T[n1 * n2 * n3]) {
+    Fill(value);
+  }
 
   // Creates an array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
@@ -69,34 +73,50 @@ class Array3D {
     }
   }
 
-  T& operator()(const int64 n1, const int64 n2, const int64 n3) {
-    CHECK_LT(n1, n1_);
-    CHECK_LT(n2, n2_);
-    CHECK_LT(n3, n3_);
-    return values_[n1 * n2_ * n3_ + n2 * n3_ + n3];
+  Array3D(const Array3D<T>& other)
+      : Array3D(other.n1(), other.n2(), other.n3()) {
+    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
+              &values_[0]);
   }
 
-  const T& operator()(const int64 n1, const int64 n2, const int64 n3) const {
-    CHECK_LT(n1, n1_);
-    CHECK_LT(n2, n2_);
-    CHECK_LT(n3, n3_);
-    return values_[n1 * n2_ * n3_ + n2 * n3_ + n3];
+  Array3D<T>& operator=(const Array3D<T>& other) {
+    n1_ = other.n1();
+    n2_ = other.n2();
+    n3_ = other.n3();
+    values_.reset(new T[num_elements()]);
+    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
+              &values_[0]);
+    return *this;
+  }
+
+  T& operator()(const int64 i1, const int64 i2, const int64 i3) {
+    CHECK_LT(i1, n1_);
+    CHECK_LT(i2, n2_);
+    CHECK_LT(i3, n3_);
+    return values_[i1 * n2_ * n3_ + i2 * n3_ + i3];
+  }
+
+  const T& operator()(const int64 i1, const int64 i2, const int64 i3) const {
+    CHECK_LT(i1, n1_);
+    CHECK_LT(i2, n2_);
+    CHECK_LT(i3, n3_);
+    return values_[i1 * n2_ * n3_ + i2 * n3_ + i3];
   }
 
   // Access to the array's dimensions.
   int64 n1() const { return n1_; }
   int64 n2() const { return n2_; }
   int64 n3() const { return n3_; }
-  int64 num_elements() const { return values_.size(); }
+  int64 num_elements() const { return n1_ * n2_ * n3_; }
 
   // Fills the array with the given value.
   void Fill(const T& value) {
-    std::fill(values_.begin(), values_.end(), value);
+    std::fill(&values_[0], &values_[0] + num_elements(), value);
   }
 
   // Fills the array with sequentially increasing values.
   void FillIota(const T& value) {
-    std::iota(values_.begin(), values_.end(), value);
+    std::iota(&values_[0], &values_[0] + num_elements(), value);
   }
 
   // Fills the array with random normal values with a mean of 0 and standard
@@ -106,8 +126,8 @@ class Array3D {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean,
                                                   static_cast<double>(value));
-    for (auto& v : values_) {
-      v = static_cast<T>(distribution(g));
+    for (int64 i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<T>(distribution(g));
     }
   }
 
@@ -115,7 +135,7 @@ class Array3D {
   int64 n1_;
   int64 n2_;
   int64 n3_;
-  std::vector<T> values_;
+  std::unique_ptr<T[]> values_;
 };
 
 }  // namespace xla

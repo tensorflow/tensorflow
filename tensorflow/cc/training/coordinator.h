@@ -36,8 +36,8 @@ class RunnerInterface {
  public:
   virtual ~RunnerInterface() {}
   virtual Status Join() = 0;
-  virtual Status ExportRunMetadata(RunMetadata* metadata) const {
-    return Status(error::INVALID_ARGUMENT, "No RunMetadata to export.");
+  virtual Status ExportCostGraph(CostGraphDef* cost_graph) const {
+    return Status(error::INVALID_ARGUMENT, "No cost model to export.");
   }
   /// Returns true iff the runner is running, i.e. if it is trying to populate
   /// its queue.

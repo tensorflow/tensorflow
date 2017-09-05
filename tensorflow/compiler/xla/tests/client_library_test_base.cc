@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -37,21 +37,37 @@ namespace xla {
 namespace {
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
-Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
-  StatusOr<Client*> result = ClientLibrary::GetOrCreateLocalClient(platform);
+Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
+  StatusOr<Client*> result =
+      ClientLibrary::GetOrCreateLocalClient(client_options);
   TF_CHECK_OK(result.status()) << "could not create local client for testing";
   return result.ValueOrDie();
 }
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(
-    se::Platform* platform,
-    tensorflow::gtl::ArraySlice<string> disabled_pass_names)
-    : client_(GetOrCreateLocalClientOrDie(platform)) {
-  legacy_flags::HloPassPipelineFlags* flags =
-      legacy_flags::GetHloPassPipelineFlags();
-  flags->xla_disable_hlo_passes =
-      tensorflow::str_util::Join(disabled_pass_names, ",");
+    perftools::gputools::Platform* platform,
+    const LocalClientOptions& client_options)
+    : client_(GetOrCreateLocalClientOrDie(client_options)),
+      execution_options_(CreateDefaultExecutionOptions()) {
+  CHECK_EQ(platform, client_options.platform());
+  // Disabling constant_folding so that tests (usually written using Constants)
+  // will exercise the intended code paths, instead of being constant folded.
+  //
+  // TODO(b/38354253): Constant folding is currently disabled. Change tests to
+  // use Parameters instead of Constants, and re-enable constant folding by
+  // default.
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "constant_folding");
+}
+
+ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
+    : execution_options_(CreateDefaultExecutionOptions()) {
+  LocalClientOptions default_options;
+  default_options.set_platform(platform);
+  client_ = GetOrCreateLocalClientOrDie(default_options);
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "constant_folding");
 }
 
 string ClientLibraryTestBase::TestName() const {
@@ -67,12 +83,9 @@ StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    ComputationBuilder* builder,
+    const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout) {
-  // Build the computation, as a convenience.
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
@@ -80,6 +93,15 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
   }
   return client_->ExecuteAndTransfer(computation, arguments,
                                      &execution_options);
+}
+
+StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
+    ComputationBuilder* builder,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const Shape* shape_with_output_layout) {
+  // Build the computation, as a convenience.
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
 }
 
 std::unique_ptr<GlobalData> ClientLibraryTestBase::ExecuteOrDie(
@@ -108,14 +130,14 @@ string ClientLibraryTestBase::ExecuteToString(
   if (!result.ok()) {
     return result.status().ToString();
   } else {
-    return LiteralUtil::ToString(*result.ValueOrDie());
+    return result.ValueOrDie()->ToString();
   }
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, const tensorflow::core::Bitmap& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1(expected);
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -136,18 +158,121 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
                                                   error, shape_with_layout));
 }
 
+tensorflow::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
+    const xla::Computation& computation, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const std::function<void(const Literal& actual,
+                             const string& error_message)>& verify_output) {
+  // Try with no layout requirement.
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
+  verify_output(*actual, "");
+
+  // Try with all output layouts.
+  std::vector<int64> minor_to_major(ShapeUtil::Rank(expected.shape()));
+  std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+  do {
+    auto layout = ShapeUtil::MakeShapeWithLayout(
+        expected.shape().element_type(),
+        AsInt64Slice(expected.shape().dimensions()), minor_to_major);
+    TF_ASSIGN_OR_RETURN(auto actual,
+                        ExecuteAndTransfer(computation, arguments, &layout));
+    verify_output(*actual, tensorflow::strings::StrCat(
+                               "Test with output layout: ",
+                               ShapeUtil::HumanStringWithLayout(layout)));
+  } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
+    const xla::Computation& computation, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const std::function<void(const Literal& actual,
+                             const string& error_message)>& verify_output,
+    const Shape* output_with_layout) {
+  std::vector<GlobalData*> arguments_with_layout;
+  std::vector<string> layout_strings;
+  // This is a recursive function. It's an std::function instead of a lambda
+  // because it needs to capture itself. The index is the index of the argument
+  // to try all layouts for.
+  std::function<tensorflow::Status(int64)> choose;
+  choose = [&, this](int64 index) -> tensorflow::Status {
+    if (index < arguments.size()) {
+      // Try out all layouts for the operand.
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          client_->Transfer(*arguments[index], nullptr));
+      // Skip tuples because they don't have a rank.
+      if (ShapeUtil::IsTuple(literal->shape())) {
+        layout_strings.push_back(
+            ShapeUtil::HumanStringWithLayout(literal->shape()));
+        arguments_with_layout.push_back(arguments[index]);
+        TF_RETURN_IF_ERROR(choose(index + 1));
+        arguments_with_layout.pop_back();
+        layout_strings.pop_back();
+        return tensorflow::Status::OK();
+      }
+
+      std::vector<int64> minor_to_major(ShapeUtil::Rank(literal->shape()));
+      std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+      do {
+        auto literal_relayout =
+            literal->Relayout(LayoutUtil::MakeLayout(minor_to_major));
+        layout_strings.push_back(
+            ShapeUtil::HumanStringWithLayout(literal_relayout->shape()));
+        TF_ASSIGN_OR_RETURN(auto data,
+                            client_->TransferToServer(*literal_relayout));
+        arguments_with_layout.push_back(data.get());
+        TF_RETURN_IF_ERROR(choose(index + 1));
+        arguments_with_layout.pop_back();
+        layout_strings.pop_back();
+      } while (
+          std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+      return tensorflow::Status::OK();
+    }
+
+    // Every argument has an assigned layout.
+    TF_ASSIGN_OR_RETURN(
+        auto actual,
+        ExecuteAndTransfer(
+            computation,
+            tensorflow::gtl::ArraySlice<GlobalData*>(arguments_with_layout),
+            output_with_layout));
+    string error_message = "Test with input layouts: ";
+    for (const auto& str : layout_strings) {
+      tensorflow::strings::StrAppend(&error_message, str, " ");
+    }
+    verify_output(*actual, error_message);
+    return tensorflow::Status::OK();
+  };
+
+  return choose(0);
+}
+
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_layout) {
-  TF_ASSIGN_OR_RETURN(
-      auto actual, ExecuteAndTransfer(builder, arguments, shape_with_layout));
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (ShapeUtil::ElementIsFloating(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
                  expected.shape().element_type() == PRED);
   }
+  auto expect_equal = [&](const Literal& actual, const string& error_message) {
+    LiteralTestUtil::ExpectEqual(expected, actual, error_message);
+  };
+  if (execution_options_.debug_options().xla_test_all_output_layouts()) {
+    return ComputeAndCompareLiteralWithAllOutputLayouts(
+        computation, expected, arguments, expect_equal);
+  }
+  if (execution_options_.debug_options().xla_test_all_input_layouts()) {
+    return ComputeAndCompareLiteralWithAllInputLayouts(
+        computation, expected, arguments, expect_equal, shape_with_layout);
+  }
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
+                                                      shape_with_layout));
   LiteralTestUtil::ExpectEqual(expected, *actual);
   return tensorflow::Status::OK();
 }
@@ -156,9 +281,21 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
-  TF_ASSIGN_OR_RETURN(
-      auto actual, ExecuteAndTransfer(builder, arguments, shape_with_layout));
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()));
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  auto expect_near = [&](const Literal& actual, const string& error_message) {
+    LiteralTestUtil::ExpectNear(expected, actual, error, error_message);
+  };
+  if (execution_options_.debug_options().xla_test_all_output_layouts()) {
+    return ComputeAndCompareLiteralWithAllOutputLayouts(computation, expected,
+                                                        arguments, expect_near);
+  }
+  if (execution_options_.debug_options().xla_test_all_input_layouts()) {
+    return ComputeAndCompareLiteralWithAllInputLayouts(
+        computation, expected, arguments, expect_near, shape_with_layout);
+  }
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
+                                                      shape_with_layout));
   LiteralTestUtil::ExpectNear(expected, *actual, error);
   return tensorflow::Status::OK();
 }
@@ -174,12 +311,12 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   auto actual = actual_status.ConsumeValueOrDie();
 
   // Turn the expected value into a literal.
-  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1U8(expected);
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1U8(expected);
 
-  VLOG(1) << "expected: " << LiteralUtil::ToString(*expected_literal);
-  VLOG(1) << "actual:   " << LiteralUtil::ToString(*actual);
+  VLOG(1) << "expected: " << expected_literal->ToString();
+  VLOG(1) << "actual:   " << actual->ToString();
 
-  EXPECT_EQ(expected, actual->u8s());
+  EXPECT_EQ(expected, actual->u8s_string());
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(

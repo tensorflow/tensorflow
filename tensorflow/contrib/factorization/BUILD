@@ -55,6 +55,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -138,6 +139,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = [
+        "no_pip",  # b/38283730
         "notsan",  # Flaky: b/30756419
     ],
 )
@@ -170,10 +172,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:embedding_ops",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -197,11 +200,12 @@ tf_py_test(
 # Estimators tests
 tf_py_test(
     name = "wals_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/ops/wals_test.py"],
     additional_deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        ":factorization_ops_test_utils_py",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -211,6 +215,11 @@ tf_py_test(
         "//tensorflow/python:platform_benchmark",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+    ],
+    tags = [
+        "manual",
+        "noasan",  # times out b/63678675
+        "nomsan",
     ],
 )
 

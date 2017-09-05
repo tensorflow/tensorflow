@@ -20,9 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import categorical
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import distribution_util as distribution_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +29,9 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class Mixture(distribution.Distribution):
@@ -42,6 +43,27 @@ class Mixture(distribution.Distribution):
 
   Methods supported include `log_prob`, `prob`, `mean`, `sample`, and
   `entropy_lower_bound`.
+
+
+  #### Examples
+
+  ```python
+  # Create a mixture of two Gaussians:
+  ds = tf.contrib.distributions
+  mix = 0.3
+  bimix_gauss = ds.Mixture(
+    cat=ds.Categorical(probs=[mix, 1.-mix]),
+    components=[
+      ds.Normal(loc=-1., scale=0.1),
+      ds.Normal(loc=+1., scale=0.5),
+  ])
+
+  # Plot the PDF.
+  import matplotlib.pyplot as plt
+  x = tf.linspace(-2., 3., int(1e4)).eval()
+  plt.plot(x, bimix_gauss.prob(x).eval());
+  ```
+
   """
 
   def __init__(self,
@@ -195,26 +217,53 @@ class Mixture(distribution.Distribution):
   def _event_shape(self):
     return self._static_event_shape
 
+  def _expand_to_event_rank(self, x):
+    """Expand the rank of x up to static_event_rank times for broadcasting.
+
+    The static event rank was checked to not be None at construction time.
+
+    Args:
+      x: A tensor to expand.
+    Returns:
+      The expanded tensor.
+    """
+    expanded_x = x
+    for _ in range(self.event_shape.ndims):
+      expanded_x = array_ops.expand_dims(expanded_x, -1)
+    return expanded_x
+
   def _mean(self):
     with ops.control_dependencies(self._assertions):
       distribution_means = [d.mean() for d in self.components]
       cat_probs = self._cat_probs(log_probs=False)
-      # This was checked to not be None at construction time.
-      static_event_rank = self.event_shape.ndims
-      # Expand the rank of x up to static_event_rank times so that
-      # broadcasting works correctly.
-      def expand(x):
-        expanded_x = x
-        for _ in range(static_event_rank):
-          expanded_x = array_ops.expand_dims(expanded_x, -1)
-        return expanded_x
-      cat_probs = [expand(c_p) for c_p in cat_probs]
+      cat_probs = [self._expand_to_event_rank(c_p) for c_p in cat_probs]
       partial_means = [
           c_p * m for (c_p, m) in zip(cat_probs, distribution_means)
       ]
       # These should all be the same shape by virtue of matching
       # batch_shape and event_shape.
       return math_ops.add_n(partial_means)
+
+  def _stddev(self):
+    with ops.control_dependencies(self._assertions):
+      distribution_means = [d.mean() for d in self.components]
+      distribution_devs = [d.stddev() for d in self.components]
+      cat_probs = self._cat_probs(log_probs=False)
+
+      stacked_means = array_ops.stack(distribution_means, axis=-1)
+      stacked_devs = array_ops.stack(distribution_devs, axis=-1)
+      cat_probs = [self._expand_to_event_rank(c_p) for c_p in cat_probs]
+      broadcasted_cat_probs = (array_ops.stack(cat_probs, axis=-1) *
+                               array_ops.ones_like(stacked_means))
+
+      batched_dev = distribution_utils.mixture_stddev(
+          array_ops.reshape(broadcasted_cat_probs, [-1, len(self.components)]),
+          array_ops.reshape(stacked_means, [-1, len(self.components)]),
+          array_ops.reshape(stacked_devs, [-1, len(self.components)]))
+
+      # I.e. re-shape to list(batch_shape) + list(event_shape).
+      return array_ops.reshape(batched_dev,
+                               array_ops.shape(broadcasted_cat_probs)[:-1])
 
   def _log_prob(self, x):
     with ops.control_dependencies(self._assertions):
@@ -228,6 +277,19 @@ class Mixture(distribution.Distribution):
       concat_log_probs = array_ops.stack(final_log_probs, 0)
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
+
+  def _log_cdf(self, x):
+    with ops.control_dependencies(self._assertions):
+      x = ops.convert_to_tensor(x, name="x")
+      distribution_log_cdfs = [d.log_cdf(x) for d in self.components]
+      cat_log_probs = self._cat_probs(log_probs=True)
+      final_log_cdfs = [
+          cat_lp + d_lcdf
+          for (cat_lp, d_lcdf) in zip(cat_log_probs, distribution_log_cdfs)
+      ]
+      concatted_log_cdfs = array_ops.stack(final_log_cdfs, axis=0)
+      mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
+      return mixture_log_cdf
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))

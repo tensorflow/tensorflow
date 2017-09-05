@@ -211,9 +211,21 @@ class ComputationBuilder {
   //
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
+  // The strides parameter determines the stride over the slice
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
-                              tensorflow::gtl::ArraySlice<int64> limit_indices);
+                              tensorflow::gtl::ArraySlice<int64> limit_indices,
+                              tensorflow::gtl::ArraySlice<int64> strides);
+
+  // Enqueues a slice operation in a given dimension, taking all other
+  // dimensions as they are; e.g. if dimno is 1 from start_index 2 to
+  // limit_index 4 by 1, and the shape is f32[7,8,9], this call is short-hand
+  // for:
+  //
+  //  array[:, 2:4:1, :]
+  ComputationDataHandle SliceInDim(const ComputationDataHandle& operand,
+                                   int64 start_index, int64 limit_index,
+                                   int64 stride, int64 dimno);
 
   // Enqueues a slice operation onto the computation that slices the 'operand'
   // from dynamic start indices which are passed in 'start_indices'.
@@ -508,6 +520,12 @@ class ComputationBuilder {
   // Enqueues a sign instruction onto the computation.
   ComputationDataHandle Sign(const ComputationDataHandle& operand);
 
+  // Enqueues a cosine instruction onto the computation.
+  ComputationDataHandle Cos(const ComputationDataHandle& operand);
+
+  // Enqueues a sine instruction onto the computation.
+  ComputationDataHandle Sin(const ComputationDataHandle& operand);
+
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
 
@@ -595,6 +613,11 @@ class ComputationBuilder {
                               const Computation& body,
                               const ComputationDataHandle& init);
 
+  // Enqueues a ReducePrecision node onto the computation.
+  ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
+                                        const int exponent_bits,
+                                        const int mantissa_bits);
+
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
   void Send(const ComputationDataHandle& operand, const ChannelHandle& handle);
@@ -611,15 +634,57 @@ class ComputationBuilder {
   // computation.
   StatusOr<bool> IsConstant(const ComputationDataHandle& operand);
 
+  // Normalizes operand across spatial and batch dimensions for each feature.
+  //
+  // Returns a tuple (normalized, batch_mean, batch_var) where `normalized`
+  // is the normalized result and batch_mean and batch_var are the mean and
+  // variance, respectively, across batch for the operand.
+  ComputationDataHandle BatchNormTraining(const ComputationDataHandle& operand,
+                                          const ComputationDataHandle& scale,
+                                          const ComputationDataHandle& offset,
+                                          float epsilon, int64 feature_index);
+
+  // Normalizes operand across spatial and batch dimensions for each feature.
+  //
+  // `BatchNormInference` is equivalent to calling `BatchNormTraining` without
+  // computing `mean` and `variance` for each batch inside the operation. It
+  // uses the input `mean` and `variance` instead as estimated values. The
+  // purpose of this op is to reduce latency in inference, hence the name
+  // `BatchNormInference`.
+  //
+  // The output has the same shape as `operand`, and contains the normalized
+  // values for each batch.
+  ComputationDataHandle BatchNormInference(
+      const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+      const ComputationDataHandle& offset, const ComputationDataHandle& mean,
+      const ComputationDataHandle& variance, float epsilon,
+      int64 feature_index);
+
+  // Calculates the gradients of a batch norm op.
+  //
+  // The inputs `batch_mean` and `batch_var` represent the mean and variance
+  // across the batch.
+  //
+  // Returns a tuple of three elements:
+  //   - grad_operand: Gradient with respect to input `operand`
+  //   - grad_offset: Gradient with respect to input `offset`
+  //   - grad_scale: Gradient with respect to input `scale`
+  ComputationDataHandle BatchNormGrad(const ComputationDataHandle& operand,
+                                      const ComputationDataHandle& scale,
+                                      const ComputationDataHandle& batch_mean,
+                                      const ComputationDataHandle& batch_var,
+                                      const ComputationDataHandle& grad_output,
+                                      float epsilon, int64 feature_index);
+
   // Computes the value of a constant indicated by a
   // ComputationDataHandle.
   //
-  // The handle must be from the computation currently being built -
+  // The operand must be from the computation currently being built -
   // i.e., returned from this builder with no intervening call to
   // Build(). This happens to currently work regardless of that, but
   // that may stop working at any time.
   //
-  // The handle must represent a constant value, which in this case
+  // The operand must represent a constant value, which in this case
   // means that it must not statically depend on a parameter to the
   // computation that is being built.
   //
@@ -637,8 +702,8 @@ class ComputationBuilder {
   //
   // If output_layout is non-null, then the output of the computation
   // will be stored using that layout.
-  StatusOr<std::unique_ptr<GlobalData>> ComputeConstant(
-      const ComputationDataHandle& handle,
+  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+      const ComputationDataHandle& operand,
       const Layout* output_layout = nullptr);
 
   // Returns a new ComputationBuilder whose resultant Computation is used only
@@ -667,6 +732,14 @@ class ComputationBuilder {
   // to be used by a ComputationBuilder other than the parent ComputationBuilder
   // then Build() should be used instead.
   Computation BuildAndNoteError();
+
+  // Returns the first error that was encountered while building the
+  // computation. When an error is encountered, by default we return a vacuous
+  // ComputationDataHandle and inform the user of the error that occurred while
+  // building the computation when they make a final call to Build().
+  //
+  // See also set_die_immediately_on_error().
+  Status first_error() const { return first_error_; }
 
  private:
   using PopulateLiteral = std::function<void(Literal*)>;
@@ -768,87 +841,80 @@ class ComputationBuilder {
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR0(NativeT value) {
-  return ConstantOp(
-      [value](Literal* literal) { LiteralUtil::PopulateR0(value, literal); });
+  return ConstantOp([value](Literal* literal) { literal->PopulateR0(value); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(
     tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR1(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR1(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(int64 length,
                                                      NativeT value) {
   return ConstantOp([length, value](Literal* literal) {
-    LiteralUtil::PopulateWithValue(value, {length}, literal);
+    literal->PopulateWithValue(value, {length});
   });
 }
 
 inline ComputationDataHandle ComputationBuilder::ConstantR1(
     const tensorflow::core::Bitmap& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR1(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR1(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR2(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR2(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR2FromArray2DWithLayout(values, layout, literal);
+    literal->PopulateR2FromArray2DWithLayout(values, layout);
   });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR2FromArray2D(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR2FromArray2D(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR3FromArray3DWithLayout(values, layout, literal);
+    literal->PopulateR3FromArray3DWithLayout(values, layout);
   });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR3FromArray3D(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR3FromArray3D(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4DWithLayout(values, layout, literal);
+    literal->PopulateR4FromArray4DWithLayout(values, layout);
   });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4D(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR4FromArray4D(values); });
 }
 
 }  // namespace xla

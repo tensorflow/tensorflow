@@ -30,12 +30,17 @@ class GraphOptimizer {
   ~GraphOptimizer();
 
   // Applies optimization passes specified in 'opts' to 'graph'.
-  // Maybe replace *graph with a new graph object.
-  // 'device' is device on which the 'graph' will execute. It's passed to the
-  // optimizers so that they can respect constraints if any, that should be
-  // respected.
-  void Optimize(FunctionLibraryRuntime* runtime, Env* env, Device* device,
-                std::unique_ptr<Graph>* graph);
+  // Maybe replace *graph with a new graph object.  'device' is device
+  // on which the 'graph' will execute. It's passed to the optimizers
+  // so that they can respect constraints if any, that should be
+  // respected. If shape_map is not null it maps from nodes in graph
+  // to partially-known shapes of their outputs, and may be used,
+  // e.g., in the constant folding pass.
+  void Optimize(
+      FunctionLibraryRuntime* runtime, Env* env, Device* device,
+      std::unique_ptr<Graph>* graph,
+      const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+          shape_map);
 
  private:
   OptimizerOptions opts_;

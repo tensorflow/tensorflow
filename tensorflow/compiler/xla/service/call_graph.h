@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 
@@ -53,6 +52,8 @@ enum class CallContext {
 
 string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
+
+CallContext GetInstructionCallContext(const HloInstruction* instruction);
 
 // Represents an HLO instruction which calls one or more computations.
 class CallSite {
@@ -136,7 +137,7 @@ class CallGraphNode {
   // If instruction calls any computations adds a call site for this instruction
   // to the call graph node. If the instruction calls no computations then no
   // call site is added.
-  Status AddCallSiteForInstruction(HloInstruction* instruction);
+  void AddCallSiteForInstruction(HloInstruction* instruction);
 
   // Computation represented by this call graph node.
   HloComputation* computation_;
@@ -172,12 +173,11 @@ class CallGraph {
   using VisitorFunction = std::function<Status(const CallGraphNode&)>;
 
   // Builds and returns a call graph for the given HLO module.
-  static StatusOr<std::unique_ptr<CallGraph>> Build(const HloModule* module);
+  static std::unique_ptr<CallGraph> Build(const HloModule* module);
 
   // Returns the node associated with the given computation.
-  StatusOr<const CallGraphNode*> GetNode(
-      const HloComputation* computation) const;
-  StatusOr<CallGraphNode*> GetNode(const HloComputation* computation);
+  const CallGraphNode& GetNode(const HloComputation* computation) const;
+  CallGraphNode& GetNode(const HloComputation* computation);
 
   // Returns the vector of all nodes in the call graph.
   const std::vector<CallGraphNode>& nodes() const { return nodes_; }
@@ -189,21 +189,75 @@ class CallGraph {
   Status VisitNodes(const VisitorFunction& visitor_func,
                     bool visit_unreachable_nodes = true) const;
 
+  // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
+  // dominates computation 'b' iff all callgraph paths in the caller-to-callee
+  // direction from a root computation to 'b' pass through computation
+  // 'a'. Trivially, a computation dominates itself.
+  bool Dominates(const HloComputation* a, const HloComputation* b) const;
+
+  // Returns whether 'instruction' is contained in 'computation' either directly
+  // ('instruction->parent' is 'computation') or indirectly ('computation'
+  // dominates 'instruction->parent' in the call graph).
+  bool InstructionIsNestedIn(const HloInstruction* instruction,
+                             const HloComputation* computation) const {
+    return Dominates(computation, instruction->parent());
+  }
+
+  // Returns the nearest call graph ancestors of instructions 'a' and 'b' for
+  // which the ancestors are in the same computation. An instruction is an call
+  // graph ancestor of 'a' if the instruction calls the computation containing
+  // 'a' either directly or transitively. Degeneratively an instruction is an
+  // ancestor of itself. nullptr is returned if there is no common ancestor or
+  // if the caller chain of 'a' or 'b' diverges (has multiple callers) before
+  // the nearest common ancestor.
+  //
+  // Example:
+  //
+  // Entry computation:
+  //   %x = Call(A, {Constant(42.0)})
+  //   %y = Call(B, {%x})
+  //
+  // Computation A:
+  //   %a = Negate(Param())
+  //
+  // Computation B:
+  //   %b = Exp(Param());
+  //
+  // If called with %a and %b, this function would return (%x, %y). %x is an
+  // ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
+  // computation.
+  std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
+      HloInstruction* a, HloInstruction* b) const;
+
+  // Returns whether the call graph is flattened. A call graph is flattened if
+  // every computation called in a sequential context (eg, kWhile or kCall) has
+  // zero or one callsite, and no computation is called from both a parallel and
+  // sequential context. The call graph of a module can be flattened with
+  // FlattenCallGraph.
+  bool IsFlattened() const;
+
   string ToString() const;
 
  private:
   CallGraph(const HloModule* module);
 
   // Sets the call contexts for every node in the graph.
-  Status SetCallContexts();
+  void SetCallContexts();
 
   // Helper method for VisitNodes(). Traverses the call graph from 'node' in DFS
   // post order (callee before caller) calling visitor_func on each node. Adds
   // nodes to 'visited' as each node is visited. Skips nodes already in
   // 'visited'.
   Status VisitNodesInternal(
-      const VisitorFunction& visitor_func, const CallGraphNode* node,
+      const VisitorFunction& visitor_func, const CallGraphNode& node,
       tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
+
+  // Recursive helper for computing whether 'a' dominates 'b' in the call
+  // graph. 'b_ancestor' is the currently visited node (which starts at 'b'),
+  // and 'visited' is the set of computations which have been visited.
+  bool DominatesHelper(
+      const HloComputation* a, const HloComputation* b,
+      tensorflow::gtl::FlatSet<const HloComputation*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;

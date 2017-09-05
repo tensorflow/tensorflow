@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -56,8 +57,8 @@ Executable::ExecuteOnStreams(
 
 Status Executable::DumpSessionModule() {
   TF_RET_CHECK(dumping());
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_executions_to;
+  const string& directory_path =
+      module_config().debug_options().xla_dump_executions_to();
   VersionedComputationHandle versioned_handle = entry_computation_handle();
   // This filename does not include the version number because the computation
   // is only ever executed at one version.
@@ -71,7 +72,7 @@ Status Executable::DumpSessionModule() {
 // Removes illegal characters from filenames.
 static void SanitizeFilename(string* name) {
   for (char& c : *name) {
-    if (c == '/' || c == '\\') {
+    if (c == '/' || c == '\\' || c == '[' || c == ']') {
       c = '_';
     }
   }
@@ -82,7 +83,11 @@ static void SanitizeFilename(string* name) {
     const SessionModule& session_module) {
   tensorflow::Env* env = tensorflow::Env::Default();
   if (!env->IsDirectory(directory_path).ok()) {
-    TF_RETURN_IF_ERROR(env->CreateDir(directory_path));
+    // NB! CreateDir does not work reliably with multiple XLA threads -- two
+    // threads can race to observe the absence of the dump directory and
+    // simultaneously try to create it, causing the "losing" thread to get a
+    // "directory already exists" error.
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
   }
   SanitizeFilename(&filename);
   string file_path = tensorflow::io::JoinPath(directory_path, filename);

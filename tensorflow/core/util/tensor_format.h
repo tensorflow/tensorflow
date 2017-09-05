@@ -25,92 +25,250 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Tensor format for input/output activations used in convolution operations.
+// The mnemonics specify the meaning of each tensor dimension sorted from
+// largest to smallest memory stride.
+// N = Batch, H = Image Height, W = Image Width, C = Number of Channels.
 enum TensorFormat {
+  // FORMAT_NHWC is the default format in TensorFlow.
   FORMAT_NHWC = 0,
+
+  // FORMAT_NCHW often improves performance on GPUs.
   FORMAT_NCHW = 1,
+
+  // NCHW_VECT_C is the most performant tensor format for cudnn6's quantized
+  // int8 convolution and fused convolution. It is laid out in the same order
+  // as NCHW, except that the size of the Channels dimension is divided by 4,
+  // and a new dimension of size 4 is appended, which packs 4 adjacent channel
+  // activations for the same pixel into an int32. Thus an NCHW format tensor
+  // with dimensions [N, C, H, W] would have dimensions [N, C/4, H, W, 4] in
+  // NCHW_VECT_C format.
+  // A pre-condition of this format is that C must be a multiple of 4.
+  FORMAT_NCHW_VECT_C = 2,
+};
+
+// Tensor format for convolutional filters.
+// The mnemonics specify the meaning of each tensor dimension sorted
+// from largest to smallest memory stride.
+// H = Kernel Height, W = Kernel Width, I = Input Channels, O = Output Channels.
+// Note: In cudnnGetFilter4dDescriptor(), 'O' is called 'K', 'I' is called 'C'.
+enum FilterTensorFormat {
+  // FORMAT_HWIO is the default filter format in TensorFlow.
+  // Ops that do not have a 'filter_format' attribute will assume this format.
+  FORMAT_HWIO = 0,
+
+  // FORMAT_OIHW often improves performance on GPUs.
+  FORMAT_OIHW = 1,
+
+  // OIHW_VECT_I is the most performant tensor format for cudnn6's quantized
+  // int8 convolution and fused convolution. It is analagous to the NCHW_VECT_C
+  // data format. It is laid out in the same order as OIHW, except that the size
+  // of the Input Channels dimension is divided by 4, and a new dimension of
+  // size 4 is appended, which packs 4 adjacent input channel weights into an
+  // int32. Thus an OIHW format filter with dimensions [O, I, H, W] would have
+  // dimensions [O, I/4, H, W, 4] in OIHW_VECT_I format.
+  // A pre-condition of this format is that I must be a multiple of 4.
+  FORMAT_OIHW_VECT_I = 2,
 };
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
 bool FormatFromString(const string& format_str, TensorFormat* format);
 
+// Parse tensor format from the given string.
+// Return true if the parsing succeeds, and false if it fails.
+bool FilterFormatFromString(const string& format_str,
+                            FilterTensorFormat* format);
+
 // Convert a tensor format into string.
 string ToString(TensorFormat format);
 
-// Returns the index of the batch dimension.
-inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
-  if (format == FORMAT_NHWC || format == FORMAT_NCHW) {
-    return 0;
+// Convert a filter tensor format into string.
+string ToString(FilterTensorFormat format);
+
+// Returns the number of spatial dims of a tensor of rank 'num_dims' and tensor
+// format 'format'.
+inline int GetTensorSpatialDims(int num_dims, TensorFormat format) {
+  if (format == FORMAT_NCHW_VECT_C) {
+    return num_dims - 3;  // Exclude N,C,InnerC.
   } else {
-    LOG(FATAL) << "Unknown format " << format;
+    return num_dims - 2;  // Exclude N,C.
   }
 }
 
-// Returns the index of the feature dimension.
-inline int GetTensorFeatureDimIndex(int num_dims, TensorFormat format) {
-  if (format == FORMAT_NHWC) {
-    return num_dims - 1;
-  } else if (format == FORMAT_NCHW) {
-    return 1;
+inline int GetFilterTensorSpatialDims(int num_dims, FilterTensorFormat format) {
+  if (format == FORMAT_OIHW_VECT_I) {
+    return num_dims - 3;  // Exclude O,I,InnerI.
   } else {
-    LOG(FATAL) << "Unknown format " << format;
+    return num_dims - 2;  // Exclude O,I.
   }
+}
+
+// Returns the rank of a tensor with 'num_spatial_dims' spatial dimensions and
+// tensor format 'format'. This is the inverse of GetTensorSpatialDims.
+inline int GetTensorDimsFromSpatialDims(int num_spatial_dims,
+                                        TensorFormat format) {
+  if (format == FORMAT_NCHW_VECT_C) {
+    return num_spatial_dims + 3;  // Include N,C,InnerC.
+  } else {
+    return num_spatial_dims + 2;  // Include N,C.
+  }
+}
+
+// Returns the rank of a tensor with 'num_spatial_dims' spatial dimensions and
+// filter tensor format 'format'.
+inline int GetFilterTensorDimsFromSpatialDims(int num_spatial_dims,
+                                              FilterTensorFormat format) {
+  if (format == FORMAT_OIHW_VECT_I) {
+    return num_spatial_dims + 3;  // Include O,I,InnerI.
+  } else {
+    return num_spatial_dims + 2;  // Include O,I.
+  }
+}
+
+// Returns the index of the batch dimension.
+inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
+  switch (format) {
+    case FORMAT_NHWC:
+    case FORMAT_NCHW:
+    case FORMAT_NCHW_VECT_C:
+      return 0;
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
+  }
+}
+
+// Returns the index of the feature dimension. If format is NCHW_VECT_C, returns
+// the index of the outer feature dimension (i.e. dimension 1, whose size would
+// be num_features / 4 in this case).
+inline int GetTensorFeatureDimIndex(int num_dims, TensorFormat format) {
+  switch (format) {
+    case FORMAT_NHWC:
+      return num_dims - 1;
+    case FORMAT_NCHW:
+    case FORMAT_NCHW_VECT_C:
+      return 1;
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
+  }
+}
+
+// Returns the index of the inner feature dimension.
+inline int GetTensorInnerFeatureDimIndex(int num_dims, TensorFormat format) {
+  DCHECK_EQ(format, FORMAT_NCHW_VECT_C);
+  return num_dims - 1;
 }
 
 // Returns the index of the `dim`-th spatial dimension.
 inline int GetTensorSpatialDimIndex(int num_dims, TensorFormat format,
                                     int dim) {
-  CHECK(dim >= 0 && dim < num_dims - 2) << dim << " " << num_dims;
-  if (format == FORMAT_NHWC) {
-    return dim + 1;
-  } else if (format == FORMAT_NCHW) {
-    return dim + 2;
-  } else {
-    LOG(FATAL) << "Unknown format " << format;
+  CHECK(dim >= 0 && dim < GetTensorSpatialDims(num_dims, format))
+      << dim << " " << num_dims << " " << ToString(format);
+  switch (format) {
+    case FORMAT_NHWC:
+      return dim + 1;
+    case FORMAT_NCHW:
+    case FORMAT_NCHW_VECT_C:
+      return dim + 2;
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
-// Return the position index from a format given a dimension specification with
-// a char. The chars can be N (batch), C (channels), H (y), W (x), or
-// 0 .. (NDIMS-1).
-template <int NDIMS>
+// Returns the index of the `dim`-th spatial dimension.
+inline int GetFilterTensorSpatialDimIndex(int num_dims,
+                                          FilterTensorFormat format, int dim) {
+  CHECK(dim >= 0 && dim < GetFilterTensorSpatialDims(num_dims, format))
+      << dim << " " << num_dims << " " << ToString(format);
+  switch (format) {
+    case FORMAT_HWIO:
+      return dim;
+    case FORMAT_OIHW:
+    case FORMAT_OIHW_VECT_I:
+      return dim + 2;
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
+  }
+}
+
+// Returns the index of the inner input channels dimension.
+inline int GetFilterTensorInnerInputChannelsDimIndex(
+    int num_dims, FilterTensorFormat format) {
+  DCHECK_EQ(format, FORMAT_OIHW_VECT_I);
+  return num_dims - 1;
+}
+
+// Returns the index of the input channels dimension.
+// If 'format' is FORMAT_OIHW_VECT_I, returns the dimension index of the
+// outer input channel (i.e. 1), which holds num_input_channels / 4.
+inline int GetFilterTensorInputChannelsDimIndex(int num_dims,
+                                                FilterTensorFormat format) {
+  switch (format) {
+    case FORMAT_HWIO:
+      return num_dims - 2;
+    case FORMAT_OIHW:
+    case FORMAT_OIHW_VECT_I:
+      return 1;
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
+  }
+}
+
+// Returns the index of the output channels dimension.
+inline int GetFilterTensorOutputChannelsDimIndex(int num_dims,
+                                                 FilterTensorFormat format) {
+  switch (format) {
+    case FORMAT_HWIO:
+      return num_dims - 1;
+    case FORMAT_OIHW:
+    case FORMAT_OIHW_VECT_I:
+      return 0;
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
+  }
+}
+
+// TODO(pauldonnelly): Replace these tensor dimension index functions with
+// constant structs to improve performance and reduce code size in Compute()
+// functions.
+
+// Return the dimension index for the specified 'dimension' of the specified
+// data 'tensor_format'.  'dimension' is a char that can be 'N' (batch size),
+// 'C' (channels), 'H' (height), 'W' (width),  or a numbered spatial dimension:
+// '0',  .. (NUM_SPATIAL_DIMS-1)..
+// If 'format' is NCHW_VECT_C and 'dimension' is 'C', returns the index of
+// the outer channel dimension (i.e. 1).
+template <int NUM_SPATIAL_DIMS>
 inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
   if (format == FORMAT_NHWC) {
+    // clang-format off
     switch (dimension) {
-      case 'N':
-        return 0;
-      case '0':
-        return 1;
-      case '1':
-        return 2;
-      case '2':
-        return 3;
-      case 'H':
-        return NDIMS - 1;
-      case 'W':
-        return NDIMS;
-      case 'C':
-        return 1 + NDIMS;
+      case 'N': return 0;
+      case '0': return 1;
+      case '1': return 2;
+      case '2': return 3;
+      case 'H': return NUM_SPATIAL_DIMS - 1;
+      case 'W': return NUM_SPATIAL_DIMS;
+      case 'C': return NUM_SPATIAL_DIMS + 1;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
         return -1;  // Avoid compiler warning about missing return value
     }
-  } else if (format == FORMAT_NCHW) {
+  } else if (format == FORMAT_NCHW || format == FORMAT_NCHW_VECT_C) {
     switch (dimension) {
-      case 'N':
-        return 0;
-      case 'C':
-        return 1;
-      case '0':
-        return 2;
-      case '1':
-        return 3;
-      case '2':
-        return 4;
-      case 'H':
-        return NDIMS;
-      case 'W':
-        return NDIMS + 1;
+      case 'N': return 0;
+      case 'C': return 1;
+      case '0': return 2;
+      case '1': return 3;
+      case '2': return 4;
+      case 'H': return NUM_SPATIAL_DIMS;
+      case 'W': return NUM_SPATIAL_DIMS + 1;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
         return -1;  // Avoid compiler warning about missing return value
@@ -119,80 +277,197 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
     LOG(FATAL) << "Invalid format: " << static_cast<int>(format);
     return -1;  // Avoid compiler warning about missing return value
   }
+  // clang-format on
+}
+
+// Return the dimension index for the specified 'dimension' of the specified
+// 'filter_tensor_format'.  'dimension' is a char that can be 'O' (num output
+// channels), 'I' (num input channels), 'H' (height), 'W' (width), or a
+// numbered spatial dimension: '0',  .. (NUM_SPATIAL_DIMS-1).
+// If 'format' is OIHW_VECT_I and 'dimension' is 'I', returns the index of the
+// outer input channels dimension (i.e. 1).
+template <int NUM_SPATIAL_DIMS>
+inline int GetFilterDimIndex(FilterTensorFormat filter_tensor_format,
+                             char dimension) {
+  // clang-format off
+  if (filter_tensor_format == FORMAT_HWIO) {
+    switch (dimension) {
+      case '0': return 0;
+      case '1': return 1;
+      case '2': return 2;
+      case 'H': return NUM_SPATIAL_DIMS - 2;
+      case 'W': return NUM_SPATIAL_DIMS - 1;
+      case 'I': return NUM_SPATIAL_DIMS;
+      case 'O': return NUM_SPATIAL_DIMS + 1;
+      default:
+        LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1;  // Avoid compiler warning about missing return value
+    }
+  } else if (filter_tensor_format == FORMAT_OIHW ||
+             filter_tensor_format == FORMAT_OIHW_VECT_I) {
+    switch (dimension) {
+      case 'O': return 0;
+      case 'I': return 1;
+      case '0': return 2;
+      case '1': return 3;
+      case '2': return 4;
+      case 'H': return NUM_SPATIAL_DIMS;
+      case 'W': return NUM_SPATIAL_DIMS + 1;
+      default:
+        LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1;  // Avoid compiler warning about missing return value
+    }
+  } else {
+    LOG(FATAL) << "Invalid format: " << static_cast<int>(filter_tensor_format);
+    return -1;  // Avoid compiler warning about missing return value
+  }
+  // clang-format on
 }
 
 inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
   return GetTensorDimIndex<2>(format, dimension);
 }
 
-// Return the given tensor dimension from a tensor. The tensor is interpretted
-// using the specified format, and a dimension specification using a char.
-inline int64 GetTensorDim(const Tensor& tensor, TensorFormat format,
-                          char dimension) {
-  int index = (tensor.dims() == 5) ? GetTensorDimIndex<3>(format, dimension)
-                                   : GetTensorDimIndex<2>(format, dimension);
-  CHECK(index >= 0 && index < tensor.dims())
-      << "Invalid index from the dimension: " << index << ", " << format << ", "
-      << dimension;
-  return tensor.dim_size(index);
+// Return the element from 'dimension_attributes' that corresponds to the
+// specified 'dimension' according to 'tensor_format'.
+template <typename T>
+T GetTensorDim(gtl::ArraySlice<T> dimension_attributes,
+               TensorFormat tensor_format, char dimension) {
+  int index =
+      (GetTensorSpatialDims(dimension_attributes.size(), tensor_format) == 3)
+          ? GetTensorDimIndex<3>(tensor_format, dimension)
+          : GetTensorDimIndex<2>(tensor_format, dimension);
+  CHECK(index >= 0 && index < dimension_attributes.size())
+      << "Invalid index from the dimension: " << index << ", " << tensor_format
+      << ", " << dimension;
+  return dimension_attributes[index];
 }
 
-// Return the given tensor dimension from a vector that represents the
-// dimensions of a tensor.
-// The tensor is interpretted using the specified format, and a dimension
-// specification using a char.
-inline int64 GetTensorDim(const TensorShape& tensor_shape, TensorFormat format,
-                          char dimension) {
-  int index = (tensor_shape.dims() == 5)
-                  ? GetTensorDimIndex<3>(format, dimension)
-                  : GetTensorDimIndex<2>(format, dimension);
-  CHECK(index >= 0 && index < tensor_shape.dims())
-      << "Invalid index from the dimension: " << index << ", " << format << ", "
-      << dimension;
-  return tensor_shape.dim_size(index);
+// Return the element from 'dimension_attribute' that corresponds to the
+// specified 'dimension' according to 'filter_tensor_format'.
+template <typename T>
+T GetFilterDim(gtl::ArraySlice<T> dimension_attribute,
+               FilterTensorFormat filter_tensor_format, char dimension) {
+  int index = (GetFilterTensorSpatialDims(dimension_attribute.size(),
+                                          filter_tensor_format) == 3)
+                  ? GetFilterDimIndex<3>(filter_tensor_format, dimension)
+                  : GetFilterDimIndex<2>(filter_tensor_format, dimension);
+  CHECK(index >= 0 && index < dimension_attribute.size())
+      << "Invalid index from the dimension: " << index << ", "
+      << filter_tensor_format << ", " << dimension;
+  return dimension_attribute[index];
 }
 
-// Return the given tensor dimension from a tensor shape.
-// The tensor is interpretted using the specified format, and a dimension
-// specification using a char.
 template <typename T>
 T GetTensorDim(const std::vector<T>& attributes, TensorFormat format,
                char dimension) {
-  int index = (attributes.size() == 5)
-                  ? GetTensorDimIndex<3>(format, dimension)
-                  : GetTensorDimIndex<2>(format, dimension);
-  CHECK(index >= 0 && index < attributes.size())
-      << "Invalid index from the dimension: " << index << ", " << format << ", "
-      << dimension;
-  return attributes[index];
+  return GetTensorDim(gtl::ArraySlice<T>(attributes), format, dimension);
+}
+
+// Return the size of the specified 'dimension' within 'tensor_shape'
+// according to 'tensor_format'.
+inline int64 GetTensorDim(const TensorShape& tensor_shape,
+                          TensorFormat tensor_format, char dimension) {
+  return GetTensorDim(gtl::ArraySlice<int64>(tensor_shape.dim_sizes()),
+                      tensor_format, dimension);
+}
+
+// Return the size of the specified 'dimension' within 'tensor_shape'
+// according to 'tensor_filter_format'.
+inline int64 GetFilterDim(const TensorShape& tensor_shape,
+                          FilterTensorFormat tensor_filter_format,
+                          char dimension) {
+  return GetFilterDim(gtl::ArraySlice<int64>(tensor_shape.dim_sizes()),
+                      tensor_filter_format, dimension);
+}
+
+// Return the size of the specified 'dimension' of 'tensor' according to
+// 'tensor_format'.
+inline int64 GetTensorDim(const Tensor& tensor, TensorFormat tensor_format,
+                          char dimension) {
+  return GetTensorDim(tensor.shape(), tensor_format, dimension);
+}
+
+// Return the size of the specified 'dimension' of 'tensor' according to
+// 'filter_tensor_format'.
+inline int64 GetFilterDim(const Tensor& tensor,
+                          FilterTensorFormat filter_tensor_format,
+                          char dimension) {
+  return GetFilterDim(tensor.shape(), filter_tensor_format, dimension);
 }
 
 // Return the string that specifies the data format for convnet operations.
 string GetConvnetDataFormatAttrString();
 string GetConvnet3dDataFormatAttrString();
 
+// Return the string that specifies the filter format for convnet operations.
+string GetConvnetFilterFormatAttrString();
+string GetConvnet3dFilterFormatAttrString();
+
 // Return a tensor shape for the given format. Works for both 2D and 3D
-// operations.
+// operations. If format is FORMAT_NCHW_VECT_C, the output TensorShape has rank
+// spatial.size()+3 (N,C,spatial,InnerC); otherwise, it has rank
+// spatial.size()+2 (e.g. N,C,spatial or N,spatial,C).
 inline TensorShape ShapeFromFormat(TensorFormat format, int64 N,
                                    gtl::ArraySlice<int64> spatial, int64 C) {
-  gtl::InlinedVector<int64, 5> dim_sizes(spatial.size() + 2);
-  dim_sizes[GetTensorBatchDimIndex(dim_sizes.size(), format)] = N;
+  const int dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
+  gtl::InlinedVector<int64, 6> dim_sizes(dims);
+  dim_sizes[GetTensorBatchDimIndex(dims, format)] = N;
   for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
-    dim_sizes[GetTensorSpatialDimIndex(dim_sizes.size(), format, dim)] =
-        spatial[dim];
+    dim_sizes[GetTensorSpatialDimIndex(dims, format, dim)] = spatial[dim];
   }
-  dim_sizes[GetTensorFeatureDimIndex(dim_sizes.size(), format)] = C;
 
+  int feature_index = GetTensorFeatureDimIndex(dims, format);
+  if (format == FORMAT_NCHW_VECT_C) {
+    CHECK_EQ(0, C % 4) << "NCHW_VECT_C requires C to be a multiple of 4, but C="
+                       << C;
+    dim_sizes[feature_index] = C / 4;
+    dim_sizes[GetTensorInnerFeatureDimIndex(dims, format)] = 4;
+  } else {
+    dim_sizes[feature_index] = C;
+  }
   return TensorShape(dim_sizes);
 }
 
-// Return a tensor shape from the given format, and tensor dimensions.
-inline TensorShape ShapeFromFormat(TensorFormat format, int64 N, int64 H,
-                                   int64 W, int64 C) {
-  return ShapeFromFormat(format, N, {{H, W}}, C);
+// Return a tensor shape of the specified 'format', and dimensions.
+// Works for both 2D and 3D operations. If 'format' is OIHW_VECT_I,
+// the output TensorShape has spatial.size() + 3 dimensions, otherwise
+// it has spatial.size() + 2 dimensions.
+inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
+                                               gtl::ArraySlice<int64> spatial,
+                                               int64 I, int64 O) {
+  const int dims = GetFilterTensorDimsFromSpatialDims(spatial.size(), format);
+  gtl::InlinedVector<int64, 6> dim_sizes(dims);
+  dim_sizes[GetFilterTensorOutputChannelsDimIndex(dims, format)] = O;
+  for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
+    dim_sizes[GetFilterTensorSpatialDimIndex(dims, format, dim)] = spatial[dim];
+  }
+
+  if (format == FORMAT_OIHW_VECT_I) {
+    CHECK_EQ(0, I % 4) << "OIHW_VECT_I requires I to be a multiple of 4, but I="
+                       << I;
+    I /= 4;
+    dim_sizes[GetFilterTensorInnerInputChannelsDimIndex(dims, format)] = 4;
+  }
+  dim_sizes[GetFilterTensorInputChannelsDimIndex(dims, format)] = I;
+  return TensorShape(dim_sizes);
 }
 
-// Return a tensor shape from the given format, and tensor dimensions.
+// Return a tensor shape of the specified 'format', and dimensions.
+inline TensorShape ShapeFromFormat(TensorFormat format, int64 N, int64 H,
+                                   int64 W, int64 C) {
+  return ShapeFromFormat(format, N, {H, W}, C);
+}
+
+// Return a filter tensor shape of the specified 'format', and dimensions.
+inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
+                                               int64 H, int64 W, int64 I,
+                                               int64 O) {
+  return ShapeFromFilterTensorFormat(format, {H, W}, I, O);
+}
+
+// Returns a copy of the specified tensor 'src_shape' converted from
+// 'src_format' to 'dst_format'.
 inline TensorShape ShapeFromFormat(TensorFormat dst_format,
                                    const TensorShape& src_shape,
                                    TensorFormat src_format) {
@@ -200,10 +475,11 @@ inline TensorShape ShapeFromFormat(TensorFormat dst_format,
     return src_shape;
   }
 
-  const int64 channels = GetTensorDim(src_shape, src_format, 'C');
   const int64 batch = GetTensorDim(src_shape, src_format, 'N');
+  const int64 channels = GetTensorDim(src_shape, src_format, 'C') *
+                         (src_format == FORMAT_NCHW_VECT_C ? 4 : 1);
 
-  if (src_shape.dims() == 5) {
+  if (GetTensorSpatialDims(src_shape.dims(), src_format) == 3) {
     return ShapeFromFormat(dst_format, batch,
                            {{GetTensorDim(src_shape, src_format, '0'),
                              GetTensorDim(src_shape, src_format, '1'),
@@ -215,6 +491,36 @@ inline TensorShape ShapeFromFormat(TensorFormat dst_format,
                          {{GetTensorDim(src_shape, src_format, 'H'),
                            GetTensorDim(src_shape, src_format, 'W')}},
                          channels);
+}
+
+// Returns a copy of the specified filter tensor 'src_shape' converted from
+// 'src_filter_format' to 'dst_filter_format'.
+inline TensorShape ShapeFromFilterFormat(FilterTensorFormat dst_filter_format,
+                                         const TensorShape& src_shape,
+                                         FilterTensorFormat src_filter_format) {
+  if (src_filter_format == dst_filter_format) {
+    return src_shape;
+  }
+
+  const int64 output_channels = GetFilterDim(src_shape, src_filter_format, 'O');
+  const int64 input_channels =
+      GetFilterDim(src_shape, src_filter_format, 'I') *
+      (src_filter_format == FORMAT_OIHW_VECT_I ? 4 : 1);
+
+  if (GetFilterTensorSpatialDims(src_shape.dims(), src_filter_format) == 3) {
+    return ShapeFromFilterTensorFormat(
+        dst_filter_format,
+        {{GetFilterDim(src_shape, src_filter_format, '0'),
+          GetFilterDim(src_shape, src_filter_format, '1'),
+          GetFilterDim(src_shape, src_filter_format, '2')}},
+        input_channels, output_channels);
+  }
+
+  return ShapeFromFilterTensorFormat(
+      dst_filter_format,
+      {{GetFilterDim(src_shape, src_filter_format, 'H'),
+        GetFilterDim(src_shape, src_filter_format, 'W')}},
+      input_channels, output_channels);
 }
 
 }  // namespace tensorflow

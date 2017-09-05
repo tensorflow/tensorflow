@@ -88,7 +88,7 @@ def bucket(tensors,
   This function is implemented using several queues. A `QueueRunner` for the
   queues is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
-  As the returned tensors are the result of of a dequeue operation, evaluating
+  As the returned tensors are the result of a dequeue operation, evaluating
   them will throw a `tf.errors.OutOfRangeError` when the input queue is
   exhausted.  If these tensors are feeding another input queue, its queue runner
   will catch this exception, however, if they are used in your main thread
@@ -251,10 +251,16 @@ def bucket(tensors,
     else:
       which_dequeue = lambda q: q.dequeue_many
 
+    def make_list(t):
+      if isinstance(t, (list, tuple)):
+        return t
+      else:
+        return [t]
+
     enqueues_to_top = [
         top_queue.enqueue(
-            [constant_op.constant(i)] + which_dequeue(q)(
-                bs, name="read_bucket_%d" % i),
+            [constant_op.constant(i)] + make_list(which_dequeue(q)(
+                bs, name="read_bucket_%d" % i)),
             name="enqueue_from_bucket_%d" % i)
         for i, (q, bs) in enumerate(zip(bucket_queues, batch_size))
     ]
@@ -282,6 +288,8 @@ def bucket(tensors,
     dequeued = top_queue.dequeue(name="dequeue_top")
     which_bucket_dequeued = dequeued[0]
     dequeued = dequeued[1:]
+    if len(dequeued) == 1:
+      dequeued = dequeued[0]
     dequeued = _restore_sparse_tensors(dequeued, sparse_info)
     return (which_bucket_dequeued, _as_original_type(tensors, dequeued))
 

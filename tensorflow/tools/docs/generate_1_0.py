@@ -18,15 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import os
 import sys
 
 import tensorflow as tf
 
 from tensorflow.python import debug as tf_debug
+from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import generate_lib
-
 
 if __name__ == '__main__':
   doc_generator = generate_lib.DocGenerator()
@@ -38,7 +37,7 @@ if __name__ == '__main__':
   # tensorflow/, we can compute the base directory (two levels up), which is
   # valid unless we're trying to apply this to a different code base, or are
   # moving the script around.
-  script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+  script_dir = os.path.dirname(tf_inspect.getfile(tf_inspect.currentframe()))
   default_base_dir = os.path.join(script_dir, '..', '..')
   doc_generator.add_base_dir_argument(default_base_dir)
 
@@ -47,10 +46,9 @@ if __name__ == '__main__':
   # tf_debug is not imported with tf, it's a separate module altogether
   doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
 
-  doc_generator.load_contrib()
   doc_generator.set_do_not_descend_map({
-      '': ['cli', 'lib', 'wrappers'],
-      'contrib': [
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
           'compiler',
           'factorization',
           'grid_rnn',
@@ -67,25 +65,18 @@ if __name__ == '__main__':
           'training',
           'tfprof',
       ],
-      'contrib.bayesflow': [
-          'entropy', 'monte_carlo',
-          'special_math', 'stochastic_gradient_estimators',
-          'stochastic_graph', 'stochastic_tensor',
-          'stochastic_variables', 'variational_inference'
+      'tf.contrib.bayesflow': [
+          'entropy', 'monte_carlo', 'special_math',
+          'stochastic_gradient_estimators', 'stochastic_graph',
+          'stochastic_tensor', 'stochastic_variables', 'variational_inference'
       ],
-      'contrib.distributions': ['bijector'],
-      'contrib.ffmpeg': ['ffmpeg_ops'],
-      'contrib.graph_editor': [
-          'edit',
-          'match',
-          'reroute',
-          'subgraph',
-          'transform',
-          'select',
-          'util'
+      'tf.contrib.distributions': ['bijector'],
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
+          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
       ],
-      'contrib.layers': ['feature_column', 'summaries'],
-      'contrib.learn': [
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
           'datasets',
           'head',
           'graph_actions',
@@ -96,7 +87,7 @@ if __name__ == '__main__':
           'preprocessing',
           'utils',
       ],
-      'contrib.util': ['loader'],
+      'tf.contrib.util': ['loader'],
   })
 
   sys.exit(doc_generator.build(flags))

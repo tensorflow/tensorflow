@@ -62,16 +62,16 @@ well as the NVIDIA GPU backend are in the TensorFlow source tree.
 The following diagram shows the compilation process in XLA:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img src="../../images/how-does-xla-work.png">
+  <img src="https://www.tensorflow.org/images/how-does-xla-work.png">
 </div>
 
-XLA comes with several optimizations and analyses that are target-independent,
+XLA comes with several optimizations and analyzes that are target-independent,
 such as [CSE](https://en.wikipedia.org/wiki/Common_subexpression_elimination),
 target-independent operation fusion, and buffer analysis for allocating runtime
 memory for the computation.
 
 After the target-independent step, XLA sends the HLO computation to a backend.
-The backend can perform further HLO-level analyses and optimizations, this time
+The backend can perform further HLO-level analyzes and optimizations, this time
 with target specific information and needs in mind. For example, the XLA GPU
 backend may perform operation fusion beneficial specifically for the GPU
 programming model and determine how to partition the computation into streams.

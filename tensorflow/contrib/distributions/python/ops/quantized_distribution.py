@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution as distributions
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distributions
+from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = ["QuantizedDistribution"]
 
@@ -232,7 +232,7 @@ class QuantizedDistribution(distributions.Distribution):
       graph_parents = self._dist._graph_parents  # pylint: disable=protected-access
 
       checks = []
-      if low is not None and high is not None:
+      if validate_args and low is not None and high is not None:
         message = "low must be strictly less than high."
         checks.append(
             check_ops.assert_less(

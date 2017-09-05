@@ -36,8 +36,11 @@ class SegmentReductionHelper(test.TestCase):
       num_elem *= x
     values = np.arange(1, num_elem + 1)
     np_values = values.reshape(input_shape).astype(dtype.as_numpy_dtype)
+    # Add a non-zero imaginary component to complex types.
+    if dtype.is_complex:
+      np_values -= 1j * np_values
     return constant_op.constant(
-        values, shape=input_shape, dtype=dtype), np_values
+        np_values, shape=input_shape, dtype=dtype), np_values
 
   def _segmentReduce(self, indices, x, op1, op2=None, num_out_rows=None):
     if not x.size:
@@ -228,11 +231,10 @@ class SegmentReductionOpTest(SegmentReductionHelper):
             s, [3, 4],
             x_init_value=np_x.astype(np.double),
             delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+      self.assertAllClose(jacob_t, jacob_n)
 
 
 class UnsortedSegmentSumTest(SegmentReductionHelper):
-  use_gpu = False
 
   def testValues(self):
     dtypes = [
@@ -244,7 +246,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     for indices in indices_flat, indices_flat.reshape(5, 2):
       shape = indices.shape + (2,)
       for dtype in dtypes:
-        with self.test_session(use_gpu=self.use_gpu):
+        with self.test_session(use_gpu=True):
           tf_x, np_x = self._input(shape, dtype=dtype)
           np_ans = self._segmentReduce(
               indices, np_x, np.add, op2=None, num_out_rows=num_segments)
@@ -258,19 +260,21 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     num_cols = 2
     indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
     num_segments = max(indices_flat) + 3
-    for indices in indices_flat, indices_flat.reshape(5, 2):
-      shape = indices.shape + (num_cols,)
-      with self.test_session(use_gpu=self.use_gpu):
-        tf_x, np_x = self._input(shape, dtype=dtypes_lib.float64)
-        s = math_ops.unsorted_segment_sum(
-            data=tf_x, segment_ids=indices, num_segments=num_segments)
-        jacob_t, jacob_n = gradient_checker.compute_gradient(
-            tf_x,
-            shape,
-            s, [num_segments, num_cols],
-            x_init_value=np_x.astype(np.double),
-            delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+    for dtype in [dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
+                  dtypes_lib.complex128]:
+      for indices in indices_flat, indices_flat.reshape(5, 2):
+        shape = indices.shape + (num_cols,)
+        with self.test_session(use_gpu=True):
+          tf_x, np_x = self._input(shape, dtype=dtype)
+          s = math_ops.unsorted_segment_sum(
+              data=tf_x, segment_ids=indices, num_segments=num_segments)
+          jacob_t, jacob_n = gradient_checker.compute_gradient(
+              tf_x,
+              shape,
+              s, [num_segments, num_cols],
+              x_init_value=np_x,
+              delta=1)
+        self.assertAllClose(jacob_t, jacob_n)
 
   def testGradientMatchesSegmentSum(self):
     # Strategy: compute the gradient for UnsortedSegmentSum and SegmentSum
@@ -283,27 +287,28 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     num_cols = 2
     shape = [n, num_cols]
     num_segments = max(indices) + 1
-    with self.test_session(use_gpu=self.use_gpu):
-      tf_x, np_x = self._input(shape, dtype=dtypes_lib.float64)
-      # Results from UnsortedSegmentSum
-      unsorted_s = math_ops.unsorted_segment_sum(
-          data=tf_x, segment_ids=indices, num_segments=num_segments)
-      (unsorted_jacob_t, unsorted_jacob_n) = gradient_checker.compute_gradient(
-          tf_x,
-          shape,
-          unsorted_s, [num_segments, num_cols],
-          x_init_value=np_x.astype(np.double),
-          delta=1)
-      # Results from SegmentSum
-      sorted_s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-      sorted_jacob_t, sorted_jacob_n = gradient_checker.compute_gradient(
-          tf_x,
-          shape,
-          sorted_s, [num_segments, num_cols],
-          x_init_value=np_x.astype(np.double),
-          delta=1)
-    self.assertAllClose(unsorted_jacob_t, sorted_jacob_t, rtol=1e-3, atol=1e-3)
-    self.assertAllClose(unsorted_jacob_n, sorted_jacob_n, rtol=1e-3, atol=1e-3)
+    for dtype in [dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
+                  dtypes_lib.complex128]:
+      with self.test_session(use_gpu=True):
+        tf_x, np_x = self._input(shape, dtype=dtype)
+        # Results from UnsortedSegmentSum
+        unsorted_s = math_ops.unsorted_segment_sum(
+            data=tf_x, segment_ids=indices, num_segments=num_segments)
+        unsorted_jacob_t, unsorted_jacob_n = (
+            gradient_checker.compute_gradient(tf_x, shape, unsorted_s,
+                                              [num_segments, num_cols],
+                                              x_init_value=np_x, delta=1))
+
+        # Results from SegmentSum
+        sorted_s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        sorted_jacob_t, sorted_jacob_n = gradient_checker.compute_gradient(
+            tf_x,
+            shape,
+            sorted_s, [num_segments, num_cols],
+            x_init_value=np_x,
+            delta=1)
+      self.assertAllClose(unsorted_jacob_t, sorted_jacob_t)
+      self.assertAllClose(unsorted_jacob_n, sorted_jacob_n)
 
   def testBadIndices(self):
     # Note: GPU kernel does not return the out-of-range error needed for this
@@ -319,7 +324,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     dtypes = [
         np.float32, np.float64, np.int64, np.int32, np.complex64, np.complex128
     ]
-    with self.test_session(use_gpu=self.use_gpu):
+    with self.test_session(use_gpu=True):
       for dtype in dtypes:
         for itype in (np.int32, np.int64):
           data = np.zeros((2, 0), dtype=dtype)
@@ -333,7 +338,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     num_segments = max(indices_flat) + 3
     for indices in indices_flat, indices_flat.reshape(5, 2):
       shape = indices.shape + (num_cols,)
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         tf_x, np_x = self._input(shape, dtype=dtypes_lib.float64)
         s = math_ops.unsorted_segment_max(data=tf_x, segment_ids=indices,
                                     num_segments=num_segments)
@@ -343,10 +348,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
             s,
             [num_segments, num_cols],
             x_init_value=np_x.astype(np.double), delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-
-class UnsortedSegmentSumGpuTest(UnsortedSegmentSumTest):
-  use_gpu = True
+      self.assertAllClose(jacob_t, jacob_n)
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
@@ -539,7 +541,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             s, [3, 4],
             x_init_value=np_x.astype(np.double),
             delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+      self.assertAllClose(jacob_t, jacob_n)
 
   def testGradientValid(self):
     # Baseline for the testGradient*Invalid* methods below.

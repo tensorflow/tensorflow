@@ -23,6 +23,7 @@ IS_SNAPSHOT="false"
 if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   IS_SNAPSHOT="true"
 fi
+PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.3.0/protoc-3.3.0-linux-x86_64.zip"
 
 set -ex
 
@@ -31,7 +32,7 @@ clean() {
   # (though if run inside a clean docker container, there won't be any dirty
   # artifacts lying around)
   mvn -q clean
-  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow/src libtensorflow/target
+  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow/src libtensorflow/target tensorflow-android/target
 }
 
 update_version_in_pom() {
@@ -49,6 +50,17 @@ download_libtensorflow() {
   jar -xvf /tmp/src.jar
   rm -rf META-INF
   cd "${DIR}"
+}
+
+# Fetch the android aar artifact from the CI build system, and update
+# its associated pom file.
+update_tensorflow_android() {
+  TARGET_DIR="${DIR}/tensorflow-android/target"
+  mkdir -p "${TARGET_DIR}"
+  python "${DIR}/tensorflow-android/update.py" \
+    --version "${TF_VERSION}" \
+    --template "${DIR}/tensorflow-android/pom-android.xml.template" \
+    --dir "${TARGET_DIR}"
 }
 
 download_libtensorflow_jni() {
@@ -81,6 +93,73 @@ download_libtensorflow_jni() {
   cd "${DIR}"
 }
 
+# Ideally, the .jar for generated Java code for TensorFlow protocol buffer files
+# would have been produced by bazel rules. However, protocol buffer library
+# support in bazel is in flux. Once
+# https://github.com/bazelbuild/bazel/issues/2626 has been resolved, perhaps
+# TensorFlow can move to something like
+# https://bazel.build/blog/2017/02/27/protocol-buffers.html
+# for generating C++, Java and Python code for protocol buffers.
+#
+# At that point, perhaps the libtensorflow build scripts
+# (tensorflow/tools/ci_build/builds/libtensorflow.sh) can build .jars for
+# generated code and this function would not need to download protoc to generate
+# code.
+generate_java_protos() {
+  # Clean any previous attempts
+  rm -rf "${DIR}/proto/tmp"
+
+  # Download protoc
+  curl -L "${PROTOC_RELEASE_URL}" -o "/tmp/protoc.zip"
+  mkdir -p "${DIR}/proto/tmp/protoc"
+  unzip -d "${DIR}/proto/tmp/protoc" "/tmp/protoc.zip"
+  rm -f "/tmp/protoc.zip"
+
+  # Download the release archive of TensorFlow protos.
+  if [[ "${IS_SNAPSHOT}" == "true" ]]; then
+    URL="http://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow/TYPE=cpu-slave/lastSuccessfulBuild/artifact/lib_package/libtensorflow_proto.zip"
+  else
+    URL="${RELEASE_URL_PREFIX}/libtensorflow_proto-${TF_VERSION}.zip"
+  fi
+  curl -L "${URL}" -o /tmp/libtensorflow_proto.zip
+  mkdir -p "${DIR}/proto/tmp/src"
+  unzip -d "${DIR}/proto/tmp/src" "/tmp/libtensorflow_proto.zip"
+  rm -f "/tmp/libtensorflow_proto.zip"
+
+  # Generate Java code
+  mkdir -p "${DIR}/proto/src/main/java"
+  find "${DIR}/proto/tmp/src" -name "*.proto" | xargs \
+  ${DIR}/proto/tmp/protoc/bin/protoc \
+    --proto_path="${DIR}/proto/tmp/src" \
+    --java_out="${DIR}/proto/src/main/java"
+
+  # Cleanup
+  rm -rf "${DIR}/proto/tmp"
+}
+
+# If successfully built, try to deploy.
+# If successfully deployed, clean.
+# If deployment fails, debug with
+#   ./release.sh ${TF_VERSION} ${SETTINGS_XML} bash
+# To get a shell to poke around the maven artifacts with.
+deploy_artifacts() {
+  # This deploys the non-android pieces
+  mvn deploy
+
+  # Sign and deploy the previously downloaded aar file as a single
+  # maven artifact.
+  if [[ "${IS_SNAPSHOT}" == "true" ]]; then
+    REPO="https://oss.sonatype.org/content/repositories/snapshots"
+  else
+    REPO="https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+  fi
+  mvn gpg:sign-and-deploy-file -Dfile="${DIR}/tensorflow-android/target/tensorflow.aar" -DpomFile="${DIR}/tensorflow-android/target/pom-android.xml" -Durl=${REPO} -DrepositoryId=ossrh
+
+  # Clean up when everything works
+  clean
+}
+
+
 if [ -z "${TF_VERSION}" ]
 then
   echo "Must set the TF_VERSION environment variable"
@@ -99,14 +178,12 @@ clean
 update_version_in_pom
 download_libtensorflow
 download_libtensorflow_jni
+update_tensorflow_android
+generate_java_protos
 # Build the release artifacts
 mvn verify
-# If successfully built, try to deploy.
-# If successfully deployed, clean.
-# If deployment fails, debug with
-#   ./release.sh ${TF_VERSION} ${SETTINGS_XML} bash
-# To get a shell to poke around the maven artifacts with.
-mvn deploy && clean
+# Push artifacts to repository
+deploy_artifacts
 
 set +ex
 if [[ "${IS_SNAPSHOT}" == "false" ]]; then

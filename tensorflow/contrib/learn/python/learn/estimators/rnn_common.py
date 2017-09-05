@@ -119,7 +119,7 @@ def apply_dropout(cells, dropout_keep_probabilities, random_seed=None):
   """
   if len(dropout_keep_probabilities) != len(cells) + 1:
     raise ValueError(
-        'The number of dropout probabilites must be one greater than the '
+        'The number of dropout probabilities must be one greater than the '
         'number of cells. Got {} cells and {} dropout probabilities.'.format(
             len(cells), len(dropout_keep_probabilities)))
   wrapped_cells = [

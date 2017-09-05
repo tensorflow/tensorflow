@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -139,6 +139,7 @@ TEST(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
                    &callback_data](std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
     std::vector<size_t> batch_data;
+    batch_data.reserve(batch->num_tasks());
     for (int i = 0; i < batch->num_tasks(); ++i) {
       batch_data.push_back(batch->mutable_task(i)->size());
     }

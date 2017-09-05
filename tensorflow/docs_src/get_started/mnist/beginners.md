@@ -15,7 +15,7 @@ MNIST is a simple computer vision dataset. It consists of images of handwritten
 digits like these:
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/MNIST.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/MNIST.png">
 </div>
 
 It also includes labels for each image, telling us which digit it is. For
@@ -88,14 +88,14 @@ Each image is 28 pixels by 28 pixels. We can interpret this as a big array of
 numbers:
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/MNIST-Matrix.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/MNIST-Matrix.png">
 </div>
 
 We can flatten this array into a vector of 28x28 = 784 numbers. It doesn't
 matter how we flatten the array, as long as we're consistent between images.
 From this perspective, the MNIST images are just a bunch of points in a
 784-dimensional vector space, with a
-[very rich structure](http://colah.github.io/posts/2014-10-Visualizing-MNIST/)
+[very rich structure](https://colah.github.io/posts/2014-10-Visualizing-MNIST/)
 (warning: computationally intensive visualizations).
 
 Flattening the data throws away information about the 2D structure of the image.
@@ -110,7 +110,7 @@ Each entry in the tensor is a pixel intensity between 0 and 1, for a particular
 pixel in a particular image.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/mnist-train-xs.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/mnist-train-xs.png">
 </div>
 
 Each image in MNIST has a corresponding label, a number between 0 and 9
@@ -124,7 +124,7 @@ vector which is 1 in the \\(n\\)th dimension. For example, 3 would be
 `[55000, 10]` array of floats.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/mnist-train-ys.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/mnist-train-ys.png">
 </div>
 
 We're now ready to actually make our model!
@@ -157,7 +157,7 @@ classes. Red represents negative weights, while blue represents positive
 weights.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-weights.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-weights.png">
 </div>
 
 We also add some extra evidence called a bias. Basically, we want to be able
@@ -202,13 +202,13 @@ although with a lot more \\(x\\)s. For each output, we compute a weighted sum of
 the \\(x\\)s, add a bias, and then apply softmax.
 
 <div style="width:55%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-scalargraph.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-regression-scalargraph.png">
 </div>
 
 If we write that out as equations, we get:
 
 <div style="width:52%; margin-left:25%; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-scalarequation.png"
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-regression-scalarequation.png"
    alt="[y1, y2, y3] = softmax(W11*x1 + W12*x2 + W13*x3 + b1,  W21*x1 + W22*x2 + W23*x3 + b2,  W31*x1 + W32*x2 + W33*x3 + b3)">
 </div>
 
@@ -217,7 +217,7 @@ and vector addition. This is helpful for computational efficiency. (It's also
 a useful way to think.)
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-vectorequation.png"
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-regression-vectorequation.png"
  alt="[y1, y2, y3] = softmax([[W11, W12, W13], [W21, W22, W23], [W31, W32, W33]]*[x1, x2, x3] + [b1, b2, b3])">
 </div>
 
@@ -231,7 +231,7 @@ Now let's turn that into something that TensorFlow can use.
 
 
 To do efficient numerical computing in Python, we typically use libraries like
-[NumPy](http://www.numpy.org/) that do expensive operations such as matrix
+[NumPy](http://www.numpy.org) that do expensive operations such as matrix
 multiplication outside Python, using highly efficient code implemented in
 another language.  Unfortunately, there can still be a lot of overhead from
 switching back to Python every operation. This overhead is especially bad if you
@@ -324,7 +324,7 @@ distribution (the one-hot vector with the digit labels).  In some rough sense, t
 cross-entropy is measuring how inefficient our predictions are for describing
 the truth. Going into more detail about cross-entropy is beyond the scope of
 this tutorial, but it's well worth
-[understanding](http://colah.github.io/posts/2015-09-Visual-Information/).
+[understanding](https://colah.github.io/posts/2015-09-Visual-Information).
 
 To implement cross-entropy we need to first add a new placeholder to input the
 correct answers:
@@ -356,7 +356,7 @@ instead.
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.  Because TensorFlow knows the entire graph of your
 computations, it can automatically use the
-[backpropagation algorithm](http://colah.github.io/posts/2015-08-Backprop/) to
+[backpropagation algorithm](https://colah.github.io/posts/2015-08-Backprop) to
 efficiently determine how your variables affect the loss you ask it to
 minimize. Then it can apply your choice of optimization algorithm to modify the
 variables and reduce the loss.
@@ -447,7 +447,7 @@ Is that good? Well, not really. In fact, it's pretty bad. This is because we're
 using a very simple model. With some small changes, we can get to 97%. The best
 models can get to over 99.7% accuracy! (For more information, have a look at
 this
-[list of results](http://rodrigob.github.io/are_we_there_yet/build/classification_datasets_results.html).)
+[list of results](https://rodrigob.github.io/are_we_there_yet/build/classification_datasets_results).)
 
 What matters is that we learned from this model. Still, if you're feeling a bit
 down about these results, check out

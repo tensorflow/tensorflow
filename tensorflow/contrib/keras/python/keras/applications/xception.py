@@ -36,8 +36,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras import layers
 from tensorflow.contrib.keras.python.keras.applications.imagenet_utils import _obtain_input_shape
@@ -54,6 +52,7 @@ from tensorflow.contrib.keras.python.keras.layers import MaxPooling2D
 from tensorflow.contrib.keras.python.keras.layers import SeparableConv2D
 from tensorflow.contrib.keras.python.keras.models import Model
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
 
 
 TF_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.4/xception_weights_tf_dim_ordering_tf_kernels.h5'
@@ -87,7 +86,7 @@ def Xception(include_top=True,
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(299, 299, 3)`.
-          It should have exactly 3 inputs channels,
+          It should have exactly 3 input channels,
           and width and height should be no smaller than 71.
           E.g. `(150, 150, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -127,7 +126,7 @@ def Xception(include_top=True,
     raise RuntimeError('The Xception model is only available with '
                        'the TensorFlow backend.')
   if K.image_data_format() != 'channels_last':
-    warnings.warn(
+    logging.warning(
         'The Xception model is only available for the '
         'input data format "channels_last" '
         '(width, height, channels). '
@@ -148,7 +147,8 @@ def Xception(include_top=True,
       default_size=299,
       min_size=71,
       data_format=K.image_data_format(),
-      include_top=include_top)
+      require_flatten=False,
+      weights=weights)
 
   if input_tensor is None:
     img_input = Input(shape=input_shape)

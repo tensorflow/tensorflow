@@ -74,8 +74,8 @@ class _Merge(Layer):
       else:
         if i != j:
           raise ValueError('Operands could not be broadcast '
-                           'together with shapes ' + str(shape1) + ' ' + str(
-                               shape2))
+                           'together with shapes ' + str(shape1) + ' ' +
+                           str(shape2))
         output_shape.append(i)
     return tuple(output_shape)
 
@@ -87,13 +87,14 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
+    input_shape = [tensor_shape.TensorShape(s).as_list() for s in input_shape]
     batch_sizes = [s[0] for s in input_shape if s is not None]
     batch_sizes = set(batch_sizes)
     batch_sizes -= set([None])
     if len(batch_sizes) > 1:
       raise ValueError('Can not merge tensors with different '
-                       'batch sizes. Got tensors with shapes : ' + str(
-                           input_shape))
+                       'batch sizes. Got tensors with shapes : ' +
+                       str(input_shape))
     if input_shape[0] is None:
       output_shape = None
     else:
@@ -110,6 +111,7 @@ class _Merge(Layer):
       self._reshape_required = False
     else:
       self._reshape_required = True
+    self.built = True
 
   def call(self, inputs):
     if self._reshape_required:
@@ -137,7 +139,8 @@ class _Merge(Layer):
             batch_size = x_shape[0]
             new_shape = K.concatenate([x_shape[1:], K.expand_dims(batch_size)])
             x_transposed = K.reshape(x,
-                                     K.stack([batch_size, K.prod(x_shape[1:])]))
+                                     K.stack([batch_size,
+                                              K.prod(x_shape[1:])]))
             x_transposed = K.permute_dimensions(x_transposed, (1, 0))
             x_transposed = K.reshape(x_transposed, new_shape)
             reshaped_inputs.append(x_transposed)
@@ -169,7 +172,7 @@ class _Merge(Layer):
     else:
       return self._merge_function(inputs)
 
-  def compute_output_shape(self, input_shape):
+  def _compute_output_shape(self, input_shape):
     if input_shape[0] is None:
       output_shape = None
     else:
@@ -218,6 +221,37 @@ class Add(_Merge):
     for i in range(1, len(inputs)):
       output += inputs[i]
     return output
+
+
+class Subtract(_Merge):
+  """Layer that subtracts two inputs.
+
+  It takes as input a list of tensors of size 2,
+  both of the same shape, and returns a single tensor, (inputs[0] - inputs[1]),
+  also of the same shape.
+
+  Examples:
+
+  ```python
+      import keras
+
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      # Equivalent to subtracted = keras.layers.subtract([x1, x2])
+      subtracted = keras.layers.Subtract()([x1, x2])
+
+      out = keras.layers.Dense(4)(subtracted)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
+  """
+
+  def _merge_function(self, inputs):
+    if len(inputs) != 2:
+      raise ValueError('`Subtract` layer should be called '
+                       'on exactly 2 inputs. Received: %s' % inputs)
+    return inputs[0] - inputs[1]
 
 
 class Multiply(_Merge):
@@ -301,6 +335,7 @@ class Concatenate(_Merge):
                        'inputs with matching shapes '
                        'except for the concat axis. '
                        'Got inputs shapes: %s' % (input_shape))
+    self.built = True
 
   def call(self, inputs):
     if not isinstance(inputs, list):
@@ -413,6 +448,7 @@ class Dot(_Merge):
       raise ValueError('Dimension incompatibility '
                        '%s != %s. ' % (shape1[axes[0]], shape2[axes[1]]) +
                        'Layer shapes: %s, %s' % (shape1, shape2))
+    self.built = True
 
   def call(self, inputs):
     x1 = inputs[0]
@@ -479,6 +515,34 @@ def add(inputs, **kwargs):
       A tensor, the sum of the inputs.
   """
   return Add(**kwargs)(inputs)
+
+
+def subtract(inputs, **kwargs):
+  """Functional interface to the `Subtract` layer.
+
+  Arguments:
+      inputs: A list of input tensors (exactly 2).
+      **kwargs: Standard layer keyword arguments.
+
+  Returns:
+      A tensor, the difference of the inputs.
+
+  Examples:
+
+  ```python
+      import keras
+
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      subtracted = keras.layers.subtract([x1, x2])
+
+      out = keras.layers.Dense(4)(subtracted)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
+  """
+  return Subtract(**kwargs)(inputs)
 
 
 def multiply(inputs, **kwargs):

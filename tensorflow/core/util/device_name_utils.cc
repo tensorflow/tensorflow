@@ -85,16 +85,29 @@ static bool ConsumeNumber(StringPiece* in, int* val) {
   }
 }
 
-/* static */
-string DeviceNameUtils::FullName(const string& job, int replica, int task,
-                                 const string& type, int id) {
+// Returns a fully qualified device name given the parameters.
+static string DeviceName(const string& job, int replica, int task,
+                         const string& device_prefix, const string& device_type,
+                         int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
-  CHECK(!type.empty());
+  CHECK(!device_type.empty());
   CHECK_LE(0, id);
   return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
-                         "/device:", type, ":", id);
+                         device_prefix, device_type, ":", id);
+}
+
+/* static */
+string DeviceNameUtils::FullName(const string& job, int replica, int task,
+                                 const string& type, int id) {
+  return DeviceName(job, replica, task, "/device:", type, id);
+}
+
+/* static */
+string DeviceNameUtils::LegacyName(const string& job, int replica, int task,
+                                   const string& type, int id) {
+  return DeviceName(job, replica, task, "/", str_util::Lowercase(type), id);
 }
 
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
@@ -373,6 +386,18 @@ bool DeviceNameUtils::SplitDeviceName(StringPiece name, string* task,
     return true;
   }
   return false;
+}
+
+std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
+    return {
+        DeviceNameUtils::FullName(pn.job, pn.replica, pn.task, pn.type, pn.id),
+        DeviceNameUtils::LegacyName(pn.job, pn.replica, pn.task, pn.type,
+                                    pn.id)};
+  } else {
+    return {};
+  }
 }
 
 }  // namespace tensorflow

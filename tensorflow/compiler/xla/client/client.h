@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -73,24 +74,6 @@ class Client {
   // (see ExecuteParallel) or to transfer data (see TransferToServer or
   // TransferToInfeed).
   StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(int64 device_count);
-
-  // Executes the given computation as above Execute(), but launches the
-  // computation asynchronously and returns before the execution is complete.
-  // Returns an ExecutionHandle that represents the launched execution, which is
-  // used to call WaitForExecution() to wait for the execution's completion.
-  StatusOr<ExecutionHandle> ExecuteAsync(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const ExecutionOptions* execution_options = nullptr);
-
-  // Waits until the given asynchronously launched execution of the computation
-  // is complete and returns the execution result. Once this is called, the
-  // given execution handle is no longer valid. If execution_profile is not
-  // nullptr then the pointed-to ExecutionProfile will be filled with profile
-  // data from the execution.
-  StatusOr<std::unique_ptr<GlobalData>> WaitForExecution(
-      const Computation& computation, const ExecutionHandle& execution,
-      ExecutionProfile* execution_profile = nullptr);
 
   // Transfer the global data provided to this client process, which is
   // returned in the provided literal. Use sparingly to avoid transfer
@@ -149,11 +132,10 @@ class Client {
 
   // Retrieves the statistics of the given computation.
   StatusOr<ComputationStats> GetComputationStats(
-      const Computation& computation) const;
+      const Computation& computation, const DebugOptions& debug_options) const;
 
   // Returns the Shape of the given array specified by 'data'. The shape
-  // includes the Layout of the array as it is stored on the service. The layout
-  // information is useful for calling TransferInProcess.
+  // includes the Layout of the array as it is stored on the service.
   StatusOr<Shape> GetShape(const GlobalData& data);
 
   // As above, but returns the shape of the provided computation (parameter
@@ -164,24 +146,6 @@ class Client {
   // Creates a channel handle that can be used to transfer data between
   // two computations via a pair of Send and Recv instructions.
   StatusOr<ChannelHandle> CreateChannelHandle();
-
-  // If the service is running in the same process as the client then the
-  // following "InProcess" transfer methods may be used. These methods enable
-  // more efficient transfer of arrays to and from the service.
-
-  // Transfer array from the service into the given buffer. The buffer must be
-  // large enough to hold the array. The array is copied verbatim (memcpy) from
-  // the service. The method GetShape should be called ahead of time
-  // to get the shape and layout of the array as it is stored in the
-  // service. The shape and layout can be used to determine how large the buffer
-  // needs to be.
-  Status TransferInProcess(const GlobalData& data, void* destination);
-
-  // Transfer array to the service from the given buffer with the given shape
-  // and layout. The service creates an internal copy of the data so the client
-  // can free the buffer when this method returns.
-  StatusOr<std::unique_ptr<GlobalData>> TransferToServerInProcess(
-      const Shape& shape, const void* buffer);
 
   StatusOr<Computation> LoadSnapshot(const SessionModule& module);
 

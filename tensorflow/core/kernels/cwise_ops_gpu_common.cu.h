@@ -133,6 +133,9 @@ struct ApproximateEqual<GPUDevice, T> {
 #define DEFINE_UNARY6(F, T0, T1, T2, T3, T4, T5) \
   DEFINE_UNARY2(F, T0, T1);                      \
   DEFINE_UNARY4(F, T2, T3, T4, T5)
+#define DEFINE_UNARY7(F, T0, T1, T2, T3, T4, T5, T6) \
+  DEFINE_UNARY2(F, T0, T1);                          \
+  DEFINE_UNARY5(F, T2, T3, T4, T5, T6)
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for BinaryFunctor.

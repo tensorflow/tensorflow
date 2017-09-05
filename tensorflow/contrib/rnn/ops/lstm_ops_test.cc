@@ -37,7 +37,7 @@ class LSTMOpsTest : public ::testing::Test {
   }
 };
 
-static string JoinedCopies(string s, int copies) {
+static string JoinedCopies(const string& s, int copies) {
   string res;
   for (int i = 0; i < copies; ++i) {
     strings::StrAppend(&res, i > 0 ? ";" : "", s);

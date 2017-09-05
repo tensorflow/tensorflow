@@ -35,7 +35,7 @@ class KerasActivationsTest(test.TestCase):
   def test_serialization(self):
     all_activations = ['softmax', 'relu', 'elu', 'tanh',
                        'sigmoid', 'hard_sigmoid', 'linear',
-                       'softplus', 'softsign']
+                       'softplus', 'softsign', 'selu']
     for name in all_activations:
       fn = keras.activations.get(name)
       ref_fn = getattr(keras.activations, name)
@@ -54,6 +54,10 @@ class KerasActivationsTest(test.TestCase):
     expected = _ref_softmax(test_values[0])
     self.assertAllClose(result[0], expected, rtol=1e-05)
 
+    with self.assertRaises(ValueError):
+      x = keras.backend.placeholder(ndim=1)
+      keras.activations.softmax(x)
+
   def test_temporal_softmax(self):
     with self.test_session():
       x = keras.backend.placeholder(shape=(2, 2, 3))
@@ -62,6 +66,22 @@ class KerasActivationsTest(test.TestCase):
       result = f([test_values])[0]
     expected = _ref_softmax(test_values[0, 0])
     self.assertAllClose(result[0, 0], expected, rtol=1e-05)
+
+  def test_selu(self):
+    x = keras.backend.placeholder(ndim=2)
+    f = keras.backend.function([x], [keras.activations.selu(x)])
+    alpha = 1.6732632423543772848170429916717
+    scale = 1.0507009873554804934193349852946
+
+    with self.test_session():
+      positive_values = np.array([[1, 2]], dtype=keras.backend.floatx())
+      result = f([positive_values])[0]
+      self.assertAllClose(result, positive_values * scale, rtol=1e-05)
+
+      negative_values = np.array([[-1, -2]], dtype=keras.backend.floatx())
+      result = f([negative_values])[0]
+      true_result = (np.exp(negative_values) - 1) * scale * alpha
+      self.assertAllClose(result, true_result)
 
   def test_softplus(self):
     def softplus(x):
@@ -152,6 +172,13 @@ class KerasActivationsTest(test.TestCase):
   def test_linear(self):
     x = np.random.random((10, 5))
     self.assertAllClose(x, keras.activations.linear(x))
+
+  def test_invalid_usage(self):
+    with self.assertRaises(ValueError):
+      keras.activations.get('unknown')
+
+    # The following should be possible but should raise a warning:
+    keras.activations.get(keras.layers.LeakyReLU())
 
 if __name__ == '__main__':
   test.main()

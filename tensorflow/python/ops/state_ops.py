@@ -13,70 +13,75 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Variables. See the @{python/state_ops} guide.
+"""Variables. See the @{$python/state_ops} guide.
 
+@@AUTO_REUSE
+@@IndexedSlices
+@@Saver
 @@Variable
-@@global_variables
-@@local_variables
-@@model_variables
-@@trainable_variables
-@@moving_average_variables
-@@global_variables_initializer
-@@local_variables_initializer
-@@variables_initializer
-@@is_variable_initialized
-@@report_uninitialized_variables
+@@VariableScope
+@@all_variables
 @@assert_variables_initialized
 @@assign
 @@assign_add
 @@assign_sub
-@@Saver
-@@latest_checkpoint
-@@get_checkpoint_state
-@@update_checkpoint_state
-@@get_variable
-@@get_local_variable
-@@VariableScope
-@@variable_scope
-@@variable_op_scope
-@@get_variable_scope
-@@make_template
-@@no_regularizer
 @@constant_initializer
-@@random_normal_initializer
-@@truncated_normal_initializer
-@@random_uniform_initializer
-@@uniform_unit_scaling_initializer
-@@zeros_initializer
-@@ones_initializer
-@@orthogonal_initializer
-@@fixed_size_partitioner
-@@variable_axis_size_partitioner
-@@min_max_variable_partitioner
-@@scatter_update
-@@scatter_add
-@@scatter_sub
-@@scatter_mul
-@@scatter_div
-@@scatter_nd_update
-@@scatter_nd_add
-@@scatter_nd_sub
-@@sparse_mask
-@@IndexedSlices
-@@initialize_all_tables
-@@tables_initializer
 @@export_meta_graph
+@@fixed_size_partitioner
+@@get_checkpoint_state
+@@get_local_variable
+@@get_variable
+@@get_variable_scope
+@@global_variables
+@@global_variables_initializer
+@@glorot_normal_initializer
+@@glorot_uniform_initializer
 @@import_meta_graph
-@@all_variables
+@@initialize_all_tables
 @@initialize_all_variables
 @@initialize_local_variables
 @@initialize_variables
+@@is_variable_initialized
+@@latest_checkpoint
+@@local_variables
+@@local_variables_initializer
+@@make_template
+@@min_max_variable_partitioner
+@@model_variables
+@@moving_average_variables
+@@no_regularizer
+@@ones_initializer
+@@orthogonal_initializer
+@@random_normal_initializer
+@@random_uniform_initializer
+@@report_uninitialized_variables
+@@scatter_add
+@@scatter_div
+@@scatter_mul
+@@scatter_nd_add
+@@scatter_nd_sub
+@@scatter_nd_update
+@@scatter_sub
+@@scatter_update
+@@sparse_mask
+@@tables_initializer
+@@trainable_variables
+@@truncated_normal_initializer
+@@uniform_unit_scaling_initializer
+@@update_checkpoint_state
+@@variable_axis_size_partitioner
+@@variable_op_scope
+@@variable_scope
+@@variables_initializer
+@@variance_scaling_initializer
+@@zeros_initializer
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -179,7 +184,7 @@ def is_variable_initialized(ref, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.is_variable_initialized(ref=ref, name=name)
   # Handle resource variables.
-  if ref.op.type == "VarHandleOp":
+  if context.in_eager_mode() or ref.op.type == "VarHandleOp":
     return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)
 
@@ -209,7 +214,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_sub(
         ref, value, use_locking=use_locking, name=name)
-  return ref.assign_sub(value, name=name)
+  return ref.assign_sub(value)
 
 
 def assign_add(ref, value, use_locking=None, name=None):
@@ -237,14 +242,15 @@ def assign_add(ref, value, use_locking=None, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_add(
         ref, value, use_locking=use_locking, name=name)
-  return ref.assign_add(value, name=name)
+  return ref.assign_add(value)
 
 
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   """Update 'ref' by assigning 'value' to it.
 
-  This operation outputs "ref" after the assignment is done.
-  This makes it easier to chain operations that need to use the reset value.
+  This operation outputs a Tensor that holds the new value of 'ref' after
+    the value has been assigned. This makes it easier to chain operations
+    that need to use the reset value.
 
   Args:
     ref: A mutable `Tensor`.
@@ -261,11 +267,11 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    Same as "ref".  Returned as a convenience for operations that want
-    to use the new value after the variable has been reset.
+    A `Tensor` that will hold the new value of 'ref' after
+      the assignment has completed.
   """
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value, name=name)
+  return ref.assign(value)

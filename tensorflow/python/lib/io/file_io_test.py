@@ -1,3 +1,4 @@
+# This Python file uses the following encoding: utf-8
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,6 +54,18 @@ class FileIoTest(test.TestCase):
     self.assertTrue(file_io.file_exists(file_path))
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual("testing", file_contents)
+
+  def testAtomicWriteStringToFileOverwriteFalse(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "old", overwrite=False)
+    with self.assertRaises(errors.AlreadyExistsError):
+      file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("old", file_contents)
+    file_io.delete_file(file_path)
+    file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("new", file_contents)
 
   def testReadBinaryMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -129,6 +142,12 @@ class FileIoTest(test.TestCase):
     self.assertItemsEqual(
         file_io.get_matching_files(os.path.join(dir_path, "file*.txt")),
         expected_match)
+    self.assertItemsEqual(file_io.get_matching_files(tuple()), [])
+    files_subset = [
+        os.path.join(dir_path, files[0]), os.path.join(dir_path, files[2])
+    ]
+    self.assertItemsEqual(
+        file_io.get_matching_files(files_subset), files_subset)
     file_io.delete_recursively(dir_path)
     self.assertFalse(file_io.file_exists(os.path.join(dir_path, "file3.txt")))
 
@@ -392,6 +411,40 @@ class FileIoTest(test.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       f.seek(-1)
 
+    with self.assertRaises(TypeError):
+      f.seek()
+
+    # TODO(jhseu): Delete after position deprecation.
+    with self.assertRaises(TypeError):
+      f.seek(offset=0, position=0)
+    f.seek(position=9)
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+
+  def testSeekFromWhat(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual("testing1\n", f.readline())
+    self.assertEqual(9, f.tell())
+
+    # Seek to 18
+    f.seek(9, 1)
+    self.assertEqual(18, f.tell())
+    self.assertEqual("testing3\n", f.readline())
+
+    # Seek back to 9
+    f.seek(9, 0)
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+
+    f.seek(-f.size(), 2)
+    self.assertEqual(0, f.tell())
+    self.assertEqual("testing1\n", f.readline())
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      f.seek(0, 3)
+
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     data = ["testing1\n", "testing2\n", "testing3\n", "\n", "testing5"]
@@ -410,6 +463,12 @@ class FileIoTest(test.TestCase):
     f.flush()
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
+
+  def testUTF8StringPath(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file")
+    file_io.write_string_to_file(file_path, "testing")
+    with file_io.FileIO(file_path, mode="rb") as f:
+      self.assertEqual(b"testing", f.read())
 
   def testEof(self):
     """Test that reading past EOF does not raise an exception."""

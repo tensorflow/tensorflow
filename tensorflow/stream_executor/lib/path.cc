@@ -16,8 +16,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
-using ::perftools::gputools::port::StrAppend;
-
 namespace perftools {
 namespace gputools {
 namespace port {

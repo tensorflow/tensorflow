@@ -20,17 +20,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 

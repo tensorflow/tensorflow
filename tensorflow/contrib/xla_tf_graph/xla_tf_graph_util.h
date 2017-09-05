@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_XLA_TF_GRAPH_XLA_TF_GRAPH_UTIL_H_
 #define TENSORFLOW_CONTRIB_XLA_TF_GRAPH_XLA_TF_GRAPH_UTIL_H_
 
+#include <unordered_map>
+
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,10 +34,37 @@ namespace xla_tf_graph {
 // implementing xla computations so that they can do experiments on their
 // specialized environments.
 
+// A structure to represent typed attributes of TensorFlow graph node.
+// This structure contains op specific attributes as members so that
+// we can treat them explicitly.
+struct XlaNode {
+  // Unique node name
+  string name;
+  // Op type of xla computation
+  string op_type;
+  // List of pair of unique id and port of input node.
+  // We store this value instead
+  // of node name in order not to wait for all XlaNodes to be constructed.
+  std::vector<std::tuple<int64, int>> input_ids;
+  // Oputput shapes
+  std::vector<TensorShape> output_shapes;
+  // Output data types
+  std::vector<DataType> output_data_types;
+
+  //---------------------------
+  // Op specific attributes
+  // #xla::OpRequest::kBinaryOpRequest
+  std::vector<int64> broadcast_dimensions;
+};
+
 // Convert a tf graph to a xla session module
 xla::StatusOr<std::unique_ptr<xla::SessionModule>>
 ConvertTfGraphToXlaSessionModule(const std::vector<XlaCompiler::Argument>& args,
                                  std::unique_ptr<Graph> graph);
+
+// Convert a xla session module to a map to XlaNode from unique id
+xla::StatusOr<std::unordered_map<int64, XlaNode>>
+ConvertXlaSessionModuleToXlaNodes(const xla::SessionModule& session_module);
 
 }  // namespace xla_tf_graph
 }  // namespace tensorflow

@@ -2,10 +2,6 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [":friends"],
-    features = [
-        "-parse_headers",
-        "no_layering_check",
-    ],
 )
 
 package_group(
@@ -28,27 +24,25 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/legacy_flags:gpu_backend_lib_flags",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@llvm//:analysis",
-        "@llvm//:asm_printer",
         "@llvm//:bit_reader",
         "@llvm//:bit_writer",
         "@llvm//:code_gen",
         "@llvm//:core",
-        "@llvm//:instrumentation",
         "@llvm//:ipo",
         "@llvm//:ir_reader",
         "@llvm//:linker",
-        "@llvm//:mc",
-        "@llvm//:nvptx_code_gen",
-        "@llvm//:objc_arc",
+        "@llvm//:nvptx_code_gen",  # buildcleaner: keep
+        "@llvm//:objc_arc",  # buildcleaner: keep
+        "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
         "@llvm//:transform_utils",

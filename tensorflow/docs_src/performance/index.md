@@ -2,10 +2,18 @@
 
 Performance is often a significant issue when training a machine learning
 model.  This section explains various ways to optimize performance.  Start
-your investigation with the following guide:
+your investigation with the @{$performance_guide$Performance Guide} and then go
+deeper with techniques detailed in @{$performance_models$High-Performance Models}:
 
-  * @{$performance_guide$Performance}, which contains a collection of best
+  * @{$performance_guide$Performance Guide}, which contains a collection of best
     practices for optimizing your TensorFlow code.
+
+  * @{$performance_models$High-Performance Models}, which contains a collection
+    of advanced techniques to build highly scalable models targeting different
+    system types and network topologies.
+
+  * @{$benchmarks$Benchmarks}, which contains a collection of benchmark
+    results.
 
 XLA (Accelerated Linear Algebra) is an experimental compiler for linear
 algebra that optimizes TensorFlow computations. The following guides explore

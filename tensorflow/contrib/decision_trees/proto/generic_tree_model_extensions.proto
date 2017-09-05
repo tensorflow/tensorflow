@@ -1,0 +1,18 @@
+// Messages in this file are not part of the basic standard established by
+// generic_tree_model.proto (see the toplevel comment in that file).
+
+syntax = "proto3";
+
+package tensorflow.decision_trees;
+
+import "tensorflow/contrib/decision_trees/proto/generic_tree_model.proto";
+
+// Used in generic_tree_model.BinaryNode.left_child_test.
+// Tests whether the feature's value belongs to the specified list,
+// (or does not belong if inverse=True).
+message MatchingValuesTest {
+  // When the feature is missing, the test's outcome is undefined.
+  FeatureId feature_id = 1;
+  repeated Value value = 2;
+  bool inverse = 3;
+}

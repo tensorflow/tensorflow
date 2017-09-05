@@ -102,11 +102,16 @@ XLA_MAKE_BINARY(Mod, b->Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Maximum, b->Max(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Minimum, b->Min(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(RealDiv, b->Div(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(ReciprocalGrad, b->Neg(b->Mul(rhs, b->Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
     b->Mul(b->Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
            b->Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
            extend_dimensions));
+XLA_MAKE_BINARY(SqrtGrad,
+                b->Div(b->Mul(rhs,
+                              XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                       lhs, extend_dimensions));
 
 static xla::ComputationDataHandle Square(xla::ComputationBuilder* builder,
                                          const xla::ComputationDataHandle& x) {
@@ -136,12 +141,36 @@ XLA_MAKE_BINARY(SoftplusGrad,
                 b->Div(lhs, b->Add(b->Exp(b->Neg(rhs)),
                                    XlaHelpers::One(b, input_type(1)))));
 
+// softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
+XLA_MAKE_BINARY(SoftsignGrad,
+                b->Div(lhs, Square(b, b->Add(XlaHelpers::One(b, input_type(0)),
+                                             b->Abs(rhs)))));
+
 XLA_MAKE_BINARY(TanhGrad, b->Mul(rhs, b->Sub(XlaHelpers::One(b, input_type(0)),
                                              b->Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, b->Pow(lhs, rhs, extend_dimensions));
 
 #undef XLA_MAKE_BINARY
+
+class ApproximateEqualOp : public XlaOpKernel {
+ public:
+  explicit ApproximateEqualOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tolerance", &tolerance_));
+  }
+
+  // Computes the max of the scalar input x and 0.
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* b = ctx->builder();
+    auto result = b->Lt(b->Abs(b->Sub(ctx->Input(0), ctx->Input(1))),
+                        XlaHelpers::FloatLiteral(b, input_type(0), tolerance_));
+    ctx->SetOutput(0, result);
+  }
+
+ private:
+  float tolerance_;
+};
+REGISTER_XLA_OP(Name("ApproximateEqual"), ApproximateEqualOp);
 
 }  // namespace
 }  // namespace tensorflow

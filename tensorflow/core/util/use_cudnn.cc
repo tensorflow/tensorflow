@@ -21,34 +21,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool CanUseCudnn() {
-  bool value;
-  Status status = ReadBoolFromEnvVar("TF_USE_CUDNN", true, &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+#define ADD_CUDNN_FLAG(func_name, flag_name, default_value)                \
+  bool func_name() {                                                       \
+    bool value;                                                            \
+    Status status = ReadBoolFromEnvVar(#flag_name, default_value, &value); \
+    if (!status.ok()) {                                                    \
+      LOG(ERROR) << status.error_message();                                \
+    }                                                                      \
+    return value;                                                          \
   }
-  return value;
-}
 
-bool CudnnUseAutotune() {
-  bool value;
-  Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", true, &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
-  }
-  return value;
-}
+ADD_CUDNN_FLAG(CanUseCudnn, TF_USE_CUDNN, true);
+ADD_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
+ADD_CUDNN_FLAG(CudnnDisableConv1x1Optimization,
+               TF_CUDNN_DISABLE_CONV_1X1_OPTIMIZATION, false);
 
-namespace internal {
-
-bool AvgPoolUseCudnn() {
-  bool value;
-  Status status = ReadBoolFromEnvVar("TF_AVGPOOL_USE_CUDNN", false, &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
-  }
-  return value;
-}
-
-}  // namespace internal
+#undef ADD_CUDNN_FLAG
 }  // namespace tensorflow

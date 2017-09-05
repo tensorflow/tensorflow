@@ -53,8 +53,8 @@ class Embedding(Layer):
   ```
 
   Arguments:
-    input_dim: int > 0. Size of the vocabulary, ie.
-        1 + maximum integer index occurring in the input data.
+    input_dim: int > 0. Size of the vocabulary,
+        i.e. maximum integer index + 1.
     output_dim: int >= 0. Dimension of the dense embedding.
     embeddings_initializer: Initializer for the `embeddings` matrix.
     embeddings_regularizer: Regularizer function applied to
@@ -68,7 +68,8 @@ class Embedding(Layer):
         If this is `True` then all subsequent layers
         in the model need to support masking or an exception will be raised.
         If mask_zero is set to True, as a consequence, index 0 cannot be
-        used in the vocabulary (input_dim should equal `|vocabulary| + 2`).
+        used in the vocabulary (input_dim should equal size of
+        vocabulary + 1).
     input_length: Length of input sequences, when it is constant.
         This argument is required if you are going to connect
         `Flatten` then `Dense` layers upstream
@@ -95,7 +96,6 @@ class Embedding(Layer):
                mask_zero=False,
                input_length=None,
                **kwargs):
-    kwargs['dtype'] = 'int32'
     if 'input_shape' not in kwargs:
       if input_length:
         kwargs['input_shape'] = (input_length,)
@@ -115,11 +115,12 @@ class Embedding(Layer):
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     self.embeddings = self.add_weight(
-        (self.input_dim, self.output_dim),
+        shape=(self.input_dim, self.output_dim),
         initializer=self.embeddings_initializer,
         name='embeddings',
         regularizer=self.embeddings_regularizer,
-        constraint=self.embeddings_constraint)
+        constraint=self.embeddings_constraint,
+        dtype=self.dtype)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
@@ -130,12 +131,26 @@ class Embedding(Layer):
 
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    if not self.input_length:
-      input_length = input_shape[1]
+    if self.input_length is None:
+      return tensor_shape.TensorShape(input_shape + [self.output_dim])
     else:
-      input_length = self.input_length
-    return tensor_shape.TensorShape(
-        [input_shape[0], input_length, self.output_dim])
+      # input_length can be tuple if input is 3D or higher
+      if isinstance(self.input_length, (list, tuple)):
+        in_lens = list(self.input_length)
+      else:
+        in_lens = [self.input_length]
+      if len(in_lens) != len(input_shape) - 1:
+        ValueError('"input_length" is %s, but received input has shape %s' %
+                   (str(self.input_length), str(input_shape)))
+      else:
+        for i, (s1, s2) in enumerate(zip(in_lens, input_shape[1:])):
+          if s1 is not None and s2 is not None and s1 != s2:
+            ValueError('"input_length" is %s, but received input has shape %s' %
+                       (str(self.input_length), str(input_shape)))
+          elif s1 is None:
+            in_lens[i] = s2
+      return tensor_shape.TensorShape(
+          (input_shape[0],) + tuple(in_lens) + (self.output_dim,))
 
   def call(self, inputs):
     if K.dtype(inputs) != 'int32':

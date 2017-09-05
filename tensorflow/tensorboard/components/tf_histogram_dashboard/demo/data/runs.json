@@ -1,4 +1,0 @@
-{
-	"run1": {"histograms": ["histo1"]}, 
-	"run2": {"histograms": ["histo2", "histo1"]}
-}

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -51,8 +50,8 @@ class GpuExecutable : public Executable {
   GpuExecutable(tensorflow::StringPiece ptx,
                 std::unique_ptr<ThunkSchedule> thunk_schedule,
                 std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<HloModuleConfig> module_config,
-                std::unique_ptr<BufferAssignment> assignment);
+                std::unique_ptr<BufferAssignment> assignment,
+                HloCostAnalysis::ShapeSizeFunction shape_size_function);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -80,6 +79,13 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
+
+  const Status EqualOrFail(const Executable& executable) {
+    // TODO(b/62952745) Implement equality test on GPU executable.
+    return Unimplemented("Equality test on GPU executable is not implemented.");
+  }
+
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -114,6 +120,9 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<BufferAssignment> assignment_;
+
+  // Function to compute the size of a given Shape, in bytes.
+  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

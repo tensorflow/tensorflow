@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 #include <vector>
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -36,19 +37,49 @@ class GraphProperties {
 
   Status InferStatically();
   Status InferDynamically(Cluster* cluster);
+  Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
-  std::vector<OpInfo::TensorProperties> GetInputProperties(
+  bool HasInputProperties(const string& name) const;
+  bool HasOutputProperties(const string& name) const;
+  const std::vector<OpInfo::TensorProperties>& GetInputProperties(
       const string& node_name) const;
-  std::vector<OpInfo::TensorProperties> GetOutputProperties(
+  const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
-  string GetDeviceName(const string& node_name) const;
 
  private:
   // Inputs
   GrapplerItem item_;
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
-  std::map<string, string> device_names_;
+  const std::vector<OpInfo::TensorProperties> missing_properties_;
+
+  // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
+  // <*queue_shapes_and_types>.
+  Status MergeEnqueueShapesAndTypes(
+      const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
+      shape_inference::InferenceContext* qctx,
+      std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
+  // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
+  // <*queue_shapes_and_types>.
+  Status RelaxEnqueueShapesAndMergeTypes(
+      const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
+      shape_inference::InferenceContext* qctx,
+      std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
+
+  // This gives access to private function of InferenceContext.
+  static void Relax(shape_inference::InferenceContext* c,
+                    shape_inference::ShapeHandle s0,
+                    shape_inference::ShapeHandle s1,
+                    shape_inference::ShapeHandle* out);
+
+  // These give access to private functions of ShapeRefiner.
+  static bool SameDefinedShape(shape_inference::InferenceContext* c,
+                               shape_inference::ShapeHandle s0,
+                               shape_inference::ShapeHandle s1);
+  static bool IsUpdatedShapesOrTypes(
+      shape_inference::InferenceContext* c,
+      const std::vector<shape_inference::ShapeAndType>& existing,
+      const std::vector<shape_inference::ShapeAndType>& updated);
 };
 
 }  // end namespace grappler
