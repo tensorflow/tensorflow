@@ -170,7 +170,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_uint8) {
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_complex64) {
   MakeOp<complex64>(TensorShape({}), [](int x) -> complex64 {
-      return complex64{ x / 8., x / 2. };
+      return complex64{ static_cast<float>(x / 8.),
+            static_cast<float>(x / 2.) };
     });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
