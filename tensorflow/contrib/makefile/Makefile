@@ -357,6 +357,11 @@ $(MARCH_OPTION) \
 	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
 		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
 	endif
+	
+	OBJDIR := $(OBJDIR)android_$(ANDROID_ARCH)/
+	LIBDIR := $(LIBDIR)android_$(ANDROID_ARCH)/
+	BINDIR := $(BINDIR)android_$(ANDROID_ARCH)/
+	DEPDIR := $(DEPDIR)android_$(ANDROID_ARCH)/
 
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
@@ -703,7 +708,7 @@ clean_except_protobuf_libs:
 
 # Gets rid of target files only, leaving the host alone. Also leaves the lib
 # directory untouched deliberately, so we can persist multiple architectures
-# across builds for iOS.
+# across builds for iOS and Android.
 cleantarget:
 	rm -rf $(OBJDIR)
 	rm -rf $(BINDIR)
