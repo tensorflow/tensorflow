@@ -61,7 +61,7 @@ HEXAGON_DOWNLOAD_PATH="tensorflow/contrib/makefile/downloads/hexagon"
 
 if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
   # Remove any old files first.
-  make -f tensorflow/contrib/makefile/Makefile clean
+  make -f tensorflow/contrib/makefile/Makefile cleantarget
   rm -rf tensorflow/contrib/makefile/downloads
   # Pull down the required versions of the frameworks we need.
   tensorflow/contrib/makefile/download_dependencies.sh
