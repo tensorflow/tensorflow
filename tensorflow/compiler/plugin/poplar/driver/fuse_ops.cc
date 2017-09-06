@@ -27,6 +27,7 @@ static const char* names[] = {
   "const_slice",
   "wide_const",
   "relu",
+  "relu",
   "sigmoid",
   "biasadd_broadcast",
   "biasadd",
@@ -66,8 +67,13 @@ static const std::vector<HloMatcherPattern> patterns = {
   {{HloOpcode::kBroadcast, true, nullptr, {1}},
    {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 
-  // Relu
+  // Relu (implicit broadcast)
   {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // Relu (explicit broadcast)
+  {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
+   {HloOpcode::kBroadcast, true, nullptr, {2}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Sigmoid
