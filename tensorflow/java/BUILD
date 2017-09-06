@@ -5,7 +5,9 @@ package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("build_defs", "JAVACOPTS")
+load(":build_defs.bzl", "JAVACOPTS")
+load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 java_library(
     name = "tensorflow",
@@ -34,9 +36,55 @@ filegroup(
 
 filegroup(
     name = "java_op_sources",
-    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]),
+    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [
+        ":java_op_gen_sources",
+    ],
     visibility = [
         "//tensorflow/java:__pkg__",
+    ],
+)
+
+tf_java_op_gen_srcjar(
+    name = "java_op_gen_sources",
+    gen_base_package = "org.tensorflow.op",
+    gen_tool = "java_op_gen_tool",
+    ops_libs = [
+        "array_ops",
+        "candidate_sampling_ops",
+        "control_flow_ops",
+        "data_flow_ops",
+        "image_ops",
+        "io_ops",
+        "linalg_ops",
+        "logging_ops",
+        "math_ops",
+        "nn_ops",
+        "no_op",
+        "parsing_ops",
+        "random_ops",
+        "sparse_ops",
+        "state_ops",
+        "string_ops",
+        "training_ops",
+        "user_ops",
+    ],
+)
+
+# Build the gen tool as a library, as it will be linked to a core/ops binary
+# file before making it an executable. See tf_java_op_gen_srcjar().
+cc_library(
+    name = "java_op_gen_tool",
+    srcs = glob([
+        "src/gen/cc/*.h",
+        "src/gen/cc/*.cc",
+    ]),
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

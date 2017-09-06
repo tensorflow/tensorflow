@@ -121,12 +121,9 @@ tf_gen_op_wrapper_py(
 
 cc_library(
     name = "image_ops_cc",
-    srcs = [
-        "ops/image_ops.cc",
-    ],
+    srcs = ["ops/image_ops.cc"],
     deps = [
         ":image_ops_kernels",
-        "//tensorflow/core",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,

@@ -1698,7 +1698,7 @@ def variable_scope(name_or_scope,
       use when doing asynchronous distributed training.
 
   Returns:
-    A scope that can be to captured and reused.
+    A scope that can be captured and reused.
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within

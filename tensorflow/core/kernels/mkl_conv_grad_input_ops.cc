@@ -97,8 +97,12 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
                   errors::InvalidArgument(
                       "Conv2DCustomBackpropInput: size must be 4-dim"));
 
-      MklSizesToTFSizes(context, data_format, mkl_context.filter_shape,
-                        &filter_shape);
+      const int64* filter_sizes =
+        (const int64*) mkl_context.filter_shape.GetSizes();
+      const int64 filter_dims = mkl_context.filter_shape.GetDimension();
+
+      OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(filter_sizes,
+        filter_dims, &filter_shape));
     } else {
       filter_shape = filter.shape();
     }

@@ -169,10 +169,6 @@ def _record_gradient(op_name, inputs, attrs, results, name):
 execute.record_gradient = _record_gradient
 
 
-def _ones(shape, dtype):
-  return array_ops.fill(shape, tensor.Tensor(1, dtype=dtype))
-
-
 def _aggregate_grads(gradients):
   """Aggregate gradients of the same tensor."""
   grad_lists = dict()
@@ -225,7 +221,7 @@ def implicit_val_and_grad(f):
                        (end_node.progenitors, repr(start_node)))
     output_gradients = kwds.get("output_gradients", None)
     if output_gradients is None:
-      output_gradients = _ones(end_node.shape, end_node.dtype)
+      output_gradients = array_ops.ones_like(end_node.value)
     grad = ag_core.backward_pass(output_gradients, end_node, start_node)
     return end_node.value, _aggregate_grads(grad.gradients)
 
