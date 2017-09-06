@@ -142,9 +142,9 @@ __global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
                                            int group_size) {
   // Initialize the shared memory.
   typedef typename AccumulatorType<T>::type AccT;
-  __shared__ AccT s_data[32];
-  int32 s_data_size = sizeof(s_data) / sizeof(T);
-  for (int32 index = threadIdx.x; index < s_data_size; index += blockDim.x) {
+  const int32 kSDataSize = 32;
+  __shared__ AccT s_data[kSDataSize];
+  for (int32 index = threadIdx.x; index < kSDataSize; index += blockDim.x) {
     s_data[index] = AccT(0);
   }
   __syncthreads();

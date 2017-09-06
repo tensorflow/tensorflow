@@ -656,7 +656,8 @@ class GrowTreeEnsembleOp : public OpKernel {
     CHECK(split->split_info.split_node().node_case() != TreeNode::NODE_NOT_SET);
     CHECK(tree_config->nodes(node_id).node_case() == TreeNode::kLeaf)
         << "Unexpected node type to split "
-        << tree_config->nodes(node_id).node_case();
+        << tree_config->nodes(node_id).node_case() << " for node_id " << node_id
+        << ". Tree config: " << tree_config->DebugString();
 
     // Add left leaf.
     int32 left_id = tree_config->nodes_size();
@@ -767,7 +768,7 @@ class TreeEnsembleStatsOp : public OpKernel {
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_ensemble_resource));
     core::ScopedUnref unref_me(decision_tree_ensemble_resource);
-    mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
+    tf_shared_lock l(*decision_tree_ensemble_resource->get_mutex());
 
     // Get the stamp token.
     const Tensor* stamp_token_t;

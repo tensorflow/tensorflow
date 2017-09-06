@@ -151,10 +151,11 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return TF_SessionListDevices(ctx->session, status);
 }
 
-TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t) {
-  return new TFE_TensorHandle(
-      tensorflow::TensorCApi::MakeTensor(t->dtype, t->shape, t->buffer),
-      nullptr);
+TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
+  tensorflow::Tensor tensor;
+  status->status = tensorflow::TF_TensorToTensor(t, &tensor);
+  if (!status->status.ok()) return nullptr;
+  return new TFE_TensorHandle(tensor, nullptr);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) { delete h; }

@@ -758,16 +758,13 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   auto* fusion = computation->CreateFusionInstruction(
       {map_3_y}, HloInstruction::FusionKind::kLoop);
   auto* fused_computation = fusion->fused_instructions_computation();
-  EXPECT_THAT(fusion->called_computations(),
-              ElementsAre(fused_computation, computation_y));
+  EXPECT_THAT(fusion->called_computations(), ElementsAre(fused_computation));
 
   fusion->FuseInstruction(map_2_x);
-  EXPECT_THAT(fusion->called_computations(),
-              ElementsAre(fused_computation, computation_y, computation_x));
+  EXPECT_THAT(fusion->called_computations(), ElementsAre(fused_computation));
 
   fusion->FuseInstruction(map_1_x);
-  EXPECT_THAT(fusion->called_computations(),
-              ElementsAre(fused_computation, computation_y, computation_x));
+  EXPECT_THAT(fusion->called_computations(), ElementsAre(fused_computation));
 }
 
 TEST_F(HloInstructionTest, ComplexFusionOp) {

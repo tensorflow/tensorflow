@@ -49,9 +49,8 @@ class HloCostAnalysis : public DfsHloVisitor {
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
   explicit HloCostAnalysis(const ShapeSizeFunction& shape_size);
 
-  Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode) override;
-  Status HandleElementwiseBinary(HloInstruction* hlo,
-                                 HloOpcode opcode) override;
+  Status HandleElementwiseUnary(HloInstruction* hlo) override;
+  Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant,
                         const Literal& literal) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,

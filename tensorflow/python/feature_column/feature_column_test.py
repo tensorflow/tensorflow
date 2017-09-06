@@ -3213,12 +3213,38 @@ class IndicatorColumnTest(test.TestCase):
     weights = fc.weighted_categorical_column(ids, 'weights')
     indicator = fc.indicator_column(weights)
     features = {
-      'ids': constant_op.constant(['c', 'b', 'a'], shape=(1, 3)),
-      'weights': constant_op.constant([2., 4., 6.], shape=(1, 3))
+      'ids': constant_op.constant([['c', 'b', 'a']]),
+      'weights': constant_op.constant([[2., 4., 6.]])
     }
     indicator_tensor = _transform_features(features, [indicator])[indicator]
     with _initialized_session():
       self.assertAllEqual([[6., 4., 2.]], indicator_tensor.eval())
+
+  def test_transform_with_missing_value_in_weighted_column(self):
+    # Github issue 12583
+    ids = fc.categorical_column_with_vocabulary_list(
+      key='ids', vocabulary_list=('a', 'b', 'c'))
+    weights = fc.weighted_categorical_column(ids, 'weights')
+    indicator = fc.indicator_column(weights)
+    features = {
+      'ids': constant_op.constant([['c', 'b', 'unknown']]),
+      'weights': constant_op.constant([[2., 4., 6.]])
+    }
+    indicator_tensor = _transform_features(features, [indicator])[indicator]
+    with _initialized_session():
+      self.assertAllEqual([[0., 4., 2.]], indicator_tensor.eval())
+
+  def test_transform_with_missing_value_in_categorical_column(self):
+    # Github issue 12583
+    ids = fc.categorical_column_with_vocabulary_list(
+      key='ids', vocabulary_list=('a', 'b', 'c'))
+    indicator = fc.indicator_column(ids)
+    features = {
+      'ids': constant_op.constant([['c', 'b', 'unknown']]),
+    }
+    indicator_tensor = _transform_features(features, [indicator])[indicator]
+    with _initialized_session():
+      self.assertAllEqual([[0., 1., 1.]], indicator_tensor.eval())
 
   def test_linear_model(self):
     animal = fc.indicator_column(
