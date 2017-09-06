@@ -788,7 +788,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Positive1) {
             "DMT/_1(Const);DMT/_2(Const);E(Mul)|A->C;A->D;"
             "A:control->DMT/_0:control;A:control->DMT/_1:control;"
             "A:control->DMT/_2:control;B->C:1;C->D:1;C->E;"
-            "C:1->D:3;D->E:1;DMT/_0->C:2;DMT/_1->C:3;DMT/_2->D:2");
+            "C:2->D:3;D->E:1;DMT/_0->C:2;DMT/_1->C:3;DMT/_2->D:2");
 }
 
 // Conv2D with INT32 which is not supported by Mkl
@@ -917,7 +917,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_Mkl) {
             "A:control->DMT/_2:control;A:control->DMT/_3:control;"
             "B->E:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"
             "D->F:1;DMT/_0->F:2;DMT/_1->F:3;DMT/_2->E:2;DMT/_3->E:3;"
-            "DMT/_4->H:3;E->H:1;E:1->H:4;F->H:2;F:1->H:5;G->H;"
+            "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"
             "G:control->DMT/_4:control;H->I:1");
 }
 
@@ -953,7 +953,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_MixedMkl) {
             "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Mul);G(Const);"
             "H(_MklConcat);I(Mul)|A->E;A->I;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"
-            "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:1->H:4;F->H:2;"
+            "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:2->H:4;F->H:2;"
             "G->H;G:control->DMT/_2:control;G:control->DMT/_3:control;H->I:1");
 }
 
@@ -1023,8 +1023,8 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_Mkl) {
             "A:control->DMT/_2:control;A:control->DMT/_3:control;B->E:1;C->F;"
             "C:control->DMT/_0:control;C:control->DMT/_1:control;"
             "D->F:1;DMT/_0->F:2;DMT/_1->F:3;DMT/_2->E:2;DMT/_3->E:3;"
-            "DMT/_4->H:5;E->H;E:1->H:3;E:control->DMT/_4:control;F->H:1;"
-            "F:1->H:4;G->H:2;H->I:1");
+            "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"
+            "F:2->H:4;G->H:2;H->I:1");
 }
 
 // ConcatV2 with 1 Mkl and 1 non-Mkl layer feeding it
@@ -1060,7 +1060,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_MixedMkl) {
             "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Mul);G(Const);"
             "H(_MklConcatV2);I(Mul)|A->E;A->I;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"
-            "DMT/_1->E:3;DMT/_2->H:4;DMT/_3->H:5;E->H;E:1->H:3;"
+            "DMT/_1->E:3;DMT/_2->H:4;DMT/_3->H:5;E->H;E:2->H:3;"
             "E:control->DMT/_2:control;E:control->DMT/_3:control;F->H:1;"
             "G->H:2;H->I:1");
 }

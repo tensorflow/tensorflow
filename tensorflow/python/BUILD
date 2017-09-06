@@ -2349,7 +2349,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "gradients_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/gradients_test.py"],
     additional_deps = [
         ":array_grad",

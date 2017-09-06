@@ -2589,7 +2589,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_cuda([
+        ":cuda_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -3341,6 +3343,20 @@ tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
     deps = PARSING_DEPS,
+)
+
+tf_cc_test(
+    name = "parse_tensor_test",
+    srcs = ["parse_tensor_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":parse_tensor_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(

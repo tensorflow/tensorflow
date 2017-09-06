@@ -32,6 +32,9 @@ Status SummaryTestHelper(
     const string& test_name,
     std::function<Status(SummaryWriterInterface*)> writer_fn,
     std::function<void(const Event&)> test_fn) {
+  static std::set<string>* tests = new std::set<string>();
+  CHECK(tests->insert(test_name).second) << ": " << test_name;
+
   SummaryWriterInterface* writer;
   Env* env = Env::Default();
   TF_CHECK_OK(
@@ -147,7 +150,7 @@ TEST(SummaryInterfaceTest, WriteImage) {
 
 TEST(SummaryInterfaceTest, WriteAudio) {
   TF_CHECK_OK(SummaryTestHelper(
-      "scalar_test",
+      "audio_test",
       [](SummaryWriterInterface* writer) {
         Tensor one(DT_FLOAT, TensorShape({1, 1}));
         one.scalar<float>()() = 1.0;

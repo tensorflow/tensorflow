@@ -1662,6 +1662,21 @@ string HloInstruction::ExtendedOpcodeStr() const {
 
 string HloInstruction::ToString(bool compact_operands,
                                 bool include_metadata) const {
+  string result =
+      StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
+             ExtendedOpcodeStr(), "(", OperandsToString(compact_operands), ")");
+  for (const string& extra : ExtraAttributesToString()) {
+    StrAppend(&result, ", ", extra);
+  }
+  if (include_metadata &&
+      (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
+       !metadata_.source_file().empty())) {
+    StrAppend(&result, " # metadata=", metadata_.ShortDebugString());
+  }
+  return result;
+}
+
+string HloInstruction::OperandsToString(bool compact) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
@@ -1690,12 +1705,12 @@ string HloInstruction::ToString(bool compact_operands,
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
     const int64 kMaxOperandsToShowIfCompact = 4;
-    if (compact_operands && slice.size() > kMaxOperandsToShowIfCompact) {
+    if (compact && slice.size() > kMaxOperandsToShowIfCompact) {
       slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
     }
     operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
       *out += ShapeUtil::HumanStringWithLayout(operand->shape());
-      if (!compact_operands) {
+      if (!compact) {
         StrAppend(out, " ", operand->name());
       }
     });
@@ -1704,15 +1719,19 @@ string HloInstruction::ToString(bool compact_operands,
       StrAppend(&operands, ", ...(+", remaining, ")");
     }
   }
-  string extra;
+  return operands;
+}
+
+std::vector<string> HloInstruction::ExtraAttributesToString() const {
+  std::vector<string> extra;
   if (CanHaveDimensionsField()) {
-    StrAppend(&extra, ", dimensions={", Join(dimensions(), ","), "}");
+    extra.push_back(StrCat("dimensions={", Join(dimensions(), ","), "}"));
   }
   if (window_ != nullptr) {
-    StrAppend(&extra, ", ", window_util::ToString(*window_));
+    extra.push_back(window_util::ToString(*window_));
   }
   if (padding_config_ != nullptr) {
-    StrAppend(&extra, ", padding=", padding_config_->ShortDebugString());
+    extra.push_back(StrCat("padding=", padding_config_->ShortDebugString()));
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
@@ -1721,45 +1740,38 @@ string HloInstruction::ToString(bool compact_operands,
       bounds.push_back(
           StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
     }
-    StrAppend(&extra, ", slice={", Join(bounds, ", "), "}");
+    extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
   }
 
   if (convolution_dimension_numbers_ != nullptr) {
-    StrAppend(&extra, ", ", ConvolutionDimensionNumbersToString());
+    extra.push_back(ConvolutionDimensionNumbersToString());
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    StrAppend(&extra, ", condition=", while_condition()->name());
-    StrAppend(&extra, ", body=", while_body()->name());
+    extra.push_back(StrCat("condition=", while_condition()->name()));
+    extra.push_back(StrCat("body=", while_body()->name()));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    StrAppend(&extra, ", select=", select()->name());
-    StrAppend(&extra, ", scatter=", scatter()->name());
+    extra.push_back(StrCat("select=", select()->name()));
+    extra.push_back(StrCat("scatter=", scatter()->name()));
   } else if (!called_computations().empty()) {
-    StrAppend(&extra, ", calls=",
-              Join(called_computations(), ", ",
-                   [](string* out, const HloComputation* computation) {
-                     StrAppend(out, computation->name());
-                   }));
+    extra.push_back(StrCat(
+        "calls=", Join(called_computations(), ", ",
+                       [](string* out, const HloComputation* computation) {
+                         StrAppend(out, computation->name());
+                       })));
   }
 
   if (opcode() == HloOpcode::kGetTupleElement) {
-    StrAppend(&extra, ", index=", tuple_index());
+    extra.push_back(StrCat("index=", tuple_index()));
   }
   if (!control_successors_.empty()) {
-    StrAppend(
-        &extra, ", control-successors=",
+    extra.push_back(StrCat(
+        "control-successors=",
         Join(control_successors_, ", ", [](string* out, HloInstruction* succ) {
           StrAppend(out, succ->name());
-        }));
+        })));
   }
-  if (include_metadata &&
-      (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
-       !metadata_.source_file().empty())) {
-    StrAppend(&extra, " # metadata=", metadata_.ShortDebugString());
-  }
-
-  return StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-                ExtendedOpcodeStr(), "(", operands, ")", extra);
+  return extra;
 }
 
 string HloInstruction::ToShortString() const {
