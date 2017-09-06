@@ -49,6 +49,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 # Temporary global switch determining if we should enable the work-in-progress
@@ -604,6 +605,13 @@ def _maybe_modify_numpy_dtype_determination(np_array):
   return np_array
 
 
+def _has_string(value):
+  if isinstance(value, compat.bytes_or_text_types): return True
+  if isinstance(value, collections.Sequence) and value:
+    return _has_string(value[0])
+  return False
+
+
 # TODO(agarwal): rename to TensorHandle.
 class EagerTensor(Tensor):
   """A TensorFlow Eager Tensor."""
@@ -625,6 +633,8 @@ class EagerTensor(Tensor):
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
     self._id = uid()
     if not isinstance(value, np.ndarray):
+      if dtype is None and _has_string(value):
+        dtype = dtypes.string
       npt = None if dtype is None else dtype.as_numpy_dtype
       try:
         value = np.array(value, dtype=npt)
@@ -712,12 +722,12 @@ class EagerTensor(Tensor):
     return numpy_text
 
   def __str__(self):
-    return "tfe.Tensor(shape=%s, dtype=%s, numpy=%s)" % (self.shape,
-                                                         self.dtype.name,
-                                                         self._numpy_text())
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (self._numpy_text(),
+                                                  self.shape,
+                                                  self.dtype.name)
 
   def __repr__(self):
-    return "<tfe.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
+    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
         self._id, self.shape, self.dtype.name, self._numpy_text(is_repr=True))
 
   @staticmethod
@@ -1027,12 +1037,19 @@ def internal_convert_to_tensor(value,
   # tracing gradients, to ensure the same behavior happens with and without
   # tracing.
   unwrapped = ag_core.getval(value)
-  # Fast path for EagerTensors that don't need any conversion.
-  if isinstance(unwrapped, EagerTensor) and context.in_eager_mode():
-    # Note that we don't check that value's dtype matches the dtype
-    # argument.  We exepct that the C runtime will do that checking
-    # when we execute the kernel.
-    return value
+
+  if context.in_eager_mode():
+    # Fast path for EagerTensors that don't need any conversion.
+    if isinstance(unwrapped, EagerTensor):
+      # Note that we don't check that value's dtype matches the dtype
+      # argument.  We exepct that the C runtime will do that checking
+      # when we execute the kernel.
+      return value
+    values = nest.flatten(value)
+    if (len(values) > 1 and
+        any(isinstance(ag_core.getval(v), EagerTensor) for v in values)):
+      raise TypeError("Cannot convert to a eager tensor.")
+
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
   unwrapped_type = type(unwrapped)
@@ -2939,6 +2956,14 @@ class Graph(object):
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
+    if self._c_graph:
+      # pylint: disable=protected-access
+      assert function._c_func, (
+          "Cannot add function created without C API support to graph "
+          "created with C API support")
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_GraphAddFunction(self._c_graph, function._c_func, status)
+      # pylint: enable=protected-access
 
   @property
   def building_function(self):

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import threading
+from collections import namedtuple
 
 import numpy as np
 
@@ -480,6 +481,40 @@ class MapDatasetTest(test.TestCase):
         self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testMapNamedtuple(self, count=10):
+    # construct dataset of tuples
+    labels = dataset_ops.Dataset.range(count)
+    images = labels.map(lambda l: -l)
+    dataset_tuple = dataset_ops.Dataset.zip((labels, images))
+
+    # convert dataset of tuples to dataset of namedtuples
+    Example = namedtuple("Example", ["label", "image"])
+    dataset_namedtuple = dataset_tuple.map(Example)
+
+    def preprocess_tuple(label, image):
+      image = 2 * image
+      return label, image
+
+    def preprocess_namedtuple(example):
+      return example._replace(image=2 * example.image)
+
+    # preprocess both datasets
+    dataset_tuple = dataset_tuple.map(preprocess_tuple)
+    dataset_namedtuple = dataset_namedtuple.map(preprocess_namedtuple)
+
+    next_tuple = dataset_tuple.make_one_shot_iterator().get_next()
+    next_namedtuple = dataset_namedtuple.make_one_shot_iterator().get_next()
+
+    # make sure both datasets contain the same data
+    with self.test_session() as sess:
+      for i in range(count):
+        tuple_, namedtuple_ = sess.run([next_tuple, next_namedtuple])
+        self.assertEqual(tuple_, namedtuple_)
+        self.assertEqual(tuple_, (i, -2 * i))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_namedtuple)
 
   def testUseStepContainerInMap(self):
     row = np.arange(6)

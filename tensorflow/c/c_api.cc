@@ -165,22 +165,6 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
   tensorflow::cpu_allocator()->DeallocateRaw(data);
 }
 
-Status MessageToBuffer(const tensorflow::protobuf::Message& in,
-                       TF_Buffer* out) {
-  if (out->data != nullptr) {
-    return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
-  }
-  const auto proto_size = in.ByteSizeLong();
-  void* buf = tensorflow::port::Malloc(proto_size);
-  in.SerializeToArray(buf, proto_size);
-  out->data = buf;
-  out->length = proto_size;
-  out->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-  return Status::OK();
-}
-
 }  // namespace
 
 TF_Tensor::~TF_Tensor() { buffer->Unref(); }
@@ -557,6 +541,27 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
   return TF_NewTensor(TF_STRING,
                       reinterpret_cast<const int64_t*>(dimvec.data()),
                       dimvec.size(), base, size, DeleteArray, base);
+}
+
+Status MessageToBuffer(const tensorflow::protobuf::Message& in,
+                       TF_Buffer* out) {
+  if (out->data != nullptr) {
+    return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
+  }
+  const size_t proto_size = in.ByteSizeLong();
+  void* buf = tensorflow::port::Malloc(proto_size);
+  if (buf == nullptr) {
+    return tensorflow::errors::ResourceExhausted(
+        "Failed to allocate memory to serialize message of type '",
+        in.GetTypeName(), "' and size ", proto_size);
+  }
+  in.SerializeToArray(buf, proto_size);
+  out->data = buf;
+  out->length = proto_size;
+  out->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  return Status::OK();
 }
 
 // Helpers for loading a TensorFlow plugin (a .so file).

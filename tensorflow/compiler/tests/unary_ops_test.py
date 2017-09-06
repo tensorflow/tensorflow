@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import unittest
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -161,12 +163,17 @@ class UnaryOpsTest(XLATestCase):
           np.array([[-1.7, 1.2]], dtype=dtype),
           expected=np.array([[-2, 1]], dtype=dtype))
 
+      self._assertOpOutputMatchesExpected(
+          math_ops.is_finite,
+          np.array([[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]],
+                   dtype=dtype),
+          expected=np.array([[0, 1, 1, 1, 1, 1, 1, 0, 0]], dtype=np.bool))
+
       # Tests for tf.nn ops.
       self._assertOpOutputMatchesExpected(
           nn_ops.l2_loss, np.array([[[]]], dtype=dtype), expected=dtype(0))
 
-      # TODO(b/31644876): enable this test case when fixed.
-      # self._assertOpOutputMatchesExpected(tf.nn.l2_loss, dtype(4), dtype(10))
+      self._assertOpOutputMatchesExpected(nn_ops.l2_loss, dtype(4), dtype(8))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.l2_loss, np.array([[-2, 4]], dtype=dtype), expected=dtype(10))
@@ -198,6 +205,12 @@ class UnaryOpsTest(XLATestCase):
           np.array([[1e-14, 1e-15, 0.6]], dtype=dtype),
           expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]], dtype=dtype)))
 
+      self._assertOpOutputMatchesExpected(
+          math_ops.rint,
+          np.array([[-1.7, 1.2, 4.0, 0.0], [-3.5, -2.5, -1.5, -0.5],
+                    [0.5, 1.5, 2.5, 3.5]], dtype=dtype),
+          expected=np.array([[-2, 1, 4, 0], [-4, -2, -2, 0], [0, 2, 2, 4]],
+                            dtype=dtype))
       self._assertOpOutputMatchesExpected(
           math_ops.round,
           np.array([[-1.7, 1.2, 4.0, 0.0], [-3.5, -2.5, -1.5, -0.5],
@@ -302,6 +315,12 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array([[0.126928, 0.6931472, 8.0003354]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          nn_ops.softsign,
+          np.array([[-2, -1, 0, 1, 2]], dtype=dtype),
+          expected=np.array([[-0.66666669, -0.5, 0, 0.5, 0.66666669]],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           math_ops.is_finite,
           np.array(
               [[42, float("inf"), -123], [float("nan"), 0, -0.0]], dtype=dtype),
@@ -334,6 +353,23 @@ class UnaryOpsTest(XLATestCase):
           array_ops.ones_like,
           np.array([[4, 3], [2, 1]], dtype=dtype),
           expected=np.array([[1, 1], [1, 1]], dtype=dtype))
+
+  # TODO(phawkins): these tests fail unless fastmath optimizations
+  # are disabled. Use more robust IsInf/IsNaN detection and enable these
+  # tests.
+  @unittest.skip("test case fails in fast-math mode")
+  def testIsInfAndIsNan(self):
+    for dtype in self.float_types:
+      self._assertOpOutputMatchesExpected(
+          math_ops.is_inf,
+          np.array([[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]],
+                   dtype=dtype),
+          expected=np.array([[1, 0, 0, 0, 0, 0, 0, 1, 0]], dtype=np.bool))
+      self._assertOpOutputMatchesExpected(
+          math_ops.is_nan,
+          np.array([[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]],
+                   dtype=dtype),
+          expected=np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1]], dtype=np.bool))
 
   def testLogicalOps(self):
     self._assertOpOutputMatchesExpected(

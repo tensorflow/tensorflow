@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
@@ -64,5 +65,33 @@ class ParseTensorOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseTensor").Device(DEVICE_CPU), ParseTensorOp);
+
+
+template <typename T>
+class SerializeTensorOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor = context->input(0);
+    TensorProto proto;
+    if (tensor.dtype() == DT_STRING) {
+      tensor.AsProtoField(&proto);
+    } else {
+      tensor.AsProtoTensorContent(&proto);
+    }
+    Tensor* proto_string = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output(0, TensorShape({}), &proto_string));
+    CHECK(proto.SerializeToString(&proto_string->scalar<string>()()));
+  }
+};
+
+#define REGISTER(T) \
+  REGISTER_KERNEL_BUILDER( \
+      Name("SerializeTensor").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SerializeTensorOp<T>);
+TF_CALL_ALL_TYPES(REGISTER)
+#undef REGISTER
 
 }  // namespace tensorflow

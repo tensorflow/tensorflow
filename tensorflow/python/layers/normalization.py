@@ -25,6 +25,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import ops
@@ -242,15 +243,20 @@ class BatchNormalization(base.Layer):
                                   initializer=init_ops.zeros_initializer(),
                                   trainable=False)
           return var
+
         with ops.device(None):
-          with ops.device(lambda _: self.moving_mean.device):
+          device = ((lambda _: self.moving_mean.device)
+                    if context.in_graph_mode() else self.moving_mean.device)
+          with ops.device(device):
             self.renorm_mean = _renorm_variable('renorm_mean', (param_dim,))
             self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
           # We initialize renorm_stddev to 0, and maintain the (0-initialized)
           # renorm_stddev_weight. This allows us to (1) mix the average
           # stddev with the minibatch stddev early in training, and (2) compute
           # the unbiased average stddev by dividing renorm_stddev by the weight.
-          with ops.device(lambda _: self.moving_variance.device):
+          device = ((lambda _: self.moving_variance.device)
+                    if context.in_graph_mode() else self.moving_variance.device)
+          with ops.device(device):
             self.renorm_stddev = _renorm_variable('renorm_stddev', (param_dim,))
             self.renorm_stddev_weight = _renorm_variable(
                 'renorm_stddev_weight', ())
@@ -301,8 +307,12 @@ class BatchNormalization(base.Layer):
           self.moving_mean, mean, decay, zero_debias=False)
       variance_update = moving_averages.assign_moving_average(
           self.moving_variance, variance, decay, zero_debias=False)
-      self.add_update(mean_update, inputs=inputs)
-      self.add_update(variance_update, inputs=inputs)
+      if context.in_graph_mode():
+        # Note that in Eager mode, the updates are already executed when running
+        # assign_moving_averages. So we do not need to put them into
+        # collections.
+        self.add_update(mean_update, inputs=inputs)
+        self.add_update(variance_update, inputs=inputs)
 
     return output
 
@@ -335,6 +345,7 @@ class BatchNormalization(base.Layer):
     r = _smart_select(training, lambda: r, lambda: array_ops.ones_like(r))
     d = _smart_select(training, lambda: d, lambda: array_ops.zeros_like(d))
     decay = _smart_select(training, lambda: self.renorm_momentum, lambda: 1.)
+
     def _update_renorm_variable(var, weight, value):
       """Updates a moving average and weight, returns the unbiased value."""
       # Update the variables without zero debiasing. The debiasing will be
@@ -418,9 +429,9 @@ class BatchNormalization(base.Layer):
           self.moving_mean, new_mean, decay, zero_debias=False)
       variance_update = moving_averages.assign_moving_average(
           self.moving_variance, new_variance, decay, zero_debias=False)
-
-      self.add_update(mean_update, inputs=inputs)
-      self.add_update(variance_update, inputs=inputs)
+      if context.in_graph_mode():
+        self.add_update(mean_update, inputs=inputs)
+        self.add_update(variance_update, inputs=inputs)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance
@@ -565,7 +576,6 @@ def batch_normalization(inputs,
 
 BatchNorm = BatchNormalization
 batch_norm = batch_normalization
-
 
 # Helper function
 

@@ -4,6 +4,8 @@ The documents in this unit dive into the details of writing TensorFlow
 code.  For TensorFlow 1.3, we revised this document extensively.
 The units are now as follows:
 
+  * @{$programmers_guide/estimators$Estimators}, which introduces a high-level
+    TensorFlow API that greatly simplifies ML programming.
   * @{$programmers_guide/tensors$Tensors}, which explains how to create,
     manipulate, and access Tensors--the fundamental object in TensorFlow.
   * @{$programmers_guide/variables$Variables}, which details how
@@ -18,8 +20,6 @@ The units are now as follows:
     such as Estimators or Keras, the high-level API creates and manages
     graphs and sessions for you, but understanding graphs and sessions
     can still be helpful.
-  * @{$programmers_guide/estimators$Estimators}, which introduces a high-level
-    TensorFlow API that greatly simplifies ML programming.
   * @{$programmers_guide/saved_model$Saving and Restoring}, which
     explains how to save and restore variables and models.
   * @{$programmers_guide/datasets$Input Pipelines}, which explains how to

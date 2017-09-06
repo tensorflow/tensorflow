@@ -955,6 +955,55 @@ TEST_F(NaryGradTest, Mean) {
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 
+TEST_F(NaryGradTest, Min) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Min(scope_, x, {-1});
+  // y's shape is the result of reducing x along axes -1 (= 1)
+  TensorShape y_shape({2});
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 0.7f, 0.2f, 1.0f, 1.5f, -2.8f}, x_shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, Max) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Max(scope_, x, {-1});
+  // y's shape is the result of reducing x along axes -1 (= 1)
+  TensorShape y_shape({2});
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 0.7f, 0.2f, 1.0f, 1.5f, -2.8f}, x_shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, MinMulti) {
+  // Test gradient when there are multiple minima.
+  // Note that we cannot directly use a test Tensor with multiple
+  // minima, as the numeric estimator will calculate incorrect
+  // gradients when perturbing each entry in the Tensor (which then
+  // changes how many minima exist.)
+  // Instead, we use a single input that broadcast-multiplies a larger
+  // tensor with equal values, and apply reduce_min to the multiplied
+  // result.
+  TensorShape x_shape({1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto all_same = Mul(scope_, Const(scope_, {1.f, 1.f, 1.f}), x);
+  auto y = Min(scope_, all_same, {0});
+  // y is a [3] shaped tensor reduced along dimension 0, so it is [1] shaped
+  TensorShape y_shape({1});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, MaxMulti) {
+  TensorShape x_shape({1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto all_same = Mul(scope_, Const(scope_, {1.f, 1.f, 1.f}), x);
+  auto y = Max(scope_, all_same, {0});
+  TensorShape y_shape({1});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
 TEST_F(NaryGradTest, AddN) {
   TensorShape shape({3, 2, 5});
   std::vector<Output> xs;
