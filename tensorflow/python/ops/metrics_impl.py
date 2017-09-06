@@ -461,12 +461,22 @@ def _confusion_matrix_at_thresholds(
   else:
     for include in includes:
       if include not in all_includes:
-        raise ValueError('Invaild key: %s.' % include)
+        raise ValueError('Invalid key: %s.' % include)
 
-  predictions, labels, weights = _remove_squeezable_dimensions(
-      predictions=math_ops.to_float(predictions),
-      labels=math_ops.cast(labels, dtype=dtypes.bool),
-      weights=weights)
+  with ops.control_dependencies([
+      check_ops.assert_greater_equal(
+          predictions,
+          math_ops.cast(0.0, dtype=predictions.dtype),
+          message='predictions must be in [0, 1]'),
+      check_ops.assert_less_equal(
+          predictions,
+          math_ops.cast(1.0, dtype=predictions.dtype),
+          message='predictions must be in [0, 1]')
+  ]):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.to_float(predictions),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
   num_thresholds = len(thresholds)
 
