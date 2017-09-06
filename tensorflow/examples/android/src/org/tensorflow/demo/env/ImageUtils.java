@@ -127,30 +127,39 @@ public class ImageUtils {
           u = (0xff & input[uvp++]) - 128;
         }
 
-        int y1192 = 1192 * y;
-        int r = (y1192 + 1634 * v);
-        int g = (y1192 - 833 * v - 400 * u);
-        int b = (y1192 + 2066 * u);
-
-        if (r < 0)
-          r = 0;
-        else if (r > kMaxChannelValue)
-          r = kMaxChannelValue;
-        if (g < 0)
-          g = 0;
-        else if (g > kMaxChannelValue)
-          g = kMaxChannelValue;
-        if (b < 0)
-          b = 0;
-        else if (b > kMaxChannelValue)
-          b = kMaxChannelValue;
-
-        output[yp] = 0xff000000 | ((r << 6) & 0xff0000)
-                | ((g >> 2) & 0xff00) | ((b >> 10) & 0xff);
-
+        output[yp] = YUV2RGB(y,u,v);
       }
     }
   }
+
+  // This is the floating point equivalent. We do the conversion in integer
+  // because some Android devices do not have floating point in hardware.
+  // nR = (int)(1.164 * nY + 2.018 * nU);
+  // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
+  // nB = (int)(1.164 * nY + 1.596 * nV);
+  private static int YUV2RGB(int y, int u, int v) {
+
+    int y1192 = 1192 * y;
+    int r = (y1192 + 1634 * v);
+    int g = (y1192 - 833 * v - 400 * u);
+    int b = (y1192 + 2066 * u);
+
+    if (r < 0)
+      r = 0;
+    else if (r > kMaxChannelValue)
+      r = kMaxChannelValue;
+    if (g < 0)
+      g = 0;
+    else if (g > kMaxChannelValue)
+      g = kMaxChannelValue;
+    if (b < 0)
+      b = 0;
+    else if (b > kMaxChannelValue)
+      b = kMaxChannelValue;
+
+    return 0xff000000 | ((r << 6) & 0xff0000) | ((g >> 2) & 0xff00) | ((b >> 10) & 0xff);
+  }
+
 
   public static void convertYUV420ToARGB8888(
       byte[] yData,
@@ -186,33 +195,7 @@ public class ImageUtils {
         if (nY < 0)
           nY = 0;
 
-        // This is the floating point equivalent. We do the conversion in integer
-        // because some Android devices do not have floating point in hardware.
-        // nR = (int)(1.164 * nY + 2.018 * nU);
-        // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
-        // nB = (int)(1.164 * nY + 1.596 * nV);
-
-        final int foo = 1192 * nY;
-        int nR = foo + 1634 * nV;
-        int nG = foo - 833 * nV - 400 * nU;
-        int nB = foo + 2066 * nU;
-
-        if (nR < 0)
-          nR = 0;
-        else if (nR > kMaxChannelValue)
-          nR = kMaxChannelValue;
-        if (nG < 0)
-          nG = 0;
-        else if (nG > kMaxChannelValue)
-          nG = kMaxChannelValue;
-        if (nB < 0)
-          nB = 0;
-        else if (nB > kMaxChannelValue)
-          nB = kMaxChannelValue;
-
-        out[i++] = 0xff000000 | ((nR << 6) & 0x00ff0000)
-                | ((nG >> 2) & 0x0000FF00) | ((nB >> 10) & 0xff);
-
+        out[i++] = YUV2RGB( nY, nU, nV);
       }
     }
   }
