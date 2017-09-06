@@ -328,6 +328,10 @@ class Experiment(object):
           config.environment != run_config.Environment.GOOGLE and
           config.cluster_spec and config.master):
         self._start_server()
+    elif config.cluster_spec and config.master:
+      raise ValueError('For distributed runtime, Experiment class only works with'
+                       'tf.contrib.learn.RunConfig for now, but provided {}'
+                       .format(type(config)))
 
     extra_hooks = []
     if delay_secs is None:
