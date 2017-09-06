@@ -144,18 +144,10 @@ public class ImageUtils {
     int g = (y1192 - 833 * v - 400 * u);
     int b = (y1192 + 2066 * u);
 
-    if (r < 0)
-      r = 0;
-    else if (r > kMaxChannelValue)
-      r = kMaxChannelValue;
-    if (g < 0)
-      g = 0;
-    else if (g > kMaxChannelValue)
-      g = kMaxChannelValue;
-    if (b < 0)
-      b = 0;
-    else if (b > kMaxChannelValue)
-      b = kMaxChannelValue;
+    // Clipping RGB values to be inside boundaries [ 0 , kMaxChannelValue ]
+    r = r > kMaxChannelValue ? kMaxChannelValue : (r < 0 ? 0 : r);
+    g = g > kMaxChannelValue ? kMaxChannelValue : (g < 0 ? 0 : g);
+    b = b > kMaxChannelValue ? kMaxChannelValue : (b < 0 ? 0 : b);
 
     return 0xff000000 | ((r << 6) & 0xff0000) | ((g >> 2) & 0xff00) | ((b >> 10) & 0xff);
   }
