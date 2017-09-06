@@ -72,7 +72,7 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Relu (explicit broadcast)
-  {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
+  {{HloOpcode::kMaximum, true, nullptr, {1, -1}},
    {HloOpcode::kBroadcast, true, nullptr, {2}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
