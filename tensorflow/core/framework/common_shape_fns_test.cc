@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -704,7 +705,7 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   INFER_ERROR("Dimension must be 4 but is 3", op, "[2,5,7,11,3]");
 
   // Invalid rank for input
-  INFER_ERROR("must be at least rank 4", op, "[4,4]");
+  INFER_ERROR("Shape must be rank", op, "[4,4]");
 }
 
 TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
@@ -739,6 +740,48 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
   INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
   INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8]");
+}
+
+TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
+  ShapeInferenceTestOp op("MaxPoolV2");
+  Tensor ksizes_tensor, strides_tensor;
+  auto set_op = [&op, &ksizes_tensor, &strides_tensor](
+                    const std::vector<int32>& strides,
+                    const std::vector<int32>& ksizes, const string& padding,
+                    const string& data_format) {
+    TF_CHECK_OK(NodeDefBuilder("test", "MaxPoolV2")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("ksize", 1, DT_INT32)
+                    .Input("strides", 2, DT_INT32)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Finalize(&op.node_def));
+    ksizes_tensor = test::AsTensor<int32>(ksizes);
+    op.input_tensors.resize(3);
+    op.input_tensors[0] = nullptr;
+    op.input_tensors[1] = &ksizes_tensor;
+    strides_tensor = test::AsTensor<int32>(strides);
+    op.input_tensors[2] = &strides_tensor;
+  };
+
+  // Most of the functionality is tested by conv-like shapes,
+  // so we check the very-specific maxpooling features here,
+  // namely depthwise kernel and striding.
+
+  // all 1 strides, depth 2 filter
+  set_op({1, 1, 1, 1}, {1, 1, 1, 2}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,2];[4];[4]", "[d0_0,2,2,1]");
+
+  // depth 3 stride, 1x1x1 filter, NCHW
+  set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
+  INFER_OK(op, "[1,7,5,5];[4];[4]", "[d0_0,3,5,5]");
+
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C tests
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "SAME", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[5,7,?,?,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[?,?,?,?,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8];[4];[4]");
 }
 
 TEST(CommonShapeFnsTest, Pool3DShapeTest) {
