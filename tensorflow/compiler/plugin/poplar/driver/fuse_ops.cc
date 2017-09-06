@@ -52,6 +52,8 @@ static const char* names[] = {
  * The parameters of the post-fused call are in the reverse order that '-1'
  * entries appear in the list.  An op marked include_in_replacement=false
  * counts as a '-1' on other instructions on which it appears.
+ *
+ * NOTE: Highest match priority is nearer the top of the list
  */
 
 static const std::vector<HloMatcherPattern> patterns = {
@@ -62,10 +64,6 @@ static const std::vector<HloMatcherPattern> patterns = {
   // dynamic slice with constant coordinate
   {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
-
-  // Broadcast scalar constant (must precede Relu)
-  {{HloOpcode::kBroadcast, true, nullptr, {1}},
-   {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 
   // Relu (implicit broadcast)
   {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
@@ -165,6 +163,10 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kReshape, true, nullptr, {2}},
    {HloOpcode::kPad, true, IsDepthwisePadding, {-1, 3}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // Broadcast scalar constant (must be low priority)
+  {{HloOpcode::kBroadcast, true, nullptr, {1}},
+   {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}
