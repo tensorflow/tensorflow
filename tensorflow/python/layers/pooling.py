@@ -20,21 +20,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow import (reshape, concat, cast, gather, int32, shape, reduce_max, reduce_mean, floor, divide, float32,
+                        multiply, ceil, )
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
-from tensorflow.python import framework
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 
 
 class _Pooling1D(base.Layer):
@@ -425,6 +417,132 @@ def max_pooling2d(inputs,
                        name=name)
   return layer.apply(inputs)
 
+
+
+def max_pool_2d_nxn_regions(inputs, output_size, mode):
+  inputs_shape = shape(inputs)
+  h = cast(gather(inputs_shape, 1), int32)
+  w = cast(gather(inputs_shape, 2), int32)
+
+  if mode == 'max':
+    pooling_op = reduce_max
+  elif mode == 'avg':
+    pooling_op = reduce_mean
+  else:
+    msg = "Mode must be either 'max' or 'avg'. Got '{0}'"
+    raise ValueError(msg.format(mode))
+
+  result = []
+  n = output_size
+  for row in range(output_size):
+    for col in range(output_size):
+      # start_h = floor(row / n * h)
+      start_h = cast(floor(multiply(divide(row, n), cast(h, float32))), int32)
+      # end_h = ceil((row + 1) / n * h)
+      end_h = cast(ceil(multiply(divide((row + 1), n), cast(h, float32))), int32)
+      # start_w = floor(col / n * w)
+      start_w = cast(floor(multiply(divide(col, n), cast(w, float32))), int32)
+      # end_w = ceil((col + 1) / n * w)
+      end_w = cast(ceil(multiply(divide((col + 1), n), cast(w, float32))), int32)
+      pooling_region = inputs[:, start_h:end_h, start_w:end_w, :]
+      pool_result = pooling_op(pooling_region, axis=(1, 2))
+      result.append(pool_result)
+  return result
+
+
+def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation='kaiming'):
+  layer = SpatialPyramidPooling(dimensions,
+                                mode,
+                                implementation)
+  return layer.apply(inputs)
+
+
+class SpatialPyramidPooling(base.Layer):
+  """
+    Spatial Pyramid Pooling Layer
+    Performs spatial pyramid pooling (SPP) over the input.
+    It will turn a 2D input of arbitrary size into an output of fixed
+    dimension.
+    Hence, the convolutional part of a DNN can be connected to a dense part
+    with a fixed number of nodes even if the dimensions of the
+    input image are unknown.
+    The pooling is performed over :math:`l` pooling levels.
+    Each pooling level :math:`i` will create :math:`M_i` output features.
+    :math:`M_i` is given by :math:`n_i * n_i`,
+    with :math:`n_i` as the number of pooling operation per dimension in
+    level :math:`i`, and we use a list of the :math:`n_i`'s as a
+    parameter for SPP-Layer.
+    The length of this list is the level of the spatial pyramid.
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or tuple
+        The layer feeding into this layer, or the expected input shape.
+    pool_dims : list of integers
+        The list of :math:`n_i`'s that define the output dimension of each
+        pooling level :math:`i`. The length of pool_dims is the level of
+        the spatial pyramid.
+    mode : string
+        Pooling mode, one of 'max', 'average_inc_pad', 'average_exc_pad'
+        Defaults to 'max'.
+    implementation : string
+        Either 'fast' or 'kaiming'. The 'fast' version uses theano's pool_2d
+        operation, which is fast but does not work for all input sizes.
+        The 'kaiming' mode is slower but implements the pooling as described
+        in [1], and works with any input size.
+    **kwargs
+        Any additional keyword arguments are passed to the :class:`Layer`
+        superclass.
+    Notes
+    -----
+    This layer should be inserted between the convolutional part of a
+    DNN and its dense part. Convolutions can be used for
+    arbitrary input dimensions, but the size of their output will
+    depend on their input dimensions. Connecting the output of the
+    convolutional to the dense part then usually demands us to fix
+    the dimensions of the network's InputLayer.
+    The spatial pyramid pooling layer, however, allows us to leave the
+    network input dimensions arbitrary. The advantage over a global
+    pooling layer is the added robustness against object deformations
+    due to the pooling on different scales.
+    References
+    ----------
+    [1] He, Kaiming et al (2015): Spatial Pyramid Pooling in Deep Convolutional Networks for 
+    Visual Recognition. http://arxiv.org/pdf/1406.4729.pdf.
+
+  """
+
+  def __init__(self, inputs, dimensions=None, mode='max', implementation='kaiming', **kwargs):
+    super().__init__(**kwargs)
+    self.implementation = implementation
+    self.mode = mode
+    self.dimensions = dimensions if dimensions is not None else [4, 2, 1]
+
+  def call(self, inputs):
+    import numpy as np
+    pool_list = []
+    if self.implementation == 'kaiming':
+      for pool_dim in self.dimensions:
+        pool_list += max_pool_2d_nxn_regions(inputs, pool_dim, self.mode)
+    else:
+      input_shape = inputs.get_shape().as_list()
+      for d in self.dimensions:
+        h, w = input_shape[1], input_shape[2]
+
+        ph = np.ceil(h * 1.0 / d).astype(np.int32)
+        pw = np.ceil(w * 1.0 / d).astype(np.int32)
+        sh = np.floor(h * 1.0 / d + 1).astype(np.int32)
+        sw = np.floor(w * 1.0 / d + 1).astype(np.int32)
+        pool_result = nn.max_pool(inputs,
+                                  ksize=[1, ph, pw, 1],
+                                  strides=[1, sh, sw, 1],
+                                  padding='SAME')
+        pool_list.append(reshape(pool_result, [shape(inputs)[0], -1]))
+    return concat(values=pool_list, axis=1)
+
+  def _compute_output_shape(self, input_shape):
+    num_features = sum(p * p for p in self.dimensions)
+    # TODO(yardstick17) Make sure this convention works in tensorflow
+    return tensor_shape.TensorShape([input_shape[0], input_shape[1], num_features])
 
 class _Pooling3D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 3D inputs.
