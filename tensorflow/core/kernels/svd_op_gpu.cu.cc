@@ -408,6 +408,6 @@ REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<double>), double);
 REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<double>), double);
 
-#endif  // GOOGLE_CUDA
-
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA
