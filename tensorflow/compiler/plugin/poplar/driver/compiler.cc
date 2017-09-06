@@ -208,10 +208,12 @@ public:
 
 private:
   void CallSiteFound(HloComputation* comp, int count) {
-    if (done.find(comp) == done.end()) {
-      todo.insert(comp);
+    if (comp->name().substr(0,8) != "_pop_op_") {
+      if (done.find(comp) == done.end()) {
+        todo.insert(comp);
+      }
+      targets[comp] += count;
     }
-    targets[comp] += count;
   }
 
   std::set<HloComputation*> todo;
@@ -295,6 +297,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
         // If this computation is a target of a call or while then compile
         // it and store in compiler resources
         VLOG(1) << "Compiling sub-computation " << comp->name();
+        XLA_VLOG_LINES(1, comp->ToString());
+
         resources.computation_map.emplace(
                 std::piecewise_construct,
                 std::forward_as_tuple(comp),
