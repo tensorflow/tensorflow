@@ -117,28 +117,34 @@ public class ImageUtils {
     // Java implementation of YUV420SP to ARGB8888 converting
     final int frameSize = width * height;
     for (int j = 0, yp = 0; j < height; j++) {
-      int uvp = frameSize + (j >> 1) * width, u = 0, v = 0;
+      int uvp = frameSize + (j >> 1) * width;
+      int u = 0;
+      int v = 0;
+
       for (int i = 0; i < width; i++, yp++) {
-        int y = (0xff & ((int) input[yp])) - 16;
-        if (y < 0)
-          y = 0;
+        int y = 0xff & input[yp];
         if ((i & 1) == 0) {
-          v = (0xff & input[uvp++]) - 128;
-          u = (0xff & input[uvp++]) - 128;
+          v = 0xff & input[uvp++];
+          u = 0xff & input[uvp++];
         }
 
-        output[yp] = YUV2RGB(y,u,v);
+        output[yp] = YUV2RGB( y, u, v);
       }
     }
   }
 
-  // This is the floating point equivalent. We do the conversion in integer
-  // because some Android devices do not have floating point in hardware.
-  // nR = (int)(1.164 * nY + 2.018 * nU);
-  // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
-  // nB = (int)(1.164 * nY + 1.596 * nV);
   private static int YUV2RGB(int y, int u, int v) {
 
+    // Adjust and check YUV values
+    y = (y - 16) < 0 ? 0 : (y - 16);
+    u -= 128;
+    v -= 128;
+
+    // This is the floating point equivalent. We do the conversion in integer
+    // because some Android devices do not have floating point in hardware.
+    // nR = (int)(1.164 * nY + 2.018 * nU);
+    // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
+    // nB = (int)(1.164 * nY + 1.596 * nV);
     int y1192 = 1192 * y;
     int r = (y1192 + 1634 * v);
     int g = (y1192 - 833 * v - 400 * u);
@@ -174,20 +180,18 @@ public class ImageUtils {
       }
     }
 
-    int i = 0;
-    for (int y = 0; y < height; y++) {
-      int pY = yRowStride * y;
-      int pUV = uvRowStride * (y >> 1);
+    int yp = 0;
+    for (int j = 0; j < height; j++) {
+      int pY = yRowStride * j;
+      int pUV = uvRowStride * (j >> 1);
 
-      for (int x = 0; x < width; x++) {
-        int uv_offset = pUV + (x >> 1) * uvPixelStride;
-        int nY = (yData[pY + x] & 0xFF) - 16;
-        int nU = (uData[uv_offset] & 0xFF) - 128;
-        int nV = (vData[uv_offset] & 0xFF) - 128;
-        if (nY < 0)
-          nY = 0;
+      for (int i = 0; i < width; i++) {
+        int uv_offset = pUV + (i >> 1) * uvPixelStride;
 
-        out[i++] = YUV2RGB( nY, nU, nV);
+        out[yp++] = YUV2RGB(
+            0xff & yData[pY + i],
+            0xff & uData[uv_offset],
+            0xff & vData[uv_offset]);
       }
     }
   }
