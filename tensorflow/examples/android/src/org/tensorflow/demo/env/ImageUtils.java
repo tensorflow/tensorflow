@@ -27,7 +27,7 @@ import java.io.FileOutputStream;
 public class ImageUtils {
   @SuppressWarnings("unused")
   private static final Logger LOGGER = new Logger();
-  
+
   static {
     try {
       System.loadLibrary("tensorflow_demo");
@@ -103,13 +103,13 @@ public class ImageUtils {
       int width,
       int height,
       int[] output) {
-
     if (useNativeConversion) {
       try {
         ImageUtils.convertYUV420SPToARGB8888(input, output, width, height, false);
         return;
       } catch (UnsatisfiedLinkError e) {
-        LOGGER.w("Native YUV420SP -> RGB implementation not found, falling back to Java implementation");
+        LOGGER.w(
+            "Native YUV420SP -> RGB implementation not found, falling back to Java implementation");
         useNativeConversion = false;
       }
     }
@@ -128,13 +128,12 @@ public class ImageUtils {
           u = 0xff & input[uvp++];
         }
 
-        output[yp] = YUV2RGB( y, u, v);
+        output[yp] = YUV2RGB(y, u, v);
       }
     }
   }
 
   private static int YUV2RGB(int y, int u, int v) {
-
     // Adjust and check YUV values
     y = (y - 16) < 0 ? 0 : (y - 16);
     u -= 128;
@@ -175,7 +174,8 @@ public class ImageUtils {
             yData, uData, vData, out, width, height, yRowStride, uvRowStride, uvPixelStride, false);
         return;
       } catch (UnsatisfiedLinkError e) {
-        LOGGER.w("Native YUV -> RGB implementation not found, falling back to Java implementation");
+        LOGGER.w(
+            "Native YUV420 -> RGB implementation not found, falling back to Java implementation");
         useNativeConversion = false;
       }
     }
