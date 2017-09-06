@@ -67,12 +67,12 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
     GetStatusResponse resp;
   };
   Call* call = new Call;
-  auto cb = [env, worker_cache, worker_name, done, wi,
+  auto cb = [env, worker_cache, &worker_name, &done, wi,
              call](const Status& status) {
     Status s = status;
     std::vector<Device*> remote_devices;
     auto cleanup = gtl::MakeCleanup(
-        [&worker_cache, &worker_name, &wi, &done, &remote_devices, &s, call] {
+        [worker_cache, &worker_name, wi, &done, &remote_devices, &s, call] {
           worker_cache->ReleaseWorker(worker_name, wi);
           done(s, &remote_devices);
           delete call;
