@@ -38,7 +38,7 @@ TOKENS = LEFT_TOKENS + RIGHT_TOKENS
 
 
 def store_trace_info(output_file_path,
-                     graph=ops.get_default_graph(),
+                     graph=None,
                      ignore_regex_fpaths=None):
   """Collects and stores trace information for a TensorFlow model.
 
@@ -51,6 +51,8 @@ def store_trace_info(output_file_path,
         in this list will be ignored. Defaults to patterns that match the core
         tensorflow python library.
   """
+  graph = graph or ops.get_default_graph()
+
   if not ignore_regex_fpaths:
     ignore_regex_fpaths = TF_LIB_REGEX_FPATHS
 
