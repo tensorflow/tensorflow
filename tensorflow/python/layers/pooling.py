@@ -471,9 +471,9 @@ def max_pool_2d_nxn_regions(inputs, output_size, mode):
 
 
 def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation='kaiming'):
-  layer = SpatialPyramidPooling(dimensions,
-                                mode,
-                                implementation)
+  layer = SpatialPyramidPooling(dimensions=dimensions,
+                                mode=mode,
+                                implementation=implementation)
   return layer.apply(inputs)
 
 
