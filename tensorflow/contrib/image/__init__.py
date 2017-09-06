@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""##Ops for image manipulation.
+"""Ops for image manipulation.
 
 ### API
 
 This module provides functions for image manipulation; currently, only
 projective transforms (including rotation) are supported.
-
-## Image `Ops`
 
 @@angles_to_projective_transforms
 @@compose_transforms

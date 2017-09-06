@@ -57,9 +57,7 @@ class HloInstruction;
 // instruction that is accessible from the instruction object itself.
 class DfsHloVisitor {
  public:
-  DfsHloVisitor()
-      : visit_state_(32)  // Start the hash table a bit larger to avoid resizes
-  {}
+  DfsHloVisitor() {}
   virtual ~DfsHloVisitor() {}
 
   // These routines are self-descriptive, see class comment for usage
@@ -230,6 +228,9 @@ class DfsHloVisitor {
 
   virtual Status HandleBatchNormTraining(HloInstruction* batchNormTraining) = 0;
 
+  virtual Status HandleBatchNormInference(
+      HloInstruction* batchNormInference) = 0;
+
   virtual Status HandleBatchNormGrad(HloInstruction* batchNormGrad) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
@@ -239,17 +240,21 @@ class DfsHloVisitor {
   // 3 possible visitation states of HLO instructions. Each instruction's
   // state only flows one way: kNotVisited -> kVisiting -> kVisited.
   enum VisitState {
-    kNotVisited,
-    kVisiting,
-    kVisited,
+    kNotVisited = 0,
+    kVisiting = 1,
+    kVisited = 2,
   };
 
-  VisitState GetVisitState(const HloInstruction& instruction) {
-    auto it = visit_state_.find(&instruction);
-    if (it == visit_state_.end()) {
-      return kNotVisited;
-    }
-    return it->second;
+  VisitState GetVisitState(int id) { return visit_state_.GetState(id); }
+  VisitState GetVisitState(const HloInstruction& instruction);
+
+  // Resize internal state if necessary to hold state for ids <= num.
+  // This call is purely a performance hint and can be omitted without
+  // affecting correctness.
+  void ReserveVisitStates(int num) { visit_state_.Reserve(num); }
+
+  void SetVisitState(int id, VisitState state) {
+    visit_state_.SetState(id, state);
   }
 
   // Sets the visitation state of the given instruction as kVisiting.
@@ -299,9 +304,43 @@ class DfsHloVisitor {
   virtual Status Postprocess(HloInstruction* visited);
 
  private:
-  // Tracks the visitation state of each instruction. Any instructions that are
-  // not found in the map are considered as VisitState::kNotVisited.
-  tensorflow::gtl::FlatMap<const HloInstruction*, VisitState> visit_state_;
+  class DFSVisitStates {
+   public:
+    DFSVisitStates() {}
+    void Reserve(uint64 num) {
+      states_.reserve((num + kStatesPerWord - 1) / kStatesPerWord);
+    }
+    VisitState GetState(uint64 id) {
+      uint64 word_index = id / kStatesPerWord;
+      if (word_index >= states_.size()) {
+        return VisitState::kNotVisited;
+      }
+      static_assert(static_cast<int>(VisitState::kVisited) < 3,
+                    "VisitState must fit in two bits");
+      uint64 w = states_[word_index];
+      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
+      return static_cast<VisitState>((w >> shift) & 0x3);
+    }
+    void SetState(uint64 id, VisitState state) {
+      uint64 word_index = id / kStatesPerWord;
+      if (word_index >= states_.size()) {
+        states_.resize(word_index + 1, 0);
+      }
+      uint64* w = &states_[word_index];
+      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
+      uint64 mask = 0x3ull << shift;
+      *w = (*w & ~mask) | (static_cast<uint64>(state) << shift);
+      DCHECK_EQ(GetState(id), state);
+    }
+
+   private:
+    static const uint32 kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;
+    // Map from id to two-bit states.  We store 32 such states per 64-bit
+    // value
+    std::vector<uint64> states_;
+  };
+
+  DFSVisitStates visit_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitor);
 };

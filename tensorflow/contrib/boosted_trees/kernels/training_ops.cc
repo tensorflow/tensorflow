@@ -29,6 +29,7 @@ using boosted_trees::trees::TreeNode;
 using boosted_trees::trees::TreeNodeMetadata;
 using boosted_trees::utils::DropoutUtils;
 using boosted_trees::learner::LearningRateConfig;
+using boosted_trees::trees::Leaf;
 
 namespace {
 
@@ -43,6 +44,11 @@ struct SplitCandidate {
   // Split info.
   learner::SplitInfo split_info;
 };
+
+// Checks that the leaf is not empty.
+bool IsLeafWellFormed(const Leaf& leaf) {
+  return leaf.has_sparse_vector() || leaf.has_vector();
+}
 
 // Helper method to update the best split per partition given
 // a current candidate.
@@ -62,6 +68,14 @@ void UpdateBestSplit(
   if (learner_config.pruning_mode() ==
           boosted_trees::learner::LearnerConfig::PRE_PRUNE &&
       split->gain < 0) {
+    return;
+  }
+
+  // If the current node is pure, one of the leafs will be empty, so the split
+  // is meaningless and we should not split.
+  if (!(IsLeafWellFormed(split->split_info.right_child()) &&
+        IsLeafWellFormed(split->split_info.left_child()))) {
+    VLOG(1) << "Split does not actually split anything";
     return;
   }
 

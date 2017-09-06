@@ -24,15 +24,20 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
+#include "tensorflow/contrib/tpu/profiler/op_profile.pb.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
+#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
+#include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/events_writer.h"
 
@@ -44,35 +49,80 @@ using ::tensorflow::TPUProfiler;
 
 using ::grpc::ClientContext;
 using ::tensorflow::io::JoinPath;
-using ::tensorflow::Env;
-using ::tensorflow::WriteStringToFile;
+using ::tensorflow::protobuf::util::JsonOptions;
+using ::tensorflow::protobuf::util::MessageToJsonString;
 
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-constexpr char kTraceFileName[] = "trace";
+constexpr char kJsonOpProfileFileName[] = "op_profile.json";
+constexpr char kProtoTraceFileName[] = "trace";
+constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
+constexpr uint64 kMaxEvents = 1000000;
 
-tensorflow::string GetCurrentTimeStampAsString() {
+string GetCurrentTimeStampAsString() {
   char s[128];
   std::time_t t = std::time(nullptr);
   CHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
   return s;
 }
 
-// The trace will be stored in <logdir>/plugins/profile/<run>/trace.
-void DumpTraceToLogDirectory(tensorflow::StringPiece logdir,
-                             tensorflow::StringPiece run,
-                             tensorflow::StringPiece trace) {
-  tensorflow::string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
-  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  tensorflow::string path = JoinPath(run_dir, kTraceFileName);
-  TF_CHECK_OK(WriteStringToFile(tensorflow::Env::Default(), path, trace));
-  LOG(INFO) << "Dumped trace data to " << path;
+Status WriteGzippedDataToFile(const string& filename, const string& data) {
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(filename, &file));
+  io::ZlibCompressionOptions options = io::ZlibCompressionOptions::GZIP();
+  io::ZlibOutputBuffer buffer(file.get(), options.input_buffer_size,
+                              options.output_buffer_size, options);
+  TF_RETURN_IF_ERROR(buffer.Init());
+  TF_RETURN_IF_ERROR(buffer.Append(data));
+  TF_RETURN_IF_ERROR(buffer.Close());
+  TF_RETURN_IF_ERROR(file->Close());
+  return Status::OK();
 }
 
-ProfileResponse Profile(const tensorflow::string& service_addr,
-                        int duration_ms) {
+// Dumps profile data to <logdir>/plugins/profile/<run>/.
+inline string CreateProfileRunDirectory(const string& logdir,
+                                        const string& run) {
+  string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
+  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
+  return run_dir;
+}
+
+void DumpTraceToLogDirectory(StringPiece run_dir, const string& encoded_trace) {
+  string proto_path = JoinPath(run_dir, kProtoTraceFileName);
+  TF_CHECK_OK(WriteStringToFile(Env::Default(), proto_path, encoded_trace));
+  LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
+
+  string json_path = JoinPath(run_dir, kJsonTraceFileName);
+  Trace trace;
+  trace.ParseFromString(encoded_trace);
+  std::cout << "Trace contains " << trace.trace_events_size() << " events."
+            << std::endl;
+  TF_CHECK_OK(WriteGzippedDataToFile(json_path, TraceEventsToJson(trace)));
+  std::cout << "Dumped JSON trace data to " << json_path << std::endl;
+}
+
+void DumpOpProfileToLogDirectory(StringPiece run_dir,
+                                 const tpu::op_profile::Profile& profile) {
+  string path = JoinPath(run_dir, kJsonOpProfileFileName);
+  string json;
+  JsonOptions options;
+  options.always_print_primitive_fields = true;
+  auto status = MessageToJsonString(profile, &json, options);
+  if (!status.ok()) {
+    std::cerr << "Failed to convert op profile to json. Skipping... "
+              << status.error_message() << std::endl;
+    return;
+  }
+  TF_CHECK_OK(WriteStringToFile(Env::Default(), path, json));
+  std::cout << "Dumped json op profile data to " << path << std::endl;
+}
+
+ProfileResponse Profile(const string& service_addr, int duration_ms) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
+  request.set_max_events(kMaxEvents);
+  std::cout << "Limiting the number of trace events to " << kMaxEvents
+            << std::endl;
   ProfileResponse response;
   ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -86,14 +136,12 @@ ProfileResponse Profile(const tensorflow::string& service_addr,
   return response;
 }
 
-void DumpGraph(tensorflow::StringPiece logdir, tensorflow::StringPiece run,
-               const tensorflow::string& graph_def) {
+void DumpGraph(StringPiece logdir, StringPiece run, const string& graph_def) {
   // The graph plugin expects the graph in <logdir>/<run>/<event.file>.
-  tensorflow::string run_dir =
-      JoinPath(logdir, tensorflow::strings::StrCat(kGraphRunPrefix, run));
+  string run_dir = JoinPath(logdir, strings::StrCat(kGraphRunPrefix, run));
   TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  tensorflow::EventsWriter event_writer(JoinPath(run_dir, "events"));
-  tensorflow::Event event;
+  EventsWriter event_writer(JoinPath(run_dir, "events"));
+  Event event;
   event.set_graph_def(graph_def);
   event_writer.WriteEvent(event);
 }
@@ -128,25 +176,34 @@ int main(int argc, char** argv) {
       tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
   // Use the current timestamp as the run name.
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
+  tensorflow::string run_dir =
+      tensorflow::tpu::CreateProfileRunDirectory(FLAGS_logdir, run);
   // Ignore computation_graph for now.
   if (response.encoded_trace().empty()) {
-    LOG(WARNING) << "No trace event is collected during the " << duration_ms
-                 << "ms interval.";
+    std::cout << "No trace event is collected during the " << duration_ms
+              << "ms interval." << std::endl;
   } else {
-    tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir, run,
-                                             response.encoded_trace());
+    LOG(INFO) << "Converting trace events to TraceViewer JSON.";
+    tensorflow::tpu::DumpTraceToLogDirectory(run_dir, response.encoded_trace());
   }
   int num_graphs = response.computation_graph_size();
   if (num_graphs > 0) {
     // The server might generates multiple graphs for one program; we simply
     // pick the first one.
     if (num_graphs > 1) {
-      LOG(INFO) << num_graphs
+      std::cout << num_graphs
                 << " TPU program variants observed over the profiling period. "
-                << "One computation graph will be chosen arbitrarily.";
+                << "One computation graph will be chosen arbitrarily."
+                << std::endl;
     }
     tensorflow::tpu::DumpGraph(
         FLAGS_logdir, run, response.computation_graph(0).SerializeAsString());
+  }
+  if (response.has_op_profile() &&
+      (response.op_profile().has_by_program_structure() ||
+       response.op_profile().has_by_category())) {
+    tensorflow::tpu::DumpOpProfileToLogDirectory(run_dir,
+                                                 response.op_profile());
   }
   // Print this at the end so that it's not buried in irrelevant LOG messages.
   std::cout

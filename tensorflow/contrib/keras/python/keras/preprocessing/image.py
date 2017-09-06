@@ -583,9 +583,9 @@ class ImageDataGenerator(object):
                         'first by calling `.fit(numpy_data)`.')
     if self.zca_whitening:
       if self.principal_components is not None:
-        flatx = np.reshape(x, (x.size))
+        flatx = np.reshape(x, (-1, np.prod(x.shape[-3:])))
         whitex = np.dot(flatx, self.principal_components)
-        x = np.reshape(whitex, (x.shape[0], x.shape[1], x.shape[2]))
+        x = np.reshape(whitex, x.shape)
       else:
         logging.warning('This ImageDataGenerator specifies '
                         '`zca_whitening`, but it hasn\'t'
@@ -864,7 +864,7 @@ class NumpyArrayIterator(Iterator):
                        'with shape', self.x.shape)
     channels_axis = 3 if data_format == 'channels_last' else 1
     if self.x.shape[channels_axis] not in {1, 3, 4}:
-      raise ValueError(
+      logging.warning(
           'NumpyArrayIterator is set to use the '
           'data format convention "' + data_format + '" '
           '(channels on axis ' + str(channels_axis) + '), i.e. expected '
@@ -1076,7 +1076,7 @@ class DirectoryIterator(Iterator):
     self.save_prefix = save_prefix
     self.save_format = save_format
 
-    white_list_formats = {'png', 'jpg', 'jpeg', 'bmp'}
+    white_list_formats = {'png', 'jpg', 'jpeg', 'bmp', 'ppm'}
 
     # first, count the number of samples and classes
     self.samples = 0

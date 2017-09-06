@@ -25,6 +25,7 @@ See @{$python/contrib.training} guide.
 @@weighted_resample
 @@bucket
 @@bucket_by_sequence_length
+@@RandomStrategy
 @@GreedyLoadBalancingStrategy
 @@byte_size_load_fn
 @@FailureTolerator
@@ -35,7 +36,6 @@ See @{$python/contrib.training} guide.
 @@HParams
 @@HParamDef
 @@parse_values
-@@python_input
 """
 
 from __future__ import absolute_import
@@ -54,12 +54,12 @@ from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndH
 from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
 from tensorflow.contrib.training.python.training.feeding_queue_runner import FeedingQueueRunner
 from tensorflow.contrib.training.python.training.hparam import *
-from tensorflow.contrib.training.python.training.python_input import python_input
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *
 from tensorflow.contrib.training.python.training.training import add_gradients_summaries
 from tensorflow.contrib.training.python.training.training import clip_gradient_norms
+from tensorflow.contrib.training.python.training.training import clip_gradient_norms_fn
 from tensorflow.contrib.training.python.training.training import create_train_op
 from tensorflow.contrib.training.python.training.training import multiply_gradients
 from tensorflow.contrib.training.python.training.training import train
@@ -74,6 +74,7 @@ _allowed_symbols = [
     'checkpoints_iterator', 'evaluate_once', 'evaluate_repeatedly',
     'FeedingQueueRunner', 'get_or_create_eval_step', 'StopAfterNEvalsHook',
     'SummaryAtEndHook', 'wait_for_new_checkpoint', 'add_gradients_summaries',
-    'clip_gradient_norms', 'create_train_op', 'multiply_gradients', 'train']
+    'clip_gradient_norms', 'clip_gradient_norms_fn', 'create_train_op',
+    'multiply_gradients', 'train']
 
 remove_undocumented(__name__, _allowed_symbols)

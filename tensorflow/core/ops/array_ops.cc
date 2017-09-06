@@ -1006,7 +1006,8 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr(
-        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
+        "double, complex64, "
         "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -1083,7 +1084,8 @@ REGISTER_OP("ReverseV2")
     .Output("output: T")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
-        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
+        "double, complex64, "
         "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -1518,8 +1520,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices),
-            " and params shape: ", c->DebugString(params));
+            c->DebugString(indices), " and params shape: ",
+            c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -1675,6 +1677,35 @@ REGISTER_OP("_MklIdentity")
     .Doc(R"Doc( Mkl implementation of IdentityOp
 )Doc");
 #endif
+
+REGISTER_OP("IdentityN")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type)")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<ShapeHandle> input;
+      TF_RETURN_IF_ERROR(c->input("input", &input));
+      TF_RETURN_IF_ERROR(c->set_output("output", input));
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Returns a list of tensors with the same shapes and contents as the input
+tensors.
+
+This op can be used to override the gradient for complicated functions. For
+example, suppose y = f(x) and we wish to apply a custom function g for backprop
+such that dx = g(dy). In Python,
+
+```python
+with tf.get_default_graph().gradient_override_map(
+    {'IdentityN': 'OverrideGradientWithG'}):
+  y, _ = identity_n([f(x), x])
+
+@tf.RegisterGradient('OverrideGradientWithG')
+def ApplyG(op, dy, _):
+  return [None, g(dy)]  # Do not backprop to f(x).
+```
+)Doc");
 
 // --------------------------------------------------------------------------
 REGISTER_OP("RefIdentity")
@@ -2117,12 +2148,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -4709,7 +4740,7 @@ REGISTER_OP("QuantizeV2")
     .Output("output_min: float")
     .Output("output_max: float")
     .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4763,6 +4794,47 @@ is rounded first, before it's subtracted from the rounded value. With
 MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
 and dequantizing will introduce a larger and larger error.
 
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (max_fixed - min_fixed) / (2 * m)
+```
+
+Now we can quantize the elements of our tensor:
+```c++
+result = (input * s).round_to_nearest()
+```
+
 One thing to watch out for is that the operator may choose to adjust the
 requested minimum and maximum values slightly during the quantization process,
 so you should always use the output ports as the range for further calculations.
@@ -4786,7 +4858,7 @@ REGISTER_OP("Dequantize")
     .Input("max_range: float")
     .Output("output: float")
     .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4828,6 +4900,47 @@ range = (range_max - range_min) * range_adjust
 range_scale = range / number_of_steps
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
+```
+
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (2 * m) / (max_fixed - min_fixed)
+```
+
+Now we can dequantize the elements of our tensor:
+```c++
+result = input * s
 ```
 
 min_range: The minimum scalar value possibly produced for the input.
@@ -4983,9 +5096,8 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", outer_dims,
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }

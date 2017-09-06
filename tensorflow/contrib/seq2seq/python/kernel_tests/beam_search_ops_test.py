@@ -78,7 +78,7 @@ class GatherTreeTest(test.TestCase):
     sequence_length = [[3, 3, 3]]
     expected_result = _transpose_batch_time(
         [[[2, -1, 2], [6, 5, 6], [7, 8, 9], [-1, -1, -1]]])
-    with ops.device("/gpu:0"):
+    with ops.device("/device:GPU:0"):
       beams = beam_search_ops.gather_tree(
           step_ids=step_ids, parent_ids=parent_ids,
           sequence_length=sequence_length)

@@ -1,17 +1,11 @@
 
-
-conv2d_2/BiasAdd 
-
-conv2d/BiasAddè
-%
-conv2d_1/bias_trainable_variables
-
-conv2d_2/convolutionÀp
-
-conv2d/convolutionð—
-#
-conv2d/bias_trainable_variables
-'
-conv2d_1/kernel_trainable_variables
-%
-conv2d/kernel_trainable_variables
+
+DW2_trainable_variables
+
+ScalarW_trainable_variables
+
+DW_trainable_variables
+
+Conv2DÈ-
+
+Conv2D_1€$

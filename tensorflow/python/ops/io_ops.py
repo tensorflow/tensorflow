@@ -170,7 +170,7 @@ class ReaderBase(object):
     return self._reader_ref
 
   def read(self, queue, name=None):
-    """Returns the next record (key, value pair) produced by a reader.
+    """Returns the next record (key, value) pair produced by a reader.
 
     Will dequeue a work unit from queue if necessary (e.g. when the
     Reader needs to start reading from a new file since it has
@@ -200,7 +200,7 @@ class ReaderBase(object):
 
   def read_up_to(self, queue, num_records,  # pylint: disable=invalid-name
                  name=None):
-    """Returns up to num_records (key, value pairs) produced by a reader.
+    """Returns up to num_records (key, value) pairs produced by a reader.
 
     Will dequeue a work unit from queue if necessary (e.g., when the
     Reader needs to start reading from a new file since it has

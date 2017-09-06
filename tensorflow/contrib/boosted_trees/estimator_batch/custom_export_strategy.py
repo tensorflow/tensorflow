@@ -52,7 +52,7 @@ def make_custom_export_strategy(name, convert_fn, feature_columns,
    sparse_int_indices, _, _) = gbdt_batch.extract_features(
        input_fn.features, feature_columns)
 
-  def export_fn(estimator, export_dir, checkpoint_path, eval_result=None):
+  def export_fn(estimator, export_dir, checkpoint_path=None, eval_result=None):
     """A wrapper to export to SavedModel, and convert it to other formats."""
     result_dir = base_strategy.export(estimator, export_dir,
                                       checkpoint_path,

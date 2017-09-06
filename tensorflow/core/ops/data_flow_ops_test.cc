@@ -137,6 +137,26 @@ TEST(DataFlowOpsTest, DynamicStitch) {
               "[2,3];[5,6];[2,3,4,5];[5,6,13,14]");
 }
 
+TEST(DataFlowOpsTest, ParallelDynamicStitch) {
+  ShapeInferenceTestOp op("ParallelDynamicStitch");
+  TF_ASSERT_OK(
+      NodeDefBuilder("test", "ParallelDynamicStitch")
+          .Input({{"indices", 0, DT_INT32}, {"indices_2", 1, DT_INT32}})
+          .Input({{"data", 0, DT_FLOAT}, {"data_2", 1, DT_FLOAT}})
+          .Attr("N", 2)
+          .Finalize(&op.node_def));
+
+  INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
+
+  // Bad prefix for the second data input.
+  INFER_ERROR("Dimensions must be equal, but are 10 and 5", op,
+              "[2,3];[5,6];[2,3,4,5];[10,11,4,5]");
+
+  // Inconsistent suffix dimensions
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 4 and 13", op,
+              "[2,3];[5,6];[2,3,4,5];[5,6,13,14]");
+}
+
 TEST(DataFlowOpsTest, TensorArrayV3) {
   ShapeInferenceTestOp op("TensorArrayV3");
   TF_ASSERT_OK(NodeDefBuilder("test", "TensorArrayV3")

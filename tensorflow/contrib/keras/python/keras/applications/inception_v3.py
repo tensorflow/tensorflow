@@ -125,7 +125,7 @@ def InceptionV3(include_top=True,
           if `include_top` is False (otherwise the input shape
           has to be `(299, 299, 3)` (with `channels_last` data format)
           or `(3, 299, 299)` (with `channels_first` data format).
-          It should have exactly 3 inputs channels,
+          It should have exactly 3 input channels,
           and width and height should be no smaller than 139.
           E.g. `(150, 150, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -165,7 +165,8 @@ def InceptionV3(include_top=True,
       default_size=299,
       min_size=139,
       data_format=K.image_data_format(),
-      include_top=include_top)
+      require_flatten=False,
+      weights=weights)
 
   if input_tensor is None:
     img_input = Input(shape=input_shape)

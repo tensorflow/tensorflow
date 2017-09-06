@@ -42,7 +42,6 @@ from tensorflow.contrib.keras.python.keras.layers import GlobalAveragePooling2D
 from tensorflow.contrib.keras.python.keras.layers import GlobalMaxPooling2D
 from tensorflow.contrib.keras.python.keras.layers import Input
 from tensorflow.contrib.keras.python.keras.layers import MaxPooling2D
-from tensorflow.contrib.keras.python.keras.layers import ZeroPadding2D
 from tensorflow.contrib.keras.python.keras.models import Model
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
 
@@ -170,7 +169,7 @@ def ResNet50(include_top=True,
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
           or `(3, 224, 224)` (with `channels_first` data format).
-          It should have exactly 3 inputs channels,
+          It should have exactly 3 input channels,
           and width and height should be no smaller than 197.
           E.g. `(200, 200, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -210,7 +209,8 @@ def ResNet50(include_top=True,
       default_size=224,
       min_size=197,
       data_format=K.image_data_format(),
-      include_top=include_top)
+      require_flatten=include_top,
+      weights=weights)
 
   if input_tensor is None:
     img_input = Input(shape=input_shape)
@@ -222,8 +222,8 @@ def ResNet50(include_top=True,
   else:
     bn_axis = 1
 
-  x = ZeroPadding2D((3, 3))(img_input)
-  x = Conv2D(64, (7, 7), strides=(2, 2), name='conv1')(x)
+  x = Conv2D(64, (7, 7),
+             strides=(2, 2), padding='same', name='conv1')(img_input)
   x = BatchNormalization(axis=bn_axis, name='bn_conv1')(x)
   x = Activation('relu')(x)
   x = MaxPooling2D((3, 3), strides=(2, 2))(x)

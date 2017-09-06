@@ -911,14 +911,17 @@ class SparsePlaceholderTest(test.TestCase):
   def testPlaceholder(self):
     foo = array_ops.sparse_placeholder(dtypes.float32, shape=(10, 47))
     self.assertAllEqual([10, 47], foo.get_shape())
+    self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
 
   def testPartialShapePlaceholder(self):
     foo = array_ops.sparse_placeholder(dtypes.float32, shape=(None, 47))
     self.assertAllEqual([None, None], foo.get_shape().as_list())
+    self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
 
   def testNoShapePlaceholder(self):
     foo = array_ops.sparse_placeholder(dtypes.float32, shape=None)
     self.assertAllEqual(None, foo.get_shape())
+    self.assertAllEqual([None, None], foo.indices.get_shape().as_list())
 
 
 if __name__ == "__main__":

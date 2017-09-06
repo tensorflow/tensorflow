@@ -78,6 +78,30 @@ TEST(ShapeUtilTest, ParseShapeStringR2F32) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST(ShapeUtilTest, ParseShapeStringTupleOfArrays) {
+  string shape_string = "(f32[1572864],s8[5120,1024])";
+  Shape actual = ShapeUtil::ParseShapeString(shape_string).ValueOrDie();
+  Shape expected =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1572864}),
+                                 ShapeUtil::MakeShape(S8, {5120, 1024})});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseShapeStringNestedTuple) {
+  string shape_string = "(f32[1],(f32[2]), f32[3])";
+  Shape actual = ShapeUtil::ParseShapeString(shape_string).ValueOrDie();
+  Shape expected = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShape(F32, {1}),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2})}),
+      ShapeUtil::MakeShape(F32, {3}),
+  });
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
 TEST(ShapeUtilTest, CompatibleIdenticalShapes) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {3, 2});
   Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});

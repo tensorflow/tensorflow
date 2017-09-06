@@ -89,3 +89,7 @@ pip3 install portpicker
 # TensorFlow Serving integration tests require the following:
 pip2 install grpcio
 pip3 install grpcio
+
+# Eager execution needs autograd:
+pip2 install --upgrade autograd>=1.1.12
+pip3 install --upgrade autograd>=1.1.12

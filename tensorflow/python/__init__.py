@@ -71,6 +71,10 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# Namespaces
+from tensorflow.python.ops import initializers_ns as initializers
+from tensorflow.python.ops import linalg_ns as linalg
+
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
@@ -114,6 +118,7 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
+from tensorflow.python.framework import subscribe
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
@@ -224,6 +229,8 @@ _allowed_symbols.extend([
     'gfile',
     'graph_util',
     'image',
+    'initializers',
+    'linalg',
     'logging',
     'losses',
     'metrics',

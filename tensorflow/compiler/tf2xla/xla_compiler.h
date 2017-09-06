@@ -276,7 +276,7 @@ class XlaCompiler {
   xla::Client* client() const { return options_.client; }
   XlaCompilationDevice* device() const { return device_; }
   const DeviceMgr* device_mgr() const { return &device_mgr_; }
-  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_.get(); }
+  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -293,10 +293,8 @@ class XlaCompiler {
   // Returns the next step sequence number.
   int64 NextStepId();
 
-  mutex mu_;
-
   // Internal sequence number for steps executed on the compilation device.
-  int64 next_step_id_ GUARDED_BY(mu_);
+  int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
@@ -305,9 +303,11 @@ class XlaCompiler {
   // library and runtime for functions created as part of the functionalize
   // control flow transformation.
   std::unique_ptr<FunctionLibraryDefinition> local_flib_def_;
-  std::unique_ptr<FunctionLibraryRuntime> local_flib_runtime_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> local_pflr_;
 
-  std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
+  FunctionLibraryRuntime* local_flib_runtime_;  // owned by local_pflr_.
+  FunctionLibraryRuntime* flib_runtime_;        // owned by pflr_.
 
   struct SignatureHash {
     uint64 operator()(
@@ -318,7 +318,7 @@ class XlaCompiler {
                      CompilationResult, SignatureHash>
       cache_;
 
-  std::unordered_map<string, xla::ChannelHandle> channels_ GUARDED_BY(mu_);
+  std::unordered_map<string, xla::ChannelHandle> channels_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

@@ -165,7 +165,7 @@ def assert_listed_tensors(tst,
   idx0 = line.index("Size")
   attr_seg = attr_segs[1]
   tst.assertEqual(idx0, attr_seg[0])
-  tst.assertEqual(idx0 + len("Size"), attr_seg[1])
+  tst.assertEqual(idx0 + len("Size (B)"), attr_seg[1])
   command = attr_seg[2][0].content
   tst.assertIn("-s dump_size", command)
   assert_column_header_command_shortcut(tst, command, reverse, node_name_regex,
@@ -585,11 +585,38 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         cls._analyzer.list_source,
         cls._analyzer.get_help("list_source"),
         prefix_aliases=["ls"])
+    cls._registry.register_command_handler(
+        "eval",
+        cls._analyzer.evaluate_expression,
+        cls._analyzer.get_help("eval"),
+        prefix_aliases=["ev"])
 
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
     shutil.rmtree(cls._dump_root)
+
+  def testMeasureTensorListColumnWidthsGivesRightAnswerForEmptyData(self):
+    timestamp_col_width, dump_size_col_width, op_type_col_width = (
+        self._analyzer._measure_tensor_list_column_widths([]))
+    self.assertEqual(len("t (ms)") + 1, timestamp_col_width)
+    self.assertEqual(len("Size (B)") + 1, dump_size_col_width)
+    self.assertEqual(len("Op type") + 1, op_type_col_width)
+
+  def testMeasureTensorListColumnWidthsGivesRightAnswerForData(self):
+    dump = self._debug_dump.dumped_tensor_data[0]
+    self.assertLess(dump.dump_size_bytes, 1000)
+    self.assertEqual(
+        "VariableV2", self._debug_dump.node_op_type(dump.node_name))
+    _, dump_size_col_width, op_type_col_width = (
+        self._analyzer._measure_tensor_list_column_widths([dump]))
+    # The length of str(dump.dump_size_bytes) is less than the length of
+    # "Size (B)" (8). So the column width should be determined by the length of
+    # "Size (B)".
+    self.assertEqual(len("Size (B)") + 1, dump_size_col_width)
+    # The length of "VariableV2" is greater than the length of "Op type". So the
+    # column should be determined by the length of "VariableV2".
+    self.assertEqual(len("VariableV2") + 1, op_type_col_width)
 
   def testListTensors(self):
     # Use shorthand alias for the command prefix.
@@ -1133,6 +1160,29 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "graphs"
     ], out.lines)
     check_main_menu(self, out, list_tensors_enabled=True)
+
+  def testEvalExpression(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command(
+        "eval", ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name)],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"from eval of expression "
+        "'np.matmul(`simple_mul_add/matmul:0`, "
+        "`simple_mul_add/matmul:0`.T)'\":",
+        "  dtype: float64",
+        "  shape: (2, 2)",
+        "",
+        "Numeric summary:",
+        "| - + | total |",
+        "| 2 2 |     4 |",
+        "|           min           max          mean           std |",
+        "|         -14.0          49.0          6.25 25.7524270701 |",
+        "",
+        "array([[ 49., -14.],",
+        "       [-14.,   4.]])"], out.lines)
 
   def testAddGetTensorFilterLambda(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)

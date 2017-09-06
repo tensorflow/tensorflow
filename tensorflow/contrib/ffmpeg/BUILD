@@ -87,6 +87,8 @@ tf_py_test(
     srcs = ["decode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
+        "@six_archive//:six",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],
@@ -102,6 +104,8 @@ tf_py_test(
     srcs = ["encode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
+        "@six_archive//:six",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],

@@ -29,7 +29,12 @@ namespace tfprof {
 static const char* const kOptions[] = {
     "-max_depth",
     "-min_bytes",
+    "-min_peak_bytes",
+    "-min_residual_bytes",
+    "-min_output_bytes",
     "-min_micros",
+    "-min_accelerator_micros",
+    "-min_cpu_micros",
     "-min_params",
     "-min_float_ops",
     "-min_occurrence",
@@ -46,17 +51,21 @@ static const char* const kOptions[] = {
 };
 
 static const char* const kOrderBy[] = {
-    "name",       "bytes",  "micros",    "accelerator_micros",
-    "cpu_micros", "params", "float_ops", "occurrence",
+    "name",         "bytes",     "peak_bytes",         "residual_bytes",
+    "output_bytes", "micros",    "accelerator_micros", "cpu_micros",
+    "params",       "float_ops", "occurrence",
 };
 
 // Append Only.
 // TODO(xpan): As we are adding more fields to be selected, we
 // need to have a way to tell users what fields are available in which view.
-static const char* const kShown[] = {
-    "bytes",     "micros",   "params",     "float_ops",    "tensor_value",
-    "device",    "op_types", "occurrence", "input_shapes", "accelerator_micros",
-    "cpu_micros"};
+static const char* const kShown[] = {"bytes",          "micros",
+                                     "params",         "float_ops",
+                                     "tensor_value",   "device",
+                                     "op_types",       "occurrence",
+                                     "input_shapes",   "accelerator_micros",
+                                     "cpu_micros",     "peak_bytes",
+                                     "residual_bytes", "output_bytes"};
 
 static const char* const kCmds[] = {
     "scope", "graph", "code", "op", "advise", "set", "help",
@@ -94,11 +103,15 @@ struct Options {
 
   virtual ~Options() {}
   Options()
-      : Options(0, 0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {}, false, {}, "",
-                {}) {}
+      : Options(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {},
+                false, {}, "", {}) {}
 
   Options(int max_depth, tensorflow::int64 min_bytes,
-          tensorflow::int64 min_micros, tensorflow::int64 min_params,
+          tensorflow::int64 min_peak_bytes,
+          tensorflow::int64 min_residual_bytes,
+          tensorflow::int64 min_output_bytes, tensorflow::int64 min_micros,
+          tensorflow::int64 min_accelerator_micros,
+          tensorflow::int64 min_cpu_micros, tensorflow::int64 min_params,
           tensorflow::int64 min_float_ops, tensorflow::int64 min_occurrence,
           tensorflow::int64 step, const string& order_by,
           const std::vector<string>& account_type_regexes,
@@ -111,7 +124,12 @@ struct Options {
           const std::map<string, string>& output_options)
       : max_depth(max_depth),
         min_bytes(min_bytes),
+        min_peak_bytes(min_peak_bytes),
+        min_residual_bytes(min_residual_bytes),
+        min_output_bytes(min_output_bytes),
         min_micros(min_micros),
+        min_accelerator_micros(min_accelerator_micros),
+        min_cpu_micros(min_cpu_micros),
         min_params(min_params),
         min_float_ops(min_float_ops),
         min_occurrence(min_occurrence),
@@ -131,7 +149,12 @@ struct Options {
 
   int max_depth;
   tensorflow::int64 min_bytes;
+  tensorflow::int64 min_peak_bytes;
+  tensorflow::int64 min_residual_bytes;
+  tensorflow::int64 min_output_bytes;
   tensorflow::int64 min_micros;
+  tensorflow::int64 min_accelerator_micros;
+  tensorflow::int64 min_cpu_micros;
   tensorflow::int64 min_params;
   tensorflow::int64 min_float_ops;
   tensorflow::int64 min_occurrence;

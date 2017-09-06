@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import re
 
 from tensorflow.python.framework import ops
@@ -250,6 +251,58 @@ def _subscribe(tensor, side_effects, control_cache):
   return _subscribe_new(tensor, side_effects, control_cache)
 
 
+@contextlib.contextmanager
+def _preserve_control_flow_context(tensor):
+  """Preserve the control flow context for the given tensor.
+
+  Sets the graph context to the tensor's context so that side effect ops are
+  added under the same context.
+
+  This is needed when subscribing to tensors defined within a conditional
+  block or a while loop. In these cases we need that the side-effect ops
+  are created within the same control flow context as that of the tensor
+  they are attached to.
+
+  Args:
+    tensor: tensor whose context should be preserved.
+
+  Yields:
+    None
+  """
+
+  # pylint: disable=protected-access
+  context = tensor.op._get_control_flow_context()
+  # pylint: enable=protected-access
+  if context:
+    context.Enter()
+  try:
+    yield
+  finally:
+    if context:
+      context.Exit()
+
+
+def _scoped_subscribe(tensor, side_effects, control_cache):
+  """Helper method that subscribes a single tensor to a list of side_effects.
+
+  This is a thin wrapper around `_subscribe` and ensures that the side effect
+  ops are added within the same device and control flow context of the
+  subscribed tensor.
+
+  Args:
+    tensor: The `tf.Tensor` to be subscribed.
+    side_effects: List of side_effect functions, see subscribe for details.
+    control_cache: `_ControlOutputCache` helper to get control_outputs faster.
+  Returns:
+    The modified replacement to the passed in tensor which triggers the side
+    effects or the given tensor, if it was already been subscribed.
+  """
+
+  with ops.device(tensor.device):
+    with _preserve_control_flow_context(tensor):
+      return _subscribe(tensor, side_effects, control_cache)
+
+
 def subscribe(tensors, side_effects):
   """Subscribe to a tensor.
 
@@ -290,5 +343,5 @@ def subscribe(tensors, side_effects):
 
   control_outputs = _ControlOutputCache()
   result = _recursive_apply(
-      tensors, lambda t: _subscribe(t, side_effects, control_outputs))
+      tensors, lambda t: _scoped_subscribe(t, side_effects, control_outputs))
   return result

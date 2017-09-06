@@ -46,7 +46,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     sequential_like = True
   else:
     sequential_like = True
-    for v in model.nodes_by_depth.values():
+    for v in model._nodes_by_depth.values():  # pylint: disable=protected-access
       if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
         # If the model has multiple nodes or if the nodes have
         # multiple inbound_layers, the model is no longer sequential.
@@ -68,7 +68,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     # header names for the different log elements
     to_display = ['Layer (type)', 'Output Shape', 'Param #', 'Connected to']
     relevant_nodes = []
-    for v in model.nodes_by_depth.values():
+    for v in model._nodes_by_depth.values():  # pylint: disable=protected-access
       relevant_nodes += v
 
   def print_row(fields, positions):

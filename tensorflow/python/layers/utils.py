@@ -198,7 +198,7 @@ def smart_cond(pred, fn1, fn2, name=None):
     Tensors returned by the call to either `fn1` or `fn2`.
 
   Raises:
-    TypeError is fn1 or fn2 is not callable.
+    TypeError: If `fn1` or `fn2` is not callable.
   """
   if not callable(fn1):
     raise TypeError('`fn1` must be callable.')
@@ -226,7 +226,7 @@ def constant_value(pred):
     True or False if `pred` has a constant boolean value, None otherwise.
 
   Raises:
-    TypeError is pred is not a Variable, Tensor or bool.
+    TypeError: If `pred` is not a Variable, Tensor or bool.
   """
   if isinstance(pred, bool):
     pred_value = pred

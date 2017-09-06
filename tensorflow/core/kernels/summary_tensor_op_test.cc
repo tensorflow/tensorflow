@@ -67,14 +67,10 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
 
   // Create a SummaryMetadata that stores data for 2 plugins.
   SummaryMetadata summary_metadata;
-  SummaryMetadata::PluginData* plugin_data_0 =
-      summary_metadata.add_plugin_data();
-  plugin_data_0->set_plugin_name("foo");
-  plugin_data_0->set_content("content_for_plugin_foo");
-  SummaryMetadata::PluginData* plugin_data_1 =
-      summary_metadata.add_plugin_data();
-  plugin_data_1->set_plugin_name("bar");
-  plugin_data_1->set_content("content_for_plugin_bar");
+  SummaryMetadata::PluginData* plugin_data =
+      summary_metadata.mutable_plugin_data();
+  plugin_data->set_plugin_name("foo");
+  plugin_data->set_content("content_for_plugin_foo");
   AddInputFromArray<string>(TensorShape({}),
                             {summary_metadata.SerializeAsString()});
 
@@ -95,13 +91,9 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
 
   // Check plugin-related data.
   ASSERT_EQ("tag_foo", summary.value(0).tag());
-  ASSERT_EQ(2, summary.value(0).metadata().plugin_data_size());
-  ASSERT_EQ("foo", summary.value(0).metadata().plugin_data(0).plugin_name());
+  ASSERT_EQ("foo", summary.value(0).metadata().plugin_data().plugin_name());
   ASSERT_EQ("content_for_plugin_foo",
-            summary.value(0).metadata().plugin_data(0).content());
-  ASSERT_EQ("bar", summary.value(0).metadata().plugin_data(1).plugin_name());
-  ASSERT_EQ("content_for_plugin_bar",
-            summary.value(0).metadata().plugin_data(1).content());
+            summary.value(0).metadata().plugin_data().content());
 }
 
 }  // namespace

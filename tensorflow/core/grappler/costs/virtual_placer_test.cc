@@ -30,14 +30,14 @@ TEST(VirtualPlacerTest, LocalDevices) {
   devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
   DeviceProperties gpu_device;
   gpu_device.set_type("GPU");
-  devices["/job:localhost/replica:0/task:0/gpu:0"] = gpu_device;
+  devices["/job:localhost/replica:0/task:0/device:GPU:0"] = gpu_device;
   VirtualCluster cluster(devices);
   VirtualPlacer placer(&cluster);
 
   NodeDef node;
   node.set_op("Conv2D");
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:localhost/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:localhost/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 
   node.set_device("CPU");
@@ -47,7 +47,7 @@ TEST(VirtualPlacerTest, LocalDevices) {
 
   node.set_device("GPU:0");
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:localhost/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:localhost/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 }
 
@@ -60,7 +60,7 @@ TEST(VirtualPlacerTest, EmptyJobBecomesLocalhost) {
   devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
   DeviceProperties gpu_device;
   gpu_device.set_type("GPU");
-  devices["/job:localhost/replica:0/task:0/gpu:0"] = gpu_device;
+  devices["/job:localhost/replica:0/task:0/device:GPU:0"] = gpu_device;
   VirtualCluster cluster(devices);
   VirtualPlacer placer(&cluster);
 
@@ -70,7 +70,7 @@ TEST(VirtualPlacerTest, EmptyJobBecomesLocalhost) {
   EXPECT_EQ("/job:localhost/replica:0/task:0/cpu:0",
             placer.get_canonical_device_name(node));
   node.set_device("/device:GPU:0");
-  EXPECT_EQ("/job:localhost/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:localhost/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 }
 
@@ -113,7 +113,7 @@ TEST(VirtualPlacerTest, RemoteDevices) {
   devices["/job:my_job/replica:0/task:0/cpu:0"] = cpu_device;
   DeviceProperties gpu_device;
   gpu_device.set_type("GPU");
-  devices["/job:my_job/replica:0/task:0/gpu:0"] = gpu_device;
+  devices["/job:my_job/replica:0/task:0/device:GPU:0"] = gpu_device;
   VirtualCluster cluster(devices);
   VirtualPlacer placer(&cluster);
 
@@ -122,7 +122,7 @@ TEST(VirtualPlacerTest, RemoteDevices) {
 
   // Device falls back to GPU.
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:my_job/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 
   node.set_device("/job:my_job/replica:0/task:0/cpu:0");
@@ -130,27 +130,27 @@ TEST(VirtualPlacerTest, RemoteDevices) {
   EXPECT_EQ("/job:my_job/replica:0/task:0/cpu:0",
             placer.get_canonical_device_name(node));
 
-  node.set_device("/job:my_job/replica:0/task:0/gpu:0");
+  node.set_device("/job:my_job/replica:0/task:0/device:GPU:0");
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:my_job/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 
   // There is no local cpu available. Device falls back to GPU.
   node.set_device("CPU");
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:my_job/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 
   node.set_device("GPU:0");
   // There is no local GPU available. Fall back to default GPU.
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:my_job/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 
   // This isn't a valid name. Fall back to GPU.
   node.set_device("/job:my_job/replica:0/task:0");
   EXPECT_EQ("GPU", placer.get_device(node).type());
-  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+  EXPECT_EQ("/job:my_job/replica:0/task:0/device:GPU:0",
             placer.get_canonical_device_name(node));
 }
 

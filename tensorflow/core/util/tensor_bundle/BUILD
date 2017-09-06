@@ -1,9 +1,8 @@
 # Description:
-# Tensor bundle: a module to efficiently serialize and deserialize tensors.
+#   Tensor bundle: a module to efficiently serialize and deserialize tensors.
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -50,9 +49,8 @@ cc_library(
 
 cc_header_only_library(
     name = "tensor_bundle_headers_lib",
-    deps = [
-        ":tensor_bundle",
-    ],
+    features = ["-parse_headers"],  # Transitively pulls in Eigen headers
+    deps = [":tensor_bundle"],
 )
 
 cc_library(

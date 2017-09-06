@@ -11,8 +11,8 @@ problem is to classify RGB 32x32 pixel images across 10 categories:
 airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.
 ```
 
-For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
-and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
+For more details refer to the [CIFAR-10 page](https://www.cs.toronto.edu/~kriz/cifar.html)
+and a [Tech Report](https://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
 by Alex Krizhevsky.
 
 ### Goals
@@ -42,7 +42,7 @@ designing larger and more sophisticated models in TensorFlow:
 ([wiki](https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
 and @{tf.nn.local_response_normalization$local response normalization}
 (Chapter 3.3 in
-[AlexNet paper](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
+[AlexNet paper](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
 * @{$summaries_and_tensorboard$Visualization}
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
@@ -411,7 +411,7 @@ the first tower are prepended with `tower_0`, e.g. `tower_0/conv1/Conv2D`.
 
 * A preferred hardware device to run the operation within a tower.
 @{tf.device} specifies this. For
-instance, all operations in the first tower reside within `device('/gpu:0')`
+instance, all operations in the first tower reside within `device('/device:GPU:0')`
 scope indicating that they should be run on the first GPU.
 
 All variables are pinned to the CPU and accessed via

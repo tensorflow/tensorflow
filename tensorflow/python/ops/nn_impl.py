@@ -417,7 +417,7 @@ def separable_conv2d(input,
 
   In detail,
 
-      output[b, i, j, k] = sum_{di, dj, q, r]
+      output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
           depthwise_filter[di, dj, q, r] *
           pointwise_filter[0, 0, q * channel_multiplier + r, k]

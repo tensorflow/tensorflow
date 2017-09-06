@@ -86,8 +86,11 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   // number of elements in the output shape.
   auto computation_count = ShapeUtil::ElementsIn(shape);
   auto opcode = hlo_instruction->opcode();
-  // We treat the two opcodes (kExp, kPower) as transcendental operations.
-  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower) {
+  // We treat transcendental operations separately since one transcendental
+  // operation can correspond to several floating point ops.
+  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower ||
+      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
+      opcode == HloOpcode::kCos) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -368,6 +371,12 @@ Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
 Status HloCostAnalysis::HandleBatchNormTraining(
     HloInstruction* batchNormTraining) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleBatchNormInference(
+    HloInstruction* batchNormInference) {
+  // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
   return Status::OK();
 }
 

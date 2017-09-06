@@ -1124,7 +1124,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     # which is why placing this is invalid.  If at some point
     # GPU kernels are added to this test, some other different
     # op / device combo should be chosen.
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
 
     b = constant_op.constant(1.0, shape=[1, 2])
@@ -1145,7 +1145,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     # which is why placing this is invalid.  If at some point
     # GPU kernels are added to this test, some other different
     # op / device combo should be chosen.
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       _ = constant_op.constant(1.0, shape=[1, 2])
 
     b = constant_op.constant(1.0, shape=[1, 2])
@@ -1494,7 +1494,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         allow_soft_placement=True,
         graph_options=config_pb2.GraphOptions(build_cost_model=100))
     with session.Session(config=config) as sess:
-      with ops.device('/gpu:0'):
+      with ops.device('/device:GPU:0'):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
         c = array_ops.identity(b)
@@ -1700,43 +1700,6 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testBuildGraphErrorDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestBuildGraphError(session.Session(server.target))
-
-  def testGraphOptimizer(self):
-    rewrite_options = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=False, constant_folding=True)
-    graph_options = config_pb2.GraphOptions(
-        rewrite_options=rewrite_options, build_cost_model=1)
-    config = config_pb2.ConfigProto(graph_options=graph_options)
-
-    with ops.Graph().as_default() as g:
-      r1 = random_ops.random_normal(shape=[2, 3], name='R1')
-      r2 = random_ops.random_normal(shape=[2, 3], name='R2')
-      copy1 = array_ops.stop_gradient(r1)
-      copy2 = array_ops.identity(r2)
-      result = copy1 + copy2
-
-      with session.Session(graph=g, config=config) as sess:
-        metadata = config_pb2.RunMetadata()
-        sess.run(result, run_metadata=metadata)
-
-    # Check that we optimized the graph by looking at the cost model: the add
-    # node should have been reconnected directly to the R1 and R2 nodes.
-    found_valid_nodes = 0
-    for node in metadata.cost_graph.node:
-      if node.name == 'R1':
-        r1_cost_id = node.id
-        found_valid_nodes += 1
-      if node.name == 'R2':
-        r2_cost_id = node.id
-        found_valid_nodes += 1
-      if node.name == 'add':
-        if node.input_info[0].preceding_node == r1_cost_id:
-          self.assertEqual(node.input_info[1].preceding_node, r2_cost_id)
-          found_valid_nodes += 1
-        elif node.input_info[0].preceding_node == r2_cost_id:
-          self.assertEqual(node.input_info[1].preceding_node, r1_cost_id)
-          found_valid_nodes += 1
-    self.assertEqual(3, found_valid_nodes)
 
   def testDeviceAttributes(self):
     attrs = session._DeviceAttributes(

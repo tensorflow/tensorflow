@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Paramterized build and test for TensorFlow Docker images.
+# Parameterized build and test for TensorFlow Docker images.
 #
 # Usage:
 #   parameterized_docker_build.sh
@@ -154,7 +154,7 @@ fi
 # Verify that the original Dockerfile exists
 ORIG_DOCKERFILE="${SCRIPT_DIR}/${ORIG_DOCKERFILE}"
 if [[ ! -f "${ORIG_DOCKERFILE}" ]]; then
-  die "ERROR: Cannot find Dockerilfe at: ${ORIG_DOCKERFILE}"
+  die "ERROR: Cannot find Dockerfile at: ${ORIG_DOCKERFILE}"
 fi
 
 echo ""

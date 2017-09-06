@@ -129,8 +129,9 @@ def optimize_loss(loss,
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
     summaries: List of internal quantities to visualize on tensorboard. If not
-               set only the loss and the learning rate will be reported. The
-               complete list is in OPTIMIZER_SUMMARIES.
+               set, the loss, the learning rate, and the global norm of the
+               gradients will be reported. The complete list of possible values
+               is in OPTIMIZER_SUMMARIES.
     colocate_gradients_with_ops: If True, try colocating gradients with the
                                  corresponding op.
     increment_global_step: Whether to increment `global_step`. If your model

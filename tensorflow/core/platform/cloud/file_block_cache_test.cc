@@ -16,30 +16,12 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include <cstring>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
-
-// This Env wrapper lets us control the NowSeconds() return value.
-class FakeEnv : public EnvWrapper {
- public:
-  FakeEnv() : EnvWrapper(Env::Default()) {}
-
-  uint64 NowSeconds() override {
-    mutex_lock lock(mu_);
-    return now_;
-  }
-
-  void SetNowSeconds(uint64 now) {
-    mutex_lock lock(mu_);
-    now_ = now;
-  }
-
-  mutex mu_;
-  uint64 now_ = 1;
-};
 
 TEST(FileBlockCacheTest, PassThrough) {
   const string want_filename = "foo/bar";
@@ -267,7 +249,7 @@ TEST(FileBlockCacheTest, MaxStaleness) {
     return Status::OK();
   };
   std::vector<char> out;
-  std::unique_ptr<FakeEnv> env(new FakeEnv);
+  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   // Create a cache with max staleness of 2 seconds, and verify that it works as
   // expected.
   FileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
@@ -370,7 +352,7 @@ TEST(FileBlockCacheTest, Prune) {
   };
   std::vector<char> out;
   // Our fake environment is initialized with the current timestamp.
-  std::unique_ptr<FakeEnv> env(new FakeEnv);
+  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   uint64 now = Env::Default()->NowSeconds();
   env->SetNowSeconds(now);
   FileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());

@@ -38,6 +38,10 @@ void ShowNode::ReInit(int64 step) {
   mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros(step));
 
   mutable_proto()->set_requested_bytes(node->requested_bytes(step));
+  mutable_proto()->set_peak_bytes(node->peak_bytes(step));
+  mutable_proto()->set_residual_bytes(node->residual_bytes(step));
+  mutable_proto()->set_output_bytes(node->output_bytes(step));
+
   mutable_proto()->set_float_ops(node->float_ops(step));
 
   mutable_proto()->clear_input_shapes();
@@ -68,6 +72,12 @@ void ShowNode::AggregateTotalStats(ShowNode* node) {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              node_pb->total_requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        node_pb->total_peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            node_pb->total_residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          node_pb->total_output_bytes());
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         node_pb->total_parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -89,6 +99,13 @@ void ShowNode::AddSelfToTotalStats() {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              proto().requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        proto().peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            proto().residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          proto().output_bytes());
+
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         proto().parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -105,6 +122,10 @@ void ShowNode::ResetTotalStats() {
   mutable_proto()->set_total_cpu_exec_micros(0);
 
   mutable_proto()->set_total_requested_bytes(0);
+  mutable_proto()->set_total_peak_bytes(0);
+  mutable_proto()->set_total_residual_bytes(0);
+  mutable_proto()->set_total_output_bytes(0);
+
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);
   mutable_proto()->mutable_children()->Clear();
@@ -135,6 +156,10 @@ bool ShowMultiNode::ReInit(int64 step,
   mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros());
 
   mutable_proto()->set_requested_bytes(node->requested_bytes());
+  mutable_proto()->set_peak_bytes(node->peak_bytes());
+  mutable_proto()->set_residual_bytes(node->residual_bytes());
+  mutable_proto()->set_output_bytes(node->output_bytes());
+
   mutable_proto()->set_float_ops(node->float_ops());
 
   mutable_proto()->set_parameters(node->parameters());
@@ -157,6 +182,13 @@ void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              node_pb->total_requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        node_pb->total_peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            node_pb->total_residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          node_pb->total_output_bytes());
+
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         node_pb->total_parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -174,6 +206,13 @@ void ShowMultiNode::AddSelfToTotalStats() {
 
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              proto().requested_bytes());
+  mutable_proto()->set_total_peak_bytes(proto().total_peak_bytes() +
+                                        proto().peak_bytes());
+  mutable_proto()->set_total_residual_bytes(proto().total_residual_bytes() +
+                                            proto().residual_bytes());
+  mutable_proto()->set_total_output_bytes(proto().total_output_bytes() +
+                                          proto().output_bytes());
+
   mutable_proto()->set_total_parameters(proto().total_parameters() +
                                         proto().parameters());
   mutable_proto()->set_total_float_ops(proto().total_float_ops() +
@@ -187,6 +226,10 @@ void ShowMultiNode::ResetTotalStats() {
   mutable_proto()->set_total_cpu_exec_micros(0);
 
   mutable_proto()->set_total_requested_bytes(0);
+  mutable_proto()->set_total_peak_bytes(0);
+  mutable_proto()->set_total_residual_bytes(0);
+  mutable_proto()->set_total_output_bytes(0);
+
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);
   mutable_proto()->mutable_children()->Clear();

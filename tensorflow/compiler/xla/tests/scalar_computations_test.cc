@@ -69,35 +69,35 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   }
 };
 
-TEST_F(ScalarComputationsTest, NegateScalarF32) {
+XLA_TEST_F(ScalarComputationsTest, NegateScalarF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<float>(2.1f));
 
   ComputeAndCompareR0<float>(&builder, -2.1f, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, NegateScalarS32) {
+XLA_TEST_F(ScalarComputationsTest, NegateScalarS32) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<int32>(2));
 
   ComputeAndCompareR0<int32>(&builder, -2, {});
 }
 
-TEST_F(ScalarComputationsTest, AddTwoScalarsF32) {
+XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Add(builder.ConstantR0<float>(2.1f), builder.ConstantR0<float>(5.5f));
 
   ComputeAndCompareR0<float>(&builder, 7.6f, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, AddTwoScalarsS32) {
+XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS32) {
   ComputationBuilder builder(client_, TestName());
   builder.Add(builder.ConstantR0<int32>(2), builder.ConstantR0<int32>(5));
 
   ComputeAndCompareR0<int32>(&builder, 7, {});
 }
 
-TEST_F(ScalarComputationsTest, AddTwoScalarsU32) {
+XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU32) {
   ComputationBuilder builder(client_, TestName());
   builder.Add(builder.ConstantR0<uint32>(35), builder.ConstantR0<uint32>(57));
 
@@ -123,7 +123,7 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU64) {
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS64) {
   ComputationBuilder builder(client_, TestName());
   const int64 a = static_cast<int64>(1) << 62;
-  const int64 b = a + 1;
+  const int64 b = a - 1;
   builder.Add(builder.ConstantR0<int64>(a), builder.ConstantR0<int64>(b));
 
   ComputeAndCompareR0<int64>(&builder, a + b, {});
@@ -137,21 +137,21 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsF64) {
   ComputeAndCompareR0<double>(&builder, 3.75, {});
 }
 
-TEST_F(ScalarComputationsTest, SubtractTwoScalarsF32) {
+XLA_TEST_F(ScalarComputationsTest, SubtractTwoScalarsF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Sub(builder.ConstantR0<float>(2.1f), builder.ConstantR0<float>(5.5f));
 
   ComputeAndCompareR0<float>(&builder, -3.4f, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, SubtractTwoScalarsS32) {
+XLA_TEST_F(ScalarComputationsTest, SubtractTwoScalarsS32) {
   ComputationBuilder builder(client_, TestName());
   builder.Sub(builder.ConstantR0<int32>(2), builder.ConstantR0<int32>(5));
 
   ComputeAndCompareR0<int32>(&builder, -3, {});
 }
 
-TEST_F(ScalarComputationsTest, MulThreeScalarsF32) {
+XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Mul(builder.Mul(builder.ConstantR0<float>(2.1f),
                           builder.ConstantR0<float>(5.5f)),
@@ -160,7 +160,7 @@ TEST_F(ScalarComputationsTest, MulThreeScalarsF32) {
   ComputeAndCompareR0<float>(&builder, 5.775f, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, MulTwoScalarsS32) {
+XLA_TEST_F(ScalarComputationsTest, MulTwoScalarsS32) {
   std::vector<int32> data = {0,
                              1,
                              -1,
@@ -184,7 +184,7 @@ TEST_F(ScalarComputationsTest, MulTwoScalarsS32) {
   }
 }
 
-TEST_F(ScalarComputationsTest, MulTwoScalarsU32) {
+XLA_TEST_F(ScalarComputationsTest, MulTwoScalarsU32) {
   std::vector<uint32> data = {0,          1,          0xDEADBEEF, 1234,
                               0x1a243514, 0xFFFFFFFF, 0x80808080};
 
@@ -199,7 +199,7 @@ TEST_F(ScalarComputationsTest, MulTwoScalarsU32) {
   }
 }
 
-TEST_F(ScalarComputationsTest, MulThreeScalarsS32) {
+XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsS32) {
   ComputationBuilder builder(client_, TestName());
   builder.Mul(
       builder.Mul(builder.ConstantR0<int32>(2), builder.ConstantR0<int32>(5)),
@@ -208,7 +208,7 @@ TEST_F(ScalarComputationsTest, MulThreeScalarsS32) {
   ComputeAndCompareR0<int32>(&builder, 10, {});
 }
 
-TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
+XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> a_literal = Literal::CreateR0<float>(2.1f);
   std::unique_ptr<Literal> b_literal = Literal::CreateR0<float>(5.5f);
@@ -231,7 +231,7 @@ TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
                              error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, DivideTwoScalarsF32) {
+XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Div(builder.ConstantR0<float>(5.0f), builder.ConstantR0<float>(2.5f));
 
@@ -337,7 +337,7 @@ INSTANTIATE_TEST_CASE_P(
         DivS32Params{INT32_MIN, -0x40000000, 2, 0},                //
         DivS32Params{INT32_MIN + 1, -0x40000000, 1, -0x3fffffff}));
 
-TEST_F(ScalarComputationsTest, DivU32s) {
+XLA_TEST_F(ScalarComputationsTest, DivU32s) {
   // clang-format off
   // Some interesting values to test.
   std::vector<uint32> vals = {
@@ -378,7 +378,7 @@ TEST_F(ScalarComputationsTest, DivU32s) {
   }
 }
 
-TEST_F(ScalarComputationsTest, RemU32s) {
+XLA_TEST_F(ScalarComputationsTest, RemU32s) {
   // clang-format off
   // Some interesting values to test.
   std::vector<uint32> vals = {
@@ -419,7 +419,7 @@ TEST_F(ScalarComputationsTest, RemU32s) {
   }
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
+XLA_TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   ComputationBuilder builder(client_, TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "x");
   builder.Rem(x, builder.ConstantR0<int32>(80000));
@@ -446,7 +446,7 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsU32) {
   ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
-TEST_F(ScalarComputationsTest, LogicalAnd) {
+XLA_TEST_F(ScalarComputationsTest, LogicalAnd) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
@@ -458,7 +458,7 @@ TEST_F(ScalarComputationsTest, LogicalAnd) {
   }
 }
 
-TEST_F(ScalarComputationsTest, LogicalOr) {
+XLA_TEST_F(ScalarComputationsTest, LogicalOr) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
@@ -470,7 +470,7 @@ TEST_F(ScalarComputationsTest, LogicalOr) {
   }
 }
 
-TEST_F(ScalarComputationsTest, LogicalNot) {
+XLA_TEST_F(ScalarComputationsTest, LogicalNot) {
   for (bool x : {false, true}) {
     ComputationBuilder builder(client_, TestName());
     builder.LogicalNot(builder.ConstantR0<bool>(x));
@@ -479,7 +479,7 @@ TEST_F(ScalarComputationsTest, LogicalNot) {
   }
 }
 
-TEST_F(ScalarComputationsTest, SelectScalarTrue) {
+XLA_TEST_F(ScalarComputationsTest, SelectScalarTrue) {
   ComputationBuilder builder(client_, TestName());
   builder.Select(builder.ConstantR0<bool>(true),     // The predicate.
                  builder.ConstantR0<float>(123.0f),  // The value on true.
@@ -488,7 +488,7 @@ TEST_F(ScalarComputationsTest, SelectScalarTrue) {
   ComputeAndCompareR0<float>(&builder, 123.0f, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, SelectScalarFalse) {
+XLA_TEST_F(ScalarComputationsTest, SelectScalarFalse) {
   ComputationBuilder builder(client_, TestName());
   builder.Select(builder.ConstantR0<bool>(false),    // The predicate.
                  builder.ConstantR0<float>(123.0f),  // The value on true.
@@ -499,7 +499,7 @@ TEST_F(ScalarComputationsTest, SelectScalarFalse) {
 
 // This test is an explicit version of what is happening in the following
 // templatized comparison tests.
-TEST_F(ScalarComputationsTest, CompareGtScalar) {
+XLA_TEST_F(ScalarComputationsTest, CompareGtScalar) {
   ComputationBuilder builder(client_, TestName());
   builder.Gt(builder.ConstantR0<float>(2.0f), builder.ConstantR0<float>(1.0f));
 
@@ -507,30 +507,30 @@ TEST_F(ScalarComputationsTest, CompareGtScalar) {
 }
 
 // S32 comparisons.
-TEST_F(ScalarComputationsTest, CompareEqS32Greater) {
+XLA_TEST_F(ScalarComputationsTest, CompareEqS32Greater) {
   TestCompare<int32>(2, 1, false, &ComputationBuilder::Eq);
 }
-TEST_F(ScalarComputationsTest, CompareEqS32Equal) {
+XLA_TEST_F(ScalarComputationsTest, CompareEqS32Equal) {
   TestCompare<int32>(3, 3, true, &ComputationBuilder::Eq);
 }
 
-TEST_F(ScalarComputationsTest, CompareNeS32) {
+XLA_TEST_F(ScalarComputationsTest, CompareNeS32) {
   TestCompare<int32>(2, 1, true, &ComputationBuilder::Ne);
 }
 
-TEST_F(ScalarComputationsTest, CompareGeS32) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeS32) {
   TestCompare<int32>(2, 1, true, &ComputationBuilder::Ge);
 }
 
-TEST_F(ScalarComputationsTest, CompareGtS32) {
+XLA_TEST_F(ScalarComputationsTest, CompareGtS32) {
   TestCompare<int32>(1, 5, false, &ComputationBuilder::Gt);
 }
 
-TEST_F(ScalarComputationsTest, CompareLeS32) {
+XLA_TEST_F(ScalarComputationsTest, CompareLeS32) {
   TestCompare<int32>(2, 1, false, &ComputationBuilder::Le);
 }
 
-TEST_F(ScalarComputationsTest, CompareLtS32) {
+XLA_TEST_F(ScalarComputationsTest, CompareLtS32) {
   TestCompare<int32>(9, 7, false, &ComputationBuilder::Lt);
   TestCompare<int32>(std::numeric_limits<int32>::min(),
                      std::numeric_limits<int32>::max(), true,
@@ -538,105 +538,105 @@ TEST_F(ScalarComputationsTest, CompareLtS32) {
 }
 
 // U32 comparisons.
-TEST_F(ScalarComputationsTest, CompareEqU32False) {
+XLA_TEST_F(ScalarComputationsTest, CompareEqU32False) {
   TestCompare<uint32>(2, 1, false, &ComputationBuilder::Eq);
 }
 
-TEST_F(ScalarComputationsTest, CompareNeU32) {
+XLA_TEST_F(ScalarComputationsTest, CompareNeU32) {
   TestCompare<uint32>(2, 1, true, &ComputationBuilder::Ne);
 }
 
-TEST_F(ScalarComputationsTest, CompareGeU32Greater) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeU32Greater) {
   TestCompare<uint32>(2, 1, true, &ComputationBuilder::Ge);
 }
 
-TEST_F(ScalarComputationsTest, CompareGeU32Equal) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeU32Equal) {
   TestCompare<uint32>(3, 3, true, &ComputationBuilder::Ge);
 }
 
-TEST_F(ScalarComputationsTest, CompareGtU32) {
+XLA_TEST_F(ScalarComputationsTest, CompareGtU32) {
   TestCompare<uint32>(1, 5, false, &ComputationBuilder::Gt);
   TestCompare<uint32>(5, 5, false, &ComputationBuilder::Gt);
   TestCompare<uint32>(5, 1, true, &ComputationBuilder::Gt);
 }
 
-TEST_F(ScalarComputationsTest, CompareLeU32) {
+XLA_TEST_F(ScalarComputationsTest, CompareLeU32) {
   TestCompare<uint32>(2, 1, false, &ComputationBuilder::Le);
 }
 
-TEST_F(ScalarComputationsTest, CompareLtU32) {
+XLA_TEST_F(ScalarComputationsTest, CompareLtU32) {
   TestCompare<uint32>(9, 7, false, &ComputationBuilder::Lt);
   TestCompare<uint32>(0, std::numeric_limits<uint32>::max(), true,
                       &ComputationBuilder::Lt);
 }
 
 // F32 comparisons.
-TEST_F(ScalarComputationsTest, CompareEqF32False) {
+XLA_TEST_F(ScalarComputationsTest, CompareEqF32False) {
   TestCompare<float>(2.0, 1.3, false, &ComputationBuilder::Eq);
 }
 
-TEST_F(ScalarComputationsTest, CompareNeF32) {
+XLA_TEST_F(ScalarComputationsTest, CompareNeF32) {
   TestCompare<float>(2.0, 1.3, true, &ComputationBuilder::Ne);
 }
 
-TEST_F(ScalarComputationsTest, CompareGeF32Greater) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeF32Greater) {
   TestCompare<float>(2.0, 1.9, true, &ComputationBuilder::Ge);
 }
-TEST_F(ScalarComputationsTest, CompareGeF32Equal) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeF32Equal) {
   TestCompare<float>(3.5, 3.5, true, &ComputationBuilder::Ge);
 }
 
-TEST_F(ScalarComputationsTest, CompareGtF32) {
+XLA_TEST_F(ScalarComputationsTest, CompareGtF32) {
   TestCompare<float>(1.0, 5.2, false, &ComputationBuilder::Gt);
 }
 
-TEST_F(ScalarComputationsTest, CompareLeF32) {
+XLA_TEST_F(ScalarComputationsTest, CompareLeF32) {
   TestCompare<float>(2.0, 1.2, false, &ComputationBuilder::Le);
 }
 
-TEST_F(ScalarComputationsTest, CompareLtF32) {
+XLA_TEST_F(ScalarComputationsTest, CompareLtF32) {
   TestCompare<float>(9.0, 7.2, false, &ComputationBuilder::Lt);
 }
 
 // F32 comparisons with exceptional values.  The test names encode the
 // left/right operands at the end, and use Minf and Mzero for -inf and -0.0.
-TEST_F(ScalarComputationsTest, CompareLtF32MinfMzero) {
+XLA_TEST_F(ScalarComputationsTest, CompareLtF32MinfMzero) {
   TestCompare<float>(-INFINITY, -0.0, true, &ComputationBuilder::Lt);
 }
-TEST_F(ScalarComputationsTest, CompareLtF32MzeroZero) {
+XLA_TEST_F(ScalarComputationsTest, CompareLtF32MzeroZero) {
   // Comparisons of 0.0 to -0.0 consider them equal in IEEE 754.
   TestCompare<float>(-0.0, 0.0, false, &ComputationBuilder::Lt);
 }
-TEST_F(ScalarComputationsTest, CompareLtF32ZeroInf) {
+XLA_TEST_F(ScalarComputationsTest, CompareLtF32ZeroInf) {
   TestCompare<float>(0.0, INFINITY, true, &ComputationBuilder::Lt);
 }
 
-TEST_F(ScalarComputationsTest, CompareGeF32MinfMzero) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeF32MinfMzero) {
   TestCompare<float>(-INFINITY, -0.0, false, &ComputationBuilder::Ge);
 }
-TEST_F(ScalarComputationsTest, CompareGeF32MzeroZero) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeF32MzeroZero) {
   // Comparisons of 0.0 to -0.0 consider them equal in IEEE 754.
   TestCompare<float>(-0.0, 0.0, true, &ComputationBuilder::Ge);
 }
-TEST_F(ScalarComputationsTest, CompareGeF32ZeroInf) {
+XLA_TEST_F(ScalarComputationsTest, CompareGeF32ZeroInf) {
   TestCompare<float>(0.0, INFINITY, false, &ComputationBuilder::Ge);
 }
 
-TEST_F(ScalarComputationsTest, ExpScalar) {
+XLA_TEST_F(ScalarComputationsTest, ExpScalar) {
   ComputationBuilder builder(client_, TestName());
   builder.Exp(builder.ConstantR0<float>(2.0f));
 
   ComputeAndCompareR0<float>(&builder, 7.3890562, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, LogScalar) {
+XLA_TEST_F(ScalarComputationsTest, LogScalar) {
   ComputationBuilder builder(client_, "log");
   builder.Log(builder.ConstantR0<float>(2.0f));
 
   ComputeAndCompareR0<float>(&builder, 0.6931471, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, TanhScalar) {
+XLA_TEST_F(ScalarComputationsTest, TanhScalar) {
   ComputationBuilder builder(client_, TestName());
   builder.Tanh(builder.ConstantR0<float>(2.0f));
 
@@ -650,14 +650,14 @@ XLA_TEST_F(ScalarComputationsTest, TanhDoubleScalar) {
   ComputeAndCompareR0<double>(&builder, 0.96402758, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, PowScalar) {
+XLA_TEST_F(ScalarComputationsTest, PowScalar) {
   ComputationBuilder builder(client_, TestName());
   builder.Pow(builder.ConstantR0<float>(2.0f), builder.ConstantR0<float>(3.0f));
 
   ComputeAndCompareR0<float>(&builder, 8.0, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, ClampScalarHigh) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHigh) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(5.0f),   // The operand to be clamped.
@@ -666,7 +666,7 @@ TEST_F(ScalarComputationsTest, ClampScalarHigh) {
   ComputeAndCompareR0<float>(&builder, 3.0, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(2.5f),   // The operand to be clamped.
@@ -675,7 +675,7 @@ TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
   ComputeAndCompareR0<float>(&builder, 2.5, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, ClampScalarLow) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLow) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(-5.0f),  // The operand to be clamped.
@@ -684,57 +684,57 @@ TEST_F(ScalarComputationsTest, ClampScalarLow) {
   ComputeAndCompareR0<float>(&builder, 2.0, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, MinS32Above) {
+XLA_TEST_F(ScalarComputationsTest, MinS32Above) {
   TestMinMax<int32>(10, 3, 3, &ComputationBuilder::Min);
 }
 
-TEST_F(ScalarComputationsTest, MinS32Below) {
+XLA_TEST_F(ScalarComputationsTest, MinS32Below) {
   TestMinMax<int32>(-100, 3, -100, &ComputationBuilder::Min);
 }
 
-TEST_F(ScalarComputationsTest, MaxS32Above) {
+XLA_TEST_F(ScalarComputationsTest, MaxS32Above) {
   TestMinMax<int32>(10, 3, 10, &ComputationBuilder::Max);
 }
 
-TEST_F(ScalarComputationsTest, MaxS32Below) {
+XLA_TEST_F(ScalarComputationsTest, MaxS32Below) {
   TestMinMax<int32>(-100, 3, 3, &ComputationBuilder::Max);
 }
 
-TEST_F(ScalarComputationsTest, MinU32Above) {
+XLA_TEST_F(ScalarComputationsTest, MinU32Above) {
   const uint32 large = std::numeric_limits<int32>::max();
   TestMinMax<uint32>(large, 3, 3, &ComputationBuilder::Min);
 }
 
-TEST_F(ScalarComputationsTest, MinU32Below) {
+XLA_TEST_F(ScalarComputationsTest, MinU32Below) {
   TestMinMax<uint32>(0, 5, 0, &ComputationBuilder::Min);
 }
 
-TEST_F(ScalarComputationsTest, MaxU32Above) {
+XLA_TEST_F(ScalarComputationsTest, MaxU32Above) {
   const uint32 large = std::numeric_limits<int32>::max();
   TestMinMax<uint32>(large, 3, large, &ComputationBuilder::Max);
 }
 
-TEST_F(ScalarComputationsTest, MaxU32Below) {
+XLA_TEST_F(ScalarComputationsTest, MaxU32Below) {
   TestMinMax<uint32>(0, 5, 5, &ComputationBuilder::Max);
 }
 
-TEST_F(ScalarComputationsTest, MinF32Above) {
+XLA_TEST_F(ScalarComputationsTest, MinF32Above) {
   TestMinMax<float>(10.1f, 3.1f, 3.1f, &ComputationBuilder::Min);
 }
 
-TEST_F(ScalarComputationsTest, MinF32Below) {
+XLA_TEST_F(ScalarComputationsTest, MinF32Below) {
   TestMinMax<float>(-100.1f, 3.1f, -100.1f, &ComputationBuilder::Min);
 }
 
-TEST_F(ScalarComputationsTest, MaxF32Above) {
+XLA_TEST_F(ScalarComputationsTest, MaxF32Above) {
   TestMinMax<float>(10.1f, 3.1f, 10.1f, &ComputationBuilder::Max);
 }
 
-TEST_F(ScalarComputationsTest, MaxF32Below) {
+XLA_TEST_F(ScalarComputationsTest, MaxF32Below) {
   TestMinMax<float>(-100.1f, 3.1f, 3.1f, &ComputationBuilder::Max);
 }
 
-TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionF32) {
+XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionF32) {
   // Compute the expression (1 * (3 - 1) * (7 + 0) - 4) / 20.
   ComputationBuilder b(client_, TestName());
   b.Div(
@@ -747,7 +747,7 @@ TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionF32) {
   ComputeAndCompareR0<float>(&b, 0.5, {}, error_spec_);
 }
 
-TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
+XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
   // Compute the expression 1 * (3 - 1) * (7 + 0) - 4.
   ComputationBuilder b(client_, TestName());
   b.Sub(b.Mul(b.ConstantR0<int32>(1),
@@ -758,7 +758,7 @@ TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
   ComputeAndCompareR0<int32>(&b, 10, {});
 }
 
-TEST_F(ScalarComputationsTest, SqrtF320) {
+XLA_TEST_F(ScalarComputationsTest, SqrtF320) {
   ComputationBuilder builder(client_, TestName());
   Literal zero_literal = Literal::Zero(PrimitiveType::F32);
 

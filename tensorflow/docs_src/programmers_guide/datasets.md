@@ -120,7 +120,7 @@ dataset3 = dataset3.filter(lambda x, (y, z): ...)
 
 ### Creating an iterator
 
-One you have built a `Dataset` to represent your input data, the next step is to
+Once you have built a `Dataset` to represent your input data, the next step is to
 create an `Iterator` to access elements from that dataset.  The `Dataset` API
 currently supports the following iterators, in increasing level of
 sophistication:

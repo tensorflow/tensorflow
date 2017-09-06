@@ -91,3 +91,6 @@ pip3.5 install portpicker
 pip3.5 install werkzeug
 
 pip3.5 install grpcio
+
+# Eager execution needs autograd:
+pip3.5 install --upgrade autograd

@@ -241,6 +241,13 @@ Step-by-step Windows build
      ```
      ctest -C RelWithDebInfo
      ```
+   * `-Dtensorflow_BUILD_MORE_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python tests on
+     serveral major packages. This option is only valid if this and tensorflow_BUILD_PYTHON_TESTS are both set as `ON`.
+     After building the python wheel, you need to install the new wheel before running the tests.
+     To execute the tests, use
+     ```
+     ctest -C RelWithDebInfo
+     ```
 
 4. Invoke MSBuild to build TensorFlow.
 

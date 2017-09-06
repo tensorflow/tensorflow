@@ -106,9 +106,9 @@ class DeviceFunctionsTest(test.TestCase):
       var_0 = variables.Variable(0)
       with ops.device(test_device_func_pin_variable_to_cpu):
         var_1 = variables.Variable(1)
-        with ops.device(lambda op: "/gpu:0"):
+        with ops.device(lambda op: "/device:GPU:0"):
           var_2 = variables.Variable(2)
-        with ops.device("/gpu:0"):  # Implicit merging device function.
+        with ops.device("/device:GPU:0"):  # Implicit merging device function.
           var_3 = variables.Variable(3)
 
     self.assertDeviceEqual(var_0.device, None)

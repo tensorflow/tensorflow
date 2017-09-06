@@ -33,6 +33,7 @@ from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export.export import build_all_signature_defs
+from tensorflow.python.estimator.export.export import get_temp_export_dir
 from tensorflow.python.estimator.export.export import get_timestamped_export_dir
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -447,6 +448,7 @@ class Estimator(object):
         raise ValueError("Couldn't find trained model at %s." % self._model_dir)
 
       export_dir = get_timestamped_export_dir(export_dir_base)
+      temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
       with tf_session.Session() as session:
@@ -463,7 +465,7 @@ class Estimator(object):
         # pylint: enable=protected-access
 
         # Perform the export
-        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
         builder.add_meta_graph_and_variables(
             session, [tag_constants.SERVING],
             signature_def_map=signature_def_map,
@@ -474,7 +476,7 @@ class Estimator(object):
 
       # Add the extra assets
       if assets_extra:
-        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+        assets_extra_path = os.path.join(compat.as_bytes(temp_export_dir),
                                          compat.as_bytes('assets.extra'))
         for dest_relative, source in assets_extra.items():
           dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
@@ -483,6 +485,7 @@ class Estimator(object):
           gfile.MakeDirs(dest_path)
           gfile.Copy(source, dest_absolute)
 
+      gfile.Rename(temp_export_dir, export_dir)
       return export_dir
 
   def _get_features_from_input_fn(self, input_fn, mode):

@@ -617,7 +617,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
       learner_config.constraints.min_node_weight = 0
       features = {}
       batch_size = 3
-      features["dense_float"] = array_ops.ones([batch_size, 1], dtypes.float32)
+      features["dense_float"] = array_ops.constant(
+          [0.3, 1.5, 1.1], dtype=dtypes.float32)
 
       gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
           is_chief=True,
@@ -686,19 +687,19 @@ class GbdtTest(test_util.TensorFlowTestCase):
       stamp_token, serialized = model_ops.tree_ensemble_serialize(
           ensemble_handle)
       output.ParseFromString(serialized.eval())
-      self.assertEquals(len(output.trees), 1)
+      self.assertEqual(len(output.trees), 1)
+      # We got 3 nodes: one parent and 2 leafs.
+      self.assertEqual(len(output.trees[0].nodes), 3)
       self.assertAllClose(output.tree_weights, [1])
       self.assertEquals(stamp_token.eval(), 2)
 
-      # Leaf should have a dense vector of size 5.
-      expected = [
-          -1.29972088337, -1.38769364357, 3.42812108994, 1.02690505981,
-          -1.75405228138
-      ]
-      for i in range(learner_config.num_classes):
-        self.assertAlmostEqual(expected[i],
-                               output.trees[0].nodes[1].leaf.vector.value[i],
-                               places=2)
+      # Leafs should have a dense vector of size 5.
+      expected_leaf_1 = [-3.4480, -3.4429, 13.8490, -3.45, -3.4508]
+      expected_leaf_2 = [-1.2547, -1.3145, 1.52, 2.3875, -1.3264]
+      self.assertArrayNear(expected_leaf_1,
+                           output.trees[0].nodes[1].leaf.vector.value, 1e-3)
+      self.assertArrayNear(expected_leaf_2,
+                           output.trees[0].nodes[2].leaf.vector.value, 1e-3)
 
   def testTrainFnMulticlassDiagonalHessian(self):
     """Tests the GBDT train for multiclass diagonal hessian."""
@@ -719,7 +720,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
       learner_config.constraints.min_node_weight = 0
       batch_size = 3
       features = {}
-      features["dense_float"] = array_ops.ones([batch_size, 1], dtypes.float32)
+      features["dense_float"] = array_ops.constant(
+          [0.3, 1.5, 1.1], dtype=dtypes.float32)
 
       gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
           is_chief=True,
@@ -789,17 +791,18 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle)
       output.ParseFromString(serialized.eval())
       self.assertEqual(len(output.trees), 1)
+      # We got 3 nodes: one parent and 2 leafs.
+      self.assertEqual(len(output.trees[0].nodes), 3)
       self.assertAllClose(output.tree_weights, [1])
       self.assertEqual(stamp_token.eval(), 2)
 
-      # Leaf should have a dense vector of size 5.
-      expected = [
-          -1.26767396927, -1.13043296337, 4.58542203903, 1.81428349018,
-          -2.43038392067
-      ]
-      for i in range(learner_config.num_classes):
-        self.assertAlmostEqual(expected[i],
-                               output.trees[0].nodes[1].leaf.vector.value[i])
+      # Leafs should have a dense vector of size 5.
+      expected_leaf_1 = [-1.0354, -1.0107, 17.2976, -1.1313, -4.5023]
+      expected_leaf_2 = [-1.2924, -1.1376, 2.2042, 3.1052, -1.6269]
+      self.assertArrayNear(expected_leaf_1,
+                           output.trees[0].nodes[1].leaf.vector.value, 1e-3)
+      self.assertArrayNear(expected_leaf_2,
+                           output.trees[0].nodes[2].leaf.vector.value, 1e-3)
 
   def testTrainFnMulticlassTreePerClass(self):
     """Tests the GBDT train for multiclass tree per class strategy."""

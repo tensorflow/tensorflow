@@ -67,8 +67,9 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
       }
       case TreeNode::kCategoricalIdBinarySplit: {
         const auto& split = current_node.categorical_id_binary_split();
-        node_id = example.sparse_int_features[split.feature_column()].count(
-                      split.feature_id()) > 0
+        const auto& features =
+            example.sparse_int_features[split.feature_column()];
+        node_id = features.find(split.feature_id()) != features.end()
                       ? split.left_id()
                       : split.right_id();
         break;
@@ -76,20 +77,15 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
       case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
         const auto& split =
             current_node.categorical_id_set_membership_binary_split();
-        bool found = false;
+        // The new node_id = left_id if a feature is found, or right_id.
+        node_id = split.right_id();
         for (const int64 feature_id :
              example.sparse_int_features[split.feature_column()]) {
-          const auto iter =
-              std::lower_bound(split.feature_ids().begin(),
-                               split.feature_ids().end(), feature_id);
-          if (iter != split.feature_ids().end() && *iter == feature_id) {
+          if (std::binary_search(split.feature_ids().begin(),
+                                 split.feature_ids().end(), feature_id)) {
             node_id = split.left_id();
-            found = true;
             break;
           }
-        }
-        if (!found) {
-          node_id = split.right_id();
         }
         break;
       }

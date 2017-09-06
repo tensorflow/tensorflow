@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -102,10 +103,10 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
-    Graph* graph = nullptr;
-    Device* device = nullptr;
-    Executor* root = nullptr;
-    FunctionLibraryRuntime* lib = nullptr;
+    Graph* graph = nullptr;                 // not owned.
+    Device* device = nullptr;               // not owned.
+    Executor* root = nullptr;               // not owned.
+    FunctionLibraryRuntime* lib = nullptr;  // not owned.
     // Build the cost model if this value is strictly positive.
     int64 build_cost_model = 0;
   };
@@ -122,9 +123,10 @@ class GraphMgr {
     // Graph handle.
     string handle;
 
-    // The definition of the library is shared by all partitions.
-    FunctionLibraryDefinition* lib_def = nullptr;
-
+    std::unique_ptr<FunctionLibraryDefinition> lib_def;
+    // Owns the FunctionLibraryRuntime objects needed to execute functions, one
+    // per device.
+    std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
     // A graph is partitioned over multiple devices.  Each partition
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;

@@ -22,12 +22,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -35,6 +34,7 @@ from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _safe_div(numerator, denominator, name):
@@ -1038,8 +1038,8 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
     weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
       must be broadcastable to `labels` (i.e., all dimensions must be either
       `1`, or the same as the corresponding `labels` dimension).
-    metrics_collections: An optional list of collections that `auc` should be
-      added to.
+    metrics_collections: An optional list of collections that `precision` should
+      be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     name: An optional variable_scope name.
@@ -2445,8 +2445,8 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
     Tuple of `predictions`, `labels` and `weights`, possibly with the last
     dimension squeezed.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
+      labels, predictions)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   if weights is not None:

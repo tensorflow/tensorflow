@@ -65,6 +65,73 @@ class NestTest(test.TestCase):
     with self.assertRaises(ValueError):
       nest.pack_sequence_as([5, 6, [7, 8]], ["a", "b", "c"])
 
+  def testFlattenDictOrder(self):
+    """`flatten` orders dicts by key, including OrderedDicts."""
+    ordered = collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
+    plain = {"d": 3, "b": 1, "a": 0, "c": 2}
+    ordered_flat = nest.flatten(ordered)
+    plain_flat = nest.flatten(plain)
+    self.assertEqual([0, 1, 2, 3], ordered_flat)
+    self.assertEqual([0, 1, 2, 3], plain_flat)
+
+  def testPackDictOrder(self):
+    """Packing orders dicts by key, including OrderedDicts."""
+    ordered = collections.OrderedDict([("d", 0), ("b", 0), ("a", 0), ("c", 0)])
+    plain = {"d": 0, "b": 0, "a": 0, "c": 0}
+    seq = [0, 1, 2, 3]
+    ordered_reconstruction = nest.pack_sequence_as(ordered, seq)
+    plain_reconstruction = nest.pack_sequence_as(plain, seq)
+    self.assertEqual(
+        collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)]),
+        ordered_reconstruction)
+    self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
+
+  def testFlattenAndPack_withDicts(self):
+    # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
+    named_tuple = collections.namedtuple("A", ("b", "c"))
+    mess = (
+        "z",
+        named_tuple(3, 4),
+        {
+            "c": (
+                1,
+                collections.OrderedDict([
+                    ("b", 3),
+                    ("a", 2),
+                ]),
+            ),
+            "b": 5
+        },
+        17
+    )
+
+    flattened = nest.flatten(mess)
+    self.assertEqual(flattened, ["z", 3, 4, 5, 1, 2, 3, 17])
+
+    structure_of_mess = (
+        14,
+        named_tuple("a", True),
+        {
+            "c": (
+                0,
+                collections.OrderedDict([
+                    ("b", 9),
+                    ("a", 8),
+                ]),
+            ),
+            "b": 3
+        },
+        "hi everybody",
+    )
+
+    unflattened = nest.pack_sequence_as(structure_of_mess, flattened)
+    self.assertEqual(unflattened, mess)
+
+    # Check also that the OrderedDict was created, with the correct key order.
+    unflattened_ordered_dict = unflattened[2]["c"][1]
+    self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
+    self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
+
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertFalse(nest.is_sequence([1, 3, [4, 5]]))

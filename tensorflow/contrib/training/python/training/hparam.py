@@ -424,6 +424,31 @@ class HParams(object):
       self._hparam_types[name] = (type(value), False)
     setattr(self, name, value)
 
+  def set_hparam(self, name, value):
+    """Set the value of an existing hyperparameter.
+
+    This function verifies that the type of the value matches the type of the
+    existing hyperparameter.
+
+    Args:
+      name: Name of the hyperparameter.
+      value: New value of the hyperparameter.
+
+    Raises:
+      ValueError: If there is a type mismatch.
+    """
+    _, is_list = self._hparam_types[name]
+    if isinstance(value, list):
+      if not is_list:
+        raise ValueError(
+            'Must not pass a list for single-valued parameter: %s' % name)
+      setattr(self, name, value)
+    else:
+      if is_list:
+        raise ValueError(
+            'Must pass a list for multi-valued parameter: %s.' % name)
+      setattr(self, name, value)
+
   def parse(self, values):
     """Override hyperparameter values, parsing new values from a string.
 
@@ -460,17 +485,7 @@ class HParams(object):
       ValueError: If `values_map` cannot be parsed.
     """
     for name, value in values_map.items():
-      _, is_list = self._hparam_types[name]
-      if isinstance(value, list):
-        if not is_list:
-          raise ValueError(
-              'Must not pass a list for single-valued parameter: %s' % name)
-        setattr(self, name, value)
-      else:
-        if is_list:
-          raise ValueError(
-              'Must pass a list for multi-valued parameter: %s.' % name)
-        setattr(self, name, value)
+      self.set_hparam(name, value)
     return self
 
   def set_model_structure(self, model_structure):

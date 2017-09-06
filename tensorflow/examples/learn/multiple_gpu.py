@@ -47,12 +47,12 @@ def my_model(features, labels, mode):
   # Create three fully connected layers respectively of size 10, 20, and 10 with
   # each layer having a dropout probability of 0.1.
   net = features[X_FEATURE]
-  with tf.device('/gpu:1'):
+  with tf.device('/device:GPU:1'):
     for units in [10, 20, 10]:
       net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
       net = tf.layers.dropout(net, rate=0.1)
 
-  with tf.device('/gpu:2'):
+  with tf.device('/device:GPU:2'):
     # Compute logits (1 per class).
     logits = tf.layers.dense(net, 3, activation=None)
 

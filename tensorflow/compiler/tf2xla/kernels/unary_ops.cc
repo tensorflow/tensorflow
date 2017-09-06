@@ -43,10 +43,35 @@ namespace {
 
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
+
+// acosh(x) = log(x + sqrt(x^2 - 1))
+XLAJIT_MAKE_UNARY(
+    Acosh,
+    b->Log(b->Add(x, b->Pow(b->Sub(b->Mul(x, x),
+                                   XlaHelpers::One(b, input_type(0))),
+                            XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+// asinh(x) = log(x + sqrt(x^2 + 1))
+XLAJIT_MAKE_UNARY(
+    Asinh,
+    b->Log(b->Add(x, b->Pow(b->Add(b->Mul(x, x),
+                                   XlaHelpers::One(b, input_type(0))),
+                            XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+// atanh(x) = 0.5 * log((1 + x) / (1 - x))
+XLAJIT_MAKE_UNARY(
+    Atanh, b->Mul(b->Log(b->Div(b->Add(XlaHelpers::One(b, input_type(0)), x),
+                                b->Sub(XlaHelpers::One(b, input_type(0)), x))),
+                  XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Ceil, b->Ceil(x));
 XLAJIT_MAKE_UNARY(Cos, b->Cos(x));
+XLAJIT_MAKE_UNARY(Cosh,
+                  b->Mul(b->Add(b->Exp(x), b->Exp(b->Neg(x))),
+                         XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Sin, b->Sin(x));
 XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
+
+// TODO(b/34703906): use a more accurate implementation of expm1.
+XLAJIT_MAKE_UNARY(Expm1, b->Sub(b->Exp(x), XlaHelpers::One(b, input_type(0))));
+
 XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
 // Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
@@ -92,11 +117,15 @@ XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
 XLAJIT_MAKE_UNARY(Rsqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
 XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(b, input_type(0), x));
+XLAJIT_MAKE_UNARY(Sinh,
+                  b->Mul(b->Sub(b->Exp(x), b->Exp(b->Neg(x))),
+                         XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Softplus,
                   b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
 XLAJIT_MAKE_UNARY(Sqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
+XLAJIT_MAKE_UNARY(Tan, b->Div(b->Sin(x), b->Cos(x)));
 XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
 
 #undef XLAJIT_MAKE_UNARY

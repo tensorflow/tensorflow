@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -451,7 +452,9 @@ TEST_F(CWiseUnaryGradTest, Asinh_Complex) {
 
 TEST_F(CWiseUnaryGradTest, Acosh) {
   auto x_fn = [this](const int i) { return RV({1, 2, 3, 4, 5, 6, 7}); };
-  auto dy_fn = [this](const float x) { return x + RV({8, 9, 10, 11, 12, 13, 14}); };
+  auto dy_fn = [this](const float x) {
+    return x + RV({8, 9, 10, 11, 12, 13, 14});
+  };
   auto dx_fn = [this](const float x, const float dy) {
     auto y = std::acosh(x);
     return dy / std::sinh(y);
@@ -681,7 +684,7 @@ class CWiseUnaryComplexGradTest : public ::testing::Test {
   CWiseUnaryComplexGradTest()
       : scope_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
 
-  enum UnaryOpType { REAL, IMAG, CONJ };
+  enum UnaryOpType { REAL, IMAG, ANGLE, CONJ };
 
   void TestCWiseGradComplex(UnaryOpType op_type, const Tensor& x,
                             const Tensor& dy, const Tensor& dx_expected) {
@@ -692,6 +695,9 @@ class CWiseUnaryComplexGradTest : public ::testing::Test {
         break;
       case IMAG:
         y = Imag(scope_, x);
+        break;
+      case ANGLE:
+        y = Angle(scope_, x);
         break;
       case CONJ:
         y = Conj(scope_, x);
@@ -725,6 +731,17 @@ TEST_F(CWiseUnaryComplexGradTest, Imag) {
   Tensor dx_expected = test::AsTensor<complex64>(
       {{0, 11}, {0, -12}, {0, 13}, {0, -14}, {0, 15}, {0, -16}}, {2, 3});
   TestCWiseGradComplex(IMAG, x, dy, dx_expected);
+}
+
+TEST_F(CWiseUnaryComplexGradTest, Angle) {
+  Tensor x = test::AsTensor<complex64>(
+      {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
+  Tensor dy = test::AsTensor<float>({11, -12, 13, -14, 15, -16}, {2, 3});
+  Tensor dx_expected = test::AsTensor<complex64>(
+      {{5.5, 5.5}, {3, 3},
+       {2.1666666666666665, 2.1666666666666665}, {1.75, 1.75},
+       {0.9375, 0.9375}, {0.8888888888888888, 0.8888888888888888}}, {2, 3});
+  TestCWiseGradComplex(ANGLE, x, dy, dx_expected);
 }
 
 TEST_F(CWiseUnaryComplexGradTest, Conj) {
@@ -893,6 +910,136 @@ TEST_F(MathGradTest, BatchMatMulGrad_TransposeY) {
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeX_TransposeY) {
   TestMatMulGrad(true, true, true);
+}
+
+class NaryGradTest : public ::testing::Test {
+ protected:
+  NaryGradTest() : scope_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
+
+  void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
+               const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
+  void RunTest(const Output& x, const Tensor& x_init_value, const Output& y,
+               const TensorShape& y_shape) {
+    TF_ASSERT_OK(scope_.status());
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, x, x_init_value, y, y_shape, &max_error));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
+  Scope scope_;
+};
+
+TEST_F(NaryGradTest, Sum) {
+  TensorShape x_shape({2, 3, 5, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Sum(scope_, x, {1, -1});
+  // y's shape is the result of reducing x along axes 1 and -1 (= 3)
+  TensorShape y_shape({2, 5});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Mean) {
+  TensorShape x_shape({2, 3, 5, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Mean(scope_, x, {1, -1});
+  // y's shape is the result of reducing x along axes 1 and -1 (= 3)
+  TensorShape y_shape({2, 5});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, AddN) {
+  TensorShape shape({3, 2, 5});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  auto y = AddN(scope_, xs);
+  RunTest(xs, {shape, shape, shape}, {y}, {shape});
+}
+
+TEST_F(NaryGradTest, Add) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Add(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Sub) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Sub(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Mul) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = Mul(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Div) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y = Div(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, RealDiv) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y =
+      RealDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, SquaredDifference) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = SquaredDifference(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, Maximum) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Maximum(scope_, x, Const(scope_, 1.0f));
+  // Select values away from 1.0f to avoid instability when computing
+  // finite differences.
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NaryGradTest, Minimum) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Minimum(scope_, x, Const(scope_, 1.0f));
+  // Select values away from 1.0f to avoid instability when computing
+  // finite differences.
+  Tensor x_init_value =
+      test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
 }
 
 }  // namespace

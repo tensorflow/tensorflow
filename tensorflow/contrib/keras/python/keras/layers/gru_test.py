@@ -141,7 +141,7 @@ class GRULayerTest(test.TestCase):
 
       np.testing.assert_allclose(out7, out6, atol=1e-5)
 
-  def test_regularization_GRU(self):
+  def test_regularizers_GRU(self):
     embedding_dim = 4
     layer_class = keras.layers.GRU
     with self.test_session():
@@ -159,16 +159,25 @@ class GRULayerTest(test.TestCase):
       layer(keras.backend.variable(np.ones((2, 3, 2))))
       self.assertEqual(len(layer.losses), 4)
 
+  def test_constraints_GRU(self):
+    embedding_dim = 4
+    layer_class = keras.layers.GRU
+    with self.test_session():
+      k_constraint = keras.constraints.max_norm(0.01)
+      r_constraint = keras.constraints.max_norm(0.01)
+      b_constraint = keras.constraints.max_norm(0.01)
       layer = layer_class(
           5,
           return_sequences=False,
           weights=None,
           input_shape=(None, embedding_dim),
-          kernel_constraint=keras.constraints.max_norm(0.01),
-          recurrent_constraint=keras.constraints.max_norm(0.01),
-          bias_constraint='max_norm')
+          kernel_constraint=k_constraint,
+          recurrent_constraint=r_constraint,
+          bias_constraint=b_constraint)
       layer.build((None, None, embedding_dim))
-      self.assertEqual(len(layer.constraints), 3)
+      self.assertEqual(layer.kernel.constraint, k_constraint)
+      self.assertEqual(layer.recurrent_kernel.constraint, r_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_with_masking_layer_GRU(self):
     layer_class = keras.layers.GRU

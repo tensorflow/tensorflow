@@ -480,6 +480,15 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
+# This filegroup provides the docker build script in LLVM repo
+filegroup(
+    name = "docker",
+    srcs = glob([
+        "utils/docker/build_docker_image.sh",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "aarch64_asm_parser",
     srcs = glob([

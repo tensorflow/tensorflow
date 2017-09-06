@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import six
 
+from google.protobuf import message
 from tensorflow.core.profiler import tfprof_options_pb2
 from tensorflow.core.profiler import tfprof_output_pb2
 from tensorflow.python import pywrap_tensorflow as print_mdl
@@ -53,7 +54,12 @@ def _build_options(options):
   opts = tfprof_options_pb2.OptionsProto()
   opts.max_depth = options.get('max_depth', 10)
   opts.min_bytes = options.get('min_bytes', 0)
+  opts.min_peak_bytes = options.get('min_peak_bytes', 0)
+  opts.min_residual_bytes = options.get('min_residual_bytes', 0)
+  opts.min_output_bytes = options.get('min_output_bytes', 0)
   opts.min_micros = options.get('min_micros', 0)
+  opts.min_accelerator_micros = options.get('min_accelerator_micros', 0)
+  opts.min_cpu_micros = options.get('min_cpu_micros', 0)
   opts.min_params = options.get('min_params', 0)
   opts.min_float_ops = options.get('min_float_ops', 0)
   opts.min_occurrence = options.get('min_occurrence', 0)
@@ -298,22 +304,31 @@ def profile(graph,
 
   if cmd == 'code' or cmd == 'op':
     tfprof_node = tfprof_output_pb2.MultiGraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.PrintModelAnalysis(
-            graph.as_graph_def(add_shapes=True).SerializeToString(),
-            run_meta_str,
-            op_log.SerializeToString(),
-            cmd.encode('utf-8'),
-            opts.SerializeToString()))
+    ret = print_mdl.PrintModelAnalysis(
+        graph.as_graph_def(add_shapes=True).SerializeToString(),
+        run_meta_str,
+        op_log.SerializeToString(),
+        cmd.encode('utf-8'),
+        opts.SerializeToString())
+    try:
+      tfprof_node.ParseFromString(ret)
+    except message.DecodeError as _:
+      pass
+      # sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
+
   elif cmd == 'graph' or cmd == 'scope':
     tfprof_node = tfprof_output_pb2.GraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.PrintModelAnalysis(
-            graph.as_graph_def(add_shapes=True).SerializeToString(),
-            run_meta_str,
-            op_log.SerializeToString(),
-            cmd.encode('utf-8'),
-            opts.SerializeToString()))
+    ret = print_mdl.PrintModelAnalysis(
+        graph.as_graph_def(add_shapes=True).SerializeToString(),
+        run_meta_str,
+        op_log.SerializeToString(),
+        cmd.encode('utf-8'),
+        opts.SerializeToString())
+    try:
+      tfprof_node.ParseFromString(ret)
+    except message.DecodeError as _:
+      pass
+      # sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
   else:
     raise errors.InvalidArgumentError(
         None, None, 'unknown cmd: %s\n' % cmd)

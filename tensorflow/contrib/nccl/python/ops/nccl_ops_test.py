@@ -43,7 +43,7 @@ class AllReduceTest(test.TestCase):
         self._testSingleAllReduce(sess, dtype, nccl.all_max, np.maximum)
 
   def _testSingleAllReduce(self, sess, np_type, nccl_fn, numpy_accumulation_fn):
-    for devices in [['/gpu:0', '/gpu:0', '/gpu:0'], ['/gpu:0', '/gpu:0']]:
+    for devices in [['/device:GPU:0', '/device:GPU:0', '/device:GPU:0'], ['/device:GPU:0', '/device:GPU:0']]:
       shape = (3, 4)
       np_ans = None
       tensors = []
@@ -84,7 +84,7 @@ class BroadcastTest(test.TestCase):
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:
-        for devices in [['/gpu:0', '/gpu:0', '/gpu:0'], ['/gpu:0', '/gpu:0']]:
+        for devices in [['/device:GPU:0', '/device:GPU:0', '/device:GPU:0'], ['/device:GPU:0', '/device:GPU:0']]:
           shape = (3, 4)
           sender = np.random.randint(0, len(devices) - 1)
           with ops.device(devices[sender]):
@@ -115,7 +115,7 @@ class CombinedTest(test.TestCase):
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:
-        for devices in [['/gpu:0', '/gpu:0', '/gpu:0'], ['/gpu:0', '/gpu:0']]:
+        for devices in [['/device:GPU:0', '/device:GPU:0', '/device:GPU:0'], ['/device:GPU:0', '/device:GPU:0']]:
           shape = (3, 4)
 
           # all-reduce

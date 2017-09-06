@@ -119,5 +119,71 @@ Status EstimateEarliestExecutionTimes(
   return Status::OK();
 }
 
+Status EstimateRequiredTimes(
+    const GrapplerItem& item, const Cluster* cluster,
+    const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
+        execution_times,
+    std::unordered_map<const NodeDef*, Costs::NanoSeconds>* required_times) {
+  std::unordered_map<string, const NodeDef*> name_map;
+  for (const NodeDef& node : item.graph.node()) {
+    name_map[node.name()] = &node;
+    (*required_times)[&node] = Costs::NanoSeconds::max();
+  }
+
+  std::unordered_map<const NodeDef*, int> pending_fanouts;
+  for (const NodeDef& node : item.graph.node()) {
+    for (const string& input : node.input()) {
+      string node_name = NodeName(input);
+      auto it = name_map.find(node_name);
+      if (it == name_map.end()) {
+        return errors::InvalidArgument(
+            strings::StrCat("Unknown input node ", input));
+      }
+      const NodeDef* fanin = it->second;
+      pending_fanouts[fanin] += 1;
+    }
+  }
+  std::deque<const NodeDef*> ready_nodes;
+  for (const NodeDef& node : item.graph.node()) {
+    if (pending_fanouts[&node] == 0) {
+      auto it = execution_times.find(&node);
+      if (it != execution_times.end()) {
+        (*required_times)[&node] = it->second;
+      }
+      ready_nodes.push_back(&node);
+    }
+  }
+  GraphProperties properties(item);
+  TF_RETURN_IF_ERROR(properties.InferStatically());
+  OpLevelCostEstimator estimator;
+  VirtualPlacer placer(cluster);
+
+  while (!ready_nodes.empty()) {
+    const NodeDef* node = ready_nodes.front();
+    ready_nodes.pop_front();
+
+    Costs::NanoSeconds execution_time =
+        PredictExecutionTime(properties, estimator, placer, *node);
+    Costs::NanoSeconds required_time = (*required_times)[node] - execution_time;
+
+    for (const string& fanin_name : node->input()) {
+      const NodeDef* fanin = name_map[NodeName(fanin_name)];
+      (*required_times)[fanin] =
+          std::min((*required_times)[fanin], required_time);
+
+      int pending = pending_fanouts[fanin];
+      if (pending == 0) {
+        // Already processed. Avoid going through loops more than once.
+        continue;
+      } else if (pending == 1) {
+        ready_nodes.push_back(fanin);
+      }
+      pending_fanouts[fanin]--;
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

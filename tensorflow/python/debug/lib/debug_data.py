@@ -380,7 +380,8 @@ def device_path_to_device_name(device_dir):
   path_items = os.path.basename(device_dir)[
       len(METADATA_FILE_PREFIX) + len(DEVICE_TAG):].split(",")
   return "/".join([
-      path_item.replace("_", ":", 1) for path_item in path_items])
+      path_item.replace("device_", "device:").replace("_", ":", 1)
+      for path_item in path_items])
 
 
 class DebugTensorDatum(object):

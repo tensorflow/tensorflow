@@ -40,7 +40,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
@@ -462,6 +465,235 @@ class BaseDNNModelFnTest(object):
                     'age', shape=np.array(inputs).shape[1:])
             ],
             optimizer=mock_optimizer(self, hidden_units))
+
+
+class BaseDNNLogitFnTest(object):
+  """Tests correctness of logits calculated from _dnn_logit_fn_builder."""
+
+  def __init__(self, dnn_logit_fn_builder):
+    self._dnn_logit_fn_builder = dnn_logit_fn_builder
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      writer_cache.FileWriterCache.clear()
+      shutil.rmtree(self._model_dir)
+
+  def _test_logits(self, mode, hidden_units, logits_dimension, inputs,
+                   expected_logits):
+    """Tests that the expected logits are calculated."""
+    with ops.Graph().as_default():
+      # Global step needed for MonitoredSession, which is in turn used to
+      # explicitly set variable weights through a checkpoint.
+      training_util.create_global_step()
+      # Use a variable scope here with 'dnn', emulating the dnn model_fn, so
+      # the checkpoint naming is shared.
+      with variable_scope.variable_scope('dnn'):
+        input_layer_partitioner = (
+            partitioned_variables.min_max_variable_partitioner(
+                max_partitions=0, min_slice_size=64 << 20))
+        logit_fn = self._dnn_logit_fn_builder(
+            units=logits_dimension,
+            hidden_units=hidden_units,
+            feature_columns=[
+                feature_column.numeric_column(
+                    'age', shape=np.array(inputs).shape[1:])
+            ],
+            activation_fn=nn.relu,
+            dropout=None,
+            input_layer_partitioner=input_layer_partitioner)
+        logits = logit_fn(
+            features={'age': constant_op.constant(inputs)}, mode=mode)
+        with monitored_session.MonitoredTrainingSession(
+            checkpoint_dir=self._model_dir) as sess:
+          self.assertAllClose(expected_logits, sess.run(logits))
+
+  def test_one_dim_logits(self):
+    """Tests one-dimensional logits.
+
+    input_layer = [[10]]
+    hidden_layer_0 = [[relu(0.6*10 +0.1), relu(0.5*10 -0.1)]] = [[6.1, 4.9]]
+    hidden_layer_1 = [[relu(1*6.1 -0.8*4.9 +0.2), relu(0.8*6.1 -1*4.9 -0.1)]]
+                   = [[relu(2.38), relu(-0.12)]] = [[2.38, 0]]
+    logits = [[-1*2.38 +1*0 +0.3]] = [[-2.08]]
+    """
+    base_global_step = 100
+    create_checkpoint(
+        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+         ([[-1.], [1.]], [.3]),), base_global_step, self._model_dir)
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      self._test_logits(
+          mode,
+          hidden_units=(2, 2),
+          logits_dimension=1,
+          inputs=[[10.]],
+          expected_logits=[[-2.08]])
+
+  def test_multi_dim_logits(self):
+    """Tests multi-dimensional logits.
+
+    input_layer = [[10]]
+    hidden_layer_0 = [[relu(0.6*10 +0.1), relu(0.5*10 -0.1)]] = [[6.1, 4.9]]
+    hidden_layer_1 = [[relu(1*6.1 -0.8*4.9 +0.2), relu(0.8*6.1 -1*4.9 -0.1)]]
+                   = [[relu(2.38), relu(-0.12)]] = [[2.38, 0]]
+    logits = [[-1*2.38 +0.3, 1*2.38 -0.3, 0.5*2.38]]
+           = [[-2.08, 2.08, 1.19]]
+    """
+    base_global_step = 100
+    create_checkpoint((([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]],
+                                                 [.2, -.2]),
+                       ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),),
+                      base_global_step, self._model_dir)
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      self._test_logits(
+          mode,
+          hidden_units=(2, 2),
+          logits_dimension=3,
+          inputs=[[10.]],
+          expected_logits=[[-2.08, 2.08, 1.19]])
+
+  def test_multi_example_multi_dim_logits(self):
+    """Tests multiple examples and multi-dimensional logits.
+
+    input_layer = [[10], [5]]
+    hidden_layer_0 = [[relu(0.6*10 +0.1), relu(0.5*10 -0.1)],
+                      [relu(0.6*5 +0.1), relu(0.5*5 -0.1)]]
+                   = [[6.1, 4.9], [3.1, 2.4]]
+    hidden_layer_1 = [[relu(1*6.1 -0.8*4.9 +0.2), relu(0.8*6.1 -1*4.9 -0.1)],
+                      [relu(1*3.1 -0.8*2.4 +0.2), relu(0.8*3.1 -1*2.4 -0.1)]]
+                   = [[2.38, 0], [1.38, 0]]
+    logits = [[-1*2.38 +0.3, 1*2.38 -0.3, 0.5*2.38],
+              [-1*1.38 +0.3, 1*1.38 -0.3, 0.5*1.38]]
+           = [[-2.08, 2.08, 1.19], [-1.08, 1.08, 0.69]]
+    """
+    base_global_step = 100
+    create_checkpoint((([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]],
+                                                 [.2, -.2]),
+                       ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),),
+                      base_global_step, self._model_dir)
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      self._test_logits(
+          mode,
+          hidden_units=(2, 2),
+          logits_dimension=3,
+          inputs=[[10.], [5.]],
+          expected_logits=[[-2.08, 2.08, 1.19], [-1.08, 1.08, .69]])
+
+  def test_multi_dim_input_one_dim_logits(self):
+    """Tests multi-dimensional inputs and one-dimensional logits.
+
+    input_layer = [[10, 8]]
+    hidden_layer_0 = [[relu(0.6*10 -0.6*8 +0.1), relu(0.5*10 -0.5*8 -0.1)]]
+                   = [[1.3, 0.9]]
+    hidden_layer_1 = [[relu(1*1.3 -0.8*0.9 + 0.2), relu(0.8*1.3 -1*0.9 -0.2)]]
+                   = [[0.78, relu(-0.06)]] = [[0.78, 0]]
+    logits = [[-1*0.78 +1*0 +0.3]] = [[-0.48]]
+    """
+    base_global_step = 100
+    create_checkpoint((([[.6, .5], [-.6, -.5]],
+                        [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+                       ([[-1.], [1.]], [.3]),), base_global_step,
+                      self._model_dir)
+
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      self._test_logits(
+          mode,
+          hidden_units=(2, 2),
+          logits_dimension=1,
+          inputs=[[10., 8.]],
+          expected_logits=[[-0.48]])
+
+  def test_multi_dim_input_multi_dim_logits(self):
+    """Tests multi-dimensional inputs and multi-dimensional logits.
+
+    input_layer = [[10, 8]]
+    hidden_layer_0 = [[relu(0.6*10 -0.6*8 +0.1), relu(0.5*10 -0.5*8 -0.1)]]
+                   = [[1.3, 0.9]]
+    hidden_layer_1 = [[relu(1*1.3 -0.8*0.9 + 0.2), relu(0.8*1.3 -1*0.9 -0.2)]]
+                   = [[0.78, relu(-0.06)]] = [[0.78, 0]]
+    logits = [[-1*0.78 + 0.3, 1*0.78 -0.3, 0.5*0.78]] = [[-0.48, 0.48, 0.39]]
+    """
+    base_global_step = 100
+    create_checkpoint((([[.6, .5], [-.6, -.5]],
+                        [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+                       ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),),
+                      base_global_step, self._model_dir)
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      self._test_logits(
+          mode,
+          hidden_units=(2, 2),
+          logits_dimension=3,
+          inputs=[[10., 8.]],
+          expected_logits=[[-0.48, 0.48, 0.39]])
+
+  def test_multi_feature_column_multi_dim_logits(self):
+    """Tests multiple feature columns and multi-dimensional logits.
+
+    All numbers are the same as test_multi_dim_input_multi_dim_logits. The only
+    difference is that the input consists of two 1D feature columns, instead of
+    one 2D feature column.
+    """
+    base_global_step = 100
+    create_checkpoint((([[.6, .5], [-.6, -.5]],
+                        [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+                       ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),),
+                      base_global_step, self._model_dir)
+
+    hidden_units = (2, 2)
+    logits_dimension = 3
+    inputs = ([[10.]], [[8.]])
+    expected_logits = [[-0.48, 0.48, 0.39]]
+
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      with ops.Graph().as_default():
+        # Global step needed for MonitoredSession, which is in turn used to
+        # explicitly set variable weights through a checkpoint.
+        training_util.create_global_step()
+        # Use a variable scope here with 'dnn', emulating the dnn model_fn, so
+        # the checkpoint naming is shared.
+        with variable_scope.variable_scope('dnn'):
+          input_layer_partitioner = (
+              partitioned_variables.min_max_variable_partitioner(
+                  max_partitions=0, min_slice_size=64 << 20))
+          logit_fn = self._dnn_logit_fn_builder(
+              units=logits_dimension,
+              hidden_units=hidden_units,
+              feature_columns=[
+                  feature_column.numeric_column('age'),
+                  feature_column.numeric_column('height')
+              ],
+              activation_fn=nn.relu,
+              dropout=None,
+              input_layer_partitioner=input_layer_partitioner)
+          logits = logit_fn(
+              features={
+                  'age': constant_op.constant(inputs[0]),
+                  'height': constant_op.constant(inputs[1])
+              },
+              mode=mode)
+          with monitored_session.MonitoredTrainingSession(
+              checkpoint_dir=self._model_dir) as sess:
+            self.assertAllClose(expected_logits, sess.run(logits))
 
 
 class BaseDNNClassifierEvaluateTest(object):

@@ -616,8 +616,6 @@ inline void ForwarMklTensorInToOut(OpKernelContext* context,
   }
 }
 
-  // TODO(intel_tf): Remove this routine when faster MKL layout conversion is
-  // out. 
 inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
   const float* buf_in = input.flat<float>().data();
   float* buf_out = (*output)->flat<float>().data();
@@ -634,8 +632,6 @@ inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
   }
 }
 
-  // TODO(intel_tf): Remove this routine when faster MKL layout conversion is
-  // out. 
 inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
   const float* buf_in = input.flat<float>().data();
   float* buf_out = (*output)->flat<float>().data();

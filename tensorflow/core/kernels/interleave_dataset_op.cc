@@ -104,8 +104,10 @@ class InterleaveDatasetOp : public OpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Interleave")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -120,10 +122,10 @@ class InterleaveDatasetOp : public OpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
-            input_impl_(dataset->input_->MakeIterator()),
-            current_elements_(dataset->cycle_length_) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
+            current_elements_(params.dataset->cycle_length_) {}
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         block_index_ = 0;
@@ -137,8 +139,9 @@ class InterleaveDatasetOp : public OpKernel {
         }
       }
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         while (!end_of_input_ || num_open_ > 0) {
           if (current_elements_[cycle_index_]) {
@@ -181,15 +184,11 @@ class InterleaveDatasetOp : public OpKernel {
      private:
       Status MakeIteratorFromInputElement(
           IteratorContext* ctx, const std::vector<Tensor>& input_element,
-          std::unique_ptr<IteratorBase>* out_iterator) {
+          std::unique_ptr<IteratorBase>* out_iterator)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         FunctionLibraryRuntime::Options opts;
         opts.runner = ctx->runner();
-        // Choose a step ID that is guaranteed not to clash with any
-        // Session-generated step ID. DirectSession only generates
-        // non-negative step IDs (contiguous, starting from 0), and
-        // MasterSession generates 56-bit random step IDs whose MSB
-        // is always 0, so a negative random step ID should suffice.
-        opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        opts.step_id = CapturedFunction::generate_step_id();
         ScopedStepContainer step_container(
             opts.step_id, [this, ctx](const string& name) {
               dataset()
@@ -231,7 +230,8 @@ class InterleaveDatasetOp : public OpKernel {
         // Create an iterator for the dataset that was returned by
         // `f`. This transfers ownership of the dataset to the
         // iterator, so we can delete it from the resource manager.
-        *out_iterator = returned_dataset->MakeIterator();
+        *out_iterator = returned_dataset->MakeIterator(
+            strings::StrCat(prefix(), "[", cycle_index_, "]"));
         TF_RETURN_IF_ERROR(
             dataset()->captured_func_->resource_manager()->Delete<DatasetBase>(
                 dataset_resource.container(), dataset_resource.name()));

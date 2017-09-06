@@ -323,7 +323,7 @@ class DataFeeder(object):
     self._x = dict([(k, check_array(v, v.dtype)) for k, v in list(x.items())
                    ]) if x_is_dict else check_array(x, x.dtype)
     self._y = None if y is None else \
-      dict([(k, check_array(v, v.dtype)) for k, v in list(y.items())]) if x_is_dict else check_array(y, y.dtype)
+      dict([(k, check_array(v, v.dtype)) for k, v in list(y.items())]) if y_is_dict else check_array(y, y.dtype)
 
     # self.n_classes is not None means we're converting raw target indices to one-hot.
     if n_classes is not None:

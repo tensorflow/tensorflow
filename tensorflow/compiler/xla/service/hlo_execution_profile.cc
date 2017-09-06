@@ -61,6 +61,7 @@ string HloExecutionProfile::ToString(
     builder.AddOp(/*op_name=*/hlo->ToString(),
                   /*short_name=*/hlo->ToString(/*compact_operands=*/true),
                   hlo->ToCategory(), cycles, cost_analysis->flop_count(*hlo),
+                  cost_analysis->transcendental_count(*hlo),
                   cost_analysis->bytes_accessed(*hlo),
                   cost_analysis->seconds(*hlo));
   }

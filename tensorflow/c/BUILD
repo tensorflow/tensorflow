@@ -30,6 +30,7 @@ tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
     hdrs = ["c_api_internal.h"],
+    visibility = ["//tensorflow/c:__subpackages__"],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -60,6 +61,7 @@ tf_cuda_library(
             "//tensorflow/cc:ops",
             "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:scope_internal",
+            "//tensorflow/cc:while_loop",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
@@ -84,6 +86,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api",
+        ":c_api_internal",
         "//tensorflow/core:lib",
     ],
 )

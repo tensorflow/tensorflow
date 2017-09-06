@@ -95,6 +95,12 @@ class BinaryOpsTest(XLATestCase):
           expected=np.array([-160, -81, -28, -4], dtype=dtype))
 
       self._testBinary(
+          gen_math_ops._sqrt_grad,
+          np.array([4, 3, 2, 1], dtype=dtype),
+          np.array([5, 6, 7, 8], dtype=dtype),
+          expected=np.array([0.625, 1, 1.75, 4], dtype=dtype))
+
+      self._testBinary(
           gen_nn_ops._softplus_grad,
           np.array([4, 3, 2, 1], dtype=dtype),
           np.array([5, 6, 7, 8], dtype=dtype),

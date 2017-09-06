@@ -1845,7 +1845,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const {
-    shared_lock lock{mu_};
+    tf_shared_lock lock{mu_};
     return !ok_;
   }
 

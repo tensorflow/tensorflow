@@ -56,6 +56,8 @@ Output Const(const Scope& scope, const Input::Initializer& val) {
   scope.UpdateBuilder(&cast_builder);
   Node* ret;
   scope.UpdateStatus(cast_builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   return Output(ret, 0);
 }
 

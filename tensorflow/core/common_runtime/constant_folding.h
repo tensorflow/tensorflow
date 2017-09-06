@@ -33,7 +33,7 @@ struct ConstantFoldingOptions {
   // vector of the (potentially partially-known) shapes of its
   // outputs.
   const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
-      shape_map;  // not owned
+      shape_map = nullptr;  // not owned
 };
 
 // Perform constant folding optimization on "graph".

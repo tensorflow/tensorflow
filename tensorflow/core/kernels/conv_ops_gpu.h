@@ -48,6 +48,11 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
   perftools::gputools::port::StatusOr<perftools::gputools::DeviceMemory<uint8>>
   AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
+    if (byte_size < 0) {
+      return perftools::gputools::port::Status{
+          perftools::gputools::port::error::INVALID_ARGUMENT,
+          "Requested negative byte size!"};
+    }
     if (byte_size > memory_limit_) {
       return perftools::gputools::port::StatusOr<
           perftools::gputools::DeviceMemory<uint8>>();

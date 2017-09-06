@@ -57,8 +57,7 @@ class LocalService : public Service {
 
  private:
   explicit LocalService(const ServiceOptions& options,
-                        std::unique_ptr<Backend> backend,
-                        std::unique_ptr<Backend> compute_constant_backend);
+                        std::unique_ptr<Backend> backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
 };

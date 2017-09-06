@@ -40,14 +40,22 @@ SIZE = 1300
 builder = option_builder.ProfileOptionBuilder
 
 
-def _extract_node(run_meta, node_names):
-  if not isinstance(node_names, list):
-    node_names = [node_names]
+def _extract_node(run_meta, node_name):
   ret = defaultdict(list)
   for dev_stat in run_meta.step_stats.dev_stats:
-    dev = dev_stat.device
+    dev = dev_stat.device.lower()
+    if dev.find('cpu:') > 0:
+      dev = dev[dev.find('cpu:'):]
+    elif dev.find('gpu:') > 0:
+      dev = dev[dev.find('gpu:'):]
+    else:
+      assert False, 'Unrecognized device name: %s' % dev
+
     for node_stat in dev_stat.node_stats:
-      if node_stat.node_name in node_names:
+      nname = node_stat.node_name
+      if nname.find(':') > 0:
+        nname = nname[:nname.find(':')]
+      if nname == node_name:
         ret[dev].append(node_stat)
   return ret
 
@@ -62,6 +70,7 @@ def _run_model():
     opts = builder.time_and_memory()
     opts['min_micros'] = 0
     opts['min_bytes'] = 0
+    opts['output'] = 'none'
     _ = sess.run(y,
                  options=config_pb2.RunOptions(
                      trace_level=config_pb2.RunOptions.FULL_TRACE),
@@ -85,9 +94,11 @@ def _run_loop_model():
                      trace_level=config_pb2.RunOptions.FULL_TRACE),
                  run_metadata=run_meta)
 
+    opts = builder.time_and_memory()
+    opts['output'] = 'none'
+
     tfprof_node = model_analyzer.profile(
-        sess.graph, run_meta,
-        options=builder.time_and_memory())
+        sess.graph, run_meta, options=opts)
     return tfprof_node, run_meta
 
 
@@ -97,23 +108,16 @@ class RunMetadataTest(test.TestCase):
     if not test.is_gpu_available(cuda_only=True):
       return
 
+    gpu_dev = test.gpu_device_name()
     ops.reset_default_graph()
-    with ops.device('/gpu:0'):
+    with ops.device(gpu_dev):
       tfprof_node, run_meta = _run_model()
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
       self.assertGreater(tfprof_node.children[0].exec_micros, 10)
 
-    ret = _extract_node(run_meta, ['MatMul', 'MatMul:MatMul'])
-    self.assertEqual(len(ret), 3)
-    self.assertTrue('/job:localhost/replica:0/task:0/gpu:0' in ret)
-    del ret['/job:localhost/replica:0/task:0/gpu:0']
-
-    has_all_stream = False
-    for k, _ in six.iteritems(ret):
-      self.assertTrue('gpu:0/stream' in k)
-      if 'gpu:0/stream:all' in k:
-        has_all_stream = True
-    self.assertTrue(has_all_stream)
+    ret = _extract_node(run_meta, 'MatMul')
+    self.assertEqual(len(ret['gpu:0']), 1)
+    self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
 
   def testCPU(self):
     ops.reset_default_graph()
@@ -123,8 +127,7 @@ class RunMetadataTest(test.TestCase):
       self.assertGreater(tfprof_node.children[0].exec_micros, 0)
 
     ret = _extract_node(run_meta, 'MatMul')
-    self.assertEqual(len(ret), 1)
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:0' in ret)
+    self.assertEqual(len(ret['cpu:0']), 1)
 
     ret = _extract_node(run_meta, 'MatMul:MatMul')
     self.assertEqual(len(ret), 0)
@@ -136,10 +139,10 @@ class RunMetadataTest(test.TestCase):
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul')
-      self.assertEqual(len(ret['/job:localhost/replica:0/task:0/cpu:0']), 4)
+      self.assertEqual(len(ret['cpu:0']), 4)
 
       total_cpu_execs = 0
-      for node in ret['/job:localhost/replica:0/task:0/cpu:0']:
+      for node in ret['cpu:0']:
         total_cpu_execs += node.op_end_rel_micros
 
       mm_node = lib.SearchTFProfNode(
@@ -150,44 +153,52 @@ class RunMetadataTest(test.TestCase):
       self.assertEqual(mm_node.cpu_exec_micros, total_cpu_execs)
       self.assertEqual(mm_node.exec_micros, total_cpu_execs)
 
+  def testGradientGraph(self):
+    # Note: Please don't just adjust the test to make it pass.
+    # The code view logic depends on it.
+    ops.reset_default_graph()
+    _, _ = _run_loop_model()
+    graph = ops.get_default_graph()
+    forward_op = set()
+    backward_op = set()
+    back_to_forward = dict()
+    for op in graph.get_operations():
+      if op.name.find('gradients/') > 0 and op.name.find('_grad/') > 0:
+        backward_op.add(op.name)
+        idx1 = op.name.find('gradients/') + 10
+        idx2 = op.name.find('_grad/')
+        back_to_forward[op.name] = op.name[idx1:idx2]
+      else:
+        forward_op.add(op.name)
+
+    for _, f in six.iteritems(back_to_forward):
+      self.assertTrue(f in forward_op)
+
   # pylint: disable=pointless-string-statement
   """
-  TODO(xpan): This test is flaky because RunMetadata returned from TensorFlow
-  is random. Still being investigated.
+  # TODO(xpan): This test is flaky because RunMetadata returned from TensorFlow
+  # is random. Still being investigated.
   def testLoopGPU(self):
     if not test.is_gpu_available():
       return
 
     ops.reset_default_graph()
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       tfprof_node, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul')
-      self.assertEqual(len(ret['/job:localhost/replica:0/task:0/gpu:0']), 4)
+      self.assertEqual(len(ret['gpu:0']), 4, '%s' % run_meta)
 
       total_cpu_execs = 0
-      for node in ret['/job:localhost/replica:0/task:0/gpu:0']:
+      for node in ret['gpu:0']:
         total_cpu_execs += node.op_end_rel_micros
 
-      ret = _extract_node(
-          run_meta,
-          'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul:MatMul')
-      self.assertGreaterEqual(len(ret['/gpu:0/stream:all']), 4)
+      self.assertGreaterEqual(len(ret['gpu:0/stream:all']), 4, '%s' % run_meta)
 
       total_accelerator_execs = 0
-      for node in ret['/gpu:0/stream:all']:
+      for node in ret['gpu:0/stream:all']:
         total_accelerator_execs += node.op_end_rel_micros
-
-      mm_node = lib.SearchTFProfNode(
-          tfprof_node,
-          'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul')
-
-      self.assertEqual(mm_node.run_count, 4)
-      self.assertEqual(mm_node.accelerator_exec_micros, total_accelerator_execs)
-      self.assertEqual(mm_node.cpu_exec_micros, total_cpu_execs)
-      self.assertEqual(mm_node.exec_micros,
-                       total_cpu_execs + total_accelerator_execs)
   """
 
 

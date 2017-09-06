@@ -40,7 +40,7 @@ namespace tensorflow {
 namespace {
 
 const char kCPUDevice[] = "/job:a/replica:0/task:0/cpu:0";
-const char kGPUDevice[] = "/job:a/replica:0/task:0/gpu:0";
+const char kGPUDevice[] = "/job:a/replica:0/task:0/device:GPU:0";
 
 static void InitGraph(const string& s, Graph* graph,
                       const string& device = kCPUDevice) {

@@ -41,6 +41,32 @@ can vary. For example `-max_depth` in scope view means the depth of
 name scope <b>tree</b>. In op view, it means the length of operation <b>list</b>.
 In graph view, in means the number of hops in the <b>graph</b>.
 
+### Times
+
+Most machines have mutli-core CPUs. Some installs one or more accelerators.
+Each accelerator usually performs massive parallel processing. The profiler
+tracks the accumulated processing times. Hence, the accumulated processing
+time is likely larger than the time of each step.
+
+micros: This is the sum of cpu and accelerator times.
+accelerator_micros: This is the accelerator times.
+cpu_micros: This is the cpu times.
+
+### Memory
+
+Tensor memory are usually ref-counted. The memory is released when there is
+no more reference to it. It will be difficult to track the release of memory.
+Currently, profiler only tracks the allocation of memory. As a result, the
+accumulated memory request is uaually larger than the peak memory of the overall
+model.
+
+bytes: The memory allocations requested by the operation.
+peak_bytes: The peak requested memory (not de-allocated) by the operation.
+residual_bytes: The memory requested by the operation and not de-allocated
+                when Compute finishes.
+output_bytes: The memory output by the operation. It's not necessarily requested
+              by the current operation. For example, it can be a tensor
+              forwarded from input to output, with in-place mutation.
 
 ###Docs
 
@@ -48,7 +74,18 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-min_bytes`: Show nodes that request at least this number of bytes.
 
-`-min_micros`: Show nodes that spend at least this number of microseconds to run.
+`-min_peak_bytes`: Show nodes that using at least this number of bytes during peak memory usage.
+
+`-min_residual_bytes`: Show nodes that have at least this number of bytes not being de-allocated after Compute.
+
+`-min_output_bytes`: Show nodes that have at least this number of bytes output (no necessarily allocated by the nodes).
+
+`-min_micros`: Show nodes that spend at least this number of microseconds to run. It sums
+accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel.
+
+`-min_accelerator_micros`: Show nodes that spend at least this number of microseconds to run on accelerator (e.g. GPU).
+
+`-min_cpu_micros`: Show nodes that spend at least this number of microseconds to run on CPU.
 
 `-min_params`: Show nodes that contains at least this number of parameters.
 
@@ -58,7 +95,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-step`: Show the stats of the this step when multiple steps of RunMetadata were added. By default, show the average of all steps."
 
-`-order_by`: Order the results by [name|depth|bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
+`-order_by`: Order the results by [name|depth|bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
 
 `-account_type_regexes`: Account and display the nodes whose types match one of the type regexes specified. tfprof allow user to define extra operation types for graph nodes through tensorflow.tfprof.OpLogProto proto. regexes are comma-sperated.
 
@@ -76,7 +113,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 Notes: See <b>overview</b> sesion on how does above options play with each other to decide the output and counting.
 
 `-select`: Comma-separated list of attributes to show. Supported attributes:
-[bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
+[bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
 
 `-output`: Output results as stdout, file or timeline.
 The format is ```output_type:key=value,key=value```.

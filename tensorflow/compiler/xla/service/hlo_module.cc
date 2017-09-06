@@ -47,6 +47,7 @@ HloComputation* HloModule::AddComputationInternal(
   computation->UniquifyName(&computation_name_uniquer_);
   for (auto& instruction : computation->instructions()) {
     instruction->UniquifyName(&instruction_name_uniquer_);
+    instruction->SetUniqueId(NewUniqueInstructionId());
   }
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
@@ -65,6 +66,17 @@ HloComputation* HloModule::AddEntryComputation(
         entry_computation_->ComputeProgramShape());
   }
   return AddComputationInternal(std::move(computation));
+}
+
+Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+  auto it =
+      std::find_if(computations_.begin(), computations_.end(),
+                   [&to_remove](const std::unique_ptr<HloComputation>& comp) {
+                     return comp.get() == to_remove;
+                   });
+  TF_RET_CHECK(it->get() == to_remove);
+  computations_.erase(it);
+  return Status::OK();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -35,16 +36,21 @@ Status DfsHloVisitor::HandleElementwiseBinary(HloInstruction* hlo,
                        HloOpcodeString(opcode).c_str());
 }
 
+DfsHloVisitor::VisitState DfsHloVisitor::GetVisitState(
+    const HloInstruction& instruction) {
+  return GetVisitState(instruction.unique_id());
+}
+
 void DfsHloVisitor::SetVisiting(const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visiting: ";
   DCHECK(NotVisited(instruction));
-  visit_state_[&instruction] = VisitState::kVisiting;
+  visit_state_.SetState(instruction.unique_id(), VisitState::kVisiting);
 }
 
 void DfsHloVisitor::SetVisited(const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visited: ";
   DCHECK(NotVisited(instruction) || IsVisiting(instruction));
-  visit_state_[&instruction] = VisitState::kVisited;
+  visit_state_.SetState(instruction.unique_id(), VisitState::kVisited);
 }
 
 Status DfsHloVisitor::Preprocess(HloInstruction* hlo) { return Status::OK(); }
