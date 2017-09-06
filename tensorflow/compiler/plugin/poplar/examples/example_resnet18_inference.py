@@ -90,8 +90,7 @@ def max_pool(x, ksize=3, stride=2):
 #
 
 # Inputs
-x = tf.placeholder(datatype, shape=[2, 224, 224, 4])
-y_ = tf.placeholder(datatype, shape=[2, 1000])
+x = tf.placeholder(datatype, shape=[1, 224, 224, 4])
 
 # Inference
 logits = inference(x)
@@ -100,7 +99,7 @@ sess = tf.InteractiveSession()
 
 sess.run(tf.global_variables_initializer())
 
-training_data = np.zeros([2, 224, 224, 4]);
+training_data = np.zeros([1, 224, 224, 4]);
 
 sess.run(logits, feed_dict={x: training_data})
 
