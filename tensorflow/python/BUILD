@@ -3601,7 +3601,7 @@ py_test(
 
 py_test(
     name = "monitored_session_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
