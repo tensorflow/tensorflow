@@ -230,7 +230,7 @@ public class ImageUtils {
    * @param halfSize If true, downsample to 50% in each dimension, otherwise not.
    */
   private static native void convertYUV420SPToARGB8888(
-          byte[] input, int[] output, int width, int height, boolean halfSize);
+      byte[] input, int[] output, int width, int height, boolean halfSize);
 
   /**
    * Converts YUV420 semi-planar data to ARGB 8888 data using the supplied width
@@ -247,16 +247,16 @@ public class ImageUtils {
    * @param output A pre-allocated array for the ARGB 8:8:8:8 output data.
    */
   private static native void convertYUV420ToARGB8888(
-          byte[] y,
-          byte[] u,
-          byte[] v,
-          int[] output,
-          int width,
-          int height,
-          int yRowStride,
-          int uvRowStride,
-          int uvPixelStride,
-          boolean halfSize);
+      byte[] y,
+      byte[] u,
+      byte[] v,
+      int[] output,
+      int width,
+      int height,
+      int yRowStride,
+      int uvRowStride,
+      int uvPixelStride,
+      boolean halfSize);
 
   /**
    * Converts YUV420 semi-planar data to RGB 565 data using the supplied width
@@ -269,7 +269,7 @@ public class ImageUtils {
    * @param height The height of the input image.
    */
   private static native void convertYUV420SPToRGB565(
-          byte[] input, byte[] output, int width, int height);
+      byte[] input, byte[] output, int width, int height);
 
   /**
    * Converts 32-bit ARGB8888 image data to YUV420SP data.  This is useful, for
@@ -282,7 +282,7 @@ public class ImageUtils {
    * @param height The height of the input image.
    */
   private static native void convertARGB8888ToYUV420SP(
-          int[] input, byte[] output, int width, int height);
+      int[] input, byte[] output, int width, int height);
 
   /**
    * Converts 16-bit RGB565 image data to YUV420SP data.  This is useful, for
@@ -295,7 +295,7 @@ public class ImageUtils {
    * @param height The height of the input image.
    */
   private static native void convertRGB565ToYUV420SP(
-          byte[] input, byte[] output, int width, int height);
+      byte[] input, byte[] output, int width, int height);
 
   /**
    * Returns a transformation matrix from one reference frame into another.
