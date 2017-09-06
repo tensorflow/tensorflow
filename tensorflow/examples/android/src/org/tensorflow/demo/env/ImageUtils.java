@@ -100,9 +100,9 @@ public class ImageUtils {
 
   public static void convertYUV420SPToARGB8888(
       byte[] input,
-      int[] output,
       int width,
-      int height) {
+      int height,
+      int[] output) {
 
     if (useNativeConversion) {
       try {
