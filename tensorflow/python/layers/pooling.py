@@ -20,13 +20,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow import (reshape, concat, cast, gather, int32, shape, reduce_max, reduce_mean, floor, divide, float32,
-                        multiply, ceil, )
+import numpy as np
+import six
+from six.moves import xrange  # pylint: disable=redefined-builtin
+from tensorflow import cast
+from tensorflow import ceil
+from tensorflow import concat
+from tensorflow import divide
+from tensorflow import float32
+from tensorflow import floor
+from tensorflow import gather
+from tensorflow import int32
+from tensorflow import  multiply
+from tensorflow import reduce_max
+from tensorflow import reduce_mean
+from tensorflow import reshape
+from tensorflow import shape
+from tensorflow.python import framework
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import standard_ops
+from tensorflow.python.ops import variable_scope as vs
 
 
 class _Pooling1D(base.Layer):
