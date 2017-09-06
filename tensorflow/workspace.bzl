@@ -99,6 +99,9 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
+  if not repo_ctx.which("patch"):
+    fail("patch command is not found, please install it")
+
   cmd = [
       "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
   ]
