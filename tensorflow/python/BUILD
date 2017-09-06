@@ -3607,16 +3607,18 @@ py_test(
     tags = ["no_windows"],
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
+        ":control_flow_ops",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":session",
         ":state_ops",
         ":summary",
         ":training",
         ":variables",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
