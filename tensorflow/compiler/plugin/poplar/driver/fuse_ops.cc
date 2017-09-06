@@ -25,6 +25,7 @@ namespace poplarplugin {
 static const char* names[] = {
   "const_slice_update",
   "const_slice",
+  "wide_const",
   "relu",
   "sigmoid",
   "biasadd_broadcast",
@@ -39,7 +40,6 @@ static const char* names[] = {
   "bernoulli",
   "avgpool_same",
   "avgpool_valid",
-  "wide_const",
   "depthwise_conv",
 };
 
@@ -61,6 +61,10 @@ static const std::vector<HloMatcherPattern> patterns = {
   // dynamic slice with constant coordinate
   {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Broadcast scalar constant (must precede Relu)
+  {{HloOpcode::kBroadcast, true, nullptr, {1}},
+   {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 
   // Relu
   {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
@@ -149,10 +153,6 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kBroadcast, true, nullptr, {6}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
-
-  // Broadcast scalar constant
-  {{HloOpcode::kBroadcast, true, nullptr, {1}},
-   {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 
   // Depthwise convolution (forward pass)
   {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
