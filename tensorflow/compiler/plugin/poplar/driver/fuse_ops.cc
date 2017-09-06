@@ -25,7 +25,6 @@ namespace poplarplugin {
 static const char* names[] = {
   "const_slice_update",
   "const_slice",
-  "wide_const",
   "relu",
   "relu",
   "sigmoid",
@@ -42,6 +41,7 @@ static const char* names[] = {
   "avgpool_same",
   "avgpool_valid",
   "depthwise_conv",
+  "wide_const",
 };
 
 /*
