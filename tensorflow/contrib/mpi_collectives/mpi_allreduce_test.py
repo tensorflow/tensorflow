@@ -84,8 +84,12 @@ class AllreduceTest(test.TestCase):
 
     local_reduced = local_input
 
+    # NOTE: This assumes that device IDs are numbered the same as ranks
+    gpu_options = tf.GPUOptions(visible_device_list=str(my_rank))
+    config = tf.ConfigProto(gpu_options=gpu_options)
+
     # MPI Session to test allreduce
-    with mpi.Session() as sess:
+    with mpi.Session(config=config) as sess:
       sess.run(tf.global_variables_initializer())
 
       input_feed = np.ones((batch_size, hidden_size), dtype=np.float32)
