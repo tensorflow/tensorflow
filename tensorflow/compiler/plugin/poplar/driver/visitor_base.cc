@@ -65,9 +65,7 @@ Status BaseVisitor::Unimplemented(HloInstruction* inst) {
                                    " not implemented"));
 }
 
-Status BaseVisitor::HandleElementwiseUnary(
-        HloInstruction* inst,
-        HloOpcode opcode) {
+Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateUnaryElementwiseOp(*graph_,
@@ -79,9 +77,7 @@ Status BaseVisitor::HandleElementwiseUnary(
   return Status::OK();
 }
 
-Status BaseVisitor::HandleElementwiseBinary(
-        HloInstruction* inst,
-        HloOpcode opcode) {
+Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateBinaryElementwiseOp(*graph_,

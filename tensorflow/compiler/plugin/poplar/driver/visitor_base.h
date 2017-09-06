@@ -39,11 +39,9 @@ public:
 
   virtual const Shape& GetOutputShape(HloInstruction*) const;
 
-  Status HandleElementwiseUnary(HloInstruction* inst,
-                                HloOpcode opcode) override;
+  Status HandleElementwiseUnary(HloInstruction* inst) override;
 
-  Status HandleElementwiseBinary(HloInstruction* inst,
-                                 HloOpcode opcode) override;
+  Status HandleElementwiseBinary(HloInstruction* inst) override;
 
   Status HandleConvert(HloInstruction* inst) override;
 
