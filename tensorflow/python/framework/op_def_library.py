@@ -784,6 +784,7 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
+        inputs = [ag_core.getval(x) for x in inputs]
         op = g.create_op(op_type_name, inputs, output_types, name=scope,
                          input_types=input_types, attrs=attr_protos,
                          op_def=op_def)

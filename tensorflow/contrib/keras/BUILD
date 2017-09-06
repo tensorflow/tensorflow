@@ -551,6 +551,7 @@ py_test(
     size = "small",
     srcs = ["python/keras/utils/io_utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

@@ -561,13 +561,21 @@ tooltip = " ";
   }
 
   string comp_body = DumpComputation(subcomp);
-  string computation =
-      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 
-  // Add an edge from the subcomputation to its parent node.  If subcomp
-  // belongs to a fusion node, it's drawn in place of the fusion instruction, so
-  // there's no need to link those.
-  if (parent_instr->opcode() != HloOpcode::kFusion) {
+  if (parent_instr->opcode() == HloOpcode::kFusion) {
+    // Dump any nested fusion nodes.
+    for (const auto& subcomp_instr : subcomp->instructions()) {
+      if (subcomp_instr->opcode() == HloOpcode::kFusion) {
+        StrAppend(
+            &comp_body,
+            DumpSubcomputation(subcomp_instr->fused_instructions_computation(),
+                               subcomp_instr.get()));
+      }
+    }
+  } else {
+    // Add an edge from the subcomputation to its parent node.  If subcomp
+    // belongs to a fusion node, it's drawn in place of the fusion instruction,
+    // so there's no need to link those.
     edge_ids_.insert(
         {{subcomp->root_instruction(), parent_instr}, next_edge_id_++});
     const char* edge_fmt =
@@ -577,6 +585,9 @@ tooltip = " ";
                InstructionId(parent_instr), SubcomputationId(subcomp),
                subcomp->name(), parent_instr->name()));
   }
+
+  string computation =
+      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 
   return computation;
 }

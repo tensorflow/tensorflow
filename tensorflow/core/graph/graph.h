@@ -519,6 +519,10 @@ class Graph {
   // Returns OK if `node` is non-null and belongs to this graph
   Status IsValidNode(const Node* node) const;
 
+  // Returns OK if IsValidNode(`node`) and `idx` is less than
+  // node->num_outputs()
+  Status IsValidOutputTensor(const Node* node, int idx) const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:

@@ -292,6 +292,19 @@ out_type: The type of the serialized tensor.  The provided type must match the
 output: A Tensor of type `out_type`.
 )doc");
 
+REGISTER_OP("SerializeTensor")
+    .Input("tensor: T")
+    .Output("serialized: string")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Transforms a Tensor into a serialized TensorProto proto.
+
+tensor: A Tensor of type `T`.
+T: The type of the input tensor.
+serialized: A serialized TensorProto proto of the input tensor.
+)doc");
+
 REGISTER_OP("DecodeJSONExample")
     .Input("json_examples: string")
     .Output("binary_examples: string")

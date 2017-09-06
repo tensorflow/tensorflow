@@ -117,7 +117,7 @@ class Profiler(object):
   ```python
   Typical use case:
     # Currently we are only allowed to create 1 profiler per process.
-    profiler = Profile(sess.graph)
+    profiler = Profiler(sess.graph)
 
     for i in xrange(total_steps):
       if i % 10000 == 0:
@@ -174,7 +174,7 @@ class Profiler(object):
     """Add statistics of a step.
 
     Args:
-      step: A step uint64 used to identify the RunMetadata. Must be different
+      step: int, A step used to identify the RunMetadata. Must be different
          across different AddStep() calls.
       run_meta: RunMetadata proto that contains statistics of a session run.
     """

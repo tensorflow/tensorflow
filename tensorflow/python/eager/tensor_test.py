@@ -77,8 +77,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testMultiLineTensorStr(self):
     t = tensor.Tensor(np.eye(3))
     tensor_str = str(t)
-    self.assertIn("shape=%s, dtype=%s, " % (t.shape, t.dtype.name), tensor_str)
-    self.assertIn("numpy=\n%s" % t.numpy(), tensor_str)
+    self.assertIn("shape=%s, dtype=%s" % (t.shape, t.dtype.name), tensor_str)
+    self.assertIn(str(t.numpy()), tensor_str)
 
   def testMultiLineTensorRepr(self):
     t = tensor.Tensor(np.eye(3))
@@ -95,7 +95,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     np.set_printoptions(threshold=2, edgeitems=1)
 
     t = tensor.Tensor(np.arange(10, dtype=np.int32))
-    self.assertIn("numpy=[0 ..., 9]", str(t))
+    self.assertIn("[0 ..., 9]", str(t))
     self.assertIn("[0, ..., 9]", repr(t))
 
     # Clean up: reset to previous printoptions.
@@ -103,7 +103,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testZeroDimTensorStr(self):
     t = tensor.Tensor(42)
-    self.assertIn("shape=(), dtype=int32, numpy=42", str(t))
+    self.assertIn("42, shape=(), dtype=int32", str(t))
 
   def testZeroDimTensorRepr(self):
     t = tensor.Tensor(42)
@@ -113,7 +113,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testZeroSizeTensorStr(self):
     t = tensor.Tensor(np.zeros(0, dtype=np.float32))
-    self.assertIn("shape=(0,), dtype=float32, numpy=[]", str(t))
+    self.assertIn("[], shape=(0,), dtype=float32", str(t))
 
   def testZeroSizeTensorRepr(self):
     t = tensor.Tensor(np.zeros(0, dtype=np.float32))
@@ -127,8 +127,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = tensor.Tensor(42)
     # Force change dtype to a numpy-unprintable type.
     t._dtype = dtypes.resource
-    self.assertIn("numpy=<unprintable>", str(t))
-    self.assertIn("numpy=<unprintable>", repr(t))
+    self.assertIn("<unprintable>", str(t))
+    self.assertIn("<unprintable>", repr(t))
 
   def testStringTensor(self):
     t_np_orig = np.array([[b"a", b"ab"], [b"abc", b"abcd"]])

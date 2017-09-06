@@ -277,8 +277,8 @@ def check_for_lingering_string(lingering_string):
   formatted_string = lingering_string.replace(".", r"\.")
   try:
     linger_str_output = subprocess.check_output(
-        ['grep', '-rnoH', formatted_string, TF_SRC_DIR])
-    linger_strs = linger_str_output.decode('utf8').split("\n")
+        ["grep", "-rnoH", formatted_string, TF_SRC_DIR])
+    linger_strs = linger_str_output.decode("utf8").split("\n")
   except subprocess.CalledProcessError:
     linger_strs = []
 

@@ -1199,28 +1199,9 @@ class Dataset(object):
     return DenseToSparseBatchDataset(self, batch_size, row_shape)
 
   def group_by_window(self, key_func, reduce_func, window_size):
-    """Performs a windowed "group-by" operation on this dataset.
-
-    This method maps each consecutive element in this dataset to a key
-    using `key_func` and groups the elements by key. It then applies
-    `reduce_func` to at most `window_size` elements matching the same
-    key. All execpt the final window for each key will contain
-    `window_size` elements; the final window may be smaller.
-
-    Args:
-      key_func: A function mapping a nested structure of tensors
-        (having shapes and types defined by `self.output_shapes` and
-        `self.output_types`) to a scalar `tf.int64` tensor.
-      reduce_func: A function mapping a key and a dataset of up to `batch_size`
-        consecutive elements matching that key to another dataset.
-      window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        consecutive elements matching the same key to combine in a single
-        batch, which will be passed to `reduce_func`.
-
-    Returns:
-      A `Dataset`.
-    """
-    return GroupByWindowDataset(self, key_func, reduce_func, window_size)
+    """See group_by_window()."""
+    return self.apply(
+        group_by_window, args=(key_func, reduce_func, window_size))
 
   def map(self,
           map_func,
@@ -1369,6 +1350,43 @@ class Dataset(object):
       A `Dataset`.
     """
     return FilterDataset(self, predicate)
+
+  def apply(self, fn, args=(), kwargs={}):  # pylint: disable=dangerous-default-value
+    """Apply a function to this dataset.
+
+    `apply` enables chaining of custom `Dataset` transformations.
+
+    For example:
+
+    ```
+    dataset.map(
+        lambda x: x**2
+    ).apply(
+        group_by_window, args=(key_func, reduce_func, window_size)
+    ).map(
+        lambda x: x**3
+    )
+    ```
+
+    Args:
+      fn: A function that takes a `Dataset`, `args`, and `kwargs`, and
+        returns a `Dataset`.
+      args: A `tuple` or `list` of arguments to be passed to `fn`.
+      kwargs: A `dict` of keyword arguments to be passed to `fn`.
+
+    Returns:
+      The `Dataset` returned by `fn`.
+    """
+    if not (isinstance(args, tuple) or isinstance(args, list)):
+      raise TypeError("args must be a tuple or list.")
+    if not isinstance(kwargs, dict):
+      raise TypeError("kwargs must be a dict.")
+
+    dataset = fn(self, *args, **kwargs)
+
+    if not isinstance(dataset, Dataset):
+      raise TypeError("fn must return a Dataset.")
+    return dataset
 
 
 class TensorDataset(Dataset):
@@ -1917,71 +1935,6 @@ class _ResourceDataset(Dataset):
 
   def make_dataset_resource(self):
     return self._dataset_resource
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
-class GroupByWindowDataset(Dataset):
-  """A `Dataset` that groups its input and performs a windowed reduction."""
-
-  def __init__(self, input_dataset, key_func, reduce_func, window_size):
-    """See `Dataset.group_by_window()` for details."""
-    super(GroupByWindowDataset, self).__init__()
-    self._input_dataset = input_dataset
-    self._window_size = window_size
-
-    @function.Defun(*nest.flatten(input_dataset.output_types))
-    def tf_key_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
-        arg.set_shape(shape)
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      if _should_unpack_args(nested_args):
-        ret = key_func(*nested_args)
-      else:
-        ret = key_func(nested_args)
-      ret = ops.convert_to_tensor(ret, dtype=dtypes.int64)
-      if ret.dtype != dtypes.int64:
-        raise ValueError("`key_func` must return a single tf.int64 tensor.")
-      return ret
-
-    self._key_func = tf_key_func
-    self._key_func.add_to_graph(ops.get_default_graph())
-
-    @function.Defun(dtypes.int64, dtypes.resource)
-    def tf_reduce_func(key, window_dataset_resource):
-      """A wrapper for Defun that facilitates shape inference."""
-      key.set_shape([])
-      window_dataset = _ResourceDataset(window_dataset_resource,
-                                        input_dataset.output_types,
-                                        input_dataset.output_shapes)
-      output_dataset = reduce_func(key, window_dataset)
-      if not isinstance(output_dataset, Dataset):
-        raise TypeError("`reduce_func` must return a `Dataset` object.")
-      self._output_types = output_dataset.output_types
-      self._output_shapes = output_dataset.output_shapes
-      return output_dataset.make_dataset_resource()
-
-    self._reduce_func = tf_reduce_func
-    self._reduce_func.add_to_graph(ops.get_default_graph())
-
-  def make_dataset_resource(self):
-    return gen_dataset_ops.group_by_window_dataset(
-        self._input_dataset.make_dataset_resource(),
-        self._key_func.captured_inputs,
-        self._reduce_func.captured_inputs,
-        self._window_size,
-        key_func=self._key_func,
-        reduce_func=self._reduce_func,
-        output_types=nest.flatten(self.output_types),
-        output_shapes=nest.flatten(self.output_shapes))
 
   @property
   def output_shapes(self):
@@ -2660,3 +2613,149 @@ def _get_file_names(file_pattern, randomize_input):
   if not randomize_input:
     file_names = sorted(file_names)
   return file_names
+
+
+class GroupByWindowDataset(Dataset):
+  """A `Dataset` that groups its input and performs a windowed reduction."""
+
+  def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
+    """See `group_by_window()` for details."""
+    super(GroupByWindowDataset, self).__init__()
+
+    self._input_dataset = input_dataset
+
+    self._make_key_func(key_func, input_dataset)
+    self._make_reduce_func(reduce_func, input_dataset)
+    self._make_window_size_func(window_size_func)
+
+  def _make_window_size_func(self, window_size_func):
+    """Make wrapping Defun for window_size_func."""
+
+    @function.Defun(dtypes.int64)
+    def tf_window_size_func(key):
+      key.set_shape([])
+      window_size = ops.convert_to_tensor(
+          window_size_func(key), dtype=dtypes.int64)
+      if window_size.dtype != dtypes.int64:
+        raise ValueError(
+            "`window_size_func` must return a single tf.int64 tensor.")
+      return window_size
+
+    self._window_size_func = tf_window_size_func
+    self._window_size_func.add_to_graph(ops.get_default_graph())
+
+  def _make_key_func(self, key_func, input_dataset):
+    """Make wrapping Defun for key_func."""
+
+    @function.Defun(*nest.flatten(input_dataset.output_types))
+    def tf_key_func(*args):
+      """A wrapper for Defun that facilitates shape inference."""
+      # Pass in shape information from the input_dataset.
+      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
+        arg.set_shape(shape)
+      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
+      if _should_unpack_args(nested_args):
+        ret = key_func(*nested_args)
+      else:
+        ret = key_func(nested_args)
+      ret = ops.convert_to_tensor(ret, dtype=dtypes.int64)
+      if ret.dtype != dtypes.int64:
+        raise ValueError("`key_func` must return a single tf.int64 tensor.")
+      return ret
+
+    self._key_func = tf_key_func
+    self._key_func.add_to_graph(ops.get_default_graph())
+
+  def _make_reduce_func(self, reduce_func, input_dataset):
+    """Make wrapping Defun for reduce_func."""
+
+    @function.Defun(dtypes.int64, dtypes.resource)
+    def tf_reduce_func(key, window_dataset_resource):
+      """A wrapper for Defun that facilitates shape inference."""
+      key.set_shape([])
+      window_dataset = _ResourceDataset(window_dataset_resource,
+                                        input_dataset.output_types,
+                                        input_dataset.output_shapes)
+      output_dataset = reduce_func(key, window_dataset)
+      if not isinstance(output_dataset, Dataset):
+        raise TypeError("`reduce_func` must return a `Dataset` object.")
+      self._output_types = output_dataset.output_types
+      self._output_shapes = output_dataset.output_shapes
+      return output_dataset.make_dataset_resource()
+
+    self._reduce_func = tf_reduce_func
+    self._reduce_func.add_to_graph(ops.get_default_graph())
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.group_by_window_dataset(
+        self._input_dataset.make_dataset_resource(),
+        self._key_func.captured_inputs,
+        self._reduce_func.captured_inputs,
+        self._window_size_func.captured_inputs,
+        key_func=self._key_func,
+        reduce_func=self._reduce_func,
+        window_size_func=self._window_size_func,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+
+
+def group_by_window(dataset,
+                    key_func,
+                    reduce_func,
+                    window_size=None,
+                    window_size_func=None):
+  """Performs a windowed "group-by" operation on this dataset.
+
+  This method maps each consecutive element in this dataset to a key
+  using `key_func` and groups the elements by key. It then applies
+  `reduce_func` to at most `window_size_func(key)` elements matching the same
+  key. All execpt the final window for each key will contain
+  `window_size_func(key)` elements; the final window may be smaller.
+
+  You may provide either a constant `window_size` or a window size determined by
+  the key through `window_size_func`.
+
+  Args:
+    dataset: A `Dataset`.
+    key_func: A function mapping a nested structure of tensors
+      (having shapes and types defined by `self.output_shapes` and
+      `self.output_types`) to a scalar `tf.int64` tensor.
+    reduce_func: A function mapping a key and a dataset of up to `batch_size`
+      consecutive elements matching that key to another dataset.
+    window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements matching the same key to combine in a single
+      batch, which will be passed to `reduce_func`. Mutually exclusive with
+      `window_size_func`.
+    window_size_func: A function mapping a key to a `tf.int64` scalar
+      `tf.Tensor`, representing the number of consecutive elements matching
+      the same key to combine in a single batch, which will be passed to
+      `reduce_func`. Mutually exclusive with `window_size`.
+
+  Returns:
+    A `Dataset`.
+
+  Raises:
+    ValueError: if neither or both of {`window_size`, `window_size_func`} are
+      passed.
+  """
+  if (window_size is not None and window_size_func or
+      not (window_size is not None or window_size_func)):
+    raise ValueError("Must pass either window_size or window_size_func.")
+
+  if window_size is not None:
+
+    def constant_window_func(unused_key):
+      return ops.convert_to_tensor(window_size, dtype=dtypes.int64)
+
+    window_size_func = constant_window_func
+
+  assert window_size_func is not None
+  return GroupByWindowDataset(dataset, key_func, reduce_func, window_size_func)

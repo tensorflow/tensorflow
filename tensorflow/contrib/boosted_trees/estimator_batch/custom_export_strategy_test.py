@@ -27,7 +27,7 @@ from tensorflow.python.platform import googletest
 
 class ConvertModelTest(test_util.TensorFlowTestCase):
 
-  def testConvertModel(self):
+  def _make_trees(self):
     dtec_str = """
     trees {
       nodes {
@@ -108,8 +108,12 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
     """
     dtec = tree_config_pb2.DecisionTreeEnsembleConfig()
     text_format.Merge(dtec_str, dtec)
-    # The feature columns in the order they were added.
     feature_columns = ["feature_b", "feature_a", "feature_d"]
+    return dtec, feature_columns
+
+  def testConvertModel(self):
+    dtec, feature_columns = self._make_trees()
+    # The feature columns in the order they were added.
     out = custom_export_strategy.convert_to_universal_format(
         dtec, feature_columns, 1, 1,
         1)
@@ -272,6 +276,16 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
       }
     }"""
     self.assertProtoEquals(expected_tree, out)
+
+  def testFeatureImportance(self):
+    dtec, feature_columns = self._make_trees()
+    feature_importances = custom_export_strategy._get_feature_importances(
+        dtec, feature_columns, 1, 1, 1)
+    self.assertItemsEqual(["feature_b", "feature_a", "feature_d"],
+                          feature_importances.keys())
+    self.assertAlmostEqual(50.0, feature_importances["feature_b"], places=4)
+    self.assertAlmostEqual(50.0, feature_importances["feature_a"], places=4)
+    self.assertAlmostEqual(50.0, feature_importances["feature_d"], places=4)
 
 
 if __name__ == "__main__":
