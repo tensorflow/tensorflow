@@ -21,26 +21,17 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import moving_averages
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import variables
-
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.training import moving_averages
 
 _FUSED_DEFAULT = os.getenv('TF_DEFAULT_USES_FUSED_BATCH_NORM',
                            '').lower() in ('true', 't', '1')

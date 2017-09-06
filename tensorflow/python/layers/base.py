@@ -25,24 +25,21 @@ from __future__ import print_function
 
 import collections
 import copy
-import functools
 import re
 import weakref
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
-import six
+from tensorflow.python.platform import tf_logging as logging
 
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
-from tensorflow.python.platform import tf_logging as logging
 
 
 class Layer(object):
