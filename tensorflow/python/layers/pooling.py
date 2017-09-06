@@ -562,7 +562,7 @@ class SpatialPyramidPooling(base.Layer):
   def _compute_output_shape(self, input_shape):
     num_features = sum(p * p for p in self.dimensions)
     # TODO(yardstick17) Make sure this convention works in tensorflow
-    return tensor_shape.TensorShape([input_shape[0], input_shape[1], num_features])
+    return tensor_shape.TensorShape([None, input_shape[0] * num_features])
 
 class _Pooling3D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 3D inputs.
