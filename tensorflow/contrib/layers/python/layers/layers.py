@@ -810,7 +810,8 @@ def batch_norm(inputs,
     if data_format == DATA_FORMAT_NCHW:
       mean = array_ops.reshape(mean, params_shape_broadcast)
       variance = array_ops.reshape(variance, params_shape_broadcast)
-      beta = array_ops.reshape(beta, params_shape_broadcast)
+      if beta is not None:
+        beta = array_ops.reshape(beta, params_shape_broadcast)
       if gamma is not None:
         gamma = array_ops.reshape(gamma, params_shape_broadcast)
 
