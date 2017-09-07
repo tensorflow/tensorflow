@@ -75,7 +75,7 @@ class GSYCLInterface {
     if (!found_device) {
       // Currently Intel GPU is not supported
       LOG(FATAL) << "No SYCL host and no OpenCL GPU nor CPU"
-                 << " supported by ComputeCPP/triSYCL was found"
+                 << " supported by ComputeCPP/triSYCL was found";
     } else {
       LOG(INFO) << "Found following OpenCL devices:";
       for (int i = 0; i < device_list.size(); i++) {
