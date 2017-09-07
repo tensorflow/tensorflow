@@ -20,6 +20,7 @@ package_group(
     packages = [
         "//learning/brain/contrib/...",
         "//learning/brain/research/sparse_matrix/...",
+        "//learning/faster_training/...",
         "//tensorflow/...",
     ],
 )
@@ -3350,10 +3351,9 @@ tf_cc_test(
     srcs = ["parse_tensor_test.cc"],
     deps = [
         ":ops_testutil",
-        ":ops_util",
         ":parse_tensor_op",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],

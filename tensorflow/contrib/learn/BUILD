@@ -412,33 +412,6 @@ py_test(
 )
 
 py_test(
-    name = "dnn_linear_combined_benchmark_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/dnn_linear_combined_benchmark_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "guitar",
-        "local",
-        "manual",
-        "notap",
-    ],
-    visibility = [
-        "//learning/brain/google/guitar:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":learn",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/learn/python/learn/datasets",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
-    ],
-)
-
-py_test(
     name = "kmeans_test",
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
@@ -454,32 +427,6 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "dnn_benchmark_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/dnn_benchmark_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "guitar",
-        "local",
-        "manual",
-        "notap",
-    ],
-    visibility = [
-        "//learning/brain/google/guitar:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":learn",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],

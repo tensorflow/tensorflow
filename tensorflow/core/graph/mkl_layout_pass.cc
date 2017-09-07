@@ -1205,12 +1205,12 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
       if (do_connect_conv2d_backprop_input_filter &&
           iidx == kConv2DBackpropInputFilterInputSlotIdx) {
         GetNodeProducingMklTensor(g, old_node, conv2d_node,
-                                  kConv2DFilterOutputSlotIdx,
-                                  &mkl_node, &mkl_node_output_slot);
+                                  kConv2DFilterOutputSlotIdx, &mkl_node,
+                                  &mkl_node_output_slot);
       } else {
         GetNodeProducingMklTensor(g, old_node, old_node_inputs[iidx].first,
-                                  old_node_inputs[iidx].second,
-                                  &mkl_node, &mkl_node_output_slot);
+                                  old_node_inputs[iidx].second, &mkl_node,
+                                  &mkl_node_output_slot);
       }
       nb->Input(mkl_node, mkl_node_output_slot);
       iidx++;

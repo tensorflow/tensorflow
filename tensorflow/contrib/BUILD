@@ -24,6 +24,7 @@ py_library(
         "//tensorflow/contrib/deprecated:deprecated_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/eager/python:tfe",
+        "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",

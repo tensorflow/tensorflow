@@ -130,6 +130,8 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
+    TF_RET_CHECK(ShapeUtil::Rank(broadcast->operand(0)->shape()) ==
+                 broadcast->dimensions().size());
     return tensorflow::Status::OK();
   }
 
