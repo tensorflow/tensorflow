@@ -165,11 +165,11 @@ def truncated_normal(shape,
   """
   with ops.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
     shape_tensor = _ShapeTensor(shape)
-    mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
-    stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
     rnd = gen_random_ops._truncated_normal(
         shape_tensor, dtype, seed=seed1, seed2=seed2)
+    mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
+    stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
     return value
