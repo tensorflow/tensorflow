@@ -75,6 +75,9 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
 def tf_jspb_proto_library(**kwargs):
   pass
 
+def tf_nano_proto_library(**kwargs):
+  pass
+
 def tf_proto_library(name, srcs = [], has_services = None,
                      protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],
@@ -181,9 +184,6 @@ def tf_env_time_srcs():
         "platform/env_time.cc",
       ], exclude = []),
   })
-
-def tf_additional_stream_executor_srcs():
-  return ["platform/default/stream_executor.h"]
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]

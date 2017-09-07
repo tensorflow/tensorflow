@@ -2471,14 +2471,14 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
       operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
   // Do explicit broadcast for scalar.
   if (ShapeUtil::IsScalar(operand->shape())) {
-    return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-        broadcast_shape, operand, AsInt64Slice(broadcast_shape.dimensions())));
+    return hlo_builder_.AddInstruction(
+        HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
   }
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;
   std::vector<int64> reshaped_dimensions;
   for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
-    if (operand->shape().dimensions(i) > 1) {
+    if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
       broadcast_dimensions.push_back(i);
       reshaped_dimensions.push_back(operand->shape().dimensions(i));
     }

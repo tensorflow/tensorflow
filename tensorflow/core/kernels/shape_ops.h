@@ -23,9 +23,27 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
+
+namespace shape_op_helpers {
+inline Status GetRegularOrVariantShape(OpKernelContext* ctx, int input_index,
+                                       TensorShape* shape) {
+  const Tensor& inp = ctx->input(input_index);
+  if (ctx->input_dtype(0) == DT_VARIANT) {
+    if (inp.dims() != 0) {
+      return errors::InvalidArgument(
+          "Shape of non-unary Variant not supported.");
+    }
+    TF_RETURN_IF_ERROR(GetUnaryVariantShape(inp, shape));
+  } else {
+    *shape = inp.shape();
+  }
+  return Status::OK();
+}
+}  // namespace shape_op_helpers
 
 template <typename OutType>
 class ShapeOp : public OpKernel {
@@ -33,13 +51,15 @@ class ShapeOp : public OpKernel {
   explicit ShapeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    const int rank = inp.dims();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx,
+                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({rank}), &out));
     auto vec = out->vec<OutType>();
     for (int i = 0; i < rank; ++i) {
-      int64 dim_size = inp.dim_size(i);
+      int64 dim_size = shape.dim_size(i);
       if (out->dtype() == DT_INT32) {
         OP_REQUIRES(
             ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
@@ -60,7 +80,9 @@ class ShapeNOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      auto shape = ctx->input(i).shape();
+      TensorShape shape;
+      OP_REQUIRES_OK(
+          ctx, shape_op_helpers::GetRegularOrVariantShape(ctx, i, &shape));
       const int dims = shape.dims();
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
@@ -87,8 +109,10 @@ class RankOp : public OpKernel {
   explicit RankOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    const int rank = inp.dims();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx,
+                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     out->scalar<int32>()() = rank;
@@ -103,8 +127,10 @@ class SizeOp : public OpKernel {
   explicit SizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    const int64 size = inp.NumElements();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx,
+                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    const int64 size = shape.num_elements();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     if (out->dtype() == DT_INT32) {
@@ -124,6 +150,9 @@ class ExpandDimsOp : public OpKernel {
   explicit ExpandDimsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(ctx, ctx->input(0).dtype() != DT_VARIANT,
+                errors::InvalidArgument("ExpandDims on Variant not supported"));
+
     int32 dim = ctx->input(1).flat<int32>()(0);
     OP_REQUIRES(
         ctx, (dim >= -1 - ctx->input(0).dims() && dim <= ctx->input(0).dims()),
@@ -174,6 +203,9 @@ class SqueezeOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(ctx, ctx->input(0).dtype() != DT_VARIANT,
+                errors::InvalidArgument("Squeeze on Variant not supported"));
+
     auto existing_dims = ctx->input(0).shape().dim_sizes();
     const int existing_dims_size = static_cast<int>(existing_dims.size());
     std::vector<int64> new_shape;

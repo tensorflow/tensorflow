@@ -101,8 +101,8 @@ class HyperplaneLSHProbesOp : public OpKernel {
 
     int batch_size = products_tensor.dim_size(0);
 
-    Tensor* probes_tensor = NULL;
-    Tensor* tables_tensor = NULL;
+    Tensor* probes_tensor = nullptr;
+    Tensor* tables_tensor = nullptr;
     TensorShape output_shape({batch_size, num_probes});
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &probes_tensor));

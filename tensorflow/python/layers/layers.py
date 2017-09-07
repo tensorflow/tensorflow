@@ -16,6 +16,27 @@
 # pylint: disable=line-too-long
 """This library provides a set of high-level neural networks layers.
 
+@@Dense
+@@Dropout
+@@Conv1D
+@@Conv2D
+@@Conv3D
+@@SeparableConv2D
+@@Conv2DTranspose
+@@Conv3DTranspose
+@@AveragePooling1D
+@@MaxPooling1D
+@@AveragePooling2D
+@@MaxPooling2D
+@@AveragePooling3D
+@@MaxPooling3D
+@@BatchNormalization
+
+@@Layer
+@@Network
+@@Input
+@@InputSpec
+
 @@dense
 @@dropout
 @@conv1d

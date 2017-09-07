@@ -19,6 +19,7 @@ limitations under the License.
 %{
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/py_func.h"
 %}
 

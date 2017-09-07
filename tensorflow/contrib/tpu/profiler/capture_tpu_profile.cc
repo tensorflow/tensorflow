@@ -24,21 +24,12 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
+#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
-#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
-#include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/compression.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -46,13 +37,6 @@ namespace {
 
 using ::tensorflow::TPUProfiler;
 
-using ::grpc::ClientContext;
-using ::tensorflow::io::JoinPath;
-
-constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-constexpr char kProtoTraceFileName[] = "trace";
-constexpr char kJsonTraceFileName[] = "trace.json.gz";
-constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
 constexpr uint64 kMaxEvents = 1000000;
 
 string GetCurrentTimeStampAsString() {
@@ -62,46 +46,13 @@ string GetCurrentTimeStampAsString() {
   return s;
 }
 
-Status WriteGzippedDataToFile(const string& filename, const string& data) {
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(filename, &file));
-  io::ZlibCompressionOptions options = io::ZlibCompressionOptions::GZIP();
-  io::ZlibOutputBuffer buffer(file.get(), options.input_buffer_size,
-                              options.output_buffer_size, options);
-  TF_RETURN_IF_ERROR(buffer.Init());
-  TF_RETURN_IF_ERROR(buffer.Append(data));
-  TF_RETURN_IF_ERROR(buffer.Close());
-  TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
-}
-
-// This dumps a rawproto trace and a JSON trace to
-// <logdir>/plugins/profile/<run>/.
-void DumpTraceToLogDirectory(StringPiece logdir, StringPiece run,
-                             const string& encoded_trace) {
-  string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
-  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  string proto_path = JoinPath(run_dir, kProtoTraceFileName);
-  TF_CHECK_OK(WriteStringToFile(Env::Default(), proto_path, encoded_trace));
-  LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
-
-  string json_path = JoinPath(run_dir, kJsonTraceFileName);
-  Trace trace;
-  trace.ParseFromString(encoded_trace);
-  std::cout << "Trace contains " << trace.trace_events_size() << " events."
-            << std::endl;
-  TF_CHECK_OK(WriteGzippedDataToFile(json_path, TraceEventsToJson(trace)));
-  std::cout << "Dumped JSON trace data to " << json_path << std::endl;
-}
-
 ProfileResponse Profile(const string& service_addr, int duration_ms) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
   std::cout << "Limiting the number of trace events to " << kMaxEvents
             << std::endl;
-  ProfileResponse response;
-  ClientContext context;
+  ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
   // TODO(ioeric): use `SetMaxReceiveMessageSize` instead once it's available.
   channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
@@ -109,18 +60,9 @@ ProfileResponse Profile(const string& service_addr, int duration_ms) {
   std::unique_ptr<TPUProfiler::Stub> stub =
       TPUProfiler::NewStub(::grpc::CreateCustomChannel(
           service_addr, ::grpc::InsecureChannelCredentials(), channel_args));
+  ProfileResponse response;
   TF_QCHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
   return response;
-}
-
-void DumpGraph(StringPiece logdir, StringPiece run, const string& graph_def) {
-  // The graph plugin expects the graph in <logdir>/<run>/<event.file>.
-  string run_dir = JoinPath(logdir, strings::StrCat(kGraphRunPrefix, run));
-  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  EventsWriter event_writer(JoinPath(run_dir, "events"));
-  Event event;
-  event.set_graph_def(graph_def);
-  event_writer.WriteEvent(event);
 }
 
 }  // namespace
@@ -153,28 +95,8 @@ int main(int argc, char** argv) {
       tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
   // Use the current timestamp as the run name.
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
-  // Ignore computation_graph for now.
-  if (response.encoded_trace().empty()) {
-    std::cout << "No trace event is collected during the " << duration_ms
-              << "ms interval." << std::endl;
-  } else {
-    LOG(INFO) << "Converting trace events to TraceViewer JSON.";
-    tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir, run,
-                                             response.encoded_trace());
-  }
-  int num_graphs = response.computation_graph_size();
-  if (num_graphs > 0) {
-    // The server might generates multiple graphs for one program; we simply
-    // pick the first one.
-    if (num_graphs > 1) {
-      std::cout << num_graphs
-                << " TPU program variants observed over the profiling period. "
-                << "One computation graph will be chosen arbitrarily."
-                << std::endl;
-    }
-    tensorflow::tpu::DumpGraph(
-        FLAGS_logdir, run, response.computation_graph(0).SerializeAsString());
-  }
+  TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
+      FLAGS_logdir, run, response, &std::cout));
   // Print this at the end so that it's not buried in irrelevant LOG messages.
   std::cout
       << "NOTE: using the trace duration " << duration_ms << "ms." << std::endl

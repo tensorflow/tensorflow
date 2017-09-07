@@ -37,9 +37,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":tpu",
+        ":tpu_lib",
         ":tpu_py",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -123,6 +122,18 @@ tf_custom_op_py_library(
 
 py_library(
     name = "tpu",
+    srcs = [
+        "python/tpu/__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_estimator",
+        ":tpu_lib",
+    ],
+)
+
+py_library(
+    name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
         "python/tpu/tpu.py",

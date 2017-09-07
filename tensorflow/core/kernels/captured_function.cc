@@ -59,8 +59,24 @@ Status CapturedFunction::Create(
     } else if (!s.ok()) {                                                      \
       return s;                                                                \
     }                                                                          \
-    TF_RETURN_IF_ERROR(device->resource_manager()->Create(                     \
-        input_handle.container(), input_handle.name(), resource));             \
+    ResourceType* already_created_resource;                                    \
+    /* Look up the resource in the this function's resource manager, in case   \
+     * it has already been created. */                                         \
+    s = device->resource_manager()->Lookup(input_handle.container(),           \
+                                           input_handle.name(),                \
+                                           &already_created_resource);         \
+    if (s.ok()) {                                                              \
+      CHECK_EQ(resource, already_created_resource);                            \
+      resource->Unref();                                                       \
+      already_created_resource->Unref();                                       \
+    } else {                                                                   \
+      if (errors::IsNotFound(s)) {                                             \
+        TF_RETURN_IF_ERROR(device->resource_manager()->Create(                 \
+            input_handle.container(), input_handle.name(), resource));         \
+      } else {                                                                 \
+        return s;                                                              \
+      }                                                                        \
+    }                                                                          \
     continue;                                                                  \
   }
 
@@ -105,8 +121,7 @@ Status CapturedFunction::Create(
 
 Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
                              gtl::ArraySlice<Tensor> args,
-                             std::vector<Tensor>* rets, const string& prefix) {
-  port::Tracing::TraceMe activity(prefix, "::Run");
+                             std::vector<Tensor>* rets) {
   Notification n;
   Status s;
   auto done_callback = [&n, &s](Status func_status) {
@@ -121,11 +136,37 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
   // will be required to plumb it through the `IteratorContext`.
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
+  RunHelper(std::move(f_opts), args, rets, std::move(done_callback));
+  n.WaitForNotification();
+  return s;
+}
+
+void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
+                                gtl::ArraySlice<Tensor> args,
+                                std::vector<Tensor>* rets,
+                                FunctionLibraryRuntime::DoneCallback done) {
+  auto c_mgr = new CancellationManager;
+  f_opts.cancellation_manager = c_mgr;
+  FunctionLibraryRuntime::DoneCallback wrapped_done = std::bind(
+      [c_mgr](FunctionLibraryRuntime::DoneCallback done,
+              // Begin unbound arguments.
+              Status s) {
+        delete c_mgr;
+        done(s);
+      },
+      std::move(done), std::placeholders::_1);
+  RunHelper(std::move(f_opts), args, rets, std::move(wrapped_done));
+}
+
+void CapturedFunction::RunHelper(FunctionLibraryRuntime::Options f_opts,
+                                 gtl::ArraySlice<Tensor> args,
+                                 std::vector<Tensor>* rets,
+                                 FunctionLibraryRuntime::DoneCallback done) {
   // TODO(mrry): Implement a synchronous version of
   // FunctionLibraryRuntime::Run() that avoids a context switch for small
   // functions.
   if (captured_inputs_.empty()) {
-    lib_->Run(f_opts, f_handle_, args, rets, done_callback);
+    lib_->Run(f_opts, f_handle_, args, rets, std::move(done));
   } else {
     std::vector<Tensor> args_with_captured;
     args_with_captured.reserve(args.size() + captured_inputs_.size());
@@ -133,10 +174,8 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
                               args.end());
     args_with_captured.insert(args_with_captured.end(),
                               captured_inputs_.begin(), captured_inputs_.end());
-    lib_->Run(f_opts, f_handle_, args_with_captured, rets, done_callback);
+    lib_->Run(f_opts, f_handle_, args_with_captured, rets, std::move(done));
   }
-  n.WaitForNotification();
-  return s;
 }
 
 CapturedFunction::CapturedFunction(

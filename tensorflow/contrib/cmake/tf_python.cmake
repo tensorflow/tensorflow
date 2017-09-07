@@ -218,6 +218,48 @@ add_python_module("tensorflow/python/estimator/inputs/queues")
 add_python_module("tensorflow/python/feature_column")
 add_python_module("tensorflow/python/framework")
 add_python_module("tensorflow/python/grappler")
+add_python_module("tensorflow/python/keras")
+add_python_module("tensorflow/python/keras/activations")
+add_python_module("tensorflow/python/keras/applications")
+add_python_module("tensorflow/python/keras/applications/inception_v3")
+add_python_module("tensorflow/python/keras/applications/mobilenet")
+add_python_module("tensorflow/python/keras/applications/resnet50")
+add_python_module("tensorflow/python/keras/applications/vgg16")
+add_python_module("tensorflow/python/keras/applications/vgg19")
+add_python_module("tensorflow/python/keras/applications/xception")
+add_python_module("tensorflow/python/keras/backend")
+add_python_module("tensorflow/python/keras/callbacks")
+add_python_module("tensorflow/python/keras/constraints")
+add_python_module("tensorflow/python/keras/datasets")
+add_python_module("tensorflow/python/keras/datasets/boston_housing")
+add_python_module("tensorflow/python/keras/datasets/cifar10")
+add_python_module("tensorflow/python/keras/datasets/cifar100")
+add_python_module("tensorflow/python/keras/datasets/imdb")
+add_python_module("tensorflow/python/keras/datasets/mnist")
+add_python_module("tensorflow/python/keras/datasets/reuters")
+add_python_module("tensorflow/python/keras/initializers")
+add_python_module("tensorflow/python/keras/layers")
+add_python_module("tensorflow/python/keras/losses")
+add_python_module("tensorflow/python/keras/metrics")
+add_python_module("tensorflow/python/keras/models")
+add_python_module("tensorflow/python/keras/optimizers")
+add_python_module("tensorflow/python/keras/preprocessing")
+add_python_module("tensorflow/python/keras/preprocessing/image")
+add_python_module("tensorflow/python/keras/preprocessing/sequence")
+add_python_module("tensorflow/python/keras/preprocessing/text")
+add_python_module("tensorflow/python/keras/regularizers")
+add_python_module("tensorflow/python/keras/utils")
+add_python_module("tensorflow/python/keras/wrappers")
+add_python_module("tensorflow/python/keras/wrappers/scikit_learn")
+add_python_module("tensorflow/python/keras/_impl")
+add_python_module("tensorflow/python/keras/_impl/keras")
+add_python_module("tensorflow/python/keras/_impl/keras/applications")
+add_python_module("tensorflow/python/keras/_impl/keras/datasets")
+add_python_module("tensorflow/python/keras/_impl/keras/engine")
+add_python_module("tensorflow/python/keras/_impl/keras/layers")
+add_python_module("tensorflow/python/keras/_impl/keras/preprocessing")
+add_python_module("tensorflow/python/keras/_impl/keras/utils")
+add_python_module("tensorflow/python/keras/_impl/keras/wrappers")
 add_python_module("tensorflow/python/kernel_tests")
 add_python_module("tensorflow/python/kernel_tests/distributions")
 add_python_module("tensorflow/python/layers")
@@ -299,6 +341,9 @@ add_python_module("tensorflow/contrib/distributions/python")
 add_python_module("tensorflow/contrib/distributions/python/kernel_tests")
 add_python_module("tensorflow/contrib/distributions/python/ops")
 add_python_module("tensorflow/contrib/distributions/python/ops/bijectors")
+add_python_module("tensorflow/contrib/estimator")
+add_python_module("tensorflow/contrib/estimator/python")
+add_python_module("tensorflow/contrib/estimator/python/estimator")
 add_python_module("tensorflow/contrib/factorization")
 add_python_module("tensorflow/contrib/factorization/examples")
 add_python_module("tensorflow/contrib/factorization/kernels")
@@ -315,6 +360,7 @@ add_python_module("tensorflow/contrib/framework/ops")
 add_python_module("tensorflow/contrib/framework/python")
 add_python_module("tensorflow/contrib/framework/python/framework")
 add_python_module("tensorflow/contrib/framework/python/ops")
+add_python_module("tensorflow/contrib/gan")
 add_python_module("tensorflow/contrib/graph_editor")
 add_python_module("tensorflow/contrib/graph_editor/examples")
 add_python_module("tensorflow/contrib/graph_editor/tests")
@@ -651,6 +697,7 @@ GENERATE_PYTHON_OP_LIB("bitwise_ops")
 GENERATE_PYTHON_OP_LIB("math_ops")
 GENERATE_PYTHON_OP_LIB("functional_ops")
 GENERATE_PYTHON_OP_LIB("candidate_sampling_ops")
+GENERATE_PYTHON_OP_LIB("checkpoint_ops")
 GENERATE_PYTHON_OP_LIB("control_flow_ops"
   ADDITIONAL_LIBRARIES $<TARGET_OBJECTS:tf_no_op>)
 GENERATE_PYTHON_OP_LIB("ctc_ops")
@@ -698,8 +745,6 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_framework_checkpoint_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_checkpoint_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_input_pipeline_ops"
@@ -783,6 +828,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
@@ -818,6 +865,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_profiler>
         $<TARGET_OBJECTS:tf_cc>
         $<TARGET_OBJECTS:tf_cc_ops>
+        $<TARGET_OBJECTS:tf_cc_while_loop>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_grappler>
@@ -867,6 +915,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_profiler>
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_ops>
+    $<TARGET_OBJECTS:tf_cc_while_loop>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_grappler>

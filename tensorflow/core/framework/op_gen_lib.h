@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <string>
 #include <unordered_map>
-#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
-#include "tensorflow/core/framework/op_gen_overrides.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"

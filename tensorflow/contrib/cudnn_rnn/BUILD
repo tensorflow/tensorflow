@@ -146,7 +146,7 @@ cc_test(
         ":cudnn_rnn_ops_op_lib",
         "//tensorflow/core",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

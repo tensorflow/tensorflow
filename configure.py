@@ -143,7 +143,7 @@ def run_shell(cmd, allow_non_zero=False):
 
 def cygpath(path):
   """Convert path from posix to windows."""
-  return run_shell(['cygpath', '-m', path])
+  return os.path.abspath(path).replace('\\', '/')
 
 
 def get_python_path(environ_cp, python_bin_path):
@@ -196,7 +196,7 @@ def setup_python(environ_cp, bazel_version):
     environ_cp['PYTHON_BIN_PATH'] = ''
 
   # Convert python path to Windows style before checking lib and version
-  if is_cygwin():
+  if is_windows() or is_cygwin():
     python_bin_path = cygpath(python_bin_path)
 
   # Get PYTHON_LIB_PATH
@@ -219,7 +219,7 @@ def setup_python(environ_cp, bazel_version):
   python_major_version = get_python_major_version(python_bin_path)
 
   # Convert python path to Windows style before writing into bazel.rc
-  if is_cygwin():
+  if is_windows() or is_cygwin():
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -460,7 +460,7 @@ def check_bazel_version(min_version):
     print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
 
-  print("You have bazel %s installed." % curr_version)
+  print('You have bazel %s installed.' % curr_version)
 
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
@@ -529,6 +529,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
   var = environ_cp.get(var_name)
   if not var:
     var = get_input(ask_for_var)
+    print('\n')
   if not var:
     var = var_default
   return var
@@ -599,7 +600,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Find out where the CUDA toolkit is installed
     default_cuda_path = _DEFAULT_CUDA_PATH
-    if is_cygwin():
+    if is_windows() or is_cygwin():
       default_cuda_path = cygpath(
           environ_cp.get('CUDA_PATH', _DEFAULT_CUDA_PATH_WIN))
     elif is_linux():
@@ -659,7 +660,7 @@ def set_tf_cunn_version(environ_cp):
     # unusable. Going through one more level of expansion to handle that.
     cudnn_install_path = os.path.realpath(
         os.path.expanduser(cudnn_install_path))
-    if is_cygwin():
+    if is_windows() or is_cygwin():
       cudnn_install_path = cygpath(cudnn_install_path)
 
     if is_windows():
@@ -684,10 +685,13 @@ def set_tf_cunn_version(environ_cp):
       ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
-                                           cudnn_path_from_ldconfig).group(1)
-      if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
-        cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
-        break
+                                           cudnn_path_from_ldconfig)
+      if cudnn_path_from_ldconfig:
+        cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
+        if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig,
+                                     tf_cudnn_version)):
+          cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
+          break
 
     # Reset and Retry
     print(
@@ -938,7 +942,6 @@ def set_other_mpi_vars(environ_cp):
 
 
 def set_mkl():
-  write_to_bazelrc('build:mkl --define with_mkl_support=true')
   write_to_bazelrc('build:mkl --define using_mkl=true')
   write_to_bazelrc('build:mkl -c opt')
   write_to_bazelrc('build:mkl --copt="-DEIGEN_USE_VML"')

@@ -34,7 +34,7 @@ from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import evaluator
 from tensorflow.python.debug.cli import ui_factory
-from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import source_utils
 
 RL = debugger_cli_common.RichLine
@@ -130,6 +130,11 @@ def _add_main_menu(output,
 
 class DebugAnalyzer(object):
   """Analyzer for debug data from dump directories."""
+
+  _TIMESTAMP_COLUMN_HEAD = "t (ms)"
+  _DUMP_SIZE_COLUMN_HEAD = "Size (B)"
+  _OP_TYPE_COLUMN_HEAD = "Op type"
+  _TENSOR_NAME_COLUMN_HEAD = "Tensor name"
 
   def __init__(self, debug_dump):
     """DebugAnalyzer constructor.
@@ -528,7 +533,7 @@ class DebugAnalyzer(object):
       line += op_type
       line += " " * (max_timestamp_width + max_dump_size_width +
                      max_op_type_width - len(line))
-      line += " %s" % dumped_tensor_name
+      line += dumped_tensor_name
 
       output.append(
           line,
@@ -567,19 +572,25 @@ class DebugAnalyzer(object):
     max_timestamp_width = 0
     if data:
       max_rel_time_ms = (data[-1].timestamp - self._debug_dump.t0) / 1000.0
-      max_timestamp_width = len("[%.3f] " % max_rel_time_ms)
+      max_timestamp_width = len("[%.3f] " % max_rel_time_ms) + 1
+    max_timestamp_width = max(max_timestamp_width,
+                              len(self._TIMESTAMP_COLUMN_HEAD) + 1)
 
     max_dump_size_width = 0
     for dump in data:
       dump_size_str = cli_shared.bytes_to_readable_str(dump.dump_size_bytes)
       if len(dump_size_str) + 1 > max_dump_size_width:
         max_dump_size_width = len(dump_size_str) + 1
+    max_dump_size_width = max(max_dump_size_width,
+                              len(self._DUMP_SIZE_COLUMN_HEAD) + 1)
 
     max_op_type_width = 0
     for dump in data:
       op_type = self._debug_dump.node_op_type(dump.node_name)
-      if len(op_type) > max_op_type_width:
-        max_op_type_width = len(op_type)
+      if len(op_type) + 1 > max_op_type_width:
+        max_op_type_width = len(op_type) + 1
+    max_op_type_width = max(max_op_type_width,
+                            len(self._OP_TYPE_COLUMN_HEAD) + 1)
 
     return max_timestamp_width, max_dump_size_width, max_op_type_width
 
@@ -641,7 +652,7 @@ class DebugAnalyzer(object):
       base_command += " -n %s" % parsed.node_name_filter
 
     attr_segs = {0: []}
-    row = "t (ms)"
+    row = self._TIMESTAMP_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TIMESTAMP)
     if parsed.sort_by == SORT_TENSORS_BY_TIMESTAMP and not parsed.reverse:
       command += " -r"
@@ -650,7 +661,7 @@ class DebugAnalyzer(object):
     row += " " * (max_timestamp_width - len(row))
 
     prev_len = len(row)
-    row += "Size"
+    row += self._DUMP_SIZE_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_DUMP_SIZE)
     if parsed.sort_by == SORT_TENSORS_BY_DUMP_SIZE and not parsed.reverse:
       command += " -r"
@@ -659,7 +670,7 @@ class DebugAnalyzer(object):
     row += " " * (max_dump_size_width + max_timestamp_width - len(row))
 
     prev_len = len(row)
-    row += "Op type"
+    row += self._OP_TYPE_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_OP_TYPE)
     if parsed.sort_by == SORT_TENSORS_BY_OP_TYPE and not parsed.reverse:
       command += " -r"
@@ -670,11 +681,11 @@ class DebugAnalyzer(object):
     )
 
     prev_len = len(row)
-    row += " Tensor name"
+    row += self._TENSOR_NAME_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TENSOR_NAME)
     if parsed.sort_by == SORT_TENSORS_BY_TENSOR_NAME and not parsed.reverse:
       command += " -r"
-    attr_segs[0].append((prev_len + 1, len(row),
+    attr_segs[0].append((prev_len, len(row),
                          [debugger_cli_common.MenuItem("", command), "bold"]))
     row += " " * (
         max_op_type_width + max_dump_size_width + max_timestamp_width - len(row)
@@ -705,7 +716,7 @@ class DebugAnalyzer(object):
 
     # Get a node name, regardless of whether the input is a node name (without
     # output slot attached) or a tensor name (with output slot attached).
-    node_name, unused_slot = debug_data.parse_node_or_tensor_name(
+    node_name, unused_slot = debug_graphs.parse_node_or_tensor_name(
         parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
@@ -829,7 +840,7 @@ class DebugAnalyzer(object):
         parsed.op_type,
         do_outputs=False)
 
-    node_name = debug_data.get_node_name(parsed.node_name)
+    node_name = debug_graphs.get_node_name(parsed.node_name)
     _add_main_menu(output, node_name=node_name, enable_list_inputs=False)
 
     return output
@@ -860,7 +871,7 @@ class DebugAnalyzer(object):
     tensor_name, tensor_slicing = (
         command_parser.parse_tensor_name_with_slicing(parsed.tensor_name))
 
-    node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
+    node_name, output_slot = debug_graphs.parse_node_or_tensor_name(tensor_name)
     if (self._debug_dump.loaded_partition_graphs() and
         not self._debug_dump.node_exists(node_name)):
       output = cli_shared.error(
@@ -1005,7 +1016,7 @@ class DebugAnalyzer(object):
         parsed.op_type,
         do_outputs=True)
 
-    node_name = debug_data.get_node_name(parsed.node_name)
+    node_name = debug_graphs.get_node_name(parsed.node_name)
     _add_main_menu(output, node_name=node_name, enable_list_outputs=False)
 
     return output
@@ -1076,7 +1087,7 @@ class DebugAnalyzer(object):
 
           label = RL(" " * 4)
           if self._debug_dump.debug_watch_keys(
-              debug_data.get_node_name(element)):
+              debug_graphs.get_node_name(element)):
             attribute = debugger_cli_common.MenuItem("", "pt %s" % element)
           else:
             attribute = cli_shared.COLOR_BLUE
@@ -1235,7 +1246,7 @@ class DebugAnalyzer(object):
     font_attr_segs = {}
 
     # Check if this is a tensor name, instead of a node name.
-    node_name, _ = debug_data.parse_node_or_tensor_name(node_name)
+    node_name, _ = debug_graphs.parse_node_or_tensor_name(node_name)
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
@@ -1384,7 +1395,7 @@ class DebugAnalyzer(object):
       # Recursive call.
       # The input's/output's name can be a tensor name, in the case of node
       # with >1 output slots.
-      inp_node_name, _ = debug_data.parse_node_or_tensor_name(inp)
+      inp_node_name, _ = debug_graphs.parse_node_or_tensor_name(inp)
       self._dfs_from_node(
           lines,
           attr_segs,

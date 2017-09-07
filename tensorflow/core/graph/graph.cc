@@ -503,22 +503,33 @@ string Graph::NewName(StringPiece prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
 }
 
-Status Graph::IsValidNode(Node* node) const {
+Status Graph::IsValidNode(const Node* node) const {
   if (node == nullptr) {
     return errors::InvalidArgument("Node is null");
   }
   const int id = node->id();
   if (id < 0) {
-    return errors::InvalidArgument("node id ", id, "is less than zero");
+    return errors::InvalidArgument("node id ", id, " is less than zero");
   }
   if (static_cast<size_t>(id) >= nodes_.size()) {
     return errors::InvalidArgument(
-        "node id ", id, "is >= than number of nodes in graph ", nodes_.size());
+        "node id ", id, " is >= than number of nodes in graph ", nodes_.size());
   }
   if (nodes_[id] != node) {
     return errors::InvalidArgument("Node with id ", id,
                                    " is different from the passed in node. "
                                    "Does it belong to a different graph?");
+  }
+  return Status::OK();
+}
+
+Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
+  TF_RETURN_IF_ERROR(IsValidNode(node));
+  if (idx >= node->num_outputs()) {
+    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
+                                   node->op_def().name(),
+                                   "', num of outputs: ", node->num_outputs(),
+                                   ") does not have ", "output ", idx);
   }
   return Status::OK();
 }
@@ -572,7 +583,7 @@ int Graph::InternDeviceName(const string& device_name) {
 }
 
 string Edge::DebugString() const {
-  return strings::Printf("Edge %d %s:%d -> %s:%d", id_, src_->name().c_str(),
+  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
                          src_output_, dst_->name().c_str(), dst_input_);
 }
 

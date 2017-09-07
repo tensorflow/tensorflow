@@ -41,6 +41,7 @@ from tensorflow.python.debug.lib import grpc_debug_server
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import variables
+from tensorflow.python.util import compat
 
 
 def _get_dump_file_path(dump_root, device_name, debug_node_name):
@@ -198,7 +199,7 @@ class EventListenerTestStreamHandler(
     if not summary_metadata.plugin_data:
       raise ValueError("The value lacks plugin data.")
     try:
-      content = json.loads(summary_metadata.plugin_data.content)
+      content = json.loads(compat.as_text(summary_metadata.plugin_data.content))
     except ValueError as err:
       raise ValueError("Could not parse content into JSON: %r, %r" % (content,
                                                                       err))
@@ -239,7 +240,8 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
 
 def start_server_on_separate_thread(dump_to_filesystem=True,
                                     server_start_delay_sec=0.0,
-                                    poll_server=False):
+                                    poll_server=False,
+                                    blocking=True):
   """Create a test gRPC debug server and run on a separate thread.
 
   Args:
@@ -249,6 +251,7 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
       start up for.
     poll_server: (bool) whether the server will be polled till success on
       startup.
+    blocking: (bool) whether the server should be started in a blocking mode.
 
   Returns:
     server_port: (int) Port on which the server runs.
@@ -270,7 +273,8 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
 
   def delay_then_run_server():
     time.sleep(server_start_delay_sec)
-    server.run_server()
+    server.run_server(blocking=blocking)
+
   server_thread = threading.Thread(target=delay_then_run_server)
   server_thread.start()
 

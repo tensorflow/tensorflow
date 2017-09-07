@@ -344,6 +344,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Prepare learner config.
       learner_config = learner_pb2.LearnerConfig()
       learner_config.num_classes = 2
+      learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
 
       result, result_no_dropout, dropout_info = (
           prediction_ops.gradient_trees_prediction(
