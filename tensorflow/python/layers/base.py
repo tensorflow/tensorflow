@@ -29,8 +29,6 @@ import re
 import weakref
 
 import numpy as np
-from tensorflow.python.platform import tf_logging as logging
-
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
@@ -39,6 +37,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
