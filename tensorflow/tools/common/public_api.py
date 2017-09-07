@@ -61,7 +61,6 @@ class PublicAPIVisitor(object):
             'user_ops',
             'python',
             'tools',
-            'tensorboard',
         ],
 
         ## Everything below here is legitimate.
