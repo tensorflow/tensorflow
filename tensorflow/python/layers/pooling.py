@@ -519,7 +519,7 @@ class SpatialPyramidPooling(base.Layer):
   """
 
   def __init__(self, dimensions=None, mode='max', implementation='kaiming', **kwargs):
-    super().__init__(**kwargs)
+    super(SpatialPyramidPooling, self).__init__(**kwargs)
     self.implementation = implementation
     self.mode = mode
     self.dimensions = dimensions if dimensions is not None else [4, 2, 1]
