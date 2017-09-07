@@ -295,7 +295,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // End - element-wise ops. See note above.
 
     // NOTE: names are alphabetically sorted.
-    rinfo_.push_back({csinfo_.addn, GetMklOpName(csinfo_.addn), CopyAttrsAddN,
+    rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn), CopyAttrsAddN,
                       AddNRewrite, nullptr});
     rinfo_.push_back({csinfo_.add,
                       mkl_op_registry::GetMklOpName(csinfo_.add),
