@@ -50,7 +50,7 @@ def tf_java_op_gen_srcjar(name,
   # Generate a source archive containing generated code for these ops.
   gen_srcjar = out_dir + name + ".srcjar"
   gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) ."]
-  gen_tools += ["@local_jdk//:jar"]
+  gen_tools += ["@local_jdk//:jar"] + ["@local_jdk//:jdk"]
 
   native.genrule(
       name=name,
