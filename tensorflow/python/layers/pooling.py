@@ -23,27 +23,14 @@ from __future__ import print_function
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
-from tensorflow import cast
-from tensorflow import ceil
-from tensorflow import concat
-from tensorflow import divide
-from tensorflow import float32
-from tensorflow import floor
-from tensorflow import gather
-from tensorflow import int32
-from tensorflow import  multiply
-from tensorflow import reduce_max
-from tensorflow import reduce_mean
-from tensorflow import reshape
-from tensorflow import shape
-from tensorflow.python import framework
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -440,14 +427,14 @@ def max_pooling2d(inputs,
 
 
 def max_pool_2d_nxn_regions(inputs, output_size, mode):
-  inputs_shape = shape(inputs)
-  h = cast(gather(inputs_shape, 1), int32)
-  w = cast(gather(inputs_shape, 2), int32)
+  inputs_shape = array_ops.shape(inputs)
+  h = math_ops.cast(array_ops.gather(inputs_shape, 1), dtypes.int32)
+  w = math_ops.cast(array_ops.gather(inputs_shape, 2), dtypes.int32)
 
   if mode == 'max':
-    pooling_op = reduce_max
+    pooling_op = math_ops.reduce_max
   elif mode == 'avg':
-    pooling_op = reduce_mean
+    pooling_op = math_ops.reduce_mean
   else:
     msg = "Mode must be either 'max' or 'avg'. Got '{0}'"
     raise ValueError(msg.format(mode))
@@ -457,13 +444,13 @@ def max_pool_2d_nxn_regions(inputs, output_size, mode):
   for row in range(output_size):
     for col in range(output_size):
       # start_h = floor(row / n * h)
-      start_h = cast(floor(multiply(divide(row, n), cast(h, float32))), int32)
+      start_h = math_ops.cast(math_ops.floor(math_ops.multiply(math_ops.divide(row, n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
       # end_h = ceil((row + 1) / n * h)
-      end_h = cast(ceil(multiply(divide((row + 1), n), cast(h, float32))), int32)
+      end_h = math_ops.cast(math_ops.ceil(math_ops.multiply(math_ops.divide((row + 1), n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
       # start_w = floor(col / n * w)
-      start_w = cast(floor(multiply(divide(col, n), cast(w, float32))), int32)
+      start_w = math_ops.cast(math_ops.floor(math_ops.multiply(math_ops.divide(col, n), math_ops.cast(w, dtypes.float32))), dtypes.int32)
       # end_w = ceil((col + 1) / n * w)
-      end_w = cast(ceil(multiply(divide((col + 1), n), cast(w, float32))), int32)
+      end_w = math_ops.cast(math_ops.ceil(math_ops.multiply(math_ops.divide((col + 1), n), math_ops.cast(w, dtypes.float32))), dtypes.int32)
       pooling_region = inputs[:, start_h:end_h, start_w:end_w, :]
       pool_result = pooling_op(pooling_region, axis=(1, 2))
       result.append(pool_result)
@@ -556,8 +543,8 @@ class SpatialPyramidPooling(base.Layer):
                                   ksize=[1, ph, pw, 1],
                                   strides=[1, sh, sw, 1],
                                   padding='SAME')
-        pool_list.append(reshape(pool_result, [shape(inputs)[0], -1]))
-    return concat(values=pool_list, axis=1)
+        pool_list.append(array_ops.reshape(pool_result, [array_ops.shape(inputs)[0], -1]))
+    return array_ops.concat(values=pool_list, axis=1)
 
   def _compute_output_shape(self, input_shape):
     num_features = sum(p * p for p in self.dimensions)
