@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
 #define TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
 
+// included so __cpuidex function is available for GETCPUID on Windows
+#include <intrin.h>
+
 // Byte order defines provided by gcc. MSVC doesn't define those so
 // we define them here.
 // We assume that all windows platform out there are little endian.

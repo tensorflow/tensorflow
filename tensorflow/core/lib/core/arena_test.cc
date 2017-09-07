@@ -57,6 +57,19 @@ TEST(ArenaTest, TestBasicArena) {
   TestMemory(memory, 100);
 }
 
+TEST(ArenaTest, TestAlignment) {
+  Arena a(1024);
+  char* byte0 = a.Alloc(1);
+  char* alloc_aligned8 = a.AllocAligned(17, 8);
+  EXPECT_EQ(alloc_aligned8 - byte0, 8);
+  char* alloc_aligned8_b = a.AllocAligned(8, 8);
+  EXPECT_EQ(alloc_aligned8_b - alloc_aligned8, 24);
+  char* alloc_aligned8_c = a.AllocAligned(16, 8);
+  EXPECT_EQ(alloc_aligned8_c - alloc_aligned8_b, 8);
+  char* alloc_aligned8_d = a.AllocAligned(8, 1);
+  EXPECT_EQ(alloc_aligned8_d - alloc_aligned8_c, 16);
+}
+
 TEST(ArenaTest, TestVariousArenaSizes) {
   {
     Arena a(1024);

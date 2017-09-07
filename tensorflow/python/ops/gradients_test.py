@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import warnings
 
 import numpy as np
@@ -31,6 +32,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
@@ -40,6 +43,9 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
@@ -108,9 +114,9 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
       t4 = constant([1.0])
-      t5 = array_ops.concat_v2([t4, t3], 0)
+      t5 = array_ops.concat([t4, t3], 0)
       t6 = constant([2.0])
-      t7 = array_ops.concat_v2([t5, t6], 0)
+      t7 = array_ops.concat([t5, t6], 0)
     self._assertOpListEqual([t7.op, t5.op, t4.op],
                             _OpsBetween(g, [t7.op], [t4.op]))
 
@@ -119,10 +125,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
-      t4 = array_ops.concat_v2([t3, t3, t3], 0)
+      t4 = array_ops.concat([t3, t3, t3], 0)
       t5 = constant([1.0])
-      t6 = array_ops.concat_v2([t4, t5], 0)
-      t7 = array_ops.concat_v2([t6, t3], 0)
+      t6 = array_ops.concat([t4, t5], 0)
+      t7 = array_ops.concat([t6, t3], 0)
     self._assertOpListEqual([t6.op, t4.op, t3.op],
                             _OpsBetween(g, [t6.op], [t3.op]))
     self._assertOpListEqual([t7.op, t6.op, t5.op, t4.op, t3.op, t1.op],
@@ -157,20 +163,20 @@ class GradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
-      with g.device("/gpu:0"):
+      with g.device("/device:GPU:0"):
         wx = math_ops.matmul(w, x)
       gw = gradients.gradients(wx, [w], colocate_gradients_with_ops=True)[0]
     self.assertEqual(gw.op.colocation_groups(), wx.op.colocation_groups())
 
   def testColocateGradientsWithAggregation(self):
     with ops.Graph().as_default() as g:
-      with g.device("/gpu:1"):
+      with g.device("/device:GPU:1"):
         w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
       y = constant(1.0, shape=[1, 2])
       wx = math_ops.matmul(w, x)
       wy = math_ops.matmul(w, y)
-      with g.device("/gpu:0"):
+      with g.device("/device:GPU:0"):
         z = wx + wy
 
       gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
@@ -181,7 +187,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
 
   def testColocateGradientsWithAggregationInMultipleDevices(self):
     with ops.Graph().as_default() as g:
-      with g.device("/gpu:1"):
+      with g.device("/device:GPU:1"):
         w = constant(1.0, shape=[1, 1])
       x = constant(1.0, shape=[1, 2])
       y = constant(1.0, shape=[1, 2])
@@ -189,7 +195,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
         wx = math_ops.matmul(w, x)
       with g.device("/task:2"):
         wy = math_ops.matmul(w, y)
-      with g.device("/gpu:0"):
+      with g.device("/device:GPU:0"):
         z = wx + wy
 
       gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
@@ -202,7 +208,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
     # Test that we don't differentiate 'x'. The gradient function for 'x' is
     # set explicitly to None so we will get an exception if the gradient code
     # tries to differentiate 'x'.
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       c = constant(1.0)
       x = array_ops.identity(c)
       y = x + 1.0
@@ -289,6 +295,117 @@ class GradientsTest(test_util.TensorFlowTestCase):
       # A previous version of the code did this only for tf.Tensor, not
       # tf.IndexedSlices.
       self.assertEqual(dx, dy)
+
+  def testNonDifferentiableSwitchInWhileLoop(self):
+    with ops.Graph().as_default():
+      v = array_ops.placeholder(dtypes.float32, [])
+
+      def _Step(i, a, ta):
+        a += math_ops.cast(v, dtypes.int32)
+        return (i + 1, a, ta.write(i, a))
+
+      n = 4
+      i, _, ta = control_flow_ops.while_loop(
+          lambda i, *_: i < n,
+          _Step, [0, 0, tensor_array_ops.TensorArray(
+              dtypes.int32, size=n)])
+      target = ta.read(i - 1)
+      grad, = gradients.gradients(target, v)
+      self.assertIsNone(grad)
+
+  def testVariableReadValueGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableAsGraphElementGradient(self):
+    with ops.Graph().as_default() as graph:
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(graph.as_graph_element(var), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableRefGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var._ref(), var)
+      self.assertIsNotNone(gradient)
+
+  def testDependentYs(self):
+    with self.test_session():
+      x = constant_op.constant(3.0)
+      y = math_ops.square(x)
+      y1 = math_ops.square(y)
+      y2 = math_ops.square(y1)
+      g = gradients.gradients([y, y2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+      g = gradients.gradients(y + y2, x)
+      self.assertAllClose(17502.0, g[0].eval())
+      z = array_ops.identity(y)
+      z2 = array_ops.identity(y2)
+      g = gradients.gradients([z, z2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+
+  def testPartialDerivatives(self):
+    with self.test_session():
+      x = constant_op.constant(1.)
+      y = 2 * x
+      z = x + y
+      totalg = gradients.gradients(z, [x, y])
+      self.assertEqual([3.0, 1.0], [g.eval() for g in totalg])
+      partialg = gradients.gradients(z, [x, y], stop_gradients=[x, y])
+      self.assertEqual([1.0, 1.0], [g.eval() for g in partialg])
+
+  def testStopGradients(self):
+    def _MakeGraph(rng, stop_gradients=()):
+      def _FunctionOf(xs, k=3):
+        return ops.convert_to_tensor(
+            sum(math_ops.matmul(rng.rand(k, k), x) for x in xs)
+            + rng.rand(k, k))
+
+      a = _FunctionOf([])
+      if "a" in stop_gradients: a = array_ops.stop_gradient(a)
+      b = _FunctionOf([a])
+      if "b" in stop_gradients: b = array_ops.stop_gradient(b)
+      c = _FunctionOf([a, b])
+      if "c" in stop_gradients: c = array_ops.stop_gradient(c)
+      d = _FunctionOf([b, c])
+      if "d" in stop_gradients: d = array_ops.stop_gradient(d)
+      return dict(a=a, b=b, c=c, d=d)
+
+    def _Gradients(ys, xs, **kwargs):
+      dydxs = gradients.gradients(ys, xs, **kwargs)
+      dydxs = [0. * x if dydx is None else dydx
+               for x, dydx in zip(xs, dydxs)]
+      return dydxs
+
+    seed = np.random.randint(1000)
+    cases = []
+    subsets = [""] + "a b c d ab ac ad bc bd cd abc abd acd bcd abcd".split()
+    graph = _MakeGraph(np.random.RandomState(seed))
+    for constants in subsets:
+      graph_with_stops = _MakeGraph(np.random.RandomState(seed), constants)
+      for variables_ in subsets:
+        # compute the gradient when stopped using tf.stop_gradients
+        grad1 = _Gradients([graph_with_stops["d"]],
+                           [graph_with_stops[v] for v in variables_])
+        # compute the gradient when stopped using the stop_gradients kwarg
+        grad2 = _Gradients([graph["d"]],
+                           [graph[v] for v in variables_],
+                           stop_gradients=[graph[v] for v in constants])
+        cases.append(dict(grad1=grad1, grad2=grad2,
+                          constants=constants, variables=variables_))
+
+    # evaluate all tensors in one call to session.run for speed
+    with self.test_session() as session:
+      results = session.run([(case["grad1"], case["grad2"]) for case in cases])
+
+    for (npgrad1, npgrad2), case in zip(results, cases):
+      for a, b in zip(npgrad1, npgrad2):
+        np.testing.assert_allclose(a, b)
 
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
@@ -390,6 +507,16 @@ class StopGradientTest(test_util.TensorFlowTestCase):
     assert igrad is None
 
 
+class PreventGradientTest(test_util.TensorFlowTestCase):
+
+  def testPreventGradient(self):
+    with ops.Graph().as_default():
+      inp = constant(1.0, shape=[100, 32], name="in")
+      out = array_ops.prevent_gradient(inp)
+      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
+        _ = gradients.gradients(out, inp)
+
+
 class HessianVectorProductTest(test_util.TensorFlowTestCase):
 
   def testHessianVectorProduct(self):
@@ -422,7 +549,7 @@ class HessianTest(test_util.TensorFlowTestCase):
 
   def testHessian1D(self):
     # Manually compute the Hessian explicitly for a low-dimensional problem
-    # and check that `hessian` matches. Specifically, the Hessian of 
+    # and check that `hessian` matches. Specifically, the Hessian of
     # f(x) = x^T A x is H = A + A^T.
     m = 4
     rng = np.random.RandomState([1, 2, 3])
@@ -506,6 +633,11 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np_val, c_dense.eval())
 
   def testWarnings(self):
+    # TODO(gunan) Reenable after this issue is fixed:
+    # https://github.com/google/protobuf/issues/2812
+    if sys.version_info >= (3, 6):
+      self.skipTest("Skipped test for Python 3.6+")
+
     # Smaller than the threshold: no warning.
     c_sparse = ops.IndexedSlices(
         array_ops.placeholder(dtypes.float32),
@@ -536,6 +668,18 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         "of unknown shape. This may consume a large amount of memory." in
         str(w[0].message))
+
+
+class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
+
+  def testRealOnly(self):
+    x = constant_op.constant(7+3j, dtype=dtypes.complex64)
+    y = math_ops.square(x)
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Gradients of complex tensors must set grad_ys "
+        r"\(y\.dtype = tf\.complex64\)"):
+      gradients.gradients(y, x)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 
 class SYCLDeviceContext : public DeviceContext {
-public:
+ public:
   SYCLDeviceContext() {}
 
   ~SYCLDeviceContext() override {}
@@ -40,6 +40,6 @@ public:
                              StatusCallback done) override;
 };
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_
+#endif  // TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_

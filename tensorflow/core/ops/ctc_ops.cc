@@ -31,6 +31,7 @@ REGISTER_OP("CTCLoss")
     .Input("sequence_length: int32")
     .Attr("preprocess_collapse_repeated: bool = false")
     .Attr("ctc_merge_repeated: bool = true")
+    .Attr("ignore_longer_outputs_than_inputs: bool = false")
     .Output("loss: float")
     .Output("gradient: float")
     .SetShapeFn([](InferenceContext* c) {
@@ -75,6 +76,9 @@ preprocess_collapse_repeated: Scalar, if true then repeated labels are
 ctc_merge_repeated: Scalar.  If set to false, *during* CTC calculation
   repeated non-blank labels will not be merged and are interpreted as
   individual labels.  This is a simplified version of CTC.
+ignore_longer_outputs_than_inputs: Scalar. If set to true, during CTC
+  calculation, items that have longer output sequences than input sequences
+  are skipped: they don't contribute to the loss term and have zero-gradient.
 loss: A vector (batch) containing log-probabilities.
 gradient: The gradient of `loss`.  3-D, shape:
   `(max_time x batch_size x num_classes)`.
@@ -113,7 +117,7 @@ Performs greedy decoding on the logits given in inputs.
 A note about the attribute merge_repeated: if enabled, when
 consecutive logits' maximum indices are the same, only the first of
 these is emitted.  Labeling the blank '*', the sequence "A B B * B B"
-becomes "A B" if merge_repeated = True and "A B B B B" if
+becomes "A B B" if merge_repeated = True and "A B B B B" if
 merge_repeated = False.
 
 Regardless of the value of merge_repeated, if the maximum index of a given

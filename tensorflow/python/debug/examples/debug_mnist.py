@@ -24,20 +24,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
+
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python import debug as tf_debug
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_integer("max_steps", 10, "Number of steps to run trainer.")
-flags.DEFINE_integer("train_batch_size", 100,
-                     "Batch size used during training.")
-flags.DEFINE_float("learning_rate", 0.025, "Initial learning rate.")
-flags.DEFINE_string("data_dir", "/tmp/mnist_data", "Directory for storing data")
-flags.DEFINE_boolean("debug", False,
-                     "Use debugger to track down bad values during training")
 
 IMAGE_SIZE = 28
 HIDDEN_SIZE = 500
@@ -47,11 +41,14 @@ RAND_SEED = 42
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+  mnist = input_data.read_data_sets(FLAGS.data_dir,
+                                    one_hot=True,
+                                    fake_data=FLAGS.fake_data)
 
   def feed_dict(train):
-    if train:
-      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size, fake_data=False)
+    if train or FLAGS.fake_data:
+      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size,
+                                      fake_data=FLAGS.fake_data)
     else:
       xs, ys = mnist.test.images, mnist.test.labels
 
@@ -93,7 +90,8 @@ def main(_):
       return activations
 
   hidden = nn_layer(x, IMAGE_SIZE**2, HIDDEN_SIZE, "hidden")
-  y = nn_layer(hidden, HIDDEN_SIZE, NUM_LABELS, "softmax", act=tf.nn.softmax)
+  logits = nn_layer(hidden, HIDDEN_SIZE, NUM_LABELS, "output", tf.identity)
+  y = tf.nn.softmax(logits)
 
   with tf.name_scope("cross_entropy"):
     # The following line is the culprit of the bad numerical values that appear
@@ -102,12 +100,13 @@ def main(_):
     # call. A multiplication of the inf values with zeros leads to nans,
     # which is first in "cross_entropy/mul:0".
     #
-    # You can use clipping to fix this issue, e.g.,
-    #   diff = y_ * tf.log(tf.clip_by_value(y, 1e-8, 1.0))
+    # You can use the built-in, numerically-stable implementation to fix this
+    # issue:
+    #   diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
 
-    diff = y_ * tf.log(y)
+    diff = -(y_ * tf.log(y))
     with tf.name_scope("total"):
-      cross_entropy = -tf.reduce_mean(diff)
+      cross_entropy = tf.reduce_mean(diff)
 
   with tf.name_scope("train"):
     train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
@@ -122,7 +121,7 @@ def main(_):
   sess.run(tf.global_variables_initializer())
 
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
     sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
   # Add this point, sess is a debug wrapper around the actual Session if
@@ -135,4 +134,46 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--max_steps",
+      type=int,
+      default=10,
+      help="Number of steps to run trainer.")
+  parser.add_argument(
+      "--train_batch_size",
+      type=int,
+      default=100,
+      help="Batch size used during training.")
+  parser.add_argument(
+      "--learning_rate",
+      type=float,
+      default=0.025,
+      help="Initial learning rate.")
+  parser.add_argument(
+      "--data_dir",
+      type=str,
+      default="/tmp/mnist_data",
+      help="Directory for storing data")
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--fake_data",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use fake MNIST data for unit testing")
+  parser.add_argument(
+      "--debug",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use debugger to track down bad values during training")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

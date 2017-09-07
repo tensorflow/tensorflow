@@ -19,13 +19,14 @@ limitations under the License.
 
 #include <string.h>
 
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 
-namespace gpu = ::perftools::gputools;
+bool FLAGS_stream_executor_cpu_real_clock_rate = false;
 
 namespace perftools {
 namespace gputools {
@@ -129,23 +130,24 @@ bool HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
   return true;
 }
 
-bool HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                     const void *host_src, uint64 size) {
+port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                             const void *host_src,
+                                             uint64 size) {
   memcpy(gpu_dst->opaque(), host_src, size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemcpy(void *host_dst,
-                                     const DeviceMemoryBase &gpu_src,
-                                     uint64 size) {
+port::Status HostExecutor::SynchronousMemcpy(void *host_dst,
+                                             const DeviceMemoryBase &gpu_src,
+                                             uint64 size) {
   memcpy(host_dst, gpu_src.opaque(), size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemcpyDeviceToDevice(
+port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64 size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
-  return true;
+  return port::Status::OK();
 }
 
 bool HostExecutor::HostCallback(Stream *stream,
@@ -189,7 +191,12 @@ DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
 
-  builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
+  float cycle_counter_frequency = 1e9;
+  if (FLAGS_stream_executor_cpu_real_clock_rate) {
+    cycle_counter_frequency = static_cast<float>(
+        tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
+  }
+  builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
   auto built = builder.Build();
   return built.release();

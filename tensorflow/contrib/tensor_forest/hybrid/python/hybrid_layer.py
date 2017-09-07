@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tensor_forest.python import tensor_forest
+from tensorflow.contrib.framework.python.ops import variables as framework_variables
 
 
 class HybridLayer(object):
@@ -33,7 +33,7 @@ class HybridLayer(object):
   def __init__(self, params, layer_num, device_assigner, *args, **kwargs):
     self.layer_num = layer_num
     self.device_assigner = (
-        device_assigner or tensor_forest.RandomForestDeviceAssigner())
+        device_assigner or framework_variables.VariableDeviceChooser())
     self.params = params
     self._define_vars(params, **kwargs)
 

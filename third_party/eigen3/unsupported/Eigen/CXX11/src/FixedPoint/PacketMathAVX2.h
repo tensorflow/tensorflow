@@ -11,6 +11,13 @@ typedef struct Packet32q8i {
   Packet32q8i(__m256i val) : val(val) {}
 } Packet32q8i;
 
+typedef struct Packet16q16i {
+  __m256i val;
+  operator __m256i() const { return val; }
+  Packet16q16i();
+  Packet16q16i(__m256i val) : val(val) {}
+} Packet16q16i;
+
 typedef struct Packet32q8u {
   __m256i val;
   operator __m256i() const { return val; }
@@ -31,6 +38,13 @@ typedef struct Packet16q8u {
   Packet16q8u();
   Packet16q8u(__m128i val) : val(val) {}
 } Packet16q8u;
+
+typedef struct Packet8q16i {
+  __m128i val;
+  operator __m128i() const { return val; }
+  Packet8q16i();
+  Packet8q16i(__m128i val) : val(val) {}
+} Packet8q16i;
 
 typedef struct Packet8q32i {
   __m256i val;
@@ -92,6 +106,28 @@ struct packet_traits<QUInt8> : default_packet_traits {
   };
 };
 template <>
+struct packet_traits<QInt16> : default_packet_traits {
+  typedef Packet16q16i type;
+  typedef Packet8q16i half;
+  enum {
+    Vectorizable = 1,
+    AlignedOnScalar = 1,
+    size = 16,
+  };
+  enum {
+    HasAdd = 0,
+    HasSub = 0,
+    HasMul = 0,
+    HasNegate = 0,
+    HasAbs = 0,
+    HasAbs2 = 0,
+    HasMin = 1,
+    HasMax = 1,
+    HasConj = 0,
+    HasSetLinear = 0
+  };
+};
+template <>
 struct packet_traits<QInt32> : default_packet_traits {
   typedef Packet8q32i type;
   typedef Packet4q32i half;
@@ -122,6 +158,12 @@ struct unpacket_traits<Packet32q8i> {
   enum { size = 32, alignment=Aligned32 };
 };
 template <>
+struct unpacket_traits<Packet16q16i> {
+  typedef QInt16 type;
+  typedef Packet8q16i half;
+  enum { size = 16, alignment=Aligned32 };
+};
+template <>
 struct unpacket_traits<Packet32q8u> {
   typedef QUInt8 type;
   typedef Packet16q8u half;
@@ -146,6 +188,11 @@ EIGEN_STRONG_INLINE Packet32q8u ploadu<Packet32q8u>(const QUInt8* from) {
       reinterpret_cast<const __m256i*>(from));
 }
 template <>
+EIGEN_STRONG_INLINE Packet16q16i ploadu<Packet16q16i>(const QInt16* from) {
+  EIGEN_DEBUG_UNALIGNED_LOAD return _mm256_loadu_si256(
+      reinterpret_cast<const __m256i*>(from));
+}
+template <>
 EIGEN_STRONG_INLINE Packet8q32i ploadu<Packet8q32i>(const QInt32* from) {
   EIGEN_DEBUG_UNALIGNED_LOAD return _mm256_loadu_si256(
       reinterpret_cast<const __m256i*>(from));
@@ -159,6 +206,11 @@ EIGEN_STRONG_INLINE Packet32q8i pload<Packet32q8i>(const QInt8* from) {
 }
 template <>
 EIGEN_STRONG_INLINE Packet32q8u pload<Packet32q8u>(const QUInt8* from) {
+  EIGEN_DEBUG_ALIGNED_LOAD return _mm256_load_si256(
+      reinterpret_cast<const __m256i*>(from));
+}
+template <>
+EIGEN_STRONG_INLINE Packet16q16i pload<Packet16q16i>(const QInt16* from) {
   EIGEN_DEBUG_ALIGNED_LOAD return _mm256_load_si256(
       reinterpret_cast<const __m256i*>(from));
 }
@@ -180,6 +232,11 @@ EIGEN_STRONG_INLINE void pstoreu<QUInt8>(QUInt8* to, const Packet32q8u& from) {
       reinterpret_cast<__m256i*>(to), from.val);
 }
 template <>
+EIGEN_STRONG_INLINE void pstoreu<QInt16>(QInt16* to, const Packet16q16i& from) {
+  EIGEN_DEBUG_UNALIGNED_STORE _mm256_storeu_si256(
+      reinterpret_cast<__m256i*>(to), from.val);
+}
+template <>
 EIGEN_STRONG_INLINE void pstoreu<QInt32>(QInt32* to, const Packet8q32i& from) {
   EIGEN_DEBUG_UNALIGNED_STORE _mm256_storeu_si256(
       reinterpret_cast<__m256i*>(to), from.val);
@@ -188,6 +245,11 @@ EIGEN_STRONG_INLINE void pstoreu<QInt32>(QInt32* to, const Packet8q32i& from) {
 // Aligned store
 template <>
 EIGEN_STRONG_INLINE void pstore<QInt32>(QInt32* to, const Packet8q32i& from) {
+  EIGEN_DEBUG_ALIGNED_STORE _mm256_store_si256(reinterpret_cast<__m256i*>(to),
+                                               from.val);
+}
+template <>
+EIGEN_STRONG_INLINE void pstore<QInt16>(QInt16* to, const Packet16q16i& from) {
   EIGEN_DEBUG_ALIGNED_STORE _mm256_store_si256(reinterpret_cast<__m256i*>(to),
                                                from.val);
 }
@@ -206,6 +268,10 @@ EIGEN_STRONG_INLINE void pstore<QInt8>(QInt8* to, const Packet32q8i& from) {
 template <>
 EIGEN_STRONG_INLINE QInt32 pfirst<Packet8q32i>(const Packet8q32i& a) {
   return _mm_cvtsi128_si32(_mm256_castsi256_si128(a));
+}
+template <>
+EIGEN_STRONG_INLINE QInt16 pfirst<Packet16q16i>(const Packet16q16i& a) {
+  return _mm256_extract_epi16(a.val, 0);
 }
 template <>
 EIGEN_STRONG_INLINE QUInt8 pfirst<Packet32q8u>(const Packet32q8u& a) {
@@ -237,6 +303,10 @@ EIGEN_STRONG_INLINE Packet8q32i padd<Packet8q32i>(const Packet8q32i& a,
   return _mm256_add_epi32(a.val, b.val);
 }
 template <>
+EIGEN_STRONG_INLINE Packet16q16i pset1<Packet16q16i>(const QInt16& from) {
+  return _mm256_set1_epi16(from.value);
+}
+template <>
 EIGEN_STRONG_INLINE Packet8q32i psub<Packet8q32i>(const Packet8q32i& a,
                                                   const Packet8q32i& b) {
   return _mm256_sub_epi32(a.val, b.val);
@@ -262,6 +332,17 @@ template <>
 EIGEN_STRONG_INLINE Packet8q32i pmax<Packet8q32i>(const Packet8q32i& a,
                                                   const Packet8q32i& b) {
   return _mm256_max_epi32(a.val, b.val);
+}
+
+template <>
+EIGEN_STRONG_INLINE Packet16q16i pmin<Packet16q16i>(const Packet16q16i& a,
+                                                    const Packet16q16i& b) {
+  return _mm256_min_epi16(a.val, b.val);
+}
+template <>
+EIGEN_STRONG_INLINE Packet16q16i pmax<Packet16q16i>(const Packet16q16i& a,
+                                                    const Packet16q16i& b) {
+  return _mm256_max_epi16(a.val, b.val);
 }
 
 template <>
@@ -302,6 +383,23 @@ EIGEN_STRONG_INLINE QInt32 predux_max<Packet8q32i>(const Packet8q32i& a) {
       _mm256_max_epi32(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
   return pfirst<Packet8q32i>(
       _mm256_max_epi32(tmp, _mm256_shuffle_epi32(tmp, 1)));
+}
+
+template <>
+EIGEN_STRONG_INLINE QInt16 predux_min<Packet16q16i>(const Packet16q16i& a) {
+  __m256i tmp = _mm256_min_epi16(a, _mm256_permute2f128_si256(a, a, 1));
+  tmp =
+      _mm256_min_epi16(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
+  tmp = _mm256_min_epi16(tmp, _mm256_shuffle_epi32(tmp, 1));
+  return std::min(_mm256_extract_epi16(tmp, 0), _mm256_extract_epi16(tmp, 1));
+}
+template <>
+EIGEN_STRONG_INLINE QInt16 predux_max<Packet16q16i>(const Packet16q16i& a) {
+  __m256i tmp = _mm256_max_epi16(a, _mm256_permute2f128_si256(a, a, 1));
+  tmp =
+      _mm256_max_epi16(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
+  tmp = _mm256_max_epi16(tmp, _mm256_shuffle_epi32(tmp, 1));
+  return std::max(_mm256_extract_epi16(tmp, 0), _mm256_extract_epi16(tmp, 1));
 }
 
 template <>

@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace sparse {
@@ -57,7 +57,7 @@ GetSimpleIndexTensor(int N, const int NDIM) {
 }
 
 TEST(SparseTensorTest, DimComparatorSorts) {
-  std::size_t N = 5;
+  int64 N = 5;
   const int NDIM = 3;
   auto ix = GetSimpleIndexTensor(N, NDIM);
   TTypes<int64>::Matrix map(ix.data(), N, NDIM);
@@ -67,8 +67,7 @@ TEST(SparseTensorTest, DimComparatorSorts) {
 
   // new order should be: {0, 4, 3, 2, 1}
   std::vector<int64> order{0, 1, 2};
-  TensorShape shape;
-  for (int i = 0; i < NDIM; ++i) shape.AddDim(N);
+  std::vector<int64> shape{N, N, N};
   DimComparator sorter(map, order, shape);
   std::sort(sorting.begin(), sorting.end(), sorter);
   EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
@@ -209,7 +208,7 @@ TEST(SparseTensorTest, EmptySparseTensorAllowed) {
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
 
-  TensorShape shape({10, 10, 10});
+  std::vector<int64> shape{10, 10, 10};
   std::vector<int64> order{0, 1, 2};
   SparseTensor st(ix, vals, shape, order);
   TF_EXPECT_OK(st.IndicesValid());
@@ -529,7 +528,7 @@ TEST(SparseTensorTest, Concat) {
 
   SparseTensor concatted = SparseTensor::Concat<string>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
-  TensorShape expected_shape({40, 10, 10});
+  gtl::InlinedVector<int64, 8> expected_shape{40, 10, 10};
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
   TF_EXPECT_OK(concatted.IndicesValid());
@@ -590,7 +589,9 @@ TEST(SparseTensorTest, Split) {
   std::vector<SparseTensor> st_list = SparseTensor::Split<int64>(st, 0, 2);
 
   EXPECT_EQ(st_list.size(), 2);
-  EXPECT_EQ(st_list[0].shape(), TensorShape({2, 3}));
+  auto expected_shape = gtl::InlinedVector<int64, 8>{2, 3};
+
+  EXPECT_EQ(st_list[0].shape(), expected_shape);
   EXPECT_EQ(st_list[0].values().NumElements(), 3);
   EXPECT_EQ(st_list[0].values().vec<int64>()(0), 1);
   EXPECT_EQ(st_list[0].values().vec<int64>()(1), 2);
@@ -603,12 +604,56 @@ TEST(SparseTensorTest, Split) {
   EXPECT_EQ(st_list[0].indices().matrix<int64>()(2, 0), 1);
   EXPECT_EQ(st_list[0].indices().matrix<int64>()(2, 1), 2);
 
-  EXPECT_EQ(st_list[1].shape(), TensorShape({2, 3}));
+  EXPECT_EQ(st_list[1].shape(), expected_shape);
   EXPECT_EQ(st_list[1].values().NumElements(), 1);
   EXPECT_EQ(st_list[1].values().vec<int64>()(0), 4);
   EXPECT_EQ(st_list[1].indices().NumElements(), 2);
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 0), 1);
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 1), 0);
+}
+
+TEST(SparseTensorTest, Slice) {
+  const int N = 4;
+  const int DIM = 2;
+
+  Tensor ids(DT_INT64, TensorShape({N, DIM}));
+  Tensor vals(DT_INT64, TensorShape({N}));
+
+  ids.matrix<int64>()(0, 0) = 0;
+  ids.matrix<int64>()(0, 1) = 0;
+  ids.matrix<int64>()(1, 0) = 1;
+  ids.matrix<int64>()(1, 1) = 1;
+  ids.matrix<int64>()(2, 0) = 1;
+  ids.matrix<int64>()(2, 1) = 2;
+  ids.matrix<int64>()(3, 0) = 3;
+  ids.matrix<int64>()(3, 1) = 0;
+
+  vals.vec<int64>()(0) = 1;
+  vals.vec<int64>()(1) = 2;
+  vals.vec<int64>()(2) = 3;
+  vals.vec<int64>()(3) = 4;
+
+  SparseTensor st(ids, vals, TensorShape({4, 3}));
+
+  std::vector<int64> start(2, 0);
+  std::vector<int64> size(2);
+  size[0] = 2;
+  size[1] = 3;
+
+  SparseTensor slice = SparseTensor::Slice<int64>(st, start, size);
+
+  EXPECT_EQ(TensorShape(slice.shape()), TensorShape({2, 3}));
+  EXPECT_EQ(slice.values().NumElements(), 3);
+  EXPECT_EQ(slice.values().vec<int64>()(0), 1);
+  EXPECT_EQ(slice.values().vec<int64>()(1), 2);
+  EXPECT_EQ(slice.values().vec<int64>()(2), 3);
+  EXPECT_EQ(slice.indices().NumElements(), 6);
+  EXPECT_EQ(slice.indices().matrix<int64>()(0, 0), 0);
+  EXPECT_EQ(slice.indices().matrix<int64>()(0, 1), 0);
+  EXPECT_EQ(slice.indices().matrix<int64>()(1, 0), 1);
+  EXPECT_EQ(slice.indices().matrix<int64>()(1, 1), 1);
+  EXPECT_EQ(slice.indices().matrix<int64>()(2, 0), 1);
+  EXPECT_EQ(slice.indices().matrix<int64>()(2, 1), 2);
 }
 
 TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {

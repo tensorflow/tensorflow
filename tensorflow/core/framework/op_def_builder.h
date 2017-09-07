@@ -38,6 +38,8 @@ struct OpRegistrationData {
  public:
   OpRegistrationData() {}
   OpRegistrationData(const OpDef& def) : op_def(def) {}
+  OpRegistrationData(const OpDef& def, const OpShapeInferenceFn& fn)
+      : op_def(def), shape_inference_fn(fn) {}
 
   OpDef op_def;
   OpShapeInferenceFn shape_inference_fn;

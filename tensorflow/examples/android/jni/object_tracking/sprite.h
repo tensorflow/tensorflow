@@ -33,11 +33,9 @@ namespace tf_tracking {
 class Sprite {
  public:
   // Only create Sprites when you have an OpenGl context.
-  explicit Sprite(const Image<uint8>& image) {
-    LoadTexture(image, NULL);
-  }
+  explicit Sprite(const Image<uint8_t>& image) { LoadTexture(image, NULL); }
 
-  Sprite(const Image<uint8>& image, const BoundingBox* const area) {
+  Sprite(const Image<uint8_t>& image, const BoundingBox* const area) {
     LoadTexture(image, area);
   }
 
@@ -103,7 +101,7 @@ class Sprite {
   }
 
   // TODO(andrewharp): Allow sprites to have their textures reloaded.
-  void LoadTexture(const Image<uint8>& texture_source,
+  void LoadTexture(const Image<uint8_t>& texture_source,
                    const BoundingBox* const area) {
     glEnable(GL_TEXTURE_2D);
 
@@ -131,7 +129,7 @@ class Sprite {
     texture_height_ = GetNextPowerOfTwo(actual_height_);
 
     bool allocated_data = false;
-    uint8* texture_data;
+    uint8_t* texture_data;
 
     // Except in the lucky case where we're not using a sub-region of the
     // original image AND the source data has dimensions that are power of two,
@@ -143,18 +141,17 @@ class Sprite {
     if (left != 0 || top != 0 ||
         actual_width_ != texture_source.GetWidth() ||
         actual_height_ != texture_source.GetHeight()) {
-      texture_data = new uint8[actual_width_ * actual_height_];
+      texture_data = new uint8_t[actual_width_ * actual_height_];
 
       for (int y = 0; y < actual_height_; ++y) {
-        memcpy(texture_data + actual_width_ * y,
-               texture_source[top + y] + left,
-               actual_width_ * sizeof(uint8));
+        memcpy(texture_data + actual_width_ * y, texture_source[top + y] + left,
+               actual_width_ * sizeof(uint8_t));
       }
       allocated_data = true;
     } else {
       // Cast away const-ness because for some reason glTexSubImage2D wants
       // a non-const data pointer.
-      texture_data = const_cast<uint8*>(texture_source.data());
+      texture_data = const_cast<uint8_t*>(texture_source.data());
     }
 
     glTexImage2D(GL_TEXTURE_2D,

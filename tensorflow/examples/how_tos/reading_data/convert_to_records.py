@@ -26,14 +26,6 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.datasets import mnist
 
-SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
-
-TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'  # MNIST filenames
-TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
-TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
-TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
-
-
 FLAGS = None
 
 

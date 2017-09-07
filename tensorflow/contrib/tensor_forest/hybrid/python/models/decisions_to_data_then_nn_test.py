@@ -20,16 +20,13 @@ from __future__ import print_function
 import random
 
 # pylint: disable=unused-import
-import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.hybrid.python.models import decisions_to_data_then_nn
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import googletest
 

@@ -86,7 +86,7 @@ class LogMessageFatal : public LogMessage {
   ((lvl) <= ::tensorflow::internal::LogMessage::MinVLogLevel())
 #endif
 
-#define VLOG(lvl)      \
+#define VLOG(lvl)                        \
   if (TF_PREDICT_FALSE(VLOG_IS_ON(lvl))) \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
 

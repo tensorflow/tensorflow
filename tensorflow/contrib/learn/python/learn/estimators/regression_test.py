@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Linear regression tests."""
 
 from __future__ import absolute_import
@@ -20,12 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.learn.python import learn
+from tensorflow.python.platform import test
 
 
-class RegressionTest(tf.test.TestCase):
+class RegressionTest(test.TestCase):
   """Linear regression tests."""
 
   def testLinearRegression(self):
@@ -41,11 +40,13 @@ class RegressionTest(tf.test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(x),
         optimizer="SGD")
     regressor.fit(x, y, steps=200)
+    self.assertIn("linear//weight", regressor.get_variable_names())
+    regressor_weights = regressor.get_variable_value("linear//weight")
     # Have to flatten weights since they come in (x, 1) shape.
-    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.01)
+    self.assertAllClose(weights, regressor_weights.flatten(), rtol=0.01)
     # TODO(ispir): Disable centered_bias.
     # assert abs(bias - regressor.bias_) < 0.1
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

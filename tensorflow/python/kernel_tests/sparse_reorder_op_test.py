@@ -48,6 +48,13 @@ class SparseReorderTest(test.TestCase):
     shape = np.array([5, 6]).astype(np.int64)
     return sparse_tensor.SparseTensorValue(ind, val, shape)
 
+  def testStaticShapeInfoPreserved(self):
+    sp_input = sparse_tensor.SparseTensor.from_value(
+        self._SparseTensorValue_5x6(np.arange(6)))
+    self.assertAllEqual((5, 6), sp_input.get_shape())
+    sp_output = sparse_ops.sparse_reorder(sp_input)
+    self.assertAllEqual((5, 6), sp_output.get_shape())
+
   def testAlreadyInOrder(self):
     with self.test_session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))

@@ -63,8 +63,12 @@ class TypedQueueOp : public QueueOp {
       return errors::ResourceExhausted("Failed to allocate queue.");
     }
     *ret = queue;
+    queue_ = queue;
     return queue->Initialize();
   }
+
+ private:
+  QueueInterface* queue_ = nullptr;
 };
 
 }  // namespace tensorflow

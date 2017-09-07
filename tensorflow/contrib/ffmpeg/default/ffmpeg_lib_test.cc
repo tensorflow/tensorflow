@@ -94,6 +94,7 @@ TEST(FfmpegLibTest, TestRoundTripGeneratedWav) {
   }
 
   std::vector<float> sine_wave;
+  sine_wave.reserve(20000);
   for (int i = 0; i < 20000; ++i) {
     sine_wave.push_back(std::sin(6.28 * 440.0 * i / 20000.0));
   }

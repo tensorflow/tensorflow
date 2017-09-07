@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Basic word2vec example."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +22,7 @@ import collections
 import math
 import os
 import random
+from tempfile import gettempdir
 import zipfile
 
 import numpy as np
@@ -32,62 +34,71 @@ import tensorflow as tf
 url = 'http://mattmahoney.net/dc/'
 
 
+# pylint: disable=redefined-outer-name
 def maybe_download(filename, expected_bytes):
   """Download a file if not present, and make sure it's the right size."""
-  if not os.path.exists(filename):
-    filename, _ = urllib.request.urlretrieve(url + filename, filename)
-  statinfo = os.stat(filename)
+  local_filename = os.path.join(gettempdir(), filename)
+  if not os.path.exists(local_filename):
+    local_filename, _ = urllib.request.urlretrieve(url + filename,
+                                                   local_filename)
+  statinfo = os.stat(local_filename)
   if statinfo.st_size == expected_bytes:
     print('Found and verified', filename)
   else:
     print(statinfo.st_size)
-    raise Exception(
-        'Failed to verify ' + filename + '. Can you get to it with a browser?')
-  return filename
+    raise Exception('Failed to verify ' + local_filename +
+                    '. Can you get to it with a browser?')
+  return local_filename
+
 
 filename = maybe_download('text8.zip', 31344016)
 
 
 # Read the data into a list of strings.
 def read_data(filename):
-  """Extract the first file enclosed in a zip file as a list of words"""
+  """Extract the first file enclosed in a zip file as a list of words."""
   with zipfile.ZipFile(filename) as f:
     data = tf.compat.as_str(f.read(f.namelist()[0])).split()
   return data
 
-words = read_data(filename)
-print('Data size', len(words))
+vocabulary = read_data(filename)
+print('Data size', len(vocabulary))
 
 # Step 2: Build the dictionary and replace rare words with UNK token.
 vocabulary_size = 50000
 
 
-def build_dataset(words):
+def build_dataset(words, n_words):
+  """Process raw inputs into a dataset."""
   count = [['UNK', -1]]
-  count.extend(collections.Counter(words).most_common(vocabulary_size - 1))
+  count.extend(collections.Counter(words).most_common(n_words - 1))
   dictionary = dict()
   for word, _ in count:
     dictionary[word] = len(dictionary)
   data = list()
   unk_count = 0
   for word in words:
-    if word in dictionary:
-      index = dictionary[word]
-    else:
-      index = 0  # dictionary['UNK']
+    index = dictionary.get(word, 0)
+    if index == 0:  # dictionary['UNK']
       unk_count += 1
     data.append(index)
   count[0][1] = unk_count
-  reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
-  return data, count, dictionary, reverse_dictionary
+  reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
+  return data, count, dictionary, reversed_dictionary
 
-data, count, dictionary, reverse_dictionary = build_dataset(words)
-del words  # Hint to reduce memory.
+# Filling 4 global variables:
+# data - list of codes (integers from 0 to vocabulary_size-1).
+#   This is the original text but words are replaced by their codes
+# count - map of words(strings) to count of occurences
+# dictionary - map of words(strings) to their codes(integers)
+# reverse_dictionary - maps codes(integers) to words(strings)
+data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
+                                                            vocabulary_size)
+del vocabulary  # Hint to reduce memory.
 print('Most common words (+UNK)', count[:5])
 print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
 
 data_index = 0
-
 
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
@@ -98,20 +109,26 @@ def generate_batch(batch_size, num_skips, skip_window):
   labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
   span = 2 * skip_window + 1  # [ skip_window target skip_window ]
   buffer = collections.deque(maxlen=span)
-  for _ in range(span):
-    buffer.append(data[data_index])
-    data_index = (data_index + 1) % len(data)
+  if data_index + span > len(data):
+    data_index = 0
+  buffer.extend(data[data_index:data_index + span])
+  data_index += span
   for i in range(batch_size // num_skips):
-    target = skip_window  # target label at the center of the buffer
-    targets_to_avoid = [skip_window]
+    context_words = [w for w in range(span) if w != skip_window]
+    random.shuffle(context_words)
+    words_to_use = collections.deque(context_words)
     for j in range(num_skips):
-      while target in targets_to_avoid:
-        target = random.randint(0, span - 1)
-      targets_to_avoid.append(target)
       batch[i * num_skips + j] = buffer[skip_window]
-      labels[i * num_skips + j, 0] = buffer[target]
-    buffer.append(data[data_index])
-    data_index = (data_index + 1) % len(data)
+      context_word = words_to_use.pop()
+      labels[i * num_skips + j, 0] = buffer[context_word]
+    if data_index == len(data):
+      buffer[:] = data[:span]
+      data_index = span
+    else:
+      buffer.append(data[data_index])
+      data_index += 1
+  # Backtrack a little bit to avoid skipping words in the end of a batch
+  data_index = (data_index + len(data) - span) % len(data)
   return batch, labels
 
 batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
@@ -125,14 +142,16 @@ batch_size = 128
 embedding_size = 128  # Dimension of the embedding vector.
 skip_window = 1       # How many words to consider left and right.
 num_skips = 2         # How many times to reuse an input to generate a label.
+num_sampled = 64      # Number of negative examples to sample.
 
 # We pick a random validation set to sample nearest neighbors. Here we limit the
 # validation samples to the words that have a low numeric ID, which by
-# construction are also the most frequent.
+# construction are also the most frequent. These 3 variables are used only for
+# displaying model accuracy, they don't affect calculation.
 valid_size = 16     # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
 valid_examples = np.random.choice(valid_window, valid_size, replace=False)
-num_sampled = 64    # Number of negative examples to sample.
+
 
 graph = tf.Graph()
 
@@ -159,6 +178,8 @@ with graph.as_default():
   # Compute the average NCE loss for the batch.
   # tf.nce_loss automatically draws a new sample of the negative labels each
   # time we evaluate the loss.
+  # Explanation of the meaning of NCE loss:
+  #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
   loss = tf.reduce_mean(
       tf.nn.nce_loss(weights=nce_weights,
                      biases=nce_biases,
@@ -187,7 +208,7 @@ num_steps = 100001
 with tf.Session(graph=graph) as session:
   # We must initialize all variables before we use them.
   init.run()
-  print("Initialized")
+  print('Initialized')
 
   average_loss = 0
   for step in xrange(num_steps):
@@ -204,7 +225,7 @@ with tf.Session(graph=graph) as session:
       if step > 0:
         average_loss /= 2000
       # The average loss is an estimate of the loss over the last 2000 batches.
-      print("Average loss at step ", step, ": ", average_loss)
+      print('Average loss at step ', step, ': ', average_loss)
       average_loss = 0
 
     # Note that this is expensive (~20% slowdown if computed every 500 steps)
@@ -214,18 +235,20 @@ with tf.Session(graph=graph) as session:
         valid_word = reverse_dictionary[valid_examples[i]]
         top_k = 8  # number of nearest neighbors
         nearest = (-sim[i, :]).argsort()[1:top_k + 1]
-        log_str = "Nearest to %s:" % valid_word
+        log_str = 'Nearest to %s:' % valid_word
         for k in xrange(top_k):
           close_word = reverse_dictionary[nearest[k]]
-          log_str = "%s %s," % (log_str, close_word)
+          log_str = '%s %s,' % (log_str, close_word)
         print(log_str)
   final_embeddings = normalized_embeddings.eval()
 
 # Step 6: Visualize the embeddings.
 
 
-def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
-  assert low_dim_embs.shape[0] >= len(labels), "More labels than embeddings"
+# pylint: disable=missing-docstring
+# Function to draw visualization of distance between embeddings.
+def plot_with_labels(low_dim_embs, labels, filename):
+  assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
   plt.figure(figsize=(18, 18))  # in inches
   for i, label in enumerate(labels):
     x, y = low_dim_embs[i, :]
@@ -240,14 +263,16 @@ def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
   plt.savefig(filename)
 
 try:
+  # pylint: disable=g-import-not-at-top
   from sklearn.manifold import TSNE
   import matplotlib.pyplot as plt
 
-  tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
+  tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
   plot_only = 500
   low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only, :])
   labels = [reverse_dictionary[i] for i in xrange(plot_only)]
-  plot_with_labels(low_dim_embs, labels)
+  plot_with_labels(low_dim_embs, labels, os.path.join(gettempdir(), 'tsne.png'))
 
-except ImportError:
-  print("Please install sklearn, matplotlib, and scipy to visualize embeddings.")
+except ImportError as ex:
+  print('Please install sklearn, matplotlib, and scipy to show embeddings.')
+  print(ex)

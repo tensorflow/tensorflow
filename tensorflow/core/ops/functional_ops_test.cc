@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -33,6 +32,7 @@ TEST(FunctionalOpsTest, SymbolicGradient_ShapeFn) {
     in_type_list.emplace_back(DT_FLOAT);
     src_list.emplace_back("a", 0, DT_FLOAT);
   }
+  out_type_list.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_type_list.emplace_back(DT_FLOAT);
   }

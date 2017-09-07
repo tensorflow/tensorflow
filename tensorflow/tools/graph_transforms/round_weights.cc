@@ -33,16 +33,9 @@ namespace graph_transforms {
 Status RoundWeights(const GraphDef& input_graph_def,
                     const TransformFuncContext& context,
                     GraphDef* output_graph_def) {
-  string num_steps_string;
-  TF_RETURN_IF_ERROR(
-      GetExactlyOneParameter(context, "num_steps", "256", &num_steps_string));
   int32 num_steps;
-  if (!strings::safe_strto32(StringPiece(num_steps_string), &num_steps)) {
-    return errors::InvalidArgument(
-        "Couldn't interpret the num_steps argument to round_weights as a "
-        "number:",
-        num_steps_string);
-  }
+  TF_RETURN_IF_ERROR(
+      context.GetOneInt32Parameter("num_steps", 256, &num_steps));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def, {"Const"},
       [num_steps](const NodeMatch& match, const std::set<string>& input_nodes,

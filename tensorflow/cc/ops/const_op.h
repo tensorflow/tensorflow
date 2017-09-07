@@ -23,6 +23,9 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
+/// @defgroup const_op Const Op
+/// @{
+
 Output Const(const Scope& scope, const Input::Initializer& val);
 
 NodeBuilder::NodeOut AsNodeOut(const Scope& scope, const Input& inp);
@@ -53,6 +56,8 @@ Output Const(const Scope& scope, const Input::Initializer& val) {
   scope.UpdateBuilder(&cast_builder);
   Node* ret;
   scope.UpdateStatus(cast_builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   return Output(ret, 0);
 }
 
@@ -69,6 +74,8 @@ Output Const(const Scope& scope, const std::initializer_list<T>& v,
 
 std::vector<NodeBuilder::NodeOut> AsNodeOutList(const Scope& scope,
                                                 const InputList& inp);
+
+/// }@
 
 }  // namespace ops
 }  // namespace tensorflow

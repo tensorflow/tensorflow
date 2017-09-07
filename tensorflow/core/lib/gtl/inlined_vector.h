@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 #include <initializer_list>  // NOLINT(build/include_order)
@@ -353,7 +354,7 @@ class InlinedVector {
     size_t n = size();
     Destroy(base, n);
     if (!is_inline()) {
-      free(base);
+      port::Free(base);
     }
   }
 
@@ -434,7 +435,7 @@ class InlinedVector {
     }
 
     T* src = data();
-    T* dst = static_cast<T*>(malloc(target * sizeof(T)));
+    T* dst = static_cast<T*>(port::Malloc(target * sizeof(T)));
 
     // Need to copy elem before discarding src since it might alias src.
     InitType{}(dst + s, std::forward<Args>(args)...);

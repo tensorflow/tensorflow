@@ -69,7 +69,7 @@ def as_text(bytes_or_text, encoding='utf-8'):
   """Returns the given argument as a unicode string.
 
   Args:
-    bytes_or_text: A `bytes`, `str, or `unicode` object.
+    bytes_or_text: A `bytes`, `str`, or `unicode` object.
     encoding: A string indicating the charset for decoding unicode.
 
   Returns:

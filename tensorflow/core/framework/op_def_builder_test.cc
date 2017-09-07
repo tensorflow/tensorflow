@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -73,7 +74,7 @@ class OpDefBuilderTest : public ::testing::Test {
     }
   }
 
-  void ExpectFailure(const OpDefBuilder& builder, string error) {
+  void ExpectFailure(const OpDefBuilder& builder, const string& error) {
     OpRegistrationData op_reg_data;
     Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());
@@ -600,6 +601,13 @@ TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {
   };
   ExpectFailure(b().SetShapeFn(fn).SetShapeFn(fn),
                 "SetShapeFn called twice for Op Test");
+}
+
+TEST_F(OpDefBuilderTest, ResourceIsStateful) {
+  OpRegistrationData op_reg_data;
+  TF_EXPECT_OK(b().Input("a: resource").Finalize(&op_reg_data));
+  const OpDef& op_def = op_reg_data.op_def;
+  EXPECT_TRUE(op_def.is_stateful());
 }
 
 }  // namespace

@@ -35,7 +35,9 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import app
 from tensorflow.python.platform import test
@@ -141,25 +143,26 @@ class SparseXentTest(test.TestCase):
     with self.test_session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, ".*Rank mismatch:*"):
         nn_ops.sparse_softmax_cross_entropy_with_logits(
-            [[0., 1.], [2., 3.], [2., 3.]], [[0, 2]])
+            labels=[[0, 2]], logits=[[0., 1.], [2., 3.], [2., 3.]])
 
   def testScalar(self):
     with self.test_session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, ".*Logits cannot be scalars*"):
         nn_ops.sparse_softmax_cross_entropy_with_logits(
-            constant_op.constant(1.0), constant_op.constant(0))
+            labels=constant_op.constant(0), logits=constant_op.constant(1.0))
 
   def testLabelsPlaceholderScalar(self):
     with self.test_session(use_gpu=True):
       labels = array_ops.placeholder(np.int32)
-      y = nn_ops.sparse_softmax_cross_entropy_with_logits([[7.]], labels)
+      y = nn_ops.sparse_softmax_cross_entropy_with_logits(
+          labels=labels, logits=[[7.]])
       with self.assertRaisesOpError("labels must be 1-D"):
         y.eval(feed_dict={labels: 0})
 
   def testVector(self):
     with self.test_session(use_gpu=True):
       loss = nn_ops.sparse_softmax_cross_entropy_with_logits(
-          constant_op.constant([1.0]), constant_op.constant(0))
+          labels=constant_op.constant(0), logits=constant_op.constant([1.0]))
       self.assertAllClose(0.0, loss.eval())
 
   def testFloat(self):
@@ -191,17 +194,36 @@ class SparseXentTest(test.TestCase):
           shape=[3, 4],
           dtype=dtypes.float64,
           name="f")
-      x = nn_ops.sparse_softmax_cross_entropy_with_logits(f, l, name="xent")
+      x = nn_ops.sparse_softmax_cross_entropy_with_logits(
+          labels=l, logits=f, name="xent")
       err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
+
+  def testSecondGradient(self):
+    images_placeholder = array_ops.placeholder(dtypes.float32, shape=(3, 2))
+    labels_placeholder = array_ops.placeholder(dtypes.int32, shape=(3))
+    weights = variables.Variable(random_ops.truncated_normal([2], stddev=1.0))
+    weights_with_zeros = array_ops.stack([array_ops.zeros([2]), weights],
+                                         axis=1)
+    logits = math_ops.matmul(images_placeholder, weights_with_zeros)
+    cross_entropy = nn_ops.sparse_softmax_cross_entropy_with_logits(
+        labels=labels_placeholder, logits=logits)
+    loss = math_ops.reduce_mean(cross_entropy)
+
+    # Taking ths second gradient should fail, since it is not
+    # yet supported.
+    with self.assertRaisesRegexp(LookupError,
+                                 "explicitly disabled"):
+      _ = gradients_impl.hessians(loss, [weights])
 
   def _testHighDim(self, features, labels):
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     # manually reshape loss
     np_loss = np.reshape(np_loss, np.array(labels).shape)
     with self.test_session(use_gpu=True) as sess:
-      loss = nn_ops.sparse_softmax_cross_entropy_with_logits(features, labels)
+      loss = nn_ops.sparse_softmax_cross_entropy_with_logits(
+          labels=labels, logits=features)
       backprop = loss.op.inputs[0].op.outputs[1]
       tf_loss, tf_backprop = sess.run([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
@@ -225,7 +247,7 @@ class SparseXentTest(test.TestCase):
         labels = array_ops.placeholder(dtypes.int32, shape=[None, 1])
         logits = array_ops.placeholder(dtypes.float32, shape=[None, 3])
         ce = nn_ops.sparse_softmax_cross_entropy_with_logits(
-            logits, array_ops.squeeze(labels))
+            labels=array_ops.squeeze(labels), logits=logits)
         labels_v2 = np.zeros((1, 1), dtype=np.int32)
         logits_v2 = np.random.randn(1, 3)
         sess.run([ce], feed_dict={labels: labels_v2, logits: logits_v2})
@@ -243,7 +265,7 @@ def _sparse_vs_dense_xent_benchmark_dense(labels, logits):
                                         array_ops.stack([length]), 1.0, 0.0)
   target = array_ops.reshape(target, array_ops.stack([-1, num_entries]))
   crossent = nn_ops.softmax_cross_entropy_with_logits(
-      logits, target, name="SequenceLoss/CrossEntropy")
+      labels=target, logits=logits, name="SequenceLoss/CrossEntropy")
   crossent_sum = math_ops.reduce_sum(crossent)
   grads = gradients_impl.gradients([crossent_sum], [logits])[0]
 

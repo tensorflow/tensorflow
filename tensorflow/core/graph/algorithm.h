@@ -21,20 +21,28 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
 // Perform a depth-first-search on g starting at the source node.
 // If enter is not empty, calls enter(n) before visiting any children of n.
 // If leave is not empty, calls leave(n) after visiting all children of n.
-extern void DFS(const Graph& g, std::function<void(Node*)> enter,
-                std::function<void(Node*)> leave);
+extern void DFS(const Graph& g, const std::function<void(Node*)>& enter,
+                const std::function<void(Node*)>& leave);
 
 // Perform a reverse depth-first-search on g starting at the sink node.
 // If enter is not empty, calls enter(n) before visiting any parents of n.
 // If leave is not empty, calls leave(n) after visiting all parents of n.
-extern void ReverseDFS(const Graph& g, std::function<void(Node*)> enter,
-                       std::function<void(Node*)> leave);
+extern void ReverseDFS(const Graph& g, const std::function<void(Node*)>& enter,
+                       const std::function<void(Node*)>& leave);
+
+// Perform a reverse depth-first-search on g starting at the 'start' nodes.
+// If enter is not empty, calls enter(n) before visiting any parents of n.
+// If leave is not empty, calls leave(n) after visiting all parents of n.
+extern void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
+                           const std::function<void(Node*)>& enter,
+                           const std::function<void(Node*)>& leave);
 
 // Stores in *order the post-order numbering of all nodes
 // in graph found via a depth first search starting at the source node.

@@ -22,10 +22,11 @@ namespace tensorflow {
 // sharded files, only make its register calls when not __ANDROID_TYPES_SLIM__.
 #if !defined(__ANDROID_TYPES_SLIM__)
 
-REGISTER5(BinaryOp, CPU, "Add", functor::add, int8, int16, complex64,
-          complex128, string);
+REGISTER6(BinaryOp, CPU, "Add", functor::add, int8, int16, complex64,
+          uint8, complex128, string);
 #if GOOGLE_CUDA
-REGISTER3(BinaryOp, GPU, "Add", functor::add, int64, complex64, complex128);
+REGISTER4(BinaryOp, GPU, "Add", functor::add, uint8, int64, complex64,
+          complex128);
 #endif  // GOOGLE_CUDA
 
 #endif  // !defined(__ANDROID_TYPES_SLIM__)

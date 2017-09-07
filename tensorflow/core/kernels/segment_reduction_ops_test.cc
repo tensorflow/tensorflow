@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,8 +39,9 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename Index>
-static void BM_SegmentReduction(int iters, string reduction, Index num_rows,
-                                Index num_cols, Index segment_size) {
+static void BM_SegmentReduction(int iters, const string& reduction,
+                                Index num_rows, Index num_cols,
+                                Index segment_size) {
   testing::StopTiming();
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));

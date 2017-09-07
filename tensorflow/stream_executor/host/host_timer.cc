@@ -19,8 +19,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace perftools {
 namespace gputools {
 namespace host {

@@ -28,6 +28,8 @@ namespace tensorflow {
 
 namespace generator {
 
+enum Interpolation { INTERPOLATION_NEAREST, INTERPOLATION_BILINEAR };
+
 using Eigen::array;
 using Eigen::DenseIndex;
 
@@ -36,20 +38,19 @@ class ProjectiveGenerator {
  private:
   typename TTypes<T, 4>::ConstTensor input_;
   typename TTypes<float>::ConstMatrix transforms_;
+  const Interpolation interpolation_;
 
  public:
   static const int kNumParameters = 8;
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
   ProjectiveGenerator(typename TTypes<T, 4>::ConstTensor input,
-                      typename TTypes<float>::ConstMatrix transforms)
-      : input_(input), transforms_(transforms) {}
+                      typename TTypes<float>::ConstMatrix transforms,
+                      const Interpolation interpolation)
+      : input_(input), transforms_(transforms), interpolation_(interpolation) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const array<DenseIndex, 4>& coords) const {
-    array<DenseIndex, 4> input_coords;
-    input_coords[0] = coords[0];
-
     const int64 output_y = coords[1];
     const int64 output_x = coords[2];
     const float* transform =
@@ -57,24 +58,82 @@ class ProjectiveGenerator {
             ? transforms_.data()
             : &transforms_.data()[transforms_.dimension(1) * coords[0]];
     float projection = transform[6] * output_x + transform[7] * output_y + 1.f;
-    const int64 input_x = std::round(
+    const float input_x =
         (transform[0] * output_x + transform[1] * output_y + transform[2]) /
-        projection);
-    const int64 input_y = std::round(
+        projection;
+    const float input_y =
         (transform[3] * output_x + transform[4] * output_y + transform[5]) /
-        projection);
+        projection;
 
-    if (!(0 <= input_y && input_y < input_.dimension(1) && 0 <= input_x &&
-          input_x < input_.dimension(2))) {
-      // TODO(ringwalt): Add a fill value input.
-      return T(0);
+    // TODO(ringwalt): Add a fill value input.
+#if (defined __CUDA_ARCH__) && (CUDART_VERSION < 8000)
+    // On CUDA versions previous to 8.0, only __shared__ variables
+    // could be declared as static in the device code.
+    const T fill_value = T(0);
+#else
+    static const T fill_value = T(0);
+#endif
+    switch (interpolation_) {
+      case INTERPOLATION_NEAREST:
+        // Switch the order of x and y again for indexing into the image.
+        return nearest_interpolation(coords[0], input_y, input_x, coords[3],
+                                     fill_value);
+      case INTERPOLATION_BILINEAR:
+        return bilinear_interpolation(coords[0], input_y, input_x, coords[3],
+                                      fill_value);
     }
-    input_coords[1] = input_y;
-    input_coords[2] = input_x;
+    // Unreachable; ImageProjectiveTransform only uses INTERPOLATION_NEAREST
+    // or INTERPOLATION_BILINEAR.
+    return T(0);
+  }
 
-    input_coords[3] = coords[3];
+ private:
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
+  nearest_interpolation(const DenseIndex batch, const float y, const float x,
+                        const DenseIndex channel, const T fill_value) const {
+    return read_with_fill_value(batch, DenseIndex(std::round(y)),
+                                DenseIndex(std::round(x)), channel, fill_value);
+  }
 
-    return input_(input_coords);
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
+  bilinear_interpolation(const DenseIndex batch, const float y, const float x,
+                         const DenseIndex channel, const T fill_value) const {
+    const float y_floor = std::floor(y);
+    const float x_floor = std::floor(x);
+    const float y_ceil = y_floor + 1;
+    const float x_ceil = x_floor + 1;
+    // f(x, y_floor) = (x_ceil - x) / (x_ceil - x_floor) * f(x_floor, y_floor)
+    //               + (x - x_floor) / (x_ceil - x_floor) * f(x_ceil, y_floor)
+    const float value_yfloor =
+        (x_ceil - x) * read_with_fill_value(batch, DenseIndex(y_floor),
+                                            DenseIndex(x_floor), channel,
+                                            fill_value) +
+        (x - x_floor) * read_with_fill_value(batch, DenseIndex(y_floor),
+                                             DenseIndex(x_ceil), channel,
+                                             fill_value);
+    // f(x, y_ceil) = (x_ceil - x) / (x_ceil - x_floor) * f(x_floor, y_ceil)
+    //              + (x - x_floor) / (x_ceil - x_floor) * f(x_ceil, y_ceil)
+    const float value_yceil =
+        (x_ceil - x) * read_with_fill_value(batch, DenseIndex(y_ceil),
+                                            DenseIndex(x_floor), channel,
+                                            fill_value) +
+        (x - x_floor) * read_with_fill_value(batch, DenseIndex(y_ceil),
+                                             DenseIndex(x_ceil), channel,
+                                             fill_value);
+    // f(x, y) = (y_ceil - y) / (y_ceil - y_floor) * f(x, y_floor)
+    //         + (y - y_floor) / (y_ceil - y_floor) * f(x, y_ceil)
+    return T((y_ceil - y) * value_yfloor + (y - y_floor) * value_yceil);
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T read_with_fill_value(
+      const DenseIndex batch, const DenseIndex y, const DenseIndex x,
+      const DenseIndex channel, const T fill_value) const {
+    // batch and channel must be correct, because they are passed unchanged from
+    // the input.
+    return (0 <= y && y < input_.dimension(1) && 0 <= x &&
+            x < input_.dimension(2))
+               ? input_(array<DenseIndex, 4>{batch, y, x, channel})
+               : fill_value;
   }
 };
 
@@ -85,6 +144,7 @@ class ProjectiveGenerator {
 // some Eigen device code.
 namespace functor {
 
+using generator::Interpolation;
 using generator::ProjectiveGenerator;
 
 template <typename Device, typename T>
@@ -92,15 +152,17 @@ struct FillProjectiveTransform {
   typedef typename TTypes<T, 4>::Tensor OutputType;
   typedef typename TTypes<T, 4>::ConstTensor InputType;
   typedef typename TTypes<float, 2>::ConstTensor TransformsType;
+  const Interpolation interpolation_;
 
-  FillProjectiveTransform() {}
+  FillProjectiveTransform(Interpolation interpolation)
+      : interpolation_(interpolation) {}
 
   EIGEN_ALWAYS_INLINE
   void operator()(const Device& device, OutputType* output,
                   const InputType& images,
                   const TransformsType& transform) const {
-    ProjectiveGenerator<Device, T> generator(images, transform);
-    output->device(device) = images.generate(generator);
+    output->device(device) = images.generate(
+        ProjectiveGenerator<Device, T>(images, transform, interpolation_));
   }
 };
 

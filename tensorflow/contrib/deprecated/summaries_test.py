@@ -18,43 +18,46 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.platform import test
 
 
-class DeprecatedSummariesTest(tf.test.TestCase):
+class DeprecatedSummariesTest(test.TestCase):
 
   def testScalarSummary(self):
     with self.test_session():
-      c = tf.constant(3)
-      s = tf.contrib.deprecated.scalar_summary('tag', c)
+      c = constant_op.constant(3)
+      s = logging_ops.scalar_summary('tag', c)
       self.assertEqual(s.op.type, u'ScalarSummary')
 
   def testHistogramSummary(self):
     with self.test_session():
-      c = tf.constant(3)
-      s = tf.contrib.deprecated.histogram_summary('tag', c)
+      c = constant_op.constant(3)
+      s = logging_ops.histogram_summary('tag', c)
       self.assertEqual(s.op.type, u'HistogramSummary')
 
   def testImageSummary(self):
     with self.test_session():
-      i = tf.ones((5, 4, 4, 3))
-      s = tf.contrib.deprecated.image_summary('tag', i)
+      i = array_ops.ones((5, 4, 4, 3))
+      s = logging_ops.image_summary('tag', i)
       self.assertEqual(s.op.type, u'ImageSummary')
 
   def testAudioSummary(self):
     with self.test_session():
-      c = tf.constant(3.0)
-      s = tf.contrib.deprecated.audio_summary('tag', c, sample_rate=8000)
+      c = constant_op.constant(3.0)
+      s = logging_ops.audio_summary('tag', c, sample_rate=8000)
       self.assertEqual(s.op.type, u'AudioSummaryV2')
 
   def testMergeSummary(self):
     with self.test_session():
-      c = tf.constant(3)
-      a = tf.contrib.deprecated.scalar_summary('a', c)
-      b = tf.contrib.deprecated.scalar_summary('b', c)
-      s = tf.contrib.deprecated.merge_summary([a, b])
+      c = constant_op.constant(3)
+      a = logging_ops.scalar_summary('a', c)
+      b = logging_ops.scalar_summary('b', c)
+      s = logging_ops.merge_summary([a, b])
       self.assertEqual(s.op.type, u'MergeSummary')
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

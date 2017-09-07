@@ -1,0 +1,37 @@
+path: "tensorflow.DeviceSpec"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.device.DeviceSpec\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "job"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "replica"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'job\', \'replica\', \'task\', \'device_type\', \'device_index\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_string"
+    argspec: "args=[\'spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_from"
+    argspec: "args=[\'self\', \'dev\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "parse_from_string"
+    argspec: "args=[\'self\', \'spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_string"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

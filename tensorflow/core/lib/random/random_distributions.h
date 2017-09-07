@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/philox_random.h"
 
+
 namespace tensorflow {
 namespace random {
 
@@ -373,7 +374,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
       for (int i = 0; i < 2; ++i) {
-        if (fabs(f[i]) < kTruncateValue) {
+        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
           results[index++] = Eigen::half(f[i]);
           if (index >= kResultElementCount) {
             return results;
@@ -416,7 +417,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
       for (int i = 0; i < 2; ++i) {
-        if (fabs(f[i]) < kTruncateValue) {
+        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
           results[index++] = f[i];
           if (index >= kResultElementCount) {
             return results;
@@ -458,7 +459,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
       BoxMullerDouble(x0, x1, x2, x3, &d[0], &d[1]);
 
       for (int i = 0; i < 2; ++i) {
-        if (fabs(d[i]) < kTruncateValue) {
+        if (Eigen::numext::abs(d[i]) < kTruncateValue) {
           results[index++] = d[i];
           if (index >= kResultElementCount) {
             return results;
@@ -483,12 +484,12 @@ void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
     u1 = epsilon;
   }
   const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
-  const float u2 = sqrt(-2.0f * log(u1));
-#if defined(__linux__)
-  sincosf(v1, f0, f1);
+  const float u2 = Eigen::numext::sqrt(-2.0f * Eigen::numext::log(u1));
+#if defined(TENSORFLOW_USE_SYCL) || !defined(__linux__)
+  *f0 = Eigen::numext::sin(v1);
+  *f1 = Eigen::numext::cos(v1);
 #else
-  *f0 = sinf(v1);
-  *f1 = cosf(v1);
+  sincosf(v1, f0, f1);
 #endif
   *f0 *= u2;
   *f1 *= u2;
@@ -509,12 +510,12 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
     u1 = epsilon;
   }
   const double v1 = 2 * M_PI * Uint64ToDouble(x2, x3);
-  const double u2 = sqrt(-2.0 * log(u1));
-#if defined(__linux__)
-  sincos(v1, d0, d1);
+  const double u2 = Eigen::numext::sqrt(-2.0 * Eigen::numext::log(u1));
+#if defined(TENSORFLOW_USE_SYCL) || !defined(__linux__)
+  *d0 = Eigen::numext::sin(v1);
+  *d1 = Eigen::numext::cos(v1);
 #else
-  *d0 = sin(v1);
-  *d1 = cos(v1);
+  sincos(v1, d0, d1);
 #endif
   *d0 *= u2;
   *d1 *= u2;

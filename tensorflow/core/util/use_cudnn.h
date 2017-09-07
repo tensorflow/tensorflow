@@ -22,13 +22,8 @@ namespace tensorflow {
 
 bool CanUseCudnn();
 bool CudnnUseAutotune();
+bool CudnnDisableConv1x1Optimization();
 
-namespace internal {
-
-// This function is for transition only. And it may go away at any time.
-bool AvgPoolUseCudnn();
-
-}  // namespace internal
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_UTIL_USE_CUDNN_H_

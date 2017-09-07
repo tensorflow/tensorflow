@@ -16,37 +16,10 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <array>
-
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-
-int ShapeReadWriteFromTensorShape::dims() const { return const_shape_->dims(); }
-
-int64 ShapeReadWriteFromTensorShape::dim_size(int idx) const {
-  return const_shape_->dim_size(idx);
-}
-
-void ShapeReadWriteFromTensorShape::add_dim(int64 size) {
-  DCHECK_NE(size, -1);
-  DCHECK(shape_ != nullptr) << "add_dim can only be called on non-const shape";
-  shape_->AddDim(size);
-}
-
-int ShapeReadWriteFromTensorShapeProto::dims() const {
-  return const_shape_->dim_size();
-}
-
-int64 ShapeReadWriteFromTensorShapeProto::dim_size(int idx) const {
-  return const_shape_->dim(idx).size();
-}
-
-void ShapeReadWriteFromTensorShapeProto::add_dim(int64 size) {
-  DCHECK(shape_ != nullptr) << "add_dim can only be called on non-const shape";
-  shape_->add_dim()->set_size(size);
-}
-
 namespace {
 
 /// Constants
@@ -173,12 +146,11 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
 
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
-    const Tensor& strides_tensor, const ShapeReadWriteInterface& input_shape,
+    const Tensor& strides_tensor, const PartialTensorShape& input_shape,
     int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
     int32 new_axis_mask, int32 shrink_axis_mask,
-    ShapeReadWriteInterface* processing_shape,
-    ShapeReadWriteInterface* final_shape, bool* is_identity,
-    bool* is_simple_slice, bool* slice_dim0,
+    PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
+    bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
     gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
     gtl::InlinedVector<int64, 4>* strides) {
   const bool begin_is_wrong =
@@ -275,6 +247,7 @@ Status ValidateStridedSliceOp(
   *is_identity = true;
   *slice_dim0 = true;
   *is_simple_slice = true;
+  processing_shape->Clear();
   for (int i = 0; i < input_shape.dims(); ++i) {
     int64& begin_i = (*begin)[i];
     int64& end_i = (*end)[i];
@@ -285,7 +258,7 @@ Status ValidateStridedSliceOp(
     }
     bool shrink_i = (dense_spec.shrink_axis_mask & (1 << i));
     if (dim_i == -1) {
-      processing_shape->add_dim(shrink_i ? 1 : -1);
+      processing_shape->AddDim(shrink_i ? 1 : -1);
       continue;
     }
 
@@ -372,9 +345,9 @@ Status ValidateStridedSliceOp(
         size_i = interval_length / stride_i +
                  (interval_length % stride_i != 0 ? 1 : 0);
       }
-      processing_shape->add_dim(size_i);
+      processing_shape->AddDim(size_i);
     } else {
-      processing_shape->add_dim(-1);
+      processing_shape->AddDim(-1);
     }
   }
 
@@ -383,12 +356,39 @@ Status ValidateStridedSliceOp(
   // new_axis will increase dimension by 1 (with a one-size dimension)
   // slices like foo[3,...] will reduce dimension by 1.
   // This cannot be done earlier, because it depends on Step 3.
+  final_shape->Clear();
   for (auto gather_index : dense_spec.final_shape_gather_indices) {
     if (gather_index >= 0) {
-      final_shape->add_dim(processing_shape->dim_size(gather_index));
+      final_shape->AddDim(processing_shape->dim_size(gather_index));
     } else if (gather_index == kNewAxis) {
-      final_shape->add_dim(1);
+      final_shape->AddDim(1);
     }
+  }
+  return Status::OK();
+}
+
+Status ValidateStridedSliceOp(
+    const Tensor* begin_tensor, const Tensor* end_tensor,
+    const Tensor& strides_tensor, const PartialTensorShape& input_shape,
+    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
+    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
+    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
+    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
+    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides) {
+  // Validate with PartialTensorShape output
+  PartialTensorShape partial_processing_shape, partial_final_shape;
+  TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
+      begin_tensor, end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &partial_processing_shape, &partial_final_shape, is_identity,
+      is_simple_slice, slice_dim0, begin, end, strides));
+
+  // Verify that the output shapes are fully known
+  if (!partial_processing_shape.AsTensorShape(processing_shape) ||
+      !partial_final_shape.AsTensorShape(final_shape)) {
+    return errors::Internal("ValidateStridedSliceOp returned partial shapes ",
+                            partial_processing_shape.DebugString(), " and ",
+                            partial_final_shape.DebugString());
   }
   return Status::OK();
 }

@@ -58,14 +58,14 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 template <typename Device, typename T>
 struct LaunchGeneric {
-  static void launch(OpKernelContext* ctx, const Tensor& input,
-                     const Tensor& filter, int row_stride, int col_stride,
-                     const Eigen::PaddingType& padding, Tensor* output,
-                     TensorFormat data_format) {
+  void operator()(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int row_stride, int col_stride,
+                  const Padding& padding, Tensor* output,
+                  TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
-    if (filter.dim_size(1) == filter.dim_size(0) && filter.dim_size(0) == 1 &&
-        row_stride == 1 && col_stride == 1) {
+    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+        col_stride == 1) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       //
@@ -85,26 +85,44 @@ struct LaunchGeneric {
           input.shaped<T, 2>({conv_width, filter.dim_size(2)}),
           filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
           dim_pair);
+    } else if (filter.dim_size(0) == input.dim_size(1) &&
+               filter.dim_size(1) == input.dim_size(2) && padding == VALID) {
+      // If the input data and filter have the same height/width,
+      // the 2D convolution is reduced to matrix multiplication.
+      const int k =  // Length of reduction dimension.
+          filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+      functor::MatMulConvFunctor<Device, T>()(
+          ctx->eigen_device<Device>(),
+          output->shaped<T, 2>({input.dim_size(0), filter.dim_size(3)}),
+          input.shaped<T, 2>({input.dim_size(0), k}),
+          filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair);
     } else {
       functor::SpatialConvolution<Device, T>()(
           ctx->eigen_device<Device>(), output->tensor<T, 4>(),
           input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
-          padding);
+          BrainPadding2EigenPadding(padding));
     }
   }
 };
 }  // namespace
 
 template <typename T>
-class LaunchConv2DOp<CPUDevice, T> {
- public:
-  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-              const Tensor& input, const Tensor& filter, int row_stride,
-              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
-              TensorFormat data_format) {
-    LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
-                                        col_stride, padding, output,
-                                        data_format);
+struct LaunchConv2DOp<CPUDevice, T> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_stride,
+                  int col_stride, const Padding& padding, Tensor* output,
+                  TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC) {
+      ctx->SetStatus(
+          errors::Unimplemented("Generic conv implementation only supports "
+                                "NHWC tensor format for now."));
+      return;
+    }
+    LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
+                                  padding, output, data_format);
   }
 };
 
@@ -196,18 +214,27 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.S = filter_cols;
     desc.u = stride_rows;
     desc.v = stride_cols;
-    desc.pad_h_in = pad_rows;  // ignored by libxsmm for now.
-    desc.pad_w_in = pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h = pad_rows;
+    desc.pad_w = pad_cols;
+    desc.pad_h_in = 0;
+    desc.pad_w_in = 0;
     desc.pad_h_out = 0;
     desc.pad_w_out = 0;
     desc.threads = num_threads;
     desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
-    desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_RSCK;
+    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
+    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE_OVERWRITE;
+    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
 
     auto input_ptr = input.template flat<float>().data();
     auto filter_ptr = filter.template flat<float>().data();
@@ -263,18 +290,19 @@ class Conv2DOp : public BinaryOp<T> {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
@@ -282,18 +310,20 @@ class Conv2DOp : public BinaryOp<T> {
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
     const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
     const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -354,9 +384,8 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
 
-    launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-                     stride_rows, stride_cols,
-                     BrainPadding2EigenPadding(padding_), output, data_format_);
+    launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+              stride_rows, stride_cols, padding_, output, data_format_);
   }
 
  private:
@@ -404,16 +433,18 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
 }
 
 // A dummy type to group forward convolution autotune results together.
-struct ConvAutoTuneGroup {};
+struct ConvAutoTuneGroup {
+  static string name() { return "Conv"; }
+};
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConv;
 
 template <typename T>
-void LaunchConv2DOp<GPUDevice, T>::launch(
+void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& input_param, const Tensor& filter, int row_stride,
-    int col_stride, const Eigen::PaddingType& padding, Tensor* output,
+    int col_stride, const Padding& padding, Tensor* output,
     TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
   using perftools::gputools::dnn::AlgorithmType;
@@ -430,6 +461,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   }
 
   Tensor input = input_param;
+
   if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
       col_stride == 1 && data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
@@ -454,9 +486,37 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                       ", n=", n, ", k=", k));
     }
+    return;
+  } else if (filter.dim_size(0) == input.dim_size(1) &&
+             filter.dim_size(1) == input.dim_size(2) && padding == VALID &&
+             data_format == FORMAT_NHWC) {
+    // The input data and filter have the same height/width, so call cublas
+    // directly.
+    const uint64 m = input.dim_size(0);
+    const uint64 k =
+        filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+    const uint64 n = filter.dim_size(3);
 
+    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                input.template flat<T>().size());
+    auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                filter.template flat<T>().size());
+    auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                output->template flat<T>().size());
+
+    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
+                           a_ptr, k, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
+    }
     return;
   }
+
   int padding_rows = 0;
   int padding_cols = 0;
   const int64 in_batch = GetTensorDim(input, data_format, 'N');
@@ -469,7 +529,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   const int64 out_depths = GetTensorDim(*output, data_format, 'C');
   const int64 patch_rows = filter.dim_size(0);
   const int64 patch_cols = filter.dim_size(1);
-  if (padding == Eigen::PADDING_SAME) {
+  if (padding == SAME) {
     // Total padding on rows and cols is
     // Pr = (R' - 1) * S + Kr - R
     // Pc = (C' - 1) * S + Kc - C
@@ -584,25 +644,28 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
       );
 
   int device_id = stream->parent()->device_ordinal();
+  DataType dtype = input.dtype();
   ConvParameters conv_parameters = {
-      in_batch,      // batch
-      in_depths,     // in_depths
-      in_rows,       // in_rows
-      in_cols,       // in_cols
-      out_depths,    // out_depths
-      patch_rows,    // filter_rows
-      patch_cols,    // filter_cols
-      row_stride,    // stride_rows
-      col_stride,    // stride_cols
-      padding_rows,  // padding_rows
-      padding_cols,  // padding_cols
-      device_id,     // device_id
+      in_batch,          // batch
+      in_depths,         // in_depths
+      {{in_rows,         // in_rows
+        in_cols}},       // in_cols
+      out_depths,        // out_depths
+      {{patch_rows,      // filter_rows
+        patch_cols}},    // filter_cols
+      {{row_stride,      // stride_rows
+        col_stride}},    // stride_cols
+      {{padding_rows,    // padding_rows
+        padding_cols}},  // padding_cols
+      dtype,             // tensor datatype
+      device_id,         // device_id
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmType> algorithms;
-    CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
+    CHECK(stream->parent()->GetConvolveAlgorithms(
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -631,16 +694,18 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
         }
       }
     }
-    OP_REQUIRES(ctx, best_result.is_valid() &&
-                         best_result.algorithm() != kDefaultAlgorithm,
-                errors::NotFound("No algorithm worked!"));
+    // TODO(yangzihao): refactor the profile result checking code into a common
+    // utility function.
     OP_REQUIRES(ctx,
-                best_result_no_scratch.is_valid() &&
-                    best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                errors::NotFound("No algorithm without scratch worked!"));
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_algorithm_no_scratch(
-        best_result_no_scratch.algorithm());
+                best_result.is_valid() || best_result_no_scratch.is_valid(),
+                errors::NotFound("No algorithm worked!"));
+    if (best_result.is_valid()) {
+      algorithm_config.set_algorithm(best_result.algorithm());
+    }
+    if (best_result_no_scratch.is_valid()) {
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+    }
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 

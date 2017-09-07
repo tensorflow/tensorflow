@@ -1,0 +1,423 @@
+path: "tensorflow.train"
+tf_module {
+  member {
+    name: "AdadeltaOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdagradDAOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdagradOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdamOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BytesList"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "CheckpointSaverHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointSaverListener"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ChiefSessionCreator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ClusterDef"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "ClusterSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Coordinator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Example"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "ExponentialMovingAverage"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Feature"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "FeatureList"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "FeatureLists"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "Features"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "FeedFnHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FinalOpsHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FloatList"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "FtrlOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GlobalStepWaiterHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GradientDescentOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Int64List"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "JobDef"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "LoggingTensorHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LooperThread"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MomentumOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MonitoredSession"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NanLossDuringTrainingError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NanTensorHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Optimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ProximalAdagradOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ProximalGradientDescentOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "QueueRunner"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RMSPropOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Saver"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SaverDef"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "Scaffold"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SecondOrStepTimer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SequenceExample"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "Server"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ServerDef"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "SessionCreator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionManager"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunArgs"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunValues"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SingularMonitoredSession"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StepCounterHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StopAtStepHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SummarySaverHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Supervisor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SyncReplicasOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "WorkerSessionCreator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "queue_runner"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "MonitoredTrainingSession"
+    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'600\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\'], "
+  }
+  member_method {
+    name: "NewCheckpointReader"
+    argspec: "args=[\'filepattern\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "add_queue_runner"
+    argspec: "args=[\'qr\', \'collection\'], varargs=None, keywords=None, defaults=[\'queue_runners\'], "
+  }
+  member_method {
+    name: "assert_global_step"
+    argspec: "args=[\'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "basic_train_loop"
+    argspec: "args=[\'supervisor\', \'train_step_fn\', \'args\', \'kwargs\', \'master\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\'], "
+  }
+  member_method {
+    name: "batch"
+    argspec: "args=[\'tensors\', \'batch_size\', \'num_threads\', \'capacity\', \'enqueue_many\', \'shapes\', \'dynamic_pad\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'32\', \'False\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "batch_join"
+    argspec: "args=[\'tensors_list\', \'batch_size\', \'capacity\', \'enqueue_many\', \'shapes\', \'dynamic_pad\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'32\', \'False\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "checkpoint_exists"
+    argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "create_global_step"
+    argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "do_quantize_training_on_graphdef"
+    argspec: "args=[\'input_graph\', \'num_bits\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "exponential_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "export_meta_graph"
+    argspec: "args=[\'filename\', \'meta_info_def\', \'graph_def\', \'saver_def\', \'collection_list\', \'as_text\', \'graph\', \'export_scope\', \'clear_devices\', \'clear_extraneous_savers\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "generate_checkpoint_state_proto"
+    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_checkpoint_mtimes"
+    argspec: "args=[\'checkpoint_prefixes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_checkpoint_state"
+    argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_global_step"
+    argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_or_create_global_step"
+    argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "global_step"
+    argspec: "args=[\'sess\', \'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "import_meta_graph"
+    argspec: "args=[\'meta_graph_or_file\', \'clear_devices\', \'import_scope\'], varargs=None, keywords=kwargs, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "init_from_checkpoint"
+    argspec: "args=[\'ckpt_dir_or_file\', \'assignment_map\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "input_producer"
+    argspec: "args=[\'input_tensor\', \'element_shape\', \'num_epochs\', \'shuffle\', \'seed\', \'capacity\', \'shared_name\', \'summary_name\', \'name\', \'cancel_op\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'32\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "inverse_time_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "latest_checkpoint"
+    argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "limit_epochs"
+    argspec: "args=[\'tensor\', \'num_epochs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "list_variables"
+    argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_checkpoint"
+    argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_variable"
+    argspec: "args=[\'ckpt_dir_or_file\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "match_filenames_once"
+    argspec: "args=[\'pattern\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "maybe_batch"
+    argspec: "args=[\'tensors\', \'keep_input\', \'batch_size\', \'num_threads\', \'capacity\', \'enqueue_many\', \'shapes\', \'dynamic_pad\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'32\', \'False\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "maybe_batch_join"
+    argspec: "args=[\'tensors_list\', \'keep_input\', \'batch_size\', \'capacity\', \'enqueue_many\', \'shapes\', \'dynamic_pad\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'32\', \'False\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "maybe_shuffle_batch"
+    argspec: "args=[\'tensors\', \'batch_size\', \'capacity\', \'min_after_dequeue\', \'keep_input\', \'num_threads\', \'seed\', \'enqueue_many\', \'shapes\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'False\', \'None\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "maybe_shuffle_batch_join"
+    argspec: "args=[\'tensors_list\', \'batch_size\', \'capacity\', \'min_after_dequeue\', \'keep_input\', \'seed\', \'enqueue_many\', \'shapes\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "natural_exp_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "piecewise_constant"
+    argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "polynomial_decay"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'end_learning_rate\', \'power\', \'cycle\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1.0\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "range_input_producer"
+    argspec: "args=[\'limit\', \'num_epochs\', \'shuffle\', \'seed\', \'capacity\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'32\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "replica_device_setter"
+    argspec: "args=[\'ps_tasks\', \'ps_device\', \'worker_device\', \'merge_devices\', \'cluster\', \'ps_ops\', \'ps_strategy\'], varargs=None, keywords=None, defaults=[\'0\', \'/job:ps\', \'/job:worker\', \'True\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "sdca_fprint"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "sdca_optimizer"
+    argspec: "args=[\'sparse_example_indices\', \'sparse_feature_indices\', \'sparse_feature_values\', \'dense_features\', \'example_weights\', \'example_labels\', \'sparse_indices\', \'sparse_weights\', \'dense_weights\', \'example_state_data\', \'loss_type\', \'l1\', \'l2\', \'num_loss_partitions\', \'num_inner_iterations\', \'adaptative\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "sdca_shrink_l1"
+    argspec: "args=[\'weights\', \'l1\', \'l2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "shuffle_batch"
+    argspec: "args=[\'tensors\', \'batch_size\', \'capacity\', \'min_after_dequeue\', \'num_threads\', \'seed\', \'enqueue_many\', \'shapes\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'False\', \'None\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "shuffle_batch_join"
+    argspec: "args=[\'tensors_list\', \'batch_size\', \'capacity\', \'min_after_dequeue\', \'seed\', \'enqueue_many\', \'shapes\', \'allow_smaller_final_batch\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "slice_input_producer"
+    argspec: "args=[\'tensor_list\', \'num_epochs\', \'shuffle\', \'seed\', \'capacity\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'32\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "start_queue_runners"
+    argspec: "args=[\'sess\', \'coord\', \'daemon\', \'start\', \'collection\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'True\', \'queue_runners\'], "
+  }
+  member_method {
+    name: "string_input_producer"
+    argspec: "args=[\'string_tensor\', \'num_epochs\', \'shuffle\', \'seed\', \'capacity\', \'shared_name\', \'name\', \'cancel_op\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'32\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "summary_iterator"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_checkpoint_state"
+    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "write_graph"
+    argspec: "args=[\'graph_or_graph_def\', \'logdir\', \'name\', \'as_text\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+}

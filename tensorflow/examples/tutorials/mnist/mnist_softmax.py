@@ -16,7 +16,7 @@
 """A very simple MNIST classifier.
 
 See extensive documentation at
-http://tensorflow.org/tutorials/mnist/beginners/index.md
+https://www.tensorflow.org/get_started/mnist/beginners
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -54,7 +54,8 @@ def main(_):
   #
   # So here we use tf.nn.softmax_cross_entropy_with_logits on the raw
   # outputs of 'y', and then average across the batch.
-  cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y, y_))
+  cross_entropy = tf.reduce_mean(
+      tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
   train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
   sess = tf.InteractiveSession()

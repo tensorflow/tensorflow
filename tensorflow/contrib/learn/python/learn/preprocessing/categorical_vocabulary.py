@@ -128,9 +128,9 @@ class CategoricalVocabulary(object):
       Class name.
 
     Raises:
-      ValueError: if this vocabulary wasn't initalized with support_reverse.
+      ValueError: if this vocabulary wasn't initialized with support_reverse.
     """
     if not self._support_reverse:
-      raise ValueError("This vocabulary wasn't initalized with "
+      raise ValueError("This vocabulary wasn't initialized with "
                        "support_reverse to support reverse() function.")
     return self._reverse_mapping[class_id]

@@ -72,7 +72,9 @@ SSIZE_T pread(HANDLE hfile, char* src, size_t num_bytes, uint64_t offset) {
 
   BOOL read_result = ::ReadFile(hfile, src, static_cast<DWORD>(num_bytes),
                                 &bytes_read, &overlapped);
-  if ((FALSE == read_result) &&
+  if (TRUE == read_result) {
+    result = bytes_read;
+  } else if ((FALSE == read_result) &&
       ((last_error = GetLastError()) != ERROR_IO_PENDING)) {
     result = (last_error == ERROR_HANDLE_EOF) ? 0 : -1;
   } else {
@@ -225,19 +227,18 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 Status WindowsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
+  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
 
   // Open the file for read-only random access
-  // Random access is to disable read-ahead as the system reads too much data
   // Open in async mode which makes Windows allow more parallelism even
   // if we need to do sync I/O on top of it.
-  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_RANDOM_ACCESS |
-      FILE_FLAG_OVERLAPPED;
+  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED;
   // Shared access is necessary for tests to pass
   // almost all tests would work with a possible exception of fault_injection.
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
-  HANDLE hfile = ::CreateFileA(translated_fname.c_str(), GENERIC_READ,
+  HANDLE hfile = ::CreateFileW(ws_translated_fname.c_str(), GENERIC_READ,
                                share_mode, NULL, OPEN_EXISTING, file_flags,
                                NULL);
 
@@ -253,10 +254,11 @@ Status WindowsFileSystem::NewRandomAccessFile(
 Status WindowsFileSystem::NewWritableFile(
     const string& fname, std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
+  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
 
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-  HANDLE hfile = ::CreateFileA(translated_fname.c_str(), GENERIC_WRITE,
+  HANDLE hfile = ::CreateFileW(ws_translated_fname.c_str(), GENERIC_WRITE,
                                share_mode, NULL, CREATE_ALWAYS,
                                FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -272,10 +274,11 @@ Status WindowsFileSystem::NewWritableFile(
 Status WindowsFileSystem::NewAppendableFile(
     const string& fname, std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
+  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
 
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-  HANDLE hfile = ::CreateFileA(translated_fname.c_str(), GENERIC_WRITE,
+  HANDLE hfile = ::CreateFileW(ws_translated_fname.c_str(), GENERIC_WRITE,
                                share_mode, NULL, OPEN_ALWAYS,
                                FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -301,18 +304,19 @@ Status WindowsFileSystem::NewAppendableFile(
 Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
     const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string translated_fname = TranslateName(fname);
+  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
   Status s = Status::OK();
 
-  // Open the file for read-only random access
-  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_RANDOM_ACCESS;
+  // Open the file for read-only
+  DWORD file_flags = FILE_ATTRIBUTE_READONLY;
 
   // Open in async mode which makes Windows allow more parallelism even
   // if we need to do sync I/O on top of it.
   file_flags |= FILE_FLAG_OVERLAPPED;
 
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-  HANDLE hfile = ::CreateFileA(translated_fname.c_str(), GENERIC_READ,
+  HANDLE hfile = ::CreateFileW(ws_translated_fname.c_str(), GENERIC_READ,
                                share_mode, NULL, OPEN_EXISTING, file_flags,
                                NULL);
 
@@ -382,28 +386,30 @@ Status WindowsFileSystem::FileExists(const string& fname) {
 Status WindowsFileSystem::GetChildren(const string& dir,
                                       std::vector<string>* result) {
   string translated_dir = TranslateName(dir);
+  std::wstring ws_translated_dir = Utf8ToWideChar(translated_dir);
   result->clear();
 
-  string pattern = translated_dir;
+  std::wstring pattern = ws_translated_dir;
   if (!pattern.empty() && pattern.back() != '\\' && pattern.back() != '/') {
-    pattern += "\\*";
+    pattern += L"\\*";
   } else {
-    pattern += '*';
+    pattern += L'*';
   }
 
-  WIN32_FIND_DATA find_data;
-  HANDLE find_handle = ::FindFirstFileA(pattern.c_str(), &find_data);
+  WIN32_FIND_DATAW find_data;
+  HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
   if (find_handle == INVALID_HANDLE_VALUE) {
     string context = "FindFirstFile failed for: " + translated_dir;
     return IOErrorFromWindowsError(context, ::GetLastError());
   }
 
   do {
-    const StringPiece basename = find_data.cFileName;
+	string file_name = WideCharToUtf8(find_data.cFileName);
+	const StringPiece basename = file_name;
     if (basename != "." && basename != "..") {
-      result->push_back(find_data.cFileName);
+      result->push_back(file_name);
     }
-  } while (::FindNextFileA(find_handle, &find_data));
+  } while (::FindNextFileW(find_handle, &find_data));
 
   if (!::FindClose(find_handle)) {
     string context = "FindClose failed for: " + translated_dir;
@@ -415,7 +421,8 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
 Status WindowsFileSystem::DeleteFile(const string& fname) {
   Status result;
-  if (unlink(TranslateName(fname).c_str()) != 0) {
+  std::wstring file_name = Utf8ToWideChar(fname);
+  if (_wunlink(file_name.c_str()) != 0) {
     result = IOError("Failed to delete a file: " + fname, errno);
   }
   return result;
@@ -423,7 +430,8 @@ Status WindowsFileSystem::DeleteFile(const string& fname) {
 
 Status WindowsFileSystem::CreateDir(const string& name) {
   Status result;
-  if (_mkdir(TranslateName(name).c_str()) != 0) {
+  std::wstring ws_name = Utf8ToWideChar(name);
+  if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
   }
   return result;
@@ -431,7 +439,8 @@ Status WindowsFileSystem::CreateDir(const string& name) {
 
 Status WindowsFileSystem::DeleteDir(const string& name) {
   Status result;
-  if (_rmdir(TranslateName(name).c_str()) != 0) {
+  std::wstring ws_name = Utf8ToWideChar(name);
+  if (_wrmdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to remove a directory: " + name, errno);
   }
   return result;
@@ -439,9 +448,10 @@ Status WindowsFileSystem::DeleteDir(const string& name) {
 
 Status WindowsFileSystem::GetFileSize(const string& fname, uint64* size) {
   string translated_fname = TranslateName(fname);
+  std::wstring ws_translated_dir = Utf8ToWideChar(translated_fname);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
-  if (TRUE == ::GetFileAttributesExA(translated_fname.c_str(),
+  if (TRUE == ::GetFileAttributesExW(ws_translated_dir.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
     ULARGE_INTEGER file_size;
     file_size.HighPart = attrs.nFileSizeHigh;
@@ -459,7 +469,9 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
   Status result;
   // rename() is not capable of replacing the existing file as on Linux
   // so use OS API directly
-  if (!::MoveFileExA(TranslateName(src).c_str(), TranslateName(target).c_str(),
+  std::wstring ws_translated_src = Utf8ToWideChar(TranslateName(src));
+  std::wstring ws_translated_target = Utf8ToWideChar(TranslateName(target));
+  if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
       MOVEFILE_REPLACE_EXISTING)) {
     string context(strings::StrCat("Failed to rename: ", src, " to: ", target));
     result = IOErrorFromWindowsError(context, ::GetLastError());
@@ -487,12 +499,13 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
 Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   Status result;
   struct _stat sbuf;
-  if (_stat(TranslateName(fname).c_str(), &sbuf) != 0) {
+  std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
+  if (_wstat(ws_translated_fname.c_str(), &sbuf) != 0) {
     result = IOError(fname, errno);
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;
     stat->length = sbuf.st_size;
-    stat->is_directory = PathIsDirectory(TranslateName(fname).c_str());
+    stat->is_directory = PathIsDirectoryW(ws_translated_fname.c_str());
   }
   return result;
 }

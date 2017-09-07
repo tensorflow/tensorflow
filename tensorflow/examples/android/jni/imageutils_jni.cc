@@ -20,14 +20,11 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/examples/android/jni/rgb2yuv.h"
 #include "tensorflow/examples/android/jni/yuv2rgb.h"
 
 #define IMAGEUTILS_METHOD(METHOD_NAME) \
   Java_org_tensorflow_demo_env_ImageUtils_##METHOD_NAME  // NOLINT
-
-using namespace tensorflow;
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,14 +69,13 @@ IMAGEUTILS_METHOD(convertYUV420SPToARGB8888)(
   jint* const o = env->GetIntArrayElements(output, &outputCopy);
 
   if (halfSize) {
-    ConvertYUV420SPToARGB8888HalfSize(reinterpret_cast<uint8*>(i),
-                                      reinterpret_cast<uint32*>(o),
-                                      width, height);
+    ConvertYUV420SPToARGB8888HalfSize(reinterpret_cast<uint8_t*>(i),
+                                      reinterpret_cast<uint32_t*>(o), width,
+                                      height);
   } else {
-    ConvertYUV420SPToARGB8888(reinterpret_cast<uint8*>(i),
-                              reinterpret_cast<uint8*>(i) + width * height,
-                              reinterpret_cast<uint32*>(o),
-                              width, height);
+    ConvertYUV420SPToARGB8888(reinterpret_cast<uint8_t*>(i),
+                              reinterpret_cast<uint8_t*>(i) + width * height,
+                              reinterpret_cast<uint32_t*>(o), width, height);
   }
 
   env->ReleaseByteArrayElements(input, i, JNI_ABORT);
@@ -96,17 +92,17 @@ JNIEXPORT void JNICALL IMAGEUTILS_METHOD(convertYUV420ToARGB8888)(
   jint* const o = env->GetIntArrayElements(output, &outputCopy);
 
   if (halfSize) {
-    ConvertYUV420SPToARGB8888HalfSize(reinterpret_cast<uint8*>(y_buff),
-                                      reinterpret_cast<uint32*>(o), width,
+    ConvertYUV420SPToARGB8888HalfSize(reinterpret_cast<uint8_t*>(y_buff),
+                                      reinterpret_cast<uint32_t*>(o), width,
                                       height);
   } else {
     jbyte* const u_buff = env->GetByteArrayElements(u, &inputCopy);
     jbyte* const v_buff = env->GetByteArrayElements(v, &inputCopy);
 
     ConvertYUV420ToARGB8888(
-        reinterpret_cast<uint8*>(y_buff), reinterpret_cast<uint8*>(u_buff),
-        reinterpret_cast<uint8*>(v_buff), reinterpret_cast<uint32*>(o), width,
-        height, y_row_stride, uv_row_stride, uv_pixel_stride);
+        reinterpret_cast<uint8_t*>(y_buff), reinterpret_cast<uint8_t*>(u_buff),
+        reinterpret_cast<uint8_t*>(v_buff), reinterpret_cast<uint32_t*>(o),
+        width, height, y_row_stride, uv_row_stride, uv_pixel_stride);
 
     env->ReleaseByteArrayElements(u, u_buff, JNI_ABORT);
     env->ReleaseByteArrayElements(v, v_buff, JNI_ABORT);
@@ -125,9 +121,8 @@ JNIEXPORT void JNICALL IMAGEUTILS_METHOD(convertYUV420SPToRGB565)(
   jboolean outputCopy = JNI_FALSE;
   jbyte* const o = env->GetByteArrayElements(output, &outputCopy);
 
-  ConvertYUV420SPToRGB565(reinterpret_cast<uint8*>(i),
-                          reinterpret_cast<uint16*>(o),
-                          width, height);
+  ConvertYUV420SPToRGB565(reinterpret_cast<uint8_t*>(i),
+                          reinterpret_cast<uint16_t*>(o), width, height);
 
   env->ReleaseByteArrayElements(input, i, JNI_ABORT);
   env->ReleaseByteArrayElements(output, o, 0);
@@ -143,9 +138,8 @@ IMAGEUTILS_METHOD(convertARGB8888ToYUV420SP)(
   jboolean outputCopy = JNI_FALSE;
   jbyte* const o = env->GetByteArrayElements(output, &outputCopy);
 
-  ConvertARGB8888ToYUV420SP(reinterpret_cast<uint32*>(i),
-                            reinterpret_cast<uint8*>(o),
-                            width, height);
+  ConvertARGB8888ToYUV420SP(reinterpret_cast<uint32_t*>(i),
+                            reinterpret_cast<uint8_t*>(o), width, height);
 
   env->ReleaseIntArrayElements(input, i, JNI_ABORT);
   env->ReleaseByteArrayElements(output, o, 0);
@@ -161,9 +155,8 @@ IMAGEUTILS_METHOD(convertRGB565ToYUV420SP)(
   jboolean outputCopy = JNI_FALSE;
   jbyte* const o = env->GetByteArrayElements(output, &outputCopy);
 
-  ConvertRGB565ToYUV420SP(reinterpret_cast<uint16*>(i),
-                          reinterpret_cast<uint8*>(o),
-                          width, height);
+  ConvertRGB565ToYUV420SP(reinterpret_cast<uint16_t*>(i),
+                          reinterpret_cast<uint8_t*>(o), width, height);
 
   env->ReleaseByteArrayElements(input, i, JNI_ABORT);
   env->ReleaseByteArrayElements(output, o, 0);

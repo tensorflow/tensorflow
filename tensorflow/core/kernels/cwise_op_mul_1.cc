@@ -19,17 +19,13 @@ namespace tensorflow {
 
 REGISTER5(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double,
           uint8, int32);
+#if defined(__ANDROID_TYPES_SLIM__)
+// We only register the first type when we have multi-argument calls in the
+// case where we're trying to reduce executable size, but it turns out that the
+// int32 version of this op is needed, so explicitly include it.
+REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
+#endif  // __ANDROID_TYPES_SLIM__
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Mul")                                 \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          BinaryOp<SYCLDevice, functor::mul<TYPE>>);
-REGISTER_SYCL_KERNEL(float)
-#undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double,
            uint8);
@@ -45,4 +41,14 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                         BinaryOp<CPUDevice, functor::mul<int32>>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(BinaryOp, SYCL, "Mul", functor::mul, float, double, uint8);
+REGISTER_KERNEL_BUILDER(Name("Mul")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::mul<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

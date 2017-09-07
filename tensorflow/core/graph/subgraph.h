@@ -26,6 +26,18 @@ limitations under the License.
 namespace tensorflow {
 namespace subgraph {
 
+// Information about a graph rewritten by `RewriteGraphForExecution()`.
+struct RewriteGraphMetadata {
+  // The element type of each tensor fed to this subgraph. The order
+  // of types corresponds to the order of tensor names in
+  // `fed_outputs` when calling `RewriteGraphForExecution()`.
+  DataTypeVector feed_types;
+  // The element type of each tensor fetched from this subgraph. The
+  // order of types corresponds to the order of tensor names in
+  // `fetch_outputs` when calling `RewriteGraphForExecution()`.
+  DataTypeVector fetch_types;
+};
+
 // Rewrite the graph structure of "*g" to deal with feeding node
 // outputs, fetching node outputs, and only running a subset of the
 // graph.  "fed_outputs" and "fetch_outputs" are both lists of
@@ -56,7 +68,8 @@ Status RewriteGraphForExecution(
     Graph* g, const gtl::ArraySlice<string>& fed_outputs,
     const gtl::ArraySlice<string>& fetch_outputs,
     const gtl::ArraySlice<string>& target_node_names,
-    const DeviceAttributes& device_info);
+    const DeviceAttributes& device_info, bool use_function_convention,
+    RewriteGraphMetadata* out_metadata);
 
 typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher> NameIndex;
 

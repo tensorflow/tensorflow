@@ -93,6 +93,8 @@ class EventMgr {
   friend class TEST_EventMgrHelper;
   perftools::gputools::StreamExecutor* const exec_;
   const int64 deferred_bytes_threshold_;
+  const int32 polling_active_delay_usecs_;
+  const int32 polling_inactive_delay_msecs_;
   mutex mu_;
   condition_variable events_pending_ GUARDED_BY(mu_);
 

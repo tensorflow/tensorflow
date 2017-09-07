@@ -13,30 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Hashing
+"""Operations for working with string Tensors.
 
-String hashing ops take a string input tensor and map each element to an
-integer.
+See the @{$python/string_ops} guide.
 
 @@string_to_hash_bucket_fast
 @@string_to_hash_bucket_strong
 @@string_to_hash_bucket
-
-## Joining
-
-String joining ops concatenate elements of input string tensors to produce a new
-string tensor.
-
 @@reduce_join
 @@string_join
-
-## Splitting
-
 @@string_split
 @@substr
-
-## Conversion
-
 @@as_string
 @@encode_base64
 @@decode_base64
@@ -46,13 +33,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-
-# pylint: disable=unused-import
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
@@ -60,12 +50,12 @@ from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
-def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
+def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
-  containing the splitted tokens. Empty tokens are ignored.
+  containing the split tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
@@ -88,6 +78,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     source: `1-D` string `Tensor`, the strings to split.
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
+    skip_empty: A `bool`. If `True`, skip the empty strings from the result.
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -102,7 +93,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   # pylint: disable=protected-access
   indices, values, shape = gen_string_ops._string_split(
-      source, delimiter=delimiter)
+      source, delimiter=delimiter, skip_empty=skip_empty)
   # pylint: enable=protected-access
   indices.set_shape([None, 2])
   values.set_shape([None])
@@ -110,19 +101,35 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
+def _reduce_join_reduction_dims(x, axis, reduction_indices):
+  """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
+  # TODO(aselle): Remove this after deprecation
+  if reduction_indices is not None:
+    if axis is not None:
+      raise ValueError("Can't specify both 'axis' and 'reduction_indices'.")
+    axis = reduction_indices
+  if axis is not None:
+    return axis
+  else:
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+      return constant_op.constant(
+          np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
+
+    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+    return math_ops.range(array_ops.rank(x) - 1, -1, -1)
+
+
 def reduce_join(inputs, axis=None,
                 keep_dims=False,
                 separator="",
                 name=None,
                 reduction_indices=None):
-  axis = deprecation.deprecated_argument_lookup("axis", axis,
-                                                "reduction_indices",
-                                                reduction_indices)
-  if axis is None:
-    raise ValueError("axis must be specified.")
+  reduction_indices = _reduce_join_reduction_dims(
+      inputs, axis, reduction_indices)
   return gen_string_ops.reduce_join(
       inputs=inputs,
-      reduction_indices=axis,
+      reduction_indices=reduction_indices,
       keep_dims=keep_dims,
       separator=separator,
       name=name)

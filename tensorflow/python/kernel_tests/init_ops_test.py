@@ -27,7 +27,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -322,6 +322,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
           "x",
           shape=shape,
           initializer=init_ops.uniform_unit_scaling_initializer())
+      variables.global_variables_initializer().run()
       self.assertAllEqual(shape, x.eval().shape)
 
   def testDuplicatedInitializer(self):
@@ -333,14 +334,6 @@ class UniformUnitScalingInitializationTest(test.TestCase):
         ValueError,
         init_ops.uniform_unit_scaling_initializer,
         dtype=dtypes.string)
-
-
-class RandomWalkShapeTest(test.TestCase):
-
-  def testRandomWalk(self):
-    # Fully known shape.
-    rnd1 = init_ops._random_walk([1, 2], nn_ops.relu)
-    self.assertEqual([1, 2], rnd1.get_shape())
 
 
 # TODO(vrv): move to sequence_ops_test?
@@ -553,6 +546,47 @@ class OrthogonalInitializerTest(test.TestCase):
           else:
             self.assertAllClose(
                 np.dot(t, t.T), np.eye(t.shape[0]), rtol=tol, atol=tol)
+
+
+class IdentityInitializerTest(test.TestCase):
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError, init_ops.orthogonal_initializer, dtype=dtypes.string)
+
+  def testInvalidShape(self):
+    init = init_ops.identity_initializer()
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init, shape=[5, 7, 7])
+      self.assertRaises(ValueError, init, shape=[5])
+      self.assertRaises(ValueError, init, shape=[])
+
+  def testNonSquare(self):
+    init = init_ops.identity_initializer()
+    shape = (10, 5)
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertAllClose(init(shape).eval(), np.eye(*shape))
+
+  def testGain(self):
+    shape = (10, 10)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init_default = init_ops.identity_initializer(dtype=dtype)
+      init_custom = init_ops.identity_initializer(gain=0.9, dtype=dtype)
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        self.assertAllClose(init_default(shape).eval(), np.eye(*shape))
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        self.assertAllClose(init_custom(shape).eval(), np.eye(*shape) * 0.9)
+
+  def testPartitions(self):
+    shape = (10, 10)
+    init = init_ops.identity_initializer()
+    partitioner = partitioned_variables.variable_axis_size_partitioner(1)
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with variable_scope.variable_scope(
+          "foo", partitioner=partitioner, initializer=init):
+        v = array_ops.identity(variable_scope.get_variable("bar", shape=shape))
+      variables.global_variables_initializer().run()
+      self.assertAllClose(v.eval(), np.eye(*shape))
 
 
 if __name__ == "__main__":

@@ -13,19 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for bundle_shim.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os.path
-import tensorflow as tf
 
 from tensorflow.contrib.session_bundle import bundle_shim
 from tensorflow.contrib.session_bundle import constants
 from tensorflow.contrib.session_bundle import manifest_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import meta_graph
-from tensorflow.python.saved_model import constants as saved_model_constants
+from tensorflow.python.framework import ops
+import tensorflow.python.ops.parsing_ops  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
@@ -34,12 +37,12 @@ SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
 SESSION_BUNDLE_PATH = "contrib/session_bundle/testdata/half_plus_two/00000123"
 
 
-class BundleShimTest(tf.test.TestCase):
+class BundleShimTest(test.TestCase):
 
   def testBadPath(self):
-    base_path = tf.test.test_src_dir_path("/no/such/a/dir")
-    tf.reset_default_graph()
-    with self.assertRaises(RuntimeError) as cm:
+    base_path = test.test_src_dir_path("/no/such/a/dir")
+    ops.reset_default_graph()
+    with self.assertRaises(RuntimeError):
       _, _ = bundle_shim.load_session_bundle_or_saved_model_bundle_from_path(
           base_path)
 
@@ -137,14 +140,14 @@ class BundleShimTest(tf.test.TestCase):
     del signature_def.outputs["bar-key"]
     self.assertProtoEquals(signature_def, signature_def_compare)
 
-  def testConvertDefaultSignatureBadTypeToSignatureDef(self):
+  def testConvertDefaultSignatureGenericToSignatureDef(self):
     signatures_proto = manifest_pb2.Signatures()
     generic_signature = manifest_pb2.GenericSignature()
     signatures_proto.default_signature.generic_signature.CopyFrom(
         generic_signature)
-    with self.assertRaises(RuntimeError) as cm:
-      _ = bundle_shim._convert_default_signature_to_signature_def(
-          signatures_proto)
+    signature_def = bundle_shim._convert_default_signature_to_signature_def(
+        signatures_proto)
+    self.assertEquals(signature_def, None)
 
   def testConvertDefaultSignatureRegressionToSignatureDef(self):
     signatures_proto = manifest_pb2.Signatures()
@@ -215,7 +218,7 @@ class BundleShimTest(tf.test.TestCase):
     signatures_proto.named_signatures[
         signature_constants.PREDICT_INPUTS].regression_signature.CopyFrom(
             regression_signature)
-    with self.assertRaises(RuntimeError) as cm:
+    with self.assertRaises(RuntimeError):
       _ = bundle_shim._convert_named_signatures_to_signature_def(
           signatures_proto)
     signatures_proto = manifest_pb2.Signatures()
@@ -223,7 +226,7 @@ class BundleShimTest(tf.test.TestCase):
     signatures_proto.named_signatures[
         signature_constants.PREDICT_INPUTS].classification_signature.CopyFrom(
             classification_signature)
-    with self.assertRaises(RuntimeError) as cm:
+    with self.assertRaises(RuntimeError):
       _ = bundle_shim._convert_named_signatures_to_signature_def(
           signatures_proto)
 
@@ -245,7 +248,7 @@ class BundleShimTest(tf.test.TestCase):
     signature_def = bundle_shim._convert_named_signatures_to_signature_def(
         signatures_proto)
     self.assertEqual(signature_def.method_name,
-                      signature_constants.PREDICT_METHOD_NAME)
+                     signature_constants.PREDICT_METHOD_NAME)
     self.assertEqual(len(signature_def.inputs), 1)
     self.assertEqual(len(signature_def.outputs), 1)
     self.assertProtoEquals(
@@ -256,14 +259,14 @@ class BundleShimTest(tf.test.TestCase):
         meta_graph_pb2.TensorInfo(name="output"))
 
   def testConvertSignaturesToSignatureDefs(self):
-    base_path = tf.test.test_src_dir_path(SESSION_BUNDLE_PATH)
+    base_path = test.test_src_dir_path(SESSION_BUNDLE_PATH)
     meta_graph_filename = os.path.join(base_path,
                                        constants.META_GRAPH_DEF_FILENAME)
     metagraph_def = meta_graph.read_meta_graph_file(meta_graph_filename)
     default_signature_def, named_signature_def = (
         bundle_shim._convert_signatures_to_signature_defs(metagraph_def))
     self.assertEqual(default_signature_def.method_name,
-                      signature_constants.REGRESS_METHOD_NAME)
+                     signature_constants.REGRESS_METHOD_NAME)
     self.assertEqual(len(default_signature_def.inputs), 1)
     self.assertEqual(len(default_signature_def.outputs), 1)
     self.assertProtoEquals(
@@ -273,7 +276,7 @@ class BundleShimTest(tf.test.TestCase):
         default_signature_def.outputs[signature_constants.REGRESS_OUTPUTS],
         meta_graph_pb2.TensorInfo(name="Identity:0"))
     self.assertEqual(named_signature_def.method_name,
-                      signature_constants.PREDICT_METHOD_NAME)
+                     signature_constants.PREDICT_METHOD_NAME)
     self.assertEqual(len(named_signature_def.inputs), 1)
     self.assertEqual(len(named_signature_def.outputs), 1)
     self.assertProtoEquals(
@@ -298,7 +301,7 @@ class BundleShimTest(tf.test.TestCase):
     default_signature_def, named_signature_def = (
         bundle_shim._convert_signatures_to_signature_defs(metagraph_def))
     self.assertEqual(default_signature_def.method_name,
-                      signature_constants.REGRESS_METHOD_NAME)
+                     signature_constants.REGRESS_METHOD_NAME)
     self.assertEqual(named_signature_def, None)
 
     named_only_signatures_proto.ClearField("default_signature")
@@ -307,18 +310,18 @@ class BundleShimTest(tf.test.TestCase):
     default_signature_def, named_signature_def = (
         bundle_shim._convert_signatures_to_signature_defs(metagraph_def))
     self.assertEqual(named_signature_def.method_name,
-                      signature_constants.PREDICT_METHOD_NAME)
+                     signature_constants.PREDICT_METHOD_NAME)
     self.assertEqual(default_signature_def, None)
 
   def testLegacyBasic(self):
-    base_path = tf.test.test_src_dir_path(SESSION_BUNDLE_PATH)
-    tf.reset_default_graph()
+    base_path = test.test_src_dir_path(SESSION_BUNDLE_PATH)
+    ops.reset_default_graph()
     sess, meta_graph_def = (
         bundle_shim.load_session_bundle_or_saved_model_bundle_from_path(
             base_path,
             tags=[""],
             target="",
-            config=tf.ConfigProto(device_count={"CPU": 2})))
+            config=config_pb2.ConfigProto(device_count={"CPU": 2})))
 
     self.assertTrue(sess)
     asset_path = os.path.join(base_path, constants.ASSETS_DIRECTORY)
@@ -335,29 +338,25 @@ class BundleShimTest(tf.test.TestCase):
       self.assertEqual(len(signatures_any), 1)
 
   def testSavedModelBasic(self):
-    base_path = tf.test.test_src_dir_path(SAVED_MODEL_PATH)
-    tf.reset_default_graph()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    ops.reset_default_graph()
     sess, meta_graph_def = (
         bundle_shim.load_session_bundle_or_saved_model_bundle_from_path(
             base_path,
             tags=[tag_constants.SERVING],
             target="",
-            config=tf.ConfigProto(device_count={"CPU": 2})))
+            config=config_pb2.ConfigProto(device_count={"CPU": 2})))
 
     self.assertTrue(sess)
 
     # Check basic signature def property.
     signature_def = meta_graph_def.signature_def
-    self.assertEqual(len(signature_def), 2)
-    self.assertEqual(
-        signature_def[signature_constants.REGRESS_METHOD_NAME].method_name,
-        signature_constants.REGRESS_METHOD_NAME)
-    signature = signature_def["tensorflow/serving/regress"]
-    asset_path = os.path.join(base_path, saved_model_constants.ASSETS_DIRECTORY)
+    self.assertEqual(signature_def["regress_x_to_y"].method_name,
+                     signature_constants.REGRESS_METHOD_NAME)
     with sess.as_default():
       output1 = sess.run(["filename_tensor:0"])
-      self.assertEqual(["foo.txt"], output1)
+      self.assertEqual([compat.as_bytes("foo.txt")], output1)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

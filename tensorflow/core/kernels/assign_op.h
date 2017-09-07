@@ -39,60 +39,88 @@ class AssignOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    Tensor rhs = context->input(1);
+    const Tensor& rhs = context->input(1);
 
     // We always return the input ref.
     context->forward_ref_input_to_ref_output(0, 0);
 
-    // If the left hand side is not initialized, or the shape of the
-    // right-hand side is different than the left hand side, we need
-    // to allocate a new tensor.
+    // We can't always know how this value will be used downstream,
+    // so make conservative assumptions in specifying constraints on
+    // the memory allocation attributes.
+    // TODO(rmlarsen): These conservative constraints make buffer
+    // forwarding unlikely to happen very often. Try to use graph analysis
+    // (possibly the InferAllocAttr pass in the executer) to improve the
+    // situation.
+    AllocatorAttributes attr;
+    attr.set_gpu_compatible(true);
+    attr.set_nic_compatible(true);
+
     {
       mutex_lock l(*context->input_ref_mutex(0));
-
-      Tensor old_lhs = context->mutable_input(0, true);
-
+      const Tensor& old_lhs = context->mutable_input(0, /* lock_held */ true);
+      const bool same_shape = old_lhs.shape().IsSameSize(rhs.shape());
       if (validate_shape_) {
         OP_REQUIRES(
-            context, old_lhs.shape().IsSameSize(rhs.shape()),
+            context, same_shape,
             errors::InvalidArgument(
                 "Assign requires shapes of both tensors to match. lhs shape= ",
-                old_lhs.shape().DebugString(), " rhs shape= ",
-                rhs.shape().DebugString()));
+                old_lhs.shape().DebugString(),
+                " rhs shape= ", rhs.shape().DebugString()));
       }
 
-      const bool same_shape = old_lhs.shape().IsSameSize(rhs.shape());
-      if (!old_lhs.IsInitialized() || !same_shape) {
-        // Create new tensor whose shape matches the right hand side
-        // and copy then hand off to lhs.
-        // We can't always know how this value will be used downstream,
-        // so make conservative assumptions in specifying the memory
-        // allocation attributes.
-        AllocatorAttributes attr;
-        attr.set_gpu_compatible(true);
-        attr.set_nic_compatible(true);
+      // In the code below we try to minimize the amount of memory allocation
+      // and copying by trying the following two shortcuts:
+      // 1. If we can reuse the rhs buffer we avoid both a memory allocation
+      //   and copying.
+      // 2. If the lhs is initialized and has the same number of elements as the
+      //    rhs we can avoid a memory allocation.
+
+      // 1. Try to reuse the rhs.
+      std::unique_ptr<Tensor> input_alias = context->forward_input(
+          1, old_lhs.dtype(), old_lhs.shape(), DEVICE_MEMORY, attr);
+      if (input_alias != nullptr) {
+        // Transfer ownership to the ref.
+        context->replace_ref_input(0, *input_alias.release(),
+                                   /* lock_held */ true);
+        return;
+      }
+
+      // 2. Try to copy into an existing buffer.
+      if (old_lhs.IsInitialized() &&
+          old_lhs.shape().num_elements() == rhs.shape().num_elements()) {
+        // The existing lhs tensor has already been initialized and the right
+        // hand side can fit in the underlying buffer.
+        Tensor reshaped_old_lhs;
+        if (same_shape) {
+          reshaped_old_lhs = old_lhs;
+        } else {
+          CHECK(reshaped_old_lhs.CopyFrom(old_lhs, rhs.shape()));
+          context->replace_ref_input(0, reshaped_old_lhs, /* lock_held */ true);
+        }
+        if (use_exclusive_lock_) {
+          Copy(context, &reshaped_old_lhs, rhs);
+          return;
+        }
+      } else {
+        // Create a new persistent tensor whose shape matches the right hand
+        // side, hand off to lhs and copy the rhs into it.
         PersistentTensor copy;
         Tensor* copyTensor = nullptr;
         OP_REQUIRES_OK(
             context, context->allocate_persistent(old_lhs.dtype(), rhs.shape(),
                                                   &copy, &copyTensor, attr));
-        Copy(context, copyTensor, rhs);
-        context->replace_ref_input(0, *copyTensor, true);
-        return;
-      }
-
-      // The tensor has already been initialized and the right hand side
-      // matches the left hand side's shape.
-      if (use_exclusive_lock_) {
-        Copy(context, &old_lhs, rhs);
-        return;
+        context->replace_ref_input(0, *copyTensor, /* lock_held */ true);
+        if (use_exclusive_lock_) {
+          Copy(context, copyTensor, rhs);
+          return;
+        }
       }
     }
 
     // The tensor has already been initialized and the right hand side
     // matches the left hand side's shape. We have been told to do the
     // copy outside the lock.
-    Tensor old_unlocked_lhs = context->mutable_input(0, false);
+    Tensor old_unlocked_lhs = context->mutable_input(0, /* lock_held */ false);
     Copy(context, &old_unlocked_lhs, rhs);
   }
 

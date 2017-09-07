@@ -1,0 +1,15 @@
+path: "tensorflow.train.queue_runner"
+tf_module {
+  member {
+    name: "QueueRunner"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "add_queue_runner"
+    argspec: "args=[\'qr\', \'collection\'], varargs=None, keywords=None, defaults=[\'queue_runners\'], "
+  }
+  member_method {
+    name: "start_queue_runners"
+    argspec: "args=[\'sess\', \'coord\', \'daemon\', \'start\', \'collection\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'True\', \'queue_runners\'], "
+  }
+}

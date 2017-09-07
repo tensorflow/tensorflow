@@ -71,27 +71,27 @@ for item in data_decoder.list_items():
   print(item)
 ```
 
-## Example: TFExampleDataDecoder
+## Example: TFExampleDecoder
 
 The
-[tfexample_data_decoder.py](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/data/tfexample_data_decoder.py)
+[tfexample_decoder.py](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/data/tfexample_decoder.py)
 is a data decoder which decodes serialized `TFExample` protocol buffers. A
 `TFExample` protocol buffer is a map from keys (strings) to either a
 `tf.FixedLenFeature` or `tf.VarLenFeature`. Consequently, to decode a
 `TFExample`, one must provide a mapping from one or more `TFExample` fields
-to each of the `items` that the `tfexample_data_decoder` can provide. For
+to each of the `items` that the `tfexample_decoder` can provide. For
 example, a dataset of `TFExamples` might store images in various formats and
 each `TFExample` might contain an `encoding` key and a `format` key which can
 be used to decode the image using the appropriate decoder (jpg, png, etc).
 
-To make this possible, the `tfexample_data_decoder` is constructed by specifying
+To make this possible, the `tfexample_decoder` is constructed by specifying
 the a map of `TFExample` keys to either `tf.FixedLenFeature` or
 `tf.VarLenFeature` as well as a set of `ItemHandlers`. An `ItemHandler`
 provides a mapping from `TFExample` keys to the item being provided. Because a
-`tfexample_data_decoder` might return multiple `items`, one often constructs a
-`tfexample_data_decoder` using multiple `ItemHandlers`.
+`tfexample_decoder` might return multiple `items`, one often constructs a
+`tfexample_decoder` using multiple `ItemHandlers`.
 
-`tfexample_data_decoder` provides some predefined `ItemHandlers` which take care
+`tfexample_decoder` provides some predefined `ItemHandlers` which take care
 of the common cases of mapping `TFExamples` to images, `Tensors` and
 `SparseTensors`. For example, the following specification might be
 used to decode a dataset of images:

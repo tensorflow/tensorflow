@@ -42,9 +42,9 @@ static inline void ParseAttributeVec4(OpKernelConstruction* context,
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
   OP_REQUIRES(
       context, (*attr)[0] == 1 && (*attr)[3] == 1,
-      errors::Unimplemented("Only support", attr_name, "across space."));
+      errors::Unimplemented("Only support ", attr_name, " across space."));
   OP_REQUIRES(context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
-              errors::OutOfRange(attr_name, "is out of range."));
+              errors::OutOfRange(attr_name, " is out of range."));
 }
 
 template <typename Device, typename T>

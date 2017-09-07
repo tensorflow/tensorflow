@@ -27,7 +27,7 @@ import numpy as np
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.platform import gfile
 
-DBPEDIA_URL = 'https://github.com/le-scientifique/torchDatasets/blob/master/dbpedia_csv.tar.gz'
+DBPEDIA_URL = 'https://github.com/le-scientifique/torchDatasets/raw/master/dbpedia_csv.tar.gz'
 
 
 def maybe_download_dbpedia(data_dir):

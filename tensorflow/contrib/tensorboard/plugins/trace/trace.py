@@ -22,10 +22,12 @@ import os
 import parser
 import re
 import token
-import tensorflow as tf
 
 from google.protobuf import json_format
+
 from tensorflow.contrib.tensorboard.plugins.trace.trace_info_pb2 import TraceInfo
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 
 # List of regex patterns that match files in the core tensorflow library.
 TF_LIB_REGEX_FPATHS = [os.sep + os.path.join('tensorflow', 'python')]
@@ -35,7 +37,8 @@ RIGHT_TOKENS = [token.RPAR, token.RSQB, token.RBRACE]
 TOKENS = LEFT_TOKENS + RIGHT_TOKENS
 
 
-def store_trace_info(output_file_path, graph=tf.get_default_graph(),
+def store_trace_info(output_file_path,
+                     graph=None,
                      ignore_regex_fpaths=None):
   """Collects and stores trace information for a TensorFlow model.
 
@@ -48,6 +51,8 @@ def store_trace_info(output_file_path, graph=tf.get_default_graph(),
         in this list will be ignored. Defaults to patterns that match the core
         tensorflow python library.
   """
+  graph = graph or ops.get_default_graph()
+
   if not ignore_regex_fpaths:
     ignore_regex_fpaths = TF_LIB_REGEX_FPATHS
 
@@ -75,8 +80,8 @@ def store_trace_info(output_file_path, graph=tf.get_default_graph(),
   for fpath in source_fpaths:
     file_info = trace_info.files.add()
 
-    with tf.gfile.Open(fpath, 'r') as f:
-      source = f.read().decode('utf-8')
+    with gfile.Open(fpath, 'r') as f:
+      source = f.read()
 
     file_info.file_path = fpath
     file_info.source_code = source
@@ -89,11 +94,11 @@ def store_trace_info(output_file_path, graph=tf.get_default_graph(),
   # Make sure the directory for the output file exists.
   output_file_path = os.path.expanduser(output_file_path)
   output_dir = os.path.dirname(output_file_path)
-  if not tf.gfile.Exists(output_dir):
-    tf.gfile.MakeDirs(output_dir)
+  if not gfile.Exists(output_dir):
+    gfile.MakeDirs(output_dir)
 
   # Store the debug information.
-  with tf.gfile.Open(output_file_path, 'w') as f:
+  with gfile.Open(output_file_path, 'w') as f:
     f.write(json_format.MessageToJson(trace_info))
 
 

@@ -61,6 +61,8 @@ TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_CPU)
 
 #define TENSOR_ARRAY_WRITE_OR_ADD_GPU(T) TENSOR_ARRAY_WRITE_OR_ADD(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
+TF_CALL_complex64(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
+TF_CALL_complex128(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 #undef TENSOR_ARRAY_WRITE_OR_ADD_GPU
 
 #endif  // GOOGLE_CUDA
@@ -86,6 +88,8 @@ TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
 
 #define TENSOR_ARRAY_SET_ZERO_GPU(T) TENSOR_ARRAY_SET_ZERO(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
+TF_CALL_complex64(TENSOR_ARRAY_SET_ZERO_GPU);
+TF_CALL_complex128(TENSOR_ARRAY_SET_ZERO_GPU);
 #undef TENSOR_ARRAY_SET_ZERO_GPU
 
 #endif  // GOOGLE_CUDA
@@ -132,11 +136,12 @@ class TensorArray : public ResourceBase {
   // 'N' elements.  While the underlying storage is a std::vector and
   // can hold more than MAX_INT entries, in practice we do not expect
   // users to construct this many Tensors for storage in a TensorArray.
-  TensorArray(const DataType& dtype, const Tensor& handle, int32 N,
-              const PartialTensorShape& element_shape, bool dynamic_size,
-              bool multiple_writes_aggregate, bool is_grad, int32 marked_size,
-              bool clear_after_read)
-      : dtype_(dtype),
+  TensorArray(const string& key, const DataType& dtype, const Tensor& handle,
+              int32 N, const PartialTensorShape& element_shape,
+              bool dynamic_size, bool multiple_writes_aggregate, bool is_grad,
+              int32 marked_size, bool clear_after_read)
+      : key_(key),
+        dtype_(dtype),
         handle_(handle),
         closed_(false),
         dynamic_size_(dynamic_size),
@@ -334,6 +339,10 @@ class TensorArray : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* handle() { return &handle_; }
 
+  ResourceHandle resource_handle(OpKernelContext* ctx) {
+    return MakePerStepResourceHandle<TensorArray>(ctx, key_);
+  }
+
  private:
   Status LockedWrite(OpKernelContext* ctx, const int32 index,
                      PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -354,6 +363,8 @@ class TensorArray : public ResourceBase {
     }
     return Status::OK();
   }
+
+  const string key_;
 
   const DataType dtype_;
   Tensor handle_;

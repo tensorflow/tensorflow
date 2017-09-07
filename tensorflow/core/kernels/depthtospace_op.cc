@@ -59,7 +59,7 @@ class DepthToSpaceOp : public OpKernel {
     static const int kRequiredDims = 4;
     OP_REQUIRES(context, kRequiredDims == dims,
                 errors::InvalidArgument("Input rank should be: ", kRequiredDims,
-                                        "instead of: ", dims));
+                                        " instead of: ", dims));
 
     const int batch_size = input.dim_size(0);
     const int input_height = input.dim_size(1);
@@ -72,7 +72,7 @@ class DepthToSpaceOp : public OpKernel {
     OP_REQUIRES(
         context, input_depth % block_size_sq == 0,
         errors::InvalidArgument("Input depth dimension ", input_depth,
-                                "should be divisible by: ", block_size_sq));
+                                " should be divisible by: ", block_size_sq));
 
     const int output_depth = input_depth / block_size_sq;
     const int output_width = input_width * block_size_;

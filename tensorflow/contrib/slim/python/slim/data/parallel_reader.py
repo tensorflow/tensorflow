@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.summary import summary
 from tensorflow.python.training import input as tf_input
 from tensorflow.python.training import queue_runner
 
@@ -127,14 +127,42 @@ class ParallelReader(io_ops.ReaderBase):
       The next record (i.e. (key, value pair)) from the common_queue.
     """
 
+    self._configure_readers_by(queue)
+    return self._common_queue.dequeue(name=name)
+
+  def read_up_to(self, queue, num_records, name=None):
+    """Returns up to num_records (key, value pairs) produced by a reader.
+
+    Will dequeue a work unit from queue if necessary (e.g., when the
+    Reader needs to start reading from a new file since it has
+    finished with the previous file).
+    It may return less than num_records even before the last batch.
+
+    **Note** This operation is not supported by all types of `common_queue`s.
+    If a `common_queue` does not support `dequeue_up_to()`, then a
+    `tf.errors.UnimplementedError` is raised.
+
+    Args:
+      queue: A Queue or a mutable string Tensor representing a handle
+        to a Queue, with string work items.
+      num_records: Number of records to read.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tuple of Tensors (keys, values) from common_queue.
+      keys: A 1-D string Tensor.
+      values: A 1-D string Tensor.
+    """
+    self._configure_readers_by(queue)
+    return self._common_queue.dequeue_up_to(num_records, name)
+
+  def _configure_readers_by(self, queue):
     enqueue_ops = []
     for reader in self._readers:
       enqueue_ops.append(self._common_queue.enqueue(reader.read(queue)))
 
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(self._common_queue, enqueue_ops))
-
-    return self._common_queue.dequeue(name=name)
 
   def num_records_produced(self, name=None):
     """Returns the number of records this reader has produced.
@@ -175,7 +203,7 @@ def parallel_read(data_sources,
                   scope=None):
   """Reads multiple records in parallel from data_sources using n readers.
 
-  It uses a ParallelReader to read from multiple files in  parallel using
+  It uses a ParallelReader to read from multiple files in parallel using
   multiple readers created using `reader_class` with `reader_kwargs'.
 
   If shuffle is True the common_queue would be a RandomShuffleQueue otherwise
@@ -210,7 +238,8 @@ def parallel_read(data_sources,
   data_files = get_data_files(data_sources)
   with ops.name_scope(scope, 'parallel_read'):
     filename_queue = tf_input.string_input_producer(
-        data_files, num_epochs=num_epochs, shuffle=shuffle, name='filenames')
+        data_files, num_epochs=num_epochs, shuffle=shuffle, seed=seed,
+        name='filenames')
     dtypes = dtypes or [tf_dtypes.string, tf_dtypes.string]
     if shuffle:
       common_queue = data_flow_ops.RandomShuffleQueue(
@@ -220,8 +249,8 @@ def parallel_read(data_sources,
           seed=seed,
           name='common_queue')
     else:
-      common_queue = data_flow_ops.FIFOQueue(capacity=capacity, dtypes=dtypes,
-                                             name='common_queue')
+      common_queue = data_flow_ops.FIFOQueue(
+          capacity=capacity, dtypes=dtypes, name='common_queue')
 
     summary.scalar('fraction_of_%d_full' % capacity,
                    math_ops.to_float(common_queue.size()) * (1. / capacity))

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import numbers
 import os
 import re
@@ -33,6 +32,8 @@ from tensorflow.python.client import timeline
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
+
 
 # When a subclass of the Benchmark class is created, it is added to
 # the registry automatically
@@ -41,6 +42,8 @@ GLOBAL_BENCHMARK_REGISTRY = set()
 # Environment variable that determines whether benchmarks are written.
 # See also tensorflow/core/util/reporter.h TestReporter::kTestReporterEnv.
 TEST_REPORTER_TEST_ENV = "TEST_REPORT_FILE_PREFIX"
+
+_benchmark_tests_can_log_memory = app._benchmark_tests_can_log_memory  # pylint: disable=protected-access
 
 
 def _global_report_benchmark(
@@ -70,11 +73,6 @@ def _global_report_benchmark(
                  cpu_time is not None else -1, throughput if
                  throughput is not None else -1, str(extras) if extras else "")
 
-  test_env = os.environ.get(TEST_REPORTER_TEST_ENV, None)
-  if test_env is None:
-    # Reporting was not requested
-    return
-
   entries = test_log_pb2.BenchmarkEntries()
   entry = entries.entry.add()
   entry.name = name
@@ -92,6 +90,12 @@ def _global_report_benchmark(
         entry.extras[k].double_value = v
       else:
         entry.extras[k].string_value = str(v)
+
+  test_env = os.environ.get(TEST_REPORTER_TEST_ENV, None)
+  if test_env is None:
+    # Reporting was not requested, just print the proto
+    print(str(entries))
+    return
 
   serialized_entry = entries.SerializeToString()
 
@@ -133,7 +137,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
     """Returns full name of class and method calling report_benchmark."""
 
     # Find the caller method (outermost Benchmark class)
-    stack = inspect.stack()
+    stack = tf_inspect.stack()
     calling_class = None
     name = None
     for frame in stack[::-1]:
@@ -195,6 +199,7 @@ class TensorFlowBenchmark(Benchmark):
                        burn_iters=2,
                        min_iters=10,
                        store_trace=False,
+                       store_memory_usage=True,
                        name=None,
                        extras=None,
                        mbs=0):
@@ -211,6 +216,9 @@ class TensorFlowBenchmark(Benchmark):
         store the trace of iteration in the benchmark report.
         The trace will be stored as a string in Google Chrome trace format
         in the extras field "full_trace_chrome_format".
+      store_memory_usage: Boolean, whether to run an extra
+        untimed iteration, calculate memory usage, and store that in extras
+        fields.
       name: (optional) Override the BenchmarkEntry name with `name`.
         Otherwise it is inferred from the top-level method name.
       extras: (optional) Dict mapping string keys to additional benchmark info.
@@ -222,6 +230,8 @@ class TensorFlowBenchmark(Benchmark):
       A `dict` containing the key-value pairs that were passed to
       `report_benchmark`.
     """
+    store_memory_usage &= _benchmark_tests_can_log_memory()
+
     for _ in range(burn_iters):
       sess.run(op_or_tensor, feed_dict=feed_dict)
 
@@ -235,14 +245,22 @@ class TensorFlowBenchmark(Benchmark):
       deltas[i] = delta
 
     extras = extras if extras is not None else {}
-    if store_trace:
+    if store_trace or store_memory_usage:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)
       run_metadata = config_pb2.RunMetadata()
       sess.run(op_or_tensor, feed_dict=feed_dict,
                options=run_options, run_metadata=run_metadata)
       tl = timeline.Timeline(run_metadata.step_stats)
-      extras["full_trace_chrome_format"] = tl.generate_chrome_trace_format()
+
+      if store_trace:
+        extras["full_trace_chrome_format"] = tl.generate_chrome_trace_format()
+
+      if store_memory_usage:
+        step_stats_analysis = tl.analyze_step_stats(show_memory=True)
+        allocator_maximums = step_stats_analysis.allocator_maximums
+        for k, v in allocator_maximums.items():
+          extras["allocator_maximum_num_bytes_%s" % k] = v.num_bytes
 
     def _median(x):
       if not x:
@@ -301,13 +319,15 @@ def _run_benchmarks(regex):
         instance_benchmark_fn()
 
 
-def benchmarks_main(true_main):
-  """Run benchmarks as declared in args.
+def benchmarks_main(true_main, argv=None):
+  """Run benchmarks as declared in argv.
 
   Args:
     true_main: True main function to run if benchmarks are not requested.
+    argv: the command line arguments (if None, uses sys.argv).
   """
-  argv = sys.argv
+  if argv is None:
+    argv = sys.argv
   found_arg = [arg for arg in argv
                if arg.startswith("--benchmarks=")
                or arg.startswith("-benchmarks=")]
@@ -316,6 +336,6 @@ def benchmarks_main(true_main):
     argv.remove(found_arg[0])
 
     regex = found_arg[0].split("=")[1]
-    app.run(lambda _: _run_benchmarks(regex))
+    app.run(lambda _: _run_benchmarks(regex), argv=argv)
   else:
     true_main()

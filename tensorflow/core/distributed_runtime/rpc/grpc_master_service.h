@@ -17,6 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
 
 #include <memory>
+#include "tensorflow/core/platform/types.h"
 
 namespace grpc {
 class ServerBuilder;
@@ -28,6 +29,7 @@ class AsyncServiceInterface;
 class Master;
 
 AsyncServiceInterface* NewGrpcMasterService(Master* master,
+                                            int64 default_timeout_in_ms,
                                             ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow

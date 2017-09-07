@@ -22,11 +22,17 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/ndlstm",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "@six_archive//:six",
     ],
 )
 
@@ -36,17 +42,23 @@ tf_py_test(
     additional_deps = [
         ":specs",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variables",
     ],
 )
 
 tf_py_test(
     name = "summaries_test",
+    size = "small",
     srcs = ["python/summaries_test.py"],
     additional_deps = [
         ":specs",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:variables",
     ],
 )
 

@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,7 +24,6 @@ from __future__ import print_function
 
 from contextlib import contextmanager
 import threading
-
 
 from tensorflow.python.framework import ops
 from tensorflow.python.training import coordinator
@@ -60,14 +59,16 @@ def QueueRunners(session):
   coord = coordinator.Coordinator()
   threads = []
   for qr in ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
-    threads.extend(qr.create_threads(session,
-                                     coord=coord,
-                                     daemon=True,
-                                     start=True))
+    threads.extend(
+        qr.create_threads(
+            session, coord=coord, daemon=True, start=True))
   try:
     yield
   finally:
     coord.request_stop()
-    coord.join(threads, stop_grace_period_secs=120)
+    try:
+      coord.join(threads, stop_grace_period_secs=120)
+    except RuntimeError:
+      session.close()
 
     _queue_runner_lock.release()

@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Various ways of selecting operations and tensors in a graph.
-"""
+"""Various ways of selecting operations and tensors in a graph."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,6 +27,8 @@ from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 
 __all__ = [
+    "can_be_regex",
+    "make_regex",
     "filter_ts",
     "filter_ts_from_regex",
     "filter_ops",
@@ -619,7 +620,7 @@ def select_ops(*args, **kwargs):
   """Helper to select operations.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation`. `tf.Tensor` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
@@ -685,7 +686,7 @@ def select_ts(*args, **kwargs):
   """Helper to select tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Tensor`. `tf.Operation` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
@@ -751,7 +752,7 @@ def select_ops_and_ts(*args, **kwargs):
   """Helper to select operations and tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation` 3) (array of) tf.Tensor. Regular expressions matching
       tensors must start with the comment `"(?#ts)"`, for instance:
       `"(?#ts)^foo/.*"`.

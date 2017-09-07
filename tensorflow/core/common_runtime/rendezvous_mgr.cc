@@ -106,7 +106,7 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
                      recv_args.device_context, src_device, dst_device,
                      send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     done);
+                     std::move(done));
 }
 
 void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
@@ -132,7 +132,8 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
     };
 
     if (status.ok() && in.IsInitialized()) {
-      SameWorkerRecvDone(parsed, send_args, recv_args, in, out, final_callback);
+      SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+                         std::move(final_callback));
     } else {
       final_callback(status);
     }

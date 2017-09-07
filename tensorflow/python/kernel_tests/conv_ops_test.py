@@ -19,16 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 import time
 
 import numpy as np
-
-# TODO(mrry): Remove this hack which makes dlopen() in
-#             sparse_feature_cross_op.py not crash in the open source world.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib import layers
 from tensorflow.python.client import session as session_lib
@@ -146,34 +139,6 @@ def GetShrunkInceptionShapes(shrink=10):
     yield i, f, o, s, p
 
 
-def NHWCToNCHW(input_tensor):
-  """Convert the input from NHWC format to NCHW.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 3, 1, 2])
-  else:
-    return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
-
-
-def NCHWToNHWC(input_tensor):
-  """Convert the input from NCHW format to NHWC.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 2, 3, 1])
-  else:
-    return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]
-
-
 def GetTestConfigs():
   """Get all the valid tests configs to run.
 
@@ -224,17 +189,18 @@ class Conv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+
+    with test_util.device(use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
-        t1 = NHWCToNCHW(t1)
-        strides = NHWCToNCHW(strides)
+        t1 = test_util.NHWCToNCHW(t1)
+        strides = test_util.NHWCToNCHW(strides)
       conv = nn_ops.conv2d(
           t1, t2, strides=strides, padding=padding, data_format=data_format)
       if data_format == "NCHW":
-        conv = NCHWToNHWC(conv)
+        conv = test_util.NCHWToNHWC(conv)
 
       return conv
 
@@ -254,26 +220,25 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*filter_in_sizes).astype(np.float32)
 
     def _SetupVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with test_util.device(use_gpu):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t1 = NHWCToNCHW(t1)
-          strides = NHWCToNCHW(strides)
+          t1 = test_util.NHWCToNCHW(t1)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d(
             t1, t2, strides=strides, padding=padding, data_format=data_format)
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         return conv
 
     tensors = []
     for (data_format, use_gpu) in GetTestConfigs():
       tensors.append(_SetupVal(data_format, use_gpu))
-    with self.test_session() as sess:
-      values = sess.run(tensors)
-      for i in range(1, len(values)):
-        self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
+    values = self.evaluate(tensors)
+    for i in range(1, len(values)):
+      self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, strides, padding,
                     expected):
@@ -289,19 +254,19 @@ class Conv2DTest(test.TestCase):
             dtype,
             use_gpu=use_gpu)
         tensors.append(result)
-      with self.test_session() as sess:
-        values = sess.run(tensors)
-        for i in range(len(tensors)):
-          conv = tensors[i]
-          value = values[i]
-          print("expected = ", expected)
-          print("actual = ", value)
-          tol = 1e-5
-          if value.dtype == np.float16:
-            tol = 1e-3
-          self.assertAllClose(expected, np.ravel(value), atol=tol, rtol=tol)
-          self.assertShapeEqual(value, conv)
+      values = self.evaluate(tensors)
+      for i in range(len(tensors)):
+        conv = tensors[i]
+        value = values[i]
+        print("expected = ", expected)
+        print("actual = ", value)
+        tol = 1e-5
+        if value.dtype == np.float16:
+          tol = 1e-3
+        self.assertAllClose(expected, np.ravel(value), atol=tol, rtol=tol)
+        self.assertShapeEqual(value, conv)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D1x1Filter(self):
     expected_output = [
         30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
@@ -314,6 +279,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2DEmpty(self):
     expected_output = []
     self._VerifyValues(
@@ -323,6 +289,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Filter(self):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0]
@@ -333,6 +300,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D1x2Filter(self):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [
@@ -346,6 +314,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2FilterStride2(self):
     expected_output = [2271.0, 2367.0, 2463.0]
     self._VerifyValues(
@@ -355,6 +324,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2FilterStride2Same(self):
     expected_output = [2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]
     self._VerifyValues(
@@ -364,6 +334,7 @@ class Conv2DTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2FilterStride1x2(self):
     expected_output = [58.0, 78.0, 98.0, 118.0, 138.0, 158.0]
     self._VerifyValues(
@@ -373,6 +344,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2DKernelSmallerThanStrideValid(self):
     expected_output = [65, 95, 275, 305]
     self._VerifyValues(
@@ -382,6 +354,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2DKernelSmallerThanStrideSame(self):
     self._VerifyValues(
         tensor_in_sizes=[1, 3, 3, 1],
@@ -404,8 +377,17 @@ class Conv2DTest(test.TestCase):
         padding="SAME",
         expected=[44, 28, 41, 16])
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testConv2DKernelSizeMatchesInputSize(self):
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 2, 1],
+        filter_in_sizes=[2, 2, 1, 2],
+        strides=[1, 1],
+        padding="VALID",
+        expected=[50, 60])
+
     # TODO this currently fails.
-    #self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
+    # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
     #                   filter_in_sizes=[2, 2, 1, 1],
     #                   strides=[4, 4], padding="SAME",
     #                   expected=[72, 112, 392, 432])
@@ -424,22 +406,22 @@ class Conv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_filter_size + 1)]
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with test_util.device(use_gpu):
       if data_format == "NCHW":
-        input_sizes = NHWCToNCHW(input_sizes)
+        input_sizes = test_util.NHWCToNCHW(input_sizes)
       t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
       t1 = constant_op.constant(x1, shape=filter_sizes)
       t2 = constant_op.constant(x2, shape=output_sizes)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
-        t2 = NHWCToNCHW(t2)
-        strides = NHWCToNCHW(strides)
+        t2 = test_util.NHWCToNCHW(t2)
+        strides = test_util.NHWCToNCHW(strides)
       conv = nn_ops.conv2d_backprop_input(
           t0, t1, t2, strides=strides, padding=padding, data_format=data_format)
       if data_format == "NCHW":
-        conv = NCHWToNHWC(conv)
+        conv = test_util.NCHWToNHWC(conv)
       # "values" consists of two tensors for two backprops
-      value = sess.run(conv)
+      value = self.evaluate(conv)
       self.assertShapeEqual(value, conv)
     print("expected = ", expected)
     print("actual = ", value)
@@ -451,9 +433,9 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with test_util.device(use_gpu):
         if data_format == "NCHW":
-          new_input_sizes = NHWCToNCHW(input_sizes)
+          new_input_sizes = test_util.NHWCToNCHW(input_sizes)
         else:
           new_input_sizes = input_sizes
         t0 = constant_op.constant(new_input_sizes, shape=[len(new_input_sizes)])
@@ -461,8 +443,8 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t2 = NHWCToNCHW(t2)
-          strides = NHWCToNCHW(strides)
+          t2 = test_util.NHWCToNCHW(t2)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d_backprop_input(
             t0,
             t1,
@@ -471,8 +453,8 @@ class Conv2DTest(test.TestCase):
             padding=padding,
             data_format=data_format)
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
-        ret = conv.eval()
+          conv = test_util.NCHWToNHWC(conv)
+        ret = self.evaluate(conv)
         self.assertShapeEqual(ret, conv)
         return ret
 
@@ -483,6 +465,7 @@ class Conv2DTest(test.TestCase):
     for i in range(1, len(values)):
       self.assertAllClose(values[0], values[i], rtol=1e-4, atol=1e-4)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1ValidBackpropInput(self):
     expected_output = [1.0, 4.0, 4.0, 3.0, 10.0, 8.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -497,6 +480,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth3ValidBackpropInput(self):
     expected_output = [
         14.0, 32.0, 50.0, 100.0, 163.0, 226.0, 167.0, 212.0, 257.0, 122.0,
@@ -516,6 +500,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-4)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth3ValidBackpropInputStride1x2(self):
     expected_output = [
         1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 7.0, 12.0, 11.0, 18.0, 15.0, 24.0, 12.0,
@@ -533,6 +518,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2DStrideTwoFilterOneSameBackpropInput(self):
     expected_output = [
         1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 4.0, 0.0, 0.0, 0.0,
@@ -545,6 +531,21 @@ class Conv2DTest(test.TestCase):
           output_sizes=[1, 2, 2, 1],
           strides=[2, 2],
           padding="SAME",
+          expected=expected_output,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testConv2DKernelSizeMatchesInputSizeBackpropInput(self):
+    expected_output = [5.0, 11.0, 17.0, 23.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(
+          input_sizes=[1, 2, 2, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 1, 1, 2],
+          strides=[1, 1],
+          padding="VALID",
           expected=expected_output,
           data_format=data_format,
           use_gpu=use_gpu,
@@ -565,15 +566,15 @@ class Conv2DTest(test.TestCase):
     x0 = [f * 1.0 for f in range(1, total_input_size + 1)]
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
     for dtype in self._DtypesToTest(use_gpu=use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with test_util.device(use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes, dtype=dtype)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes, dtype=dtype)
         explicit_strides = [1] + strides + [1]
         if data_format == "NCHW":
-          t0 = NHWCToNCHW(t0)
-          t2 = NHWCToNCHW(t2)
-          explicit_strides = NHWCToNCHW(explicit_strides)
+          t0 = test_util.NHWCToNCHW(t0)
+          t2 = test_util.NHWCToNCHW(t2)
+          explicit_strides = test_util.NHWCToNCHW(explicit_strides)
         conv = nn_ops.conv2d_backprop_filter(
             t0,
             t1,
@@ -581,7 +582,7 @@ class Conv2DTest(test.TestCase):
             strides=explicit_strides,
             padding=padding,
             data_format=data_format)
-        value = sess.run(conv)
+        value = self.evaluate(conv)
         self.assertShapeEqual(value, conv)
       print("expected = ", expected)
       print("actual = ", value)
@@ -593,15 +594,15 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with test_util.device(use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t0 = NHWCToNCHW(t0)
-          t2 = NHWCToNCHW(t2)
-          strides = NHWCToNCHW(strides)
+          t0 = test_util.NHWCToNCHW(t0)
+          t2 = test_util.NHWCToNCHW(t2)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d_backprop_filter(
             t0,
             t1,
@@ -609,7 +610,7 @@ class Conv2DTest(test.TestCase):
             strides=strides,
             padding=padding,
             data_format=data_format)
-        ret = conv.eval()
+        ret = self.evaluate(conv)
         self.assertShapeEqual(ret, conv)
         return ret
 
@@ -619,6 +620,7 @@ class Conv2DTest(test.TestCase):
     for i in range(1, len(values)):
       self.assertAllClose(values[0], values[i], rtol=1e-4, atol=1e-4)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1ValidBackpropFilter(self):
     expected = [5.0, 8.0, 14.0, 17.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -632,6 +634,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth3ValidBackpropFilter(self):
     expected = [
         17.0, 22.0, 27.0, 22.0, 29.0, 36.0, 27.0, 36.0, 45.0, 32.0, 43.0, 54.0,
@@ -650,6 +653,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth3ValidBackpropFilterStride1x2(self):
     expected = [161.0, 182.0, 287.0, 308.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -663,6 +667,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2DStrideTwoFilterOneSameBackpropFilter(self):
     expected_output = [78.]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -672,6 +677,20 @@ class Conv2DTest(test.TestCase):
           output_sizes=[1, 2, 2, 1],
           strides=[2, 2],
           padding="SAME",
+          expected=expected_output,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testConv2DKernelSizeMatchesInputSizeBackpropFilter(self):
+    expected_output = [1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(
+          input_sizes=[1, 2, 2, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 1, 1, 2],
+          strides=[1, 1],
+          padding="VALID",
           expected=expected_output,
           data_format=data_format,
           use_gpu=use_gpu)
@@ -711,8 +730,8 @@ class Conv2DTest(test.TestCase):
             filter_data, shape=filter_shape, dtype=dtype, name="filter")
         strides = [1, stride_rows, stride_cols, 1]
         if data_format == "NCHW":
-          new_input_tensor = NHWCToNCHW(input_tensor)
-          strides = NHWCToNCHW(strides)
+          new_input_tensor = test_util.NHWCToNCHW(input_tensor)
+          strides = test_util.NHWCToNCHW(strides)
         else:
           new_input_tensor = input_tensor
         conv = nn_ops.conv2d(
@@ -723,7 +742,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             name="conv")
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         self.assertEqual(output_shape, conv.get_shape())
         if test_input:
           jacob_t, jacob_n = gradient_checker.compute_gradient(input_tensor,
@@ -967,6 +986,40 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  def testInputGradientKernelSizeMatchesInputSize(self):
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=4,
+          input_cols=3,
+          filter_rows=4,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding="VALID",
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  def testFilterGradientKernelSizeMatchesInputSize(self):
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=4,
+          input_cols=3,
+          filter_rows=4,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding="VALID",
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
     c1 = nn_ops.conv2d(
@@ -1045,10 +1098,6 @@ class Conv2DTest(test.TestCase):
                 padding="VALID"))
 
 
-# This is only a very simple test. More comprehensive tests live in
-# //learning/dist_belief/experimental/brain_compatibility/conv_nn_test.py
-# where we compare the numeric results of the depthwise conv op with the
-# depthwise weighted sum transformer in dist_belief.
 class DepthwiseConv2DTest(test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
@@ -1160,8 +1209,14 @@ class SeparableConv2DTest(test.TestCase):
     x = [f * 0.5 for f in range(1, total_size + 1)]
     return constant_op.constant(x, shape=sizes)
 
-  def _VerifyValues(self, tensor_in_sizes, depthwise_filter_in_sizes,
-                    pointwise_filter_in_sizes, stride, padding, expected):
+  def _VerifyValues(self,
+                    tensor_in_sizes,
+                    depthwise_filter_in_sizes,
+                    pointwise_filter_in_sizes,
+                    stride,
+                    padding,
+                    expected,
+                    data_format="NHWC"):
     """Verifies the output values of the separable convolution function.
 
     Args:
@@ -1171,20 +1226,37 @@ class SeparableConv2DTest(test.TestCase):
       stride: Stride.
       padding: Padding type.
       expected: An array containing the expected operation outputs.
+      data_format: string data format for input tensor.
     """
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
       f2 = self._InitValues(pointwise_filter_in_sizes)
+
+      real_t1 = t1
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        real_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
+        strides = [1, 1, stride, stride]
+
       conv = nn_impl.separable_conv2d(
-          t1, f1, f2, strides=[1, stride, stride, 1], padding=padding)
+          real_t1,
+          f1,
+          f2,
+          strides=strides,
+          padding=padding,
+          data_format=data_format)
+
+      if data_format == "NCHW":
+        conv = array_ops.transpose(conv, [0, 2, 3, 1])
+
       value = sess.run(conv)
     print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
-  def testSeparableConv2D(self):
+  def _testSeparableConv2D(self, data_format):
     # The output is the result of two convolutions:
     # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 2, 3].
     # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 7].
@@ -1212,9 +1284,18 @@ class SeparableConv2DTest(test.TestCase):
         pointwise_filter_in_sizes=[1, 1, 6, 7],
         stride=1,
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format)
 
-  def testSeparableConv2DEqualInputOutputDepth(self):
+  def testSeparableConv2D(self):
+    self._testSeparableConv2D("NHWC")
+
+  def testSeparableConv2DNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2D("NCHW")
+
+  def _testSeparableConv2DEqualInputOutputDepth(self, data_format):
     # The output is the result of two convolutions:
     # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 3, 3].
     # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 6].
@@ -1240,20 +1321,16 @@ class SeparableConv2DTest(test.TestCase):
         pointwise_filter_in_sizes=[1, 1, 6, 6],
         stride=1,
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format)
 
-  def testSeparableConv2DIllegalCases(self):
-    # Output depth less then input depth.
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Refusing to perform an overparameterized separable convolution"):
-      self._VerifyValues(
-          tensor_in_sizes=[1, 4, 4, 2],
-          depthwise_filter_in_sizes=[2, 2, 2, 3],
-          pointwise_filter_in_sizes=[1, 1, 6, 5],
-          stride=1,
-          padding="SAME",
-          expected=None)
+  def testSeparableConv2DEqualInputOutputDepth(self):
+    self._testSeparableConv2DEqualInputOutputDepth("NHWC")
+
+  def testSeparableConv2DEqualInputOutputDepthNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
 
 class DeepConv2DTest(test.TestCase):
@@ -1336,9 +1413,14 @@ class Conv2DBenchmark(test.Benchmark):
         print("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
 
 
-def GetInceptionFwdTest(input_size, filter_size, stride, padding):
+def GetInceptionFwdTest(input_size, filter_size, stride, padding,
+                        gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionFwd %s", (input_size, filter_size,
+                                                   stride, padding))
+      return
     tf_logging.info("Testing InceptionFwd %s", (input_size, filter_size, stride,
                                                 padding))
     self._CompareFwdValues(input_size, filter_size, [stride, stride], padding)
@@ -1347,9 +1429,14 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding):
 
 
 def GetInceptionBackInputTest(input_size, filter_size, output_size, stride,
-                              padding):
+                              padding,
+                              gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionBackInput %s",
+                      (input_size, filter_size, output_size, stride, padding))
+      return
     tf_logging.info("Testing InceptionBackInput %s",
                     (input_size, filter_size, output_size, stride, padding))
     self._CompareBackpropInput(input_size, filter_size, output_size,
@@ -1359,9 +1446,13 @@ def GetInceptionBackInputTest(input_size, filter_size, output_size, stride,
 
 
 def GetInceptionBackFilterTest(input_size, filter_size, output_size, strides,
-                               padding):
+                               padding, gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionBackFilter %s",
+                      (input_size, filter_size, output_size, strides, padding))
+      return
     tf_logging.info("Testing InceptionBackFilter %s",
                     (input_size, filter_size, output_size, strides, padding))
     self._CompareBackFilter(input_size, filter_size, output_size, strides,
@@ -1374,12 +1465,37 @@ if __name__ == "__main__":
   for index, (input_size_, filter_size_, output_size_, stride_,
               padding_) in enumerate(GetShrunkInceptionShapes()):
     setattr(Conv2DTest, "testInceptionFwd_" + str(index),
-            GetInceptionFwdTest(input_size_, filter_size_, stride_, padding_))
+            test_util.run_in_graph_and_eager_modes()(
+                GetInceptionFwdTest(input_size_, filter_size_, stride_,
+                                    padding_)))
     setattr(Conv2DTest, "testInceptionBackInput_" + str(index),
-            GetInceptionBackInputTest(input_size_, filter_size_, output_size_,
-                                      stride_, padding_))
+            test_util.run_in_graph_and_eager_modes()(
+                GetInceptionBackInputTest(input_size_, filter_size_,
+                                          output_size_, stride_, padding_)))
     setattr(Conv2DTest, "testInceptionBackFilter_" + str(index),
-            GetInceptionBackFilterTest(input_size_, filter_size_, output_size_,
-                                       [stride_, stride_], padding_))
+            test_util.run_in_graph_and_eager_modes()(
+                GetInceptionBackFilterTest(input_size_, filter_size_,
+                                           output_size_, [stride_, stride_],
+                                           padding_)))
 
+  # TODO(b/35359731)
+  # Fwd, BckInput, and BackFilter to test that for certain input parameter
+  # set, winograd nonfused algorithm will be excluded from conv autotune. If
+  # in such case, winograd nonfused algorithm is added as one option of the
+  # conv autotune, and cuDNN version is smaller than 7, the following tests
+  # will fail.
+  ishape = [1, 400, 400, 1]
+  fshape = [1, 1, 1, 256]
+  oshape = [1, 400, 400, 256]
+  setattr(Conv2DTest, "testInceptionFwd_No_Winograd_Nonfused",
+          test_util.run_in_graph_and_eager_modes()(
+              GetInceptionFwdTest(ishape, fshape, 1, "SAME", gpu_only=True)))
+  setattr(Conv2DTest, "testInceptionBackInput_No_Winograd_Nonfused",
+          test_util.run_in_graph_and_eager_modes()(
+              GetInceptionBackInputTest(ishape, fshape, oshape, 1, "SAME",
+                                        gpu_only=True)))
+  setattr(Conv2DTest, "testInceptionBackFilter_No_Winograd_Nonfused",
+          test_util.run_in_graph_and_eager_modes()(
+              GetInceptionBackFilterTest(ishape, fshape, oshape, [1, 1], "SAME",
+                                         gpu_only=True)))
   test.main()

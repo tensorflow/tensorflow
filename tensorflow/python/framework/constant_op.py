@@ -12,83 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Operations that generate constants.
 
-"""## Constant Value Tensors
-
-TensorFlow provides several operations that you can use to generate constants.
+See the @{$python/constant_op$constants guide}.
 
 @@zeros
 @@zeros_like
-
 @@ones
 @@ones_like
-
 @@fill
-
 @@constant
-
-## Sequences
-
 @@linspace
-
 @@range
-
-## Random Tensors
-
-TensorFlow has several ops that create random tensors with different
-distributions.  The random ops are stateful, and create new random values each
-time they are evaluated.
-
-The `seed` keyword argument in these functions acts in conjunction with
-the graph-level random seed. Changing either the graph-level seed using
-[`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed) or the
-op-level seed will change the underlying seed of these operations. Setting
-neither graph-level nor op-level seed, results in a random seed for all
-operations.
-See [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-for details on the interaction between operation-level and graph-level random
-seeds.
-
-### Examples:
-
-```python
-# Create a tensor of shape [2, 3] consisting of random normal values, with mean
-# -1 and standard deviation 4.
-norm = tf.random_normal([2, 3], mean=-1, stddev=4)
-
-# Shuffle the first dimension of a tensor
-c = tf.constant([[1, 2], [3, 4], [5, 6]])
-shuff = tf.random_shuffle(c)
-
-# Each time we run these ops, different results are generated
-sess = tf.Session()
-print(sess.run(norm))
-print(sess.run(norm))
-
-# Set an op-level seed to generate repeatable sequences across sessions.
-norm = tf.random_normal([2, 3], seed=1234)
-sess = tf.Session()
-print(sess.run(norm))
-print(sess.run(norm))
-sess = tf.Session()
-print(sess.run(norm))
-print(sess.run(norm))
-```
-
-Another common use of random values is the initialization of variables. Also see
-the [Variables How To](../../how_tos/variables/index.md).
-
-```python
-# Use random uniform values in [0, 1) as the initializer for a variable of shape
-# [2, 3]. The default type is float32.
-var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.global_variables_initializer()
-
-sess = tf.Session()
-sess.run(init)
-print(sess.run(var))
-```
-
 @@random_normal
 @@truncated_normal
 @@random_uniform
@@ -96,6 +31,7 @@ print(sess.run(var))
 @@random_crop
 @@multinomial
 @@random_gamma
+@@random_poisson
 @@set_random_seed
 """
 
@@ -105,13 +41,53 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+
+
+def _eager_reshape(tensor, shape):
+  """Eager-only version of Reshape op; requires tensor is an eager Tensor."""
+  attr_t = tensor.dtype.as_datatype_enum
+  attr_tshape, (shape,) = execute.args_to_matching_eager([shape], dtypes.int32)
+  attr_tshape = attr_tshape.as_datatype_enum
+  inputs_flat = [tensor, shape]
+  attrs = ("T", attr_t, "Tshape", attr_tshape)
+  result, = execute.execute("Reshape", 1, inputs=inputs_flat, attrs=attrs)
+  return result
+
+
+def _eager_fill(dims, value):
+  """Eager-only version of Fill op; requires value is an eager Tensor."""
+  attr_t = value.dtype.as_datatype_enum
+  dims = convert_to_eager_tensor(dims, dtypes.int32)
+  inputs_flat = [dims, value]
+  attrs = ("T", attr_t)
+  result, = execute.execute("Fill", 1, inputs=inputs_flat, attrs=attrs)
+  return result
+
+
+def convert_to_eager_tensor(t, dtype=None):
+  """Converts the given `value` to an `EagerTensor`."""
+  if isinstance(ag_core.getval(t), ops.EagerTensor):
+    if dtype is not None and t.dtype != dtype:
+      raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
+    return t
+  # Handle converting ResourceVariable to Tensor.
+  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
+  # general scheme in place.
+  try:
+    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
+  except AttributeError:
+    pass
+  return ops.EagerTensor(t, dtype=dtype)
 
 
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
@@ -158,16 +134,49 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
 
   Returns:
     A Constant Tensor.
+
+  Raises:
+    TypeError if shape is incorrectly specified or unsupported.
   """
+  if not context.in_graph_mode():
+    if shape is None:
+      return convert_to_eager_tensor(value, dtype)
+    t = convert_to_eager_tensor(value, dtype)
+    shape = tensor_shape.as_shape(shape)
+    if shape == t.shape:
+      return t
+    if verify_shape:
+      raise TypeError("Expected Tensor's shape: %s, got %s." % (tuple(shape),
+                                                                tuple(t.shape)))
+    num_t = t.shape.num_elements()
+    # TODO(josh11b): Implement shape -> eager tensor conversion.
+    if num_t == shape.num_elements():
+      return _eager_reshape(t, shape.as_list())
+    if num_t == 1:
+      return _eager_fill(shape.as_list(), t)
+    raise TypeError("Eager execution of tf.constant with unsupported shape "
+                    "(value has %d elements, shape is %s with %d elements)." %
+                    (num_t, shape, shape.num_elements()))
   g = ops.get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
   tensor_value.tensor.CopyFrom(
-      tensor_util.make_tensor_proto(value, dtype=dtype, shape=shape, verify_shape=verify_shape))
+      tensor_util.make_tensor_proto(
+          value, dtype=dtype, shape=shape, verify_shape=verify_shape))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
   const_tensor = g.create_op(
       "Const", [], [dtype_value.type],
-      attrs={"value": tensor_value, "dtype": dtype_value}, name=name).outputs[0]
+      attrs={"value": tensor_value,
+             "dtype": dtype_value},
+      name=name).outputs[0]
   return const_tensor
+
+
+def is_constant(tensor_or_op):
+  if isinstance(tensor_or_op, ops.Tensor):
+    op = tensor_or_op.op
+  else:
+    op = tensor_or_op
+  return op.type == "Const"
 
 
 def _constant_tensor_conversion_function(v, dtype=None, name=None,
@@ -186,27 +195,44 @@ ops.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 
 
-def _tensor_shape_tensor_conversion_function(s, dtype=None, name=None,
+def _tensor_shape_tensor_conversion_function(s,
+                                             dtype=None,
+                                             name=None,
                                              as_ref=False):
+  """Function to convert TensorShape to Tensor."""
   _ = as_ref
   if not s.is_fully_defined():
     raise ValueError(
         "Cannot convert a partially known TensorShape to a Tensor: %s" % s)
+  s_list = s.as_list()
+  int64_value = 0
+  for dim in s_list:
+    if dim >= 2**31:
+      int64_value = dim
+      break
+
   if dtype is not None:
     if dtype not in (dtypes.int32, dtypes.int64):
       raise TypeError("Cannot convert a TensorShape to dtype: %s" % dtype)
+    if dtype == dtypes.int32 and int64_value:
+      raise ValueError("Cannot convert a TensorShape to dtype int32; "
+                       "a dimension is too large (%s)" % int64_value)
   else:
-    dtype = dtypes.int32
+    dtype = dtypes.int64 if int64_value else dtypes.int32
   if name is None:
     name = "shape_as_tensor"
-  return constant(s.as_list(), dtype=dtype, name=name)
+  return constant(s_list, dtype=dtype, name=name)
+
 
 ops.register_tensor_conversion_function(
     tensor_shape.TensorShape, _tensor_shape_tensor_conversion_function, 100)
 
 
-def _dimension_tensor_conversion_function(d, dtype=None, name=None,
+def _dimension_tensor_conversion_function(d,
+                                          dtype=None,
+                                          name=None,
                                           as_ref=False):
+  """Function to convert Dimension to Tensor."""
   _ = as_ref
   if d.value is None:
     raise ValueError("Cannot convert an unknown Dimension to a Tensor: %s" % d)
@@ -218,6 +244,7 @@ def _dimension_tensor_conversion_function(d, dtype=None, name=None,
   if name is None:
     name = "shape_as_tensor"
   return constant(d.value, dtype=dtype, name=name)
+
 
 ops.register_tensor_conversion_function(
     tensor_shape.Dimension, _dimension_tensor_conversion_function, 100)

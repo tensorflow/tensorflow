@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import sparse_grad
+from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.util.all_util import remove_undocumented
@@ -56,6 +57,8 @@ from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
+from tensorflow.python.ops.lookup_ops import initialize_all_tables
+from tensorflow.python.ops.lookup_ops import tables_initializer
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
@@ -142,8 +145,9 @@ _allowed_symbols_math_ops = [
     "sub",  # use tf.subtract instead.
 
     # These are documented in nn.
-    # We are are not importing nn because it would create a circular dependency.
+    # We are not importing nn because it would create a circular dependency.
     "sigmoid",
+    "log_sigmoid",
     "tanh",
 ]
 
@@ -168,15 +172,15 @@ _allowed_symbols_array_ops = [
     ##  documentation section to reference.
     ## For re-exporting to tf.*:
     "constant",
-    "edit_distance",   # to-doc
+    "edit_distance",  # to-doc
     # From gen_array_ops:
-    "copy_host",       # to-doc
+    "copy_host",  # to-doc
     "immutable_const",  # to-doc
     "invert_permutation",  # to-doc
     "quantize_and_dequantize",  # to-doc
 
     # TODO(drpng): legacy symbols to be removed.
-    "list_diff",   # Use tf.listdiff instead.
+    "list_diff",  # Use tf.listdiff instead.
     "batch_matrix_diag",
     "batch_matrix_band_part",
     "batch_matrix_diag_part",

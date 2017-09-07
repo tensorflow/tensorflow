@@ -88,9 +88,9 @@ class ReferenceConvFunctor {
     int filter_top_offset;
     if (padding == VALID) {
       filter_left_offset =
-          ((output_width - 1) * stride + filter_width - input_width) / 2;
+          ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
       filter_top_offset =
-          ((output_height - 1) * stride + filter_height - input_height) / 2;
+          ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
     } else {
       filter_left_offset =
           ((output_width - 1) * stride + filter_width - input_width) / 2;
@@ -187,19 +187,13 @@ class ReferenceConvFunctor {
 // going to be extremely large, so break it into chunks if it's bigger than
 // a limit. Each chunk will be processed serially, so we can refill the
 // buffer for the next chunk and reuse it, keeping maximum memory size down.
-// In this case, we've picked 16 megabytes as a reasonable limit for Android and
-// other platforms using Eigen, and 1MB for Apple devices, from experimentation.
-#if defined(__APPLE__) && defined(IS_MOBILE_PLATFORM)
+// In this case, we've picked 1 megabyte as a reasonable limit, from
+// experimentation.
 const size_t kMaxChunkSize = (1 * 1024 * 1024);
-#else
-const size_t kMaxChunkSize = (16 * 1024 * 1024);
-#endif
 
 // Implements convolution as a two stage process, first packing the patches of
 // the input image into columns (im2col) and then running GEMM to produce the
 // final result.
-// TODO(petewarden) - We need to update gemmlowp to support 32-bit outputs
-// before we can re-enable this path.
 template <class T1, class T2, class T3>
 class Im2ColConvFunctor {
  public:
@@ -217,7 +211,7 @@ class Im2ColConvFunctor {
         ++warning_count;
         LOG(WARNING)
             << "For kernel '" << context->op_kernel().name() << "' from input '"
-            << context->op_kernel().def().input(0)
+            << context->op_kernel().requested_input(0)
             << "': Zero is not representable in the quantized range used by the"
             << " input. This means QuantizedConv2d has to fall back to a slow"
             << " implementation, since the border of zero values can't be"
@@ -239,9 +233,9 @@ class Im2ColConvFunctor {
     int filter_top_offset;
     if (padding == VALID) {
       filter_left_offset =
-          ((output_width - 1) * stride + filter_width - input_width) / 2;
+          ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
       filter_top_offset =
-          ((output_height - 1) * stride + filter_height - input_height) / 2;
+          ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
     } else {
       filter_left_offset =
           ((output_width - 1) * stride + filter_width - input_width) / 2;
@@ -316,9 +310,10 @@ class Im2ColConvFunctor {
           // If we're off the top or the bottom of the input, fill the
           // whole row with zeroes.
           if ((in_y < 0) || (in_y >= input_height)) {
-            T1* im2col_row_end =
-                im2col_row_start + (filter_width * input_depth);
-            std::fill(im2col_row_start, im2col_row_end, input_offset);
+            // On Android, memset and memcpy are significantly faster than the
+            // more modern std::set and std::copy equivalents.
+            memset(im2col_row_start, input_offset,
+                   (filter_width * input_depth));
           } else {
             // What we're doing here is trying to copy and fill the im2col
             // buffer as efficiently as possible, using functions to set or
@@ -335,8 +330,10 @@ class Im2ColConvFunctor {
             //
             // In reality it's unlikely that a filter patch will be wider
             // than an input, but this shows all the edge cases.
-            // We use std::fill() to set the left and right sections to zeroes
-            // and std::copy() to copy over the input data for the center.
+            // We use memset() to set the left and right sections to zeroes
+            // and memcpy() to copy over the input data for the center. These
+            // are preferred to std::fill and std::copy because they're much
+            // faster on Android.
             const int in_x_end = in_x_origin + filter_width;
             const int left_zero_count = std::max(0, 0 - in_x_origin);
             const int right_zero_count = std::max(0, in_x_end - input_width);
@@ -344,27 +341,24 @@ class Im2ColConvFunctor {
                 filter_width - (left_zero_count + right_zero_count);
             if (left_zero_count > 0) {
               T1* im2col_left_start = im2col_row_start;
-              T1* im2col_left_end =
-                  im2col_left_start + (left_zero_count * input_depth);
-              std::fill(im2col_left_start, im2col_left_end, input_offset);
+              memset(im2col_left_start, input_offset,
+                     (left_zero_count * input_depth));
             }
             if (center_copy_count > 0) {
               const T1* input_row_start =
                   input_batch_start + (in_y * input_width * input_depth) +
                   (std::max(0, in_x_origin) * input_depth);
-              const T1* input_row_end =
-                  input_row_start + (center_copy_count * input_depth);
               T1* im2col_center_start =
                   im2col_row_start + (left_zero_count * input_depth);
-              std::copy(input_row_start, input_row_end, im2col_center_start);
+              memcpy(im2col_center_start, input_row_start,
+                     (center_copy_count * input_depth));
             }
             if (right_zero_count > 0) {
               T1* im2col_right_start =
                   im2col_row_start +
                   ((left_zero_count + center_copy_count) * input_depth);
-              T1* im2col_right_end =
-                  im2col_right_start + (right_zero_count * input_depth);
-              std::fill(im2col_right_start, im2col_right_end, input_offset);
+              memset(im2col_right_start, input_offset,
+                     (right_zero_count * input_depth));
             }
           }
         }
@@ -387,7 +381,7 @@ class Im2ColConvFunctor {
       if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
           std::is_same<T2, quint8>() && std::is_same<T3, qint32>() &&
           (output_offset == 0) && (output_mult == 1) && (output_shift == 0) &&
-          (transpose_c == false)) {
+          (transpose_c == false) && (k <= 2048)) {
         meta::QuantizedGemm(context, transpose_a, transpose_b, im2col_buffer,
                             filter_data, chunk_output_data, m, n, k,
                             -input_offset, -filter_offset, lda, ldb, ldc);
@@ -431,6 +425,10 @@ class Im2ColConvFunctor {
                                          gemmlowp::DefaultL8R8BitDepthParams>(
             &context, lhs, rhs, &result, -input_offset, -filter_offset,
             empty_pipeline);
+        // Since gemmlowp uses assembly to write to the output, msan won't
+        // detect the output buffer as written to, so we mark it manually.
+        TF_ANNOTATE_MEMORY_IS_INITIALIZED(output_data_as_int32,
+                                          m * n * sizeof(int32));
       } else {
         ReferenceGemm<T1, T2, T3>(
             transpose_a, transpose_b, transpose_c, m, n, k, im2col_buffer,

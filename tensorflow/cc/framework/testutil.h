@@ -22,12 +22,24 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
-// Computes the outputs listed in 'tensors', returns the tensors in 'out'.
-void GetTensors(const Scope& scope, ops::OutputList tensors,
+/// Computes the outputs listed in 'tensors', returns the tensors in 'out'.
+void GetTensors(const Scope& scope, OutputList tensors,
                 std::vector<Tensor>* out);
 
+// Computes the outputs listed in 'tensors', returns the tensors in 'out'.
+// assign_vars are extra outputs that should be run
+// e.g. to assign values to variables.
+void GetTensors(const Scope& scope, const std::vector<Output>& assign_vars,
+                const OutputList& tensors, std::vector<Tensor>* out);
+
+/// Computes the output 'tensor', returning the resulting tensor in 'out'.
+void GetTensor(const Scope& scope, Output tensor, Tensor* out);
+
 // Computes the output 'tensor', returning the resulting tensor in 'out'.
-void GetTensor(const Scope& scope, ops::Output tensor, Tensor* out);
+// assign_vars are extra outputs that should be run
+// e.g. to assign values to variables.
+void GetTensor(const Scope& scope, const std::vector<Output>& assign_vars,
+               Output tensor, Tensor* out);
 
 }  // namespace test
 }  // namespace tensorflow

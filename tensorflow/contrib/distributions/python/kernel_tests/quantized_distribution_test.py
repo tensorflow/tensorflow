@@ -19,13 +19,20 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-import tensorflow as tf
+from tensorflow.contrib import distributions as distributions_lib
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
-distributions = tf.contrib.distributions
+distributions = distributions_lib
 rng = np.random.RandomState(123)
 
 
-class QuantizedDistributionTest(tf.test.TestCase):
+class QuantizedDistributionTest(test.TestCase):
 
   def _assert_all_finite(self, array):
     self.assertTrue(np.isfinite(array).all())
@@ -47,17 +54,16 @@ class QuantizedDistributionTest(tf.test.TestCase):
       # j = ...     0     1     2     3
       # and the QUniform still places 1/3 of its mass in the intervals
       # j = 1, 2, 3.
-      for lcut, ucut in [
-          (None, None), (0.0, None), (None, 3.0), (0.0, 3.0), (-10., 10.)
-      ]:
+      for lcut, ucut in [(None, None), (0.0, None), (None, 3.0), (0.0, 3.0),
+                         (-10., 10.)]:
         qdist = distributions.QuantizedDistribution(
-            distribution=distributions.Uniform(a=0.0, b=3.0),
-            lower_cutoff=lcut,
-            upper_cutoff=ucut)
+            distribution=distributions.Uniform(low=0.0, high=3.0),
+            low=lcut,
+            high=ucut)
 
         # pmf
         pmf_n1, pmf_0, pmf_1, pmf_2, pmf_3, pmf_4, pmf_5 = sess.run(
-            qdist.pmf([-1., 0., 1., 2., 3., 4., 5.]))
+            qdist.prob([-1., 0., 1., 2., 3., 4., 5.]))
         # uniform had no mass below -1.
         self.assertAllClose(0., pmf_n1)
         # uniform had no mass below 0.
@@ -96,9 +102,9 @@ class QuantizedDistributionTest(tf.test.TestCase):
       # ...(-infty, -1](-1, 0](0, infty) ...
       #             -1      0     1
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Uniform(a=-3., b=3.),
-          lower_cutoff=-1.0,
-          upper_cutoff=1.0)
+          distribution=distributions.Uniform(low=-3., high=3.),
+          low=-1.0,
+          high=1.0)
 
       # pmf
       cdf_n3, cdf_n2, cdf_n1, cdf_0, cdf_0p5, cdf_1, cdf_10 = sess.run(
@@ -132,24 +138,20 @@ class QuantizedDistributionTest(tf.test.TestCase):
       # with the intervals displayed above each holding 1 / 10 of the mass.
       # The qdist will be defined with no cutoffs,
       uniform = distributions.Uniform(
-          a=tf.zeros(
-              batch_shape, dtype=tf.float32),
-          b=10 * tf.ones(
-              batch_shape, dtype=tf.float32))
+          low=array_ops.zeros(batch_shape, dtype=dtypes.float32),
+          high=10 * array_ops.ones(batch_shape, dtype=dtypes.float32))
       qdist = distributions.QuantizedDistribution(
-          distribution=uniform,
-          lower_cutoff=None,
-          upper_cutoff=None)
+          distribution=uniform, low=None, high=None)
 
       # x is random integers in {-3,...,12}.
       x = rng.randint(-3, 13, size=batch_shape).astype(np.float32)
 
       # pmf
-      # qdist.pmf(j) = 1 / 10 for j in {1,...,10}, and 0 otherwise,
+      # qdist.prob(j) = 1 / 10 for j in {1,...,10}, and 0 otherwise,
       expected_pmf = (1 / 10) * np.ones(batch_shape)
       expected_pmf[x < 1] = 0.
       expected_pmf[x > 10] = 0.
-      self.assertAllClose(expected_pmf, qdist.pmf(x).eval())
+      self.assertAllClose(expected_pmf, qdist.prob(x).eval())
 
       # cdf
       # qdist.cdf(j)
@@ -165,20 +167,18 @@ class QuantizedDistributionTest(tf.test.TestCase):
     batch_shape = (2,)
     with self.test_session():
       normal = distributions.Normal(
-          mu=tf.zeros(
-              batch_shape, dtype=tf.float32),
-          sigma=tf.ones(
-              batch_shape, dtype=tf.float32))
+          loc=array_ops.zeros(
+              batch_shape, dtype=dtypes.float32),
+          scale=array_ops.ones(
+              batch_shape, dtype=dtypes.float32))
 
       qdist = distributions.QuantizedDistribution(
-          distribution=normal,
-          lower_cutoff=0.,
-          upper_cutoff=None)
+          distribution=normal, low=0., high=None)
 
-      samps = qdist.sample_n(n=5000, seed=42)
+      samps = qdist.sample(5000, seed=42)
       samps_v = samps.eval()
 
-      # With lower_cutoff = 0, the interval j=0 is (-infty, 0], which holds 1/2
+      # With low = 0, the interval j=0 is (-infty, 0], which holds 1/2
       # of the mass of the normals.
       # rtol chosen to be 2x as large as necessary to pass.
       self.assertAllClose([0.5, 0.5], (samps_v == 0).mean(axis=0), rtol=0.03)
@@ -201,9 +201,9 @@ class QuantizedDistributionTest(tf.test.TestCase):
     # integers.  Hence, F(X) (see below) will not be uniform exactly.
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Exponential(lam=0.01))
+          distribution=distributions.Exponential(rate=0.01))
       # X ~ QuantizedExponential
-      x = qdist.sample_n(n=10000, seed=42)
+      x = qdist.sample(10000, seed=42)
       # Z = F(X), should be Uniform.
       z = qdist.cdf(x)
       # Compare the CDF of Z to that of a Uniform.
@@ -224,21 +224,19 @@ class QuantizedDistributionTest(tf.test.TestCase):
     # Make an exponential with mean 5.
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Exponential(lam=0.2))
+          distribution=distributions.Exponential(rate=0.2))
       # Standard error should be less than 1 / (2 * sqrt(n_samples))
       n_samples = 10000
-      std_err_bound = 1 / (2 * np.sqrt(n_samples))
+      stddev_err_bound = 1 / (2 * np.sqrt(n_samples))
       samps = qdist.sample((n_samples,), seed=42).eval()
       # The smallest value the samples can take on is 1, which corresponds to
       # the interval (0, 1].  Recall we use ceiling in the sampling definition.
       self.assertLess(0.5, samps.min())
       x_vals = np.arange(1, 11).astype(np.float32)
-      pmf_vals = qdist.pmf(x_vals).eval()
+      pmf_vals = qdist.prob(x_vals).eval()
       for ii in range(10):
         self.assertAllClose(
-            pmf_vals[ii],
-            (samps == x_vals[ii]).mean(),
-            atol=std_err_bound)
+            pmf_vals[ii], (samps == x_vals[ii]).mean(), atol=stddev_err_bound)
 
   def testNormalCdfAndSurvivalFunction(self):
     # At integer values, the result should be the same as the standard normal.
@@ -247,18 +245,15 @@ class QuantizedDistributionTest(tf.test.TestCase):
     sigma = rng.rand(*batch_shape) + 1.0
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=mu, sigma=sigma))
+          distribution=distributions.Normal(
+              loc=mu, scale=sigma))
       sp_normal = stats.norm(mu, sigma)
 
       x = rng.randint(-5, 5, size=batch_shape).astype(np.float64)
 
-      self.assertAllClose(
-          sp_normal.cdf(x),
-          qdist.cdf(x).eval())
+      self.assertAllClose(sp_normal.cdf(x), qdist.cdf(x).eval())
 
-      self.assertAllClose(
-          sp_normal.sf(x),
-          qdist.survival_function(x).eval())
+      self.assertAllClose(sp_normal.sf(x), qdist.survival_function(x).eval())
 
   def testNormalLogCdfAndLogSurvivalFunction(self):
     # At integer values, the result should be the same as the standard normal.
@@ -267,67 +262,53 @@ class QuantizedDistributionTest(tf.test.TestCase):
     sigma = rng.rand(*batch_shape) + 1.0
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=mu, sigma=sigma))
+          distribution=distributions.Normal(
+              loc=mu, scale=sigma))
       sp_normal = stats.norm(mu, sigma)
 
       x = rng.randint(-10, 10, size=batch_shape).astype(np.float64)
 
-      self.assertAllClose(
-          sp_normal.logcdf(x),
-          qdist.log_cdf(x).eval())
+      self.assertAllClose(sp_normal.logcdf(x), qdist.log_cdf(x).eval())
 
       self.assertAllClose(
-          sp_normal.logsf(x),
-          qdist.log_survival_function(x).eval())
+          sp_normal.logsf(x), qdist.log_survival_function(x).eval())
 
   def testNormalProbWithCutoffs(self):
     # At integer values, the result should be the same as the standard normal.
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=0., sigma=1.),
-          lower_cutoff=-2.,
-          upper_cutoff=2.)
+          distribution=distributions.Normal(loc=0., scale=1.),
+          low=-2.,
+          high=2.)
       sm_normal = stats.norm(0., 1.)
       # These cutoffs create partitions of the real line, and indices:
       # (-inf, -2](-2, -1](-1, 0](0, 1](1, inf)
       #        -2      -1      0     1     2
       # Test interval (-inf, -2], <--> index -2.
-      self.assertAllClose(
-          sm_normal.cdf(-2),
-          qdist.prob(-2.).eval(),
-          atol=0)
+      self.assertAllClose(sm_normal.cdf(-2), qdist.prob(-2.).eval(), atol=0)
       # Test interval (-2, -1], <--> index -1.
       self.assertAllClose(
-          sm_normal.cdf(-1) - sm_normal.cdf(-2),
-          qdist.prob(-1.).eval(),
-          atol=0)
+          sm_normal.cdf(-1) - sm_normal.cdf(-2), qdist.prob(-1.).eval(), atol=0)
       # Test interval (-1, 0], <--> index 0.
       self.assertAllClose(
-          sm_normal.cdf(0) - sm_normal.cdf(-1),
-          qdist.prob(0.).eval(),
-          atol=0)
+          sm_normal.cdf(0) - sm_normal.cdf(-1), qdist.prob(0.).eval(), atol=0)
       # Test interval (1, inf), <--> index 2.
-      self.assertAllClose(
-          1. - sm_normal.cdf(1),
-          qdist.prob(2.).eval(),
-          atol=0)
+      self.assertAllClose(1. - sm_normal.cdf(1), qdist.prob(2.).eval(), atol=0)
 
   def testNormalLogProbWithCutoffs(self):
     # At integer values, the result should be the same as the standard normal.
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=0., sigma=1.),
-          lower_cutoff=-2.,
-          upper_cutoff=2.)
+          distribution=distributions.Normal(loc=0., scale=1.),
+          low=-2.,
+          high=2.)
       sm_normal = stats.norm(0., 1.)
       # These cutoffs create partitions of the real line, and indices:
       # (-inf, -2](-2, -1](-1, 0](0, 1](1, inf)
       #        -2      -1      0     1     2
       # Test interval (-inf, -2], <--> index -2.
       self.assertAllClose(
-          np.log(sm_normal.cdf(-2)),
-          qdist.log_prob(-2.).eval(),
-          atol=0)
+          np.log(sm_normal.cdf(-2)), qdist.log_prob(-2.).eval(), atol=0)
       # Test interval (-2, -1], <--> index -1.
       self.assertAllClose(
           np.log(sm_normal.cdf(-1) - sm_normal.cdf(-2)),
@@ -340,50 +321,50 @@ class QuantizedDistributionTest(tf.test.TestCase):
           atol=0)
       # Test interval (1, inf), <--> index 2.
       self.assertAllClose(
-          np.log(1. - sm_normal.cdf(1)),
-          qdist.log_prob(2.).eval(),
-          atol=0)
+          np.log(1. - sm_normal.cdf(1)), qdist.log_prob(2.).eval(), atol=0)
 
   def testLogProbAndGradGivesFiniteResults(self):
     for dtype in [np.float32, np.float64]:
-      g = tf.Graph()
+      g = ops.Graph()
       with g.as_default():
-        mu = tf.Variable(0., name="mu", dtype=dtype)
-        sigma = tf.Variable(1., name="sigma", dtype=dtype)
+        mu = variables.Variable(0., name="mu", dtype=dtype)
+        sigma = variables.Variable(1., name="sigma", dtype=dtype)
         qdist = distributions.QuantizedDistribution(
-            distribution=distributions.Normal(mu=mu, sigma=sigma))
+            distribution=distributions.Normal(
+                loc=mu, scale=sigma))
         x = np.arange(-100, 100, 2).astype(dtype)
         proba = qdist.log_prob(x)
-        grads = tf.gradients(proba, [mu, sigma])
+        grads = gradients_impl.gradients(proba, [mu, sigma])
         with self.test_session(graph=g):
-          tf.global_variables_initializer().run()
+          variables.global_variables_initializer().run()
           self._assert_all_finite(proba.eval())
           self._assert_all_finite(grads[0].eval())
           self._assert_all_finite(grads[1].eval())
 
   def testProbAndGradGivesFiniteResultsForCommonEvents(self):
     with self.test_session():
-      mu = tf.Variable(0.0, name="mu")
-      sigma = tf.Variable(1.0, name="sigma")
+      mu = variables.Variable(0.0, name="mu")
+      sigma = variables.Variable(1.0, name="sigma")
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=mu, sigma=sigma))
-      x = tf.ceil(4 * rng.rand(100).astype(np.float32) - 2)
+          distribution=distributions.Normal(
+              loc=mu, scale=sigma))
+      x = math_ops.ceil(4 * rng.rand(100).astype(np.float32) - 2)
 
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
 
       proba = qdist.prob(x)
       self._assert_all_finite(proba.eval())
 
-      grads = tf.gradients(proba, [mu, sigma])
+      grads = gradients_impl.gradients(proba, [mu, sigma])
       self._assert_all_finite(grads[0].eval())
       self._assert_all_finite(grads[1].eval())
 
   def testLowerCutoffMustBeBelowUpperCutoffOrWeRaise(self):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=0., sigma=1.),
-          lower_cutoff=1.,  # not strictly less than upper_cutoff.
-          upper_cutoff=1.,
+          distribution=distributions.Normal(loc=0., scale=1.),
+          low=1.,  # not strictly less than high.
+          high=1.,
           validate_args=True)
 
       self.assertTrue(qdist.validate_args)  # Default is True.
@@ -392,23 +373,24 @@ class QuantizedDistributionTest(tf.test.TestCase):
 
   def testCutoffsMustBeIntegerValuedIfValidateArgsTrue(self):
     with self.test_session():
+      low = array_ops.placeholder(dtypes.float32)
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(mu=0., sigma=1.),
-          lower_cutoff=1.5,
-          upper_cutoff=10.,
+          distribution=distributions.Normal(loc=0., scale=1.),
+          low=low,
+          high=10.,
           validate_args=True)
 
       self.assertTrue(qdist.validate_args)  # Default is True.
       with self.assertRaisesOpError("has non-integer components"):
-        qdist.sample().eval()
+        qdist.sample().eval(feed_dict={low: 1.5})
 
   def testCutoffsCanBeFloatValuedIfValidateArgsFalse(self):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1., validate_args=False),
-          lower_cutoff=1.5,
-          upper_cutoff=10.11)
+              loc=0., scale=1., validate_args=False),
+          low=1.5,
+          high=10.11)
 
       self.assertFalse(qdist.validate_args)  # Default is True.
 
@@ -420,17 +402,17 @@ class QuantizedDistributionTest(tf.test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=tf.zeros(batch_shape),
-              sigma=tf.zeros(batch_shape)),
-          lower_cutoff=1.0,
-          upper_cutoff=10.0)
+              loc=array_ops.zeros(batch_shape),
+              scale=array_ops.zeros(batch_shape)),
+          low=1.0,
+          high=10.0)
 
-      self.assertEqual(batch_shape, qdist.get_batch_shape())
-      self.assertAllEqual(batch_shape, qdist.batch_shape().eval())
-      self.assertEqual((), qdist.get_event_shape())
-      self.assertAllEqual((), qdist.event_shape().eval())
+      self.assertEqual(batch_shape, qdist.batch_shape)
+      self.assertAllEqual(batch_shape, qdist.batch_shape_tensor().eval())
+      self.assertEqual((), qdist.event_shape)
+      self.assertAllEqual((), qdist.event_shape_tensor().eval())
 
-      samps = qdist.sample_n(n=10)
+      samps = qdist.sample(10, seed=42)
       self.assertEqual((10,) + batch_shape, samps.get_shape())
       self.assertAllEqual((10,) + batch_shape, samps.eval().shape)
 
@@ -439,4 +421,4 @@ class QuantizedDistributionTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -17,14 +17,9 @@ limitations under the License.
 
 #include "tensorflow/examples/android/jni/rgb2yuv.h"
 
-#include "tensorflow/core/platform/types.h"
-
-using namespace tensorflow;
-
 static inline void WriteYUV(const int x, const int y, const int width,
                             const int r8, const int g8, const int b8,
-                            uint8* const pY,
-                            uint8* const pUV) {
+                            uint8_t* const pY, uint8_t* const pUV) {
   // Using formulas from http://msdn.microsoft.com/en-us/library/ms893078
   *pY = ((66 * r8 + 129 * g8 + 25 * b8 + 128) >> 8) + 16;
 
@@ -55,15 +50,15 @@ static inline void WriteYUV(const int x, const int y, const int width,
   pUV[offset + u_offset] += ((-38 * r8 - 74 * g8 + 112 * b8 + 128) >> 10) + 32;
 }
 
-void ConvertARGB8888ToYUV420SP(const uint32* const input, uint8* const output,
-                               int width, int height) {
-  uint8* pY = output;
-  uint8* pUV = output + (width * height);
-  const uint32* in = input;
+void ConvertARGB8888ToYUV420SP(const uint32_t* const input,
+                               uint8_t* const output, int width, int height) {
+  uint8_t* pY = output;
+  uint8_t* pUV = output + (width * height);
+  const uint32_t* in = input;
 
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      const uint32 rgb = *in++;
+      const uint32_t rgb = *in++;
 #ifdef __APPLE__
       const int nB = (rgb >> 8) & 0xFF;
       const int nG = (rgb >> 16) & 0xFF;
@@ -78,15 +73,15 @@ void ConvertARGB8888ToYUV420SP(const uint32* const input, uint8* const output,
   }
 }
 
-void ConvertRGB565ToYUV420SP(const uint16* const input, uint8* const output,
+void ConvertRGB565ToYUV420SP(const uint16_t* const input, uint8_t* const output,
                              const int width, const int height) {
-  uint8* pY = output;
-  uint8* pUV = output + (width * height);
-  const uint16* in = input;
+  uint8_t* pY = output;
+  uint8_t* pUV = output + (width * height);
+  const uint16_t* in = input;
 
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      const uint32 rgb = *in++;
+      const uint32_t rgb = *in++;
 
       const int r5 = ((rgb >> 11) & 0x1F);
       const int g6 = ((rgb >> 5) & 0x3F);

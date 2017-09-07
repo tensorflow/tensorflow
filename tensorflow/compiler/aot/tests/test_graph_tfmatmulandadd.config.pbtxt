@@ -1,0 +1,25 @@
+# Text form of tensorflow.tfcompile.Config proto.
+feed {
+  id { node_name: "x_hold" }
+  shape {
+    dim { size: 2 }
+    dim { size: 2 }
+  }
+  name: "x"
+}
+feed {
+  id { node_name: "y_hold" }
+  shape {
+    dim { size: 2 }
+    dim { size: 2 }
+  }
+  name: "y"
+}
+fetch {
+  id { node_name: "x_y_prod" }
+  name: "x_y_prod"
+}
+fetch {
+  id { node_name: "x_y_sum" }
+  name: "x_y_sum"
+}

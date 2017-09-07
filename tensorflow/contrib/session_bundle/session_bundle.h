@@ -50,7 +50,7 @@ struct SessionBundle {
   // resource leaks, we explicitly call Close on Sessions that we create.
   ~SessionBundle() {
     if (session) {
-      session->Close();
+      session->Close().IgnoreError();
     }
   }
 

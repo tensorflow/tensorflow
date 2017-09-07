@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -413,7 +412,8 @@ TEST(NNOpsTest, Dilation2DBackpropFilter_ShapeFn) {
 
 TEST(NNOpsTest, MergeBothInputs_ShapeFn) {
   for (const char* op_name :
-       {"ReluGrad", "Relu6Grad", "EluGrad", "SoftplusGrad", "SoftsignGrad"}) {
+       {"ReluGrad", "Relu6Grad", "EluGrad", "SeluGrad", "SoftplusGrad",
+        "SoftsignGrad"}) {
     ShapeInferenceTestOp op(op_name);
 
     INFER_OK(op, "?;?", "in0|in1");

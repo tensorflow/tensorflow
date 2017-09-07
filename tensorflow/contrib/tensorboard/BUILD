@@ -54,7 +54,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":projector",
-        "//tensorflow:tensorflow_py",
+        ":protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
     ],
 )
 
@@ -68,7 +71,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":protos_all_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -79,7 +84,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":trace",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
     ],
 )
 

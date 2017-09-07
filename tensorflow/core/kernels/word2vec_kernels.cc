@@ -257,7 +257,7 @@ class NegTrainOp : public OpKernel {
     sampler_ = new random::DistributionSampler(vocab_weights);
   }
 
-  ~NegTrainOp() { delete sampler_; }
+  ~NegTrainOp() override { delete sampler_; }
 
   void Compute(OpKernelContext* ctx) override {
     Tensor w_in = ctx->mutable_input(0, false);

@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_JEMALLOC
+#include "jemalloc/jemalloc.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef SNAPPY
-#include <snappy.h>
+#include "snappy.h"
 #endif
 
 #include <Windows.h>
@@ -52,11 +56,56 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
-void* aligned_malloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, int minimum_alignment) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  void* ptr = NULL;
+  // posix_memalign requires that the requested alignment be at least
+  // sizeof(void*). In this case, fall back on malloc which should return
+  // memory aligned to at least the size of a pointer.
+  const int required_alignment = sizeof(void*);
+  if (minimum_alignment < required_alignment) return Malloc(size);
+  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
+  if (err != 0) {
+    return NULL;
+  } else {
+    return ptr;
+  }
+#else
   return _aligned_malloc(size, minimum_alignment);
+#endif
 }
 
-void aligned_free(void* aligned_memory) { _aligned_free(aligned_memory); }
+void AlignedFree(void* aligned_memory) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  jemalloc_free(aligned_memory);
+#else
+  _aligned_free(aligned_memory);
+#endif
+}
+
+void* Malloc(size_t size) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_malloc(size);
+#else
+  return malloc(size);
+#endif
+}
+
+void* Realloc(void* ptr, size_t size) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_realloc(ptr, size);
+#else
+  return realloc(ptr, size);
+#endif
+}
+
+void Free(void* ptr) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_free(ptr);
+#else
+  return free(ptr);
+#endif
+}
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
@@ -98,6 +147,11 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 }
 
 string Demangle(const char* mangled) { return mangled; }
+
+double NominalCPUFrequency() {
+  // TODO(yuefengz): implement it for this platform.
+  return 1.0;
+}
 
 }  // namespace port
 }  // namespace tensorflow

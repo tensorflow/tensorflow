@@ -67,6 +67,27 @@ string SideString(Side s) {
   }
 }
 
+// -- AlgorithmConfig
+
+string AlgorithmConfig::ToString() const { return port::StrCat(algorithm_); }
+
+string ComputationTypeString(ComputationType ty) {
+  switch (ty) {
+    case ComputationType::kF16:
+      return "f16";
+    case ComputationType::kF32:
+      return "f32";
+    case ComputationType::kF64:
+      return "f64";
+    case ComputationType::kComplexF32:
+      return "complex f32";
+    case ComputationType::kComplexF64:
+      return "complex f64";
+    default:
+      LOG(FATAL) << "Unknown ComputationType " << static_cast<int32>(ty);
+  }
+}
+
 }  // namespace blas
 }  // namespace gputools
 }  // namespace perftools

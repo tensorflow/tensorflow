@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Importer for an exported TensorFlow model.
 
 This module provides a function to create a SessionBundle containing both the
@@ -24,14 +23,19 @@ from __future__ import print_function
 
 import os
 
-import tensorflow as tf
-
 from tensorflow.contrib.session_bundle import constants
 from tensorflow.contrib.session_bundle import manifest_pb2
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated("2017-06-30",
+            "No longer supported. Switch to SavedModel immediately.")
 def maybe_session_bundle_dir(export_dir):
   """Checks if the model path contains session bundle model.
 
@@ -47,6 +51,8 @@ def maybe_session_bundle_dir(export_dir):
   return file_io.file_exists(meta_graph_filename)
 
 
+@deprecated("2017-06-30",
+            "No longer supported. Switch to SavedModel immediately.")
 def load_session_bundle_from_path(export_dir,
                                   target="",
                                   config=None,
@@ -81,14 +87,14 @@ def load_session_bundle_from_path(export_dir,
     # Reads meta graph file.
     meta_graph_def = meta_graph_pb2.MetaGraphDef()
     meta_graph_def.ParseFromString(
-        file_io.read_file_to_string(meta_graph_filename))
+        file_io.read_file_to_string(meta_graph_filename, binary_mode=True))
 
   variables_filename = ""
   variables_filename_list = []
   checkpoint_sharded = False
 
-  variables_index_filename = os.path.join(
-      export_dir, constants.VARIABLES_INDEX_FILENAME_V2)
+  variables_index_filename = os.path.join(export_dir,
+                                          constants.VARIABLES_INDEX_FILENAME_V2)
   checkpoint_v2 = file_io.file_exists(variables_index_filename)
 
   # Find matching checkpoint files.
@@ -100,8 +106,7 @@ def load_session_bundle_from_path(export_dir,
         variables_filename_pattern)
     checkpoint_sharded = True
   else:
-    variables_filename = os.path.join(export_dir,
-                                      constants.VARIABLES_FILENAME)
+    variables_filename = os.path.join(export_dir, constants.VARIABLES_FILENAME)
     if file_io.file_exists(variables_filename):
       variables_filename_list = [variables_filename]
     else:
@@ -123,22 +128,22 @@ def load_session_bundle_from_path(export_dir,
   assets_dir = os.path.join(export_dir, constants.ASSETS_DIRECTORY)
 
   collection_def = meta_graph_def.collection_def
-  graph_def = tf.GraphDef()
+  graph_def = graph_pb2.GraphDef()
   if constants.GRAPH_KEY in collection_def:
     # Use serving graph_def in MetaGraphDef collection_def if exists
     graph_def_any = collection_def[constants.GRAPH_KEY].any_list.value
     if len(graph_def_any) != 1:
-      raise RuntimeError(
-          "Expected exactly one serving GraphDef in : %s" % meta_graph_def)
+      raise RuntimeError("Expected exactly one serving GraphDef in : %s" %
+                         meta_graph_def)
     else:
       graph_def_any[0].Unpack(graph_def)
       # Replace the graph def in meta graph proto.
       meta_graph_def.graph_def.CopyFrom(graph_def)
 
-  tf.reset_default_graph()
-  sess = tf.Session(target, graph=None, config=config)
+  ops.reset_default_graph()
+  sess = session.Session(target, graph=None, config=config)
   # Import the graph.
-  saver = tf.train.import_meta_graph(meta_graph_def)
+  saver = saver_lib.import_meta_graph(meta_graph_def)
   # Restore the session.
   if restore_files:
     saver.restore(sess, os.path.join(export_dir, restore_files))
@@ -147,9 +152,9 @@ def load_session_bundle_from_path(export_dir,
   if constants.INIT_OP_KEY in collection_def:
     init_ops = collection_def[constants.INIT_OP_KEY].node_list.value
     if len(init_ops) != 1:
-      raise RuntimeError(
-          "Expected exactly one serving init op in : %s" % meta_graph_def)
-    init_op_tensor = tf.get_collection(constants.INIT_OP_KEY)[0]
+      raise RuntimeError("Expected exactly one serving init op in : %s" %
+                         meta_graph_def)
+    init_op_tensor = ops.get_collection(constants.INIT_OP_KEY)[0]
 
   # Create asset input tensor list.
   asset_tensor_dict = {}

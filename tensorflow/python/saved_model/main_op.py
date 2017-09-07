@@ -22,40 +22,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops as tf_data_flow_ops
-from tensorflow.python.ops import variables
+# pylint: disable=unused-import
+from tensorflow.python.saved_model.main_op_impl import main_op
+from tensorflow.python.saved_model.main_op_impl import main_op_with_restore
+# pylint: enable=unused-import
+from tensorflow.python.util.all_util import remove_undocumented
 
-
-def main_op():
-  """Returns a main op to init variables and tables.
-
-  Returns the main op including the group of ops that initializes all
-  variables, initializes local variables and initialize all tables.
-
-  Returns:
-    The set of ops to be run as part of the main op upon the load operation.
-  """
-  init = variables.global_variables_initializer()
-  init_local = variables.local_variables_initializer()
-  init_tables = tf_data_flow_ops.initialize_all_tables()
-  return control_flow_ops.group(init, init_local, init_tables)
-
-
-def main_op_with_restore(restore_op_name):
-  """Returns a main op to init variables, tables and restore the graph.
-
-  Returns the main op including the group of ops that initializes all
-  variables, initialize local variables, initialize all tables and the restore
-  op name.
-
-  Args:
-    restore_op_name: Name of the op to use to restore the graph.
-
-  Returns:
-    The set of ops to be run as part of the main op upon the load operation.
-  """
-  with ops.control_dependencies([main_op()]):
-    main_op_with_restore = control_flow_ops.group(restore_op_name)
-  return main_op_with_restore
+_allowed_symbols = [
+    "main_op",
+    "main_op_with_restore",
+]
+remove_undocumented(__name__, _allowed_symbols)
