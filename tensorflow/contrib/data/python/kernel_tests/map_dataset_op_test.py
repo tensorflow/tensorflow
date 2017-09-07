@@ -20,6 +20,7 @@ from collections import namedtuple
 
 import os
 import threading
+from collections import namedtuple
 
 import numpy as np
 

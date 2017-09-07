@@ -3209,7 +3209,7 @@ class IndicatorColumnTest(test.TestCase):
   def test_transform_with_weighted_column(self):
     # Github issue 12557
     ids = fc.categorical_column_with_vocabulary_list(
-        key='ids', vocabulary_list=('a', 'b', 'c'))
+      key='ids', vocabulary_list=('a', 'b', 'c'))
     weights = fc.weighted_categorical_column(ids, 'weights')
     indicator = fc.indicator_column(weights)
     features = {
