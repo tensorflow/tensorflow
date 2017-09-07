@@ -41,9 +41,9 @@ class MklIdentityOp : public OpKernel {
     bool input_in_mkl_format = mkl_shape_input.IsMklTensor();
 
     if (input_in_mkl_format) {
-      ForwarMklTensorInToOut(context, 0, 0);
+      ForwardMklTensorInToOut(context, 0, 0);
     } else {
-      FowardTfTensorInToOut(context, 0, 0);
+      ForwardTfTensorInToOut(context, 0, 0);
     }
   }
 
