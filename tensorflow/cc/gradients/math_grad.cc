@@ -687,6 +687,22 @@ Status MeanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Mean", MeanGrad);
 
+Status ErfGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
+                               grad.type())
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  auto dx = Mul(scope,
+                Mul(scope, grad, two_over_root_pi),
+                Exp(scope, Neg(scope, Square(scope, x))))
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Erf", ErfGrad);
+
 Status MinOrMaxGrad(const Scope& scope, const Operation& op,
                     const std::vector<Output>& grad_inputs,
                     std::vector<Output>* grad_outputs) {
