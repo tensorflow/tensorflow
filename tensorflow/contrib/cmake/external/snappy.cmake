@@ -14,33 +14,37 @@
 # ==============================================================================
 include (ExternalProject)
 
-set(boringssl_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/src/boringssl/include)
-#set(boringssl_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/src)
-set(boringssl_URL https://boringssl.googlesource.com/boringssl)
-set(boringssl_TAG ee7aa02)
-set(boringssl_BUILD ${CMAKE_BINARY_DIR}/boringssl/src/boringssl-build)
-#set(boringssl_LIBRARIES ${boringssl_BUILD}/obj/so/libboringssl.so)
-set(boringssl_STATIC_LIBRARIES
-    ${boringssl_BUILD}/ssl/libssl.a
-    ${boringssl_BUILD}/crypto/libcrypto.a
-    ${boringssl_BUILD}/decrepit/libdecrepit.a
-)
-set(boringssl_INCLUDES ${boringssl_BUILD})
+set(snappy_URL https://github.com/google/snappy.git)
+set(snappy_TAG "55924d11095df25ab25c405fadfe93d0a46f82eb")
+set(snappy_BUILD ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
+set(snappy_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 
-set(boringssl_HEADERS
-    "${boringssl_INCLUDE_DIR}/include/*.h"
+if(WIN32)
+    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
+else()
+    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/libsnappy.a)
+endif()
+
+set(snappy_HEADERS
+    "${snappy_INCLUDE_DIR}/snappy.h"
 )
 
-ExternalProject_Add(boringssl
-    PREFIX boringssl
-    GIT_REPOSITORY ${boringssl_URL}
-    GIT_TAG ${boringssl_TAG}
+ExternalProject_Add(snappy
+    PREFIX snappy
+    GIT_REPOSITORY ${snappy_URL}
+    GIT_TAG ${snappy_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-    # BUILD_IN_SOURCE 1
+    BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
+    LOG_DOWNLOAD ON
+    LOG_CONFIGURE ON
+    LOG_BUILD ON
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+        -DSNAPPY_BUILD_TESTS:BOOL=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
+# actually enables snappy in the source code
+add_definitions(-DSNAPPY)

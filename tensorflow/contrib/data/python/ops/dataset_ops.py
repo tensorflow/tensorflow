@@ -1921,7 +1921,7 @@ class DenseToSparseBatchDataset(Dataset):
 
 def _should_unpack_args(args):
   """Returns `True` if `args` should be `*args` when passed to a callable."""
-  return nest.is_sequence(args) and not isinstance(args, dict)
+  return type(args) is tuple  # pylint: disable=unidiomatic-typecheck
 
 
 class _ResourceDataset(Dataset):
@@ -2104,7 +2104,7 @@ class InterleaveDataset(Dataset):
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
 
-      if nest.is_sequence(nested_args):
+      if _should_unpack_args(nested_args):
         dataset = map_func(*nested_args)
       else:
         dataset = map_func(nested_args)
@@ -2413,7 +2413,7 @@ def rejection_resample(dataset,
       shapes and types defined by `dataset.output_shapes` and
       `dataset.output_types`) to a scalar `tf.int32` tensor.  Values should
       be in `[0, num_classes)`.
-    target_dist: A floating point type tensor, shaped `[num_classes].
+    target_dist: A floating point type tensor, shaped `[num_classes]`.
     initial_dist: (Optional.)  A floating point type tensor, shaped
       `[num_classes]`.  If not provided, the true class distribution is
       estimated live in a streaming fashion.

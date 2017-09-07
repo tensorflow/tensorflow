@@ -43,7 +43,7 @@ extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
 // placed in memory of different devices or remote address spaces.
 typedef struct TFE_TensorHandle TFE_TensorHandle;
 
-extern TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t);
+extern TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status);
 extern void TFE_DeleteTensorHandle(TFE_TensorHandle* h);
 extern TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h);
 extern int TFE_TensorHandleNumDims(TFE_TensorHandle* h);
