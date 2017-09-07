@@ -41,6 +41,7 @@ cc_library(
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -829,6 +830,8 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_proto",
+        ":hlo_value",
+        ":liveness_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -844,6 +847,7 @@ cc_test(
     srcs = ["hlo_ordering_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_ordering",
         ":hlo_scheduling",
         "//tensorflow/compiler/xla:shape_util",
@@ -1600,6 +1604,8 @@ cc_library(
     hdrs = ["hlo_verifier.h"],
     deps = [
         ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",
     ],
 )

@@ -250,10 +250,18 @@ class TensorVSpace(ag_core.VSpace):
     if isinstance(value, ops.IndexedSlices):
       self.shape = tensor_shape.TensorShape(value.dense_shape.numpy())
       self.dtype = value.values.dtype
+      self.size = self.shape.num_elements()
     else:
-      self.shape = value.shape
+      self.shape = value._shape_tuple()  # pylint: disable=protected-access
+      if self.shape is None or None in self.shape:
+        # TODO(apassos) we currently don't check the size so this is fine, but
+        # presumably there should be a better way of doing this.
+        self.size = 1
+      else:
+        self.size = 1
+        for s in self.shape:
+          self.size *= s
       self.dtype = value.dtype
-    self.size = self.shape.num_elements()
     # TODO(apassos) put gradients on the same device as ops.
 
   def __eq__(self, other):
@@ -292,6 +300,10 @@ class TensorVSpace(ag_core.VSpace):
       x = _indexed_slices_to_tensor(x)
     if isinstance(y, ops.IndexedSlices):
       y = _indexed_slices_to_tensor(y)
+    if x is None:
+      return y
+    if y is None:
+      return x
     return math_ops.add(x, y)
 
 

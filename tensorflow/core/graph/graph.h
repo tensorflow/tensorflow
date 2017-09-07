@@ -261,10 +261,10 @@ class Node {
 // that a single `OutputTensor` can correspond to multiple `Edge`s if the output
 // is consumed by multiple destination nodes.
 struct OutputTensor {
-  Node* node;
+  const Node* node;
   int index;
 
-  OutputTensor(Node* n, int i) : node(n), index(i) {}
+  OutputTensor(const Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
 };
 
@@ -518,6 +518,10 @@ class Graph {
 
   // Returns OK if `node` is non-null and belongs to this graph
   Status IsValidNode(const Node* node) const;
+
+  // Returns OK if IsValidNode(`node`) and `idx` is less than
+  // node->num_outputs()
+  Status IsValidOutputTensor(const Node* node, int idx) const;
 
   // TODO(josh11b): uint64 hash() const;
 

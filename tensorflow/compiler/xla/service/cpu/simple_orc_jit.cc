@@ -176,6 +176,7 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
                            bool optimize_for_size, bool enable_fast_math,
+                           bool disable_expensive_passes,
                            LLVMCompiler::ModuleHook pre_optimization_hook,
                            LLVMCompiler::ModuleHook post_optimization_hook)
     : target_machine_(
@@ -190,12 +191,13 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       data_layout_(target_machine_->createDataLayout()),
       object_layer_(
           [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
-      compile_layer_(object_layer_,
-                     CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, optimize_for_size,
-                                     enable_fast_math, GetAvailableIntrinsics(),
-                                     std::move(pre_optimization_hook),
-                                     std::move(post_optimization_hook))) {
+      compile_layer_(
+          object_layer_,
+          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
+                          optimize_for_size, enable_fast_math,
+                          disable_expensive_passes, GetAvailableIntrinsics(),
+                          std::move(pre_optimization_hook),
+                          std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }

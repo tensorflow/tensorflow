@@ -41,6 +41,7 @@ from tensorflow.python.debug.lib import grpc_debug_server
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import variables
+from tensorflow.python.util import compat
 
 
 def _get_dump_file_path(dump_root, device_name, debug_node_name):
@@ -198,7 +199,7 @@ class EventListenerTestStreamHandler(
     if not summary_metadata.plugin_data:
       raise ValueError("The value lacks plugin data.")
     try:
-      content = json.loads(summary_metadata.plugin_data.content)
+      content = json.loads(compat.as_text(summary_metadata.plugin_data.content))
     except ValueError as err:
       raise ValueError("Could not parse content into JSON: %r, %r" % (content,
                                                                       err))

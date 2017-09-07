@@ -122,8 +122,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         opts.runner = ctx->runner();
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.
-        Status s =
-            dataset()->captured_func_->Run(opts, args, out_tensors, prefix());
+        Status s = dataset()->captured_func_->Run(opts, args, out_tensors);
         if (errors::IsOutOfRange(s)) {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.

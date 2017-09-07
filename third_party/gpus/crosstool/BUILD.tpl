@@ -12,12 +12,12 @@ cc_toolchain_suite(
 
 cc_toolchain(
     name = "cc-compiler-local",
-    all_files = ":crosstool_wrapper_driver_is_not_gcc",
+    all_files = "%{linker_files}",
     compiler_files = ":empty",
     cpu = "local",
     dwp_files = ":empty",
     dynamic_runtime_libs = [":empty"],
-    linker_files = ":crosstool_wrapper_driver_is_not_gcc",
+    linker_files = "%{linker_files}",
     objcopy_files = ":empty",
     static_runtime_libs = [":empty"],
     strip_files = ":empty",
@@ -30,12 +30,12 @@ cc_toolchain(
 
 cc_toolchain(
     name = "cc-compiler-darwin",
-    all_files = ":crosstool_wrapper_driver_is_not_gcc",
+    all_files = "%{linker_files}",
     compiler_files = ":empty",
     cpu = "darwin",
     dwp_files = ":empty",
     dynamic_runtime_libs = [":empty"],
-    linker_files = ":crosstool_wrapper_driver_is_not_gcc",
+    linker_files = "%{linker_files}",
     objcopy_files = ":empty",
     static_runtime_libs = [":empty"],
     strip_files = ":empty",

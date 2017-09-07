@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -317,6 +318,68 @@ TEST_F(ReduceWindowTest, R4UnitWindow) {
                           client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(HloTestBase, R6Add) {
+  auto b = HloComputation::Builder(TestName());
+
+  std::vector<int64> input_dims(6, 8);
+  std::unique_ptr<Literal> arg_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+  auto input =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+
+  auto module = CreateNewModule();
+  auto add_func = module->AddEmbeddedComputation(add_computation.Build());
+
+  WindowDimension trivial_dim;
+  trivial_dim.set_size(1);
+  trivial_dim.set_stride(1);
+  trivial_dim.set_padding_low(0);
+  trivial_dim.set_padding_high(0);
+  trivial_dim.set_window_dilation(1);
+  trivial_dim.set_base_dilation(1);
+
+  WindowDimension active_dim;
+  active_dim.set_size(3);
+  active_dim.set_stride(1);
+  active_dim.set_padding_low(0);
+  active_dim.set_padding_high(0);
+  active_dim.set_window_dilation(1);
+  active_dim.set_base_dilation(1);
+
+  Window window;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8, 8, 6, 6, 8, 8});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(shape, input, init_value,
+                                                      window, add_func));
+
+  std::vector<int64> output_dims = {8, 8, 6, 6, 8, 8};
+  std::unique_ptr<Literal> expected =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 9.0f);
+
+  module->AddEntryComputation(b.Build());
+  auto actual = ExecuteAndTransfer(std::move(module), {});
+
+  LiteralTestUtil::ExpectNear(*actual, *expected, ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(ReduceWindowTest, R4SecondMinorStride) {
