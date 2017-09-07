@@ -15805,25 +15805,6 @@ op {
   summary: "Transforms a serialized tensorflow.TensorProto proto into a Tensor."
 }
 op {
-  name: "SerializeTensor"
-  input_arg {
-    name: "tensor"
-    description: "A Tensor of type `T`."
-    type: "T"
-  }
-  output_arg {
-    name: "serialized"
-    description: "A serialized TensorProto proto of the input tensor."
-    type_attr: DT_STRING
-  }
-  attr {
-    name: "T"
-    type: "type"
-    description: "The type of the input tensor."
-  }
-  summary: "Transforms a Tensor into a serialized TensorProto proto."
-}
-op {
   name: "Placeholder"
   output_arg {
     name: "output"
@@ -24035,6 +24016,25 @@ op {
   summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
 }
 op {
+  name: "SerializeTensor"
+  input_arg {
+    name: "tensor"
+    description: "A Tensor of type `T`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "serialized"
+    description: "A serialized TensorProto proto of the input tensor."
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of the input tensor."
+  }
+  summary: "Transforms a Tensor into a serialized TensorProto proto."
+}
+op {
   name: "SetSize"
   input_arg {
     name: "set_indices"
@@ -28908,6 +28908,10 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
