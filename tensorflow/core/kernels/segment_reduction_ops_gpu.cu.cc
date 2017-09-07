@@ -186,10 +186,10 @@ void SegmentSumFunctor<T, Index>::operator()(
       input_inner_dim_size * input_outer_dim_num_stripe;
 
   config = GetCudaLaunchConfig(total_stripe_count, d);
-  SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize><<<
-      config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      input_outer_dim_size, input_inner_dim_size, output_rows,
-      segment_ids.data(), data, output.data(), total_stripe_count);
+  SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>
+      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          input_outer_dim_size, input_inner_dim_size, output_rows,
+          segment_ids.data(), data, output.data(), total_stripe_count);
 };
 
 // UnsortedSegmentSumFunctor implementation for GPUDevice.

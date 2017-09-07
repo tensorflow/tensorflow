@@ -157,6 +157,7 @@ def assert_global_step(global_step_tensor):
     raise TypeError('Existing "global_step" does not have integer type: %s' %
                     global_step_tensor.dtype)
 
-  if global_step_tensor.get_shape().ndims != 0:
+  if (global_step_tensor.get_shape().ndims != 0 and
+      global_step_tensor.get_shape().is_fully_defined()):
     raise TypeError('Existing "global_step" is not scalar: %s' %
                     global_step_tensor.get_shape())

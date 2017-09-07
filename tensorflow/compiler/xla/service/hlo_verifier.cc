@@ -130,6 +130,8 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
+    TF_RET_CHECK(ShapeUtil::Rank(broadcast->operand(0)->shape()) ==
+                 broadcast->dimensions().size());
     return tensorflow::Status::OK();
   }
 
@@ -290,6 +292,123 @@ string ComputationsToString(
 
 }  // namespace
 
+Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
+  // The parent fusion instruction of the fusion computation must be 'fusion'.
+  HloComputation* fused_computation = fusion->fused_instructions_computation();
+  if (fusion != fused_computation->FusionInstruction()) {
+    return FailedPrecondition(
+        "Instruction of fused computation does not match expected instruction "
+        "%s.",
+        fusion->ToString().c_str());
+  }
+
+  // Fused root instruction and fused parameters must all be owned by the fusion
+  // computation.
+  bool root_owned = false;
+  const std::vector<HloInstruction*>& fused_parameters =
+      fusion->fused_parameters();
+  const HloInstruction* fused_root = fusion->fused_expression_root();
+  std::vector<bool> parameter_owned(fused_parameters.size(), false);
+  for (auto& instruction : fused_computation->instructions()) {
+    if (fused_root == instruction.get()) {
+      if (root_owned) {
+        return FailedPrecondition("Root appears more than once in %s.",
+                                  fusion->ToString().c_str());
+      }
+      root_owned = true;
+    }
+    for (int i = 0; i < fused_parameters.size(); ++i) {
+      if (fused_parameters[i] == instruction.get()) {
+        if (parameter_owned[i]) {
+          return FailedPrecondition("Parameter appears more than once in %s.",
+                                    fusion->ToString().c_str());
+        }
+        parameter_owned[i] = true;
+      }
+    }
+  }
+  if (!root_owned) {
+    return FailedPrecondition("Root not found in computation of %s.",
+                              fusion->ToString().c_str());
+  }
+  // Make sure all the parameter_owned entries are set
+  for (int i = 0; i < parameter_owned.size(); i++) {
+    if (!parameter_owned[i]) {
+      return FailedPrecondition("Parameter %d not found in computation of %s.",
+                                i, fusion->ToString().c_str());
+    }
+  }
+
+  // Fused root must have no users.
+  if (fused_root->user_count() != 0) {
+    return FailedPrecondition("Root of %s may not have users.",
+                              fusion->ToString().c_str());
+  }
+
+  // All uses of fused instructions must be in the fusion computation, and every
+  // non-root instruction must have at least one use.
+  for (auto& instruction :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instruction.get() != fused_root) {
+      if (instruction->user_count() == 0) {
+        return FailedPrecondition(
+            "Non-root instruction %s in %s must have users.",
+            instruction->ToString().c_str(), fusion->ToString().c_str());
+      }
+      for (auto& user : instruction->users()) {
+        if (fused_computation != user->parent()) {
+          return FailedPrecondition(
+              "Non-root instruction %s in %s may not have external users.",
+              instruction->ToString().c_str(), fusion->ToString().c_str());
+        }
+      }
+    }
+  }
+
+  // Fused parameter instructions must be numbered contiguously and match up
+  // (shapes compatible) with their respective operand.
+  CHECK_EQ(fusion->operands().size(), fused_parameters.size());
+  std::vector<bool> parameter_numbers(fused_parameters.size(), false);
+  for (auto fused_param : fused_parameters) {
+    int64 param_no = fused_param->parameter_number();
+    if (param_no < 0) {
+      return FailedPrecondition(
+          "Unexpected negative parameter number %lld in %s.", param_no,
+          fusion->ToString().c_str());
+    }
+    if (param_no >= fused_parameters.size()) {
+      return FailedPrecondition(
+          "Unexpected parameter number %lld in %s: higher then number of "
+          "parameters %lu.",
+          param_no, fusion->ToString().c_str(), fused_parameters.size());
+    }
+    if (parameter_numbers[param_no]) {
+      return FailedPrecondition(
+          "Did not expect parameter number %lld more than once in %s.",
+          param_no, fusion->ToString().c_str());
+    }
+    parameter_numbers[param_no] = true;
+    if (!ShapeUtil::Compatible(fused_param->shape(),
+                               fusion->operand(param_no)->shape())) {
+      return FailedPrecondition(
+          "Shape mismatch between parameter number %lld and its operand in %s.",
+          param_no, fusion->ToString().c_str());
+    }
+  }
+  // Make sure all the parameter_numbers entries were seen
+  for (int i = 0; i < parameter_numbers.size(); i++) {
+    if (!parameter_numbers[i]) {
+      return FailedPrecondition("Did not see parameter number %d in %s.", i,
+                                fusion->ToString().c_str());
+    }
+  }
+
+  // TODO(b/65423525): We'd like to check that all operands are distinct.
+  // This is currently disabled due to the invariant being violated by
+  // multi-output fusion.
+  return tensorflow::Status::OK();
+}
+
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
   ShapeVerifier shape_verifier(shape_size_fn_);
@@ -298,6 +417,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     for (const auto& instruction : computation->instructions()) {
       TF_RET_CHECK(instruction->parent() == computation.get());
       if (instruction->opcode() == HloOpcode::kFusion) {
+        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction.get()));
         TF_RET_CHECK(
             ContainersEqual(instruction->called_computations(),
                             {instruction->fused_instructions_computation()}))

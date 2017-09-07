@@ -50,10 +50,25 @@ py_library(
 )
 
 py_library(
+    name = "debug_graphs",
+    srcs = ["lib/debug_graphs.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:op_def_registry",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_util",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "debug_data",
     srcs = ["lib/debug_data.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":debug_graphs",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:op_def_registry",
@@ -70,6 +85,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        ":debug_graphs",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
@@ -99,6 +115,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        ":debug_graphs",
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -181,7 +198,7 @@ py_library(
     deps = [
         ":cli_shared",
         ":command_parser",
-        ":debug_data",
+        ":debug_graphs",
         ":debugger_cli_common",
         ":evaluator",
         ":source_utils",
@@ -401,6 +418,18 @@ py_binary(
 )
 
 py_test(
+    name = "debug_graphs_test",
+    size = "small",
+    srcs = ["lib/debug_graphs_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_graphs",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "debug_data_test",
     size = "small",
     srcs = ["lib/debug_data_test.py"],
@@ -569,6 +598,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        ":debug_graphs",
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -608,7 +638,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":debug_data",
+        ":debug_graphs",
         ":debug_service_pb2_grpc",
         "//tensorflow/core/debug:debug_service_proto_py",
         "@six_archive//:six",
