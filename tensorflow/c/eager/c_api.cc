@@ -226,6 +226,9 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     tensorflow::Tensor dst(
         dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
         src->shape());
+    if (src->shape().num_elements() == 0) {
+      return new TFE_TensorHandle(dst, dstd);
+    }
     tensorflow::Notification n;
     dstd->tensorflow_gpu_device_info()->default_context->CopyCPUTensorToDevice(
         src, dstd, &dst, [status, &n](const tensorflow::Status& s) {
