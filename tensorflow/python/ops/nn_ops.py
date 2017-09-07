@@ -1368,21 +1368,21 @@ def _flatten_outer_dims(logits):
   output = array_ops.reshape(logits, array_ops.concat([[-1], last_dim_size], 0))
 
   # Set output shape if known.
-  shape = logits.get_shape()
-  if shape is not None and shape.dims is not None:
-    shape = shape.as_list()
-    product = 1
-    product_valid = True
-    for d in shape[:-1]:
-      if d is None:
-        product_valid = False
-        break
-      else:
-        product *= d
-    # Only need to set shape if in graph mode
-    if product_valid and context.in_graph_mode():
-      output_shape = [product, shape[-1]]
-      output.set_shape(output_shape)
+  if context.in_graph_mode():
+    shape = logits.get_shape()
+    if shape is not None and shape.dims is not None:
+      shape = shape.as_list()
+      product = 1
+      product_valid = True
+      for d in shape[:-1]:
+        if d is None:
+          product_valid = False
+          break
+        else:
+          product *= d
+      if product_valid:
+        output_shape = [product, shape[-1]]
+        output.set_shape(output_shape)
 
   return output
 
@@ -1605,7 +1605,7 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
-  if shape is not None and shape.dims is not None and context.in_graph_mode():
+  if context.in_graph_mode() and shape is not None and shape.dims is not None:
     shape = shape.as_list()
     del shape[dim]
     cost.set_shape(shape)
@@ -1922,7 +1922,8 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
     ret = math_ops.div(x, keep_prob) * binary_tensor
-    ret.set_shape(x.get_shape())
+    if context.in_graph_mode():
+      ret.set_shape(x.get_shape())
     return ret
 
 

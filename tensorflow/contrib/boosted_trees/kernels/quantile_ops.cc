@@ -901,7 +901,7 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int64>();
+    auto output = output_tensor->template flat<int32>();
 
     for (size_t i = 0; i < input.size(); i++) {
       output(i) = CalculateBucketIndex(input(i));
@@ -909,10 +909,14 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
   }
 
  private:
-  int64 CalculateBucketIndex(const T value) {
+  int32 CalculateBucketIndex(const T value) {
     auto first_bigger_it =
         std::upper_bound(boundaries_.begin(), boundaries_.end(), value);
-    return first_bigger_it - boundaries_.begin();
+    int32 index = first_bigger_it - boundaries_.begin();
+    CHECK(index >= 0 && index <= boundaries_.size())
+        << "Invalid bucket index: " << index
+        << " boundaries_.size(): " << boundaries_.size();
+    return index;
   }
   std::vector<T> boundaries_;
 };

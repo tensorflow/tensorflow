@@ -313,6 +313,9 @@ class ScratchSpace {
   int64 size() const { return scratch_tensor_.NumElements(); }
   const string& debug_info() const { return debug_info_; }
 
+  Tensor& tensor() { return scratch_tensor_; }
+  const Tensor& tensor() const { return scratch_tensor_; }
+
   // Returns true if this ScratchSpace is in host memory.
   bool on_host() const { return on_host_; }
 

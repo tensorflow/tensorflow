@@ -20,7 +20,6 @@ limitations under the License.
 namespace tensorflow {
 
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
-  // TODO(skyewm): make sure cycles are prevented
   mutex_lock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
 }

@@ -858,6 +858,18 @@ class Variable(object):
     return self._variable.name
 
   @property
+  def _shared_name(self):
+    """The shared name of the variable.
+
+      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
+      name with name scope prefix.
+
+    Returns:
+      variable name.
+    """
+    return self.name[:-2]
+
+  @property
   def initializer(self):
     """The initializer operation for this variable."""
     return self._initializer_op

@@ -981,15 +981,15 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConcatSlice(self):
-    with self.test_session():
-      r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
-      r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
-      c = array_ops.stack([r1, r2])
-      s = array_ops.strided_slice(c, [1], [2])
-      test_ops.resource_create_op(s).run()
-      with self.assertRaises(errors.AlreadyExistsError):
-        test_ops.resource_create_op(r2).run()
+    r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+    r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
+    c = array_ops.stack([r1, r2])
+    s = array_ops.strided_slice(c, [1], [2])
+    self.evaluate(test_ops.resource_create_op(s))
+    with self.assertRaises(errors.AlreadyExistsError):
+      self.evaluate(test_ops.resource_create_op(r2))
 
 
 class IdentityTest(test_util.TensorFlowTestCase):
@@ -1018,6 +1018,20 @@ class IdentityTest(test_util.TensorFlowTestCase):
       with ops.device("gpu:0"):
         e = array_ops.identity(d)
         _test(d, e, "gpu")
+
+
+class PadTest(test_util.TensorFlowTestCase):
+
+  def testEager(self):
+    with context.eager_mode():
+      t = constant_op.constant([[1, 2, 3], [4, 5, 6]])
+      paddings = constant_op.constant([[1, 1,], [2, 2]])
+      padded = array_ops.pad(t, paddings, "CONSTANT")
+      self.assertAllEqual(padded.numpy(),
+                          [[0, 0, 0, 0, 0, 0, 0],
+                           [0, 0, 1, 2, 3, 0, 0],
+                           [0, 0, 4, 5, 6, 0, 0],
+                           [0, 0, 0, 0, 0, 0, 0]])
 
 
 if __name__ == "__main__":

@@ -99,6 +99,9 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
+  if not repo_ctx.which("patch"):
+    fail("patch command is not found, please install it")
+
   cmd = [
       "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
   ]
@@ -294,6 +297,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "716c59c7dfc808a4c368f8ada526932be72b2fcea11dd85dc9d88b1df1dfe9c2",
       strip_prefix = "libpng-1.2.53",
       build_file = str(Label("//third_party:png.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "sqlite_archive",
+      urls = ["http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip"],
+      sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
+      strip_prefix = "sqlite-amalgamation-3200000",
+      build_file = str(Label("//third_party:sqlite.BUILD"))
   )
 
   native.new_http_archive(
@@ -565,11 +576,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "boringssl",
       urls = [
-          "http://mirror.bazel.build/github.com/google/boringssl/archive/bbcaa15b0647816b9a1a9b9e0d209cd6712f0105.tar.gz",
-          "https://github.com/google/boringssl/archive/bbcaa15b0647816b9a1a9b9e0d209cd6712f0105.tar.gz",  # 2016-07-11
+          "http://mirror.bazel.build/github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",
+          "https://github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",  # 2017-07-07
       ],
-      sha256 = "025264d6e9a7ad371f2f66d17a28b6627de0c9592dc2eb54afd062f68f1f9aa3",
-      strip_prefix = "boringssl-bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",
+      sha256 = "02f5950f93c4fd3691771c07c9d04cf2999ab01383ff99da345249e93b0fcfb2",
+      strip_prefix = "boringssl-e3860009a091cd1bd2bc189cdbc3c6d095abde84",
       # Add patch to boringssl code to support s390x
       patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
   )
@@ -675,11 +686,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "cub_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/69ceda618313df8e9cac6659d607b08949455d14.tar.gz",
-          "https://github.com/NVlabs/cub/archive/69ceda618313df8e9cac6659d607b08949455d14.tar.gz",
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.3.zip",
+          "https://github.com/NVlabs/cub/archive/1.7.3.zip",
       ],
-      sha256 = "87e856522c283b8ea887c3b61d7d5b252d2dd74abac4f1d756d776e721223e82",
-      strip_prefix = "cub-69ceda618313df8e9cac6659d607b08949455d14",
+      sha256 = "b7ead9e291d34ffa8074243541c1380d63be63f88de23de8ee548db573b72ebe",
+      strip_prefix = "cub-1.7.3",
       build_file = str(Label("//third_party:cub.BUILD")),
   )
 
@@ -691,9 +702,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "bazel_toolchains",
       urls = [
-          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
       ],
-      sha256 = "3903fd93b96b42067e00b7973a2c16c34e761ad7a0b55e1557d408f352849e41",
-      strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
+      sha256 = "0799aa12db5260a499beb40f81744e760c59d055bfc5d271dd2c2ed4d5419faa",
+      strip_prefix = "bazel-toolchains-9dbd803ad3b9447430a296810197b09b3a710956",
   )

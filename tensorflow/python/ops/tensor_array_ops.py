@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -445,7 +446,7 @@ class TensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
-      if ta._infer_shape:
+      if ta._infer_shape and context.in_graph_mode():
         val_shape = flow_out.op.inputs[2].get_shape()
         element_shape = tensor_shape.unknown_shape()
         if val_shape.dims is not None:
@@ -487,7 +488,7 @@ class TensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
-      if ta._infer_shape:
+      if ta._infer_shape and context.in_graph_mode():
         val_shape = flow_out.op.inputs[1].get_shape()
         clengths = tensor_util.constant_value(flow_out.op.inputs[2])
         element_shape = tensor_shape.unknown_shape()

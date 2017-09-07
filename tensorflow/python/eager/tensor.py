@@ -51,3 +51,6 @@ class LazyZero(object):
 
   def numpy(self):
     return np.zeros(self.shape, self.dtype)
+
+  def _shape_tuple(self):
+    return self.shape
