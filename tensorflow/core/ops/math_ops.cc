@@ -47,6 +47,9 @@ Add all input tensors element wise.
 inputs: Must all be the same size and shape.
 )doc");
 
+// Note that the following operator is just a placeholder and has no
+// associated kernel. The code in accumulate_n_optimizer.cc replaces
+// this placeholder with a graph of operators that do have kernels.
 REGISTER_OP("AccumulateN")
     .Input("inputs: N * T")
     .Output("sum: T")

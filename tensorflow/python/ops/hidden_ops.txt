@@ -233,6 +233,7 @@ TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateN
 AddN
 All
 Any
