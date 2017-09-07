@@ -77,10 +77,6 @@ class SymbolicGradientBuilder {
   Status CallGradFunction(const Operation& op,
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs);
-  
-  // Returns a list mapping whether each node in the graph is reachable
-  // from outputs_. Keyed by node id.
-  std::vector<bool> GetReachableNodes();
 
   // Returns a list mapping whether each node in the graph is reachable
   // from outputs_. Keyed by node id.
