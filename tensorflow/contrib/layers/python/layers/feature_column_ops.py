@@ -21,7 +21,6 @@ from __future__ import print_function
 import functools
 
 from tensorflow.contrib.framework.python.framework import experimental
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.layers.python.layers import layers
@@ -280,7 +279,7 @@ def _create_embedding_lookup(column,
   """
   with variable_scope.variable_scope(
       None, default_name=column.name, values=columns_to_tensors.values()):
-    variable = contrib_variables.model_variable(
+    variable = variable_scope.get_variable(
         name='weights',
         shape=[embedding_lookup_arguments.vocab_size, num_outputs],
         dtype=dtypes.float32,
@@ -328,7 +327,7 @@ def _create_joint_embedding_lookup(columns_to_tensors,
   sparse_tensor = sparse_ops.sparse_concat(1, sparse_tensors)
   with variable_scope.variable_scope(
       None, default_name='linear_weights', values=columns_to_tensors.values()):
-    variable = contrib_variables.model_variable(
+    variable = variable_scope.get_variable(
         name='weights',
         shape=[prev_size, num_outputs],
         dtype=dtypes.float32,
@@ -407,7 +406,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
         num_outputs,
         trainable,
         weight_collections)
-    bias = contrib_variables.model_variable(
+    bias = variable_scope.get_variable(
         'bias_weight',
         shape=[num_outputs],
         initializer=init_ops.zeros_initializer(),
@@ -503,7 +502,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
           tensor = _maybe_reshape_input_tensor(
               tensor, column.name, output_rank=2)
           variable = [
-              contrib_variables.model_variable(
+              variable_scope.get_variable(
                   name='weight',
                   shape=[tensor.get_shape()[1], num_outputs],
                   initializer=init_ops.zeros_initializer(),
@@ -521,7 +520,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       fc._maybe_restore_from_checkpoint(column._checkpoint_path(), variable)  # pylint: disable=protected-access
     # pylint: enable=protected-access
     predictions_no_bias = math_ops.add_n(output_tensors)
-    bias = contrib_variables.model_variable(
+    bias = variable_scope.get_variable(
         'bias_weight',
         shape=[num_outputs],
         initializer=init_ops.zeros_initializer(),
