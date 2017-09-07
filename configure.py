@@ -884,7 +884,9 @@ def set_computecpp_toolkit_path(environ_cp):
 def set_trisycl_include_dir(environ_cp):
   """Set TRISYCL_INCLUDE_DIR"""
   ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
-                             'include directory. [Default is %s]: '
+                             'include directory. (Use --config=sycl_trisycl '
+                             'when building with Bazel) '
+                             '[Default is %s]: '
                              ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
   while True:
     trisycl_include_dir = get_from_env_or_user_or_default(
@@ -999,7 +1001,7 @@ def main():
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
-    environ_cp['TF_NEED_TRISYCL'] = '0'
+    environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
 
   if is_macos():
@@ -1022,11 +1024,11 @@ def main():
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
     set_host_cxx_compiler(environ_cp)
     set_host_c_compiler(environ_cp)
-    set_action_env_var(environ_cp, 'TF_NEED_TRISYCL', 'triSYCL', False)
-    if environ_cp.get('TF_NEED_TRISYCL') == '1':
-      set_trisycl_include_dir(environ_cp)
-    else:
+    set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
+    if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
       set_computecpp_toolkit_path(environ_cp)
+    else:
+      set_trisycl_include_dir(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
