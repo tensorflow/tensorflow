@@ -10,6 +10,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:sloppy_ops",
         "//tensorflow/python:util",
     ],
 )

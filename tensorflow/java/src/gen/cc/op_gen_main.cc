@@ -16,12 +16,12 @@
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
@@ -44,7 +44,8 @@ const char kUsageHeader[] =
     "'org.tensorflow.op.mylib' package and add them to the 'myLib()' operator\n"
     "group.\n\n"
     "Note that the operator group assigned to the generated wrappers is just "
-    "an annotation tag at this stage. Operations will not be available through\n"
+    "an annotation tag at this stage. Operations will not be available "
+    "through\n"
     "the 'org.tensorflow.op.Ops' API as a group until the generated classes "
     "are compiled using an appropriate annotation processor.\n\n"
     "Finally, the '--base_package' overrides the default parent package "
@@ -58,13 +59,14 @@ int main(int argc, char* argv[]) {
   tensorflow::string output_dir;
   tensorflow::string base_package = "org.tensorflow.op";
   std::vector<tensorflow::Flag> flag_list = {
-    tensorflow::Flag("output_dir", &output_dir,
-        "Root directory into which output files are generated"),
-    tensorflow::Flag("lib_name", &lib_name,
-        "A name, in snake_case, used to classify this set of operations"),
-    tensorflow::Flag("base_package", &base_package,
-        "Package parent to the generated subpackage and classes")
-  };
+      tensorflow::Flag("output_dir", &output_dir,
+                       "Root directory into which output files are generated"),
+      tensorflow::Flag(
+          "lib_name", &lib_name,
+          "A name, in snake_case, used to classify this set of operations"),
+      tensorflow::Flag(
+          "base_package", &base_package,
+          "Package parent to the generated subpackage and classes")};
   tensorflow::string usage = tensorflow::op_gen::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);

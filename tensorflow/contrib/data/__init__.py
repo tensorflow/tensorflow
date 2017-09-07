@@ -23,6 +23,8 @@
 @@read_batch_features
 @@rejection_resample
 @@group_by_window
+@@sloppy_interleave
+@@sloppy_map
 """
 
 from __future__ import absolute_import
@@ -38,6 +40,7 @@ from tensorflow.contrib.data.python.ops.dataset_ops import read_batch_features
 from tensorflow.contrib.data.python.ops.dataset_ops import rejection_resample
 from tensorflow.contrib.data.python.ops.dataset_ops import TextLineDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import TFRecordDataset
+from tensorflow.contrib.data.python.ops.sloppy_ops import sloppy_interleave
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

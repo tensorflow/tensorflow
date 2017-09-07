@@ -698,7 +698,7 @@ TEST_F(LiteralUtilTest, Copy) {
   for (const auto& layout : layouts) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
-    auto blank = Literal::CreateFromShape(shape);
+
     auto source = Literal::CreateFromShape(shape);
     const int64 zero_base[] = {0, 0, 0, 0};
     const int64 step[] = {1, 1, 1, 1};
@@ -707,15 +707,15 @@ TEST_F(LiteralUtilTest, Copy) {
       source->Set(indexes, ++seqnr);
       return true;
     };
-
     ShapeUtil::ForEachIndex(source->shape(), zero_base, dimensions, step,
                             init_proc);
 
+    auto blank = Literal::CreateFromShape(shape);
     const int64 src_base[] = {3, 1, 5, 7};
     const int64 dest_base[] = {6, 4, 12, 2};
     const int64 copy_size[] = {7, 8, 11, 9};
-
     TF_EXPECT_OK(blank->Copy(*source, src_base, dest_base, copy_size));
+
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
@@ -730,6 +730,7 @@ TEST_F(LiteralUtilTest, Copy) {
       matched = (bval != 0 && bval == source->Get<uint32>(source_indexes));
       return matched;
     };
+
     ShapeUtil::ForEachIndex(source->shape(), zero_base, copy_size, step,
                             check_proc);
     EXPECT_TRUE(matched);
@@ -747,6 +748,30 @@ TEST_F(LiteralUtilTest, CopyScalars) {
   EXPECT_EQ(zero->Get<uint32>({}), 17);
   TF_EXPECT_OK(vect->Copy(*zero, {}, {4}, {}));
   EXPECT_EQ(vect->Get<uint32>({4}), 17);
+}
+
+TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
+  const Shape empty_r1_shape = ShapeUtil::MakeShape(F32, {0});
+  const auto const_nine = Literal::CreateR1<float>({9});
+  const auto const_empty = Literal::CreateFromShape(empty_r1_shape);
+
+  {
+    // Source contains dimension with zero elements.
+    const auto empty = Literal::CreateFromShape(empty_r1_shape);
+    auto nine = Literal::CreateR1<float>({9});
+
+    TF_EXPECT_OK(nine->Copy(*empty, {0}, {0}, {0}));
+    EXPECT_TRUE(nine->Equal(*const_nine));
+  }
+
+  {
+    // Copy 0 element to destination with zero elements.
+    const auto empty = Literal::CreateFromShape(empty_r1_shape);
+    auto nine = Literal::CreateR1<float>({9});
+
+    TF_EXPECT_OK(empty->Copy(*nine, {0}, {0}, {0}));
+    EXPECT_TRUE(empty->Equal(*const_empty));
+  }
 }
 
 TEST_F(LiteralUtilTest, F16) {

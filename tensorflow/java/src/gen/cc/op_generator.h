@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ class OpGenerator {
   /// Output files are generated in <output_dir>/<base_package>/<lib_package>,
   /// where 'lib_package' is derived from 'lib_name'.
   Status Run(const OpList& ops, const string& lib_name,
-      const string& base_package, const string& output_dir);
+             const string& base_package, const string& output_dir);
 
  private:
   Env* env;

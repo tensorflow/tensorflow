@@ -94,14 +94,17 @@ Status Literal::CopyRange(const Literal& src_literal,
 
   TF_RET_CHECK(ShapeUtil::Rank(src_shape) == src_base.size());
   TF_RET_CHECK(ShapeUtil::Rank(dest_shape) == dest_base.size());
+
   if (ShapeUtil::Rank(src_shape) == 0 || ShapeUtil::Rank(dest_shape) == 0) {
     // If any of the two shapes are scalars, we can just call the StridedCopy()
     // directly, and we know we will be copying only one value.
     TF_RET_CHECK(copy_size.empty());
     StridedCopy(dest_data, LinearIndex(dest_base), 0, src_data,
                 src_literal.LinearIndex(src_base), 0, 1);
-  } else if (!ShapeUtil::HasZeroElements(dest_shape)) {
-    TF_RET_CHECK(!ShapeUtil::HasZeroElements(src_shape));
+  } else if (!ShapeUtil::HasZeroElements(dest_shape) &&
+             !ShapeUtil::HasZeroElements(src_shape)) {
+    // Perform copy if neither src literal nor dest literal has dimensions with
+    // zero element, otherwise it's a no-op.
     TF_RET_CHECK(src_base.size() == dest_base.size());
     TF_RET_CHECK(src_base.size() == copy_size.size());
 
