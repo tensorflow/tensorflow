@@ -233,6 +233,33 @@ f: A function mapping elements of `input_dataset`, concatenated with
   `output_types` and `output_shapes`.
 )doc");
 
+REGISTER_OP("SloppyInterleaveDataset")
+    .Input("input_dataset: resource")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Output("handle: resource")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that applies `f` to the outputs of `input_dataset`.
+
+The resulting dataset is similar to the `InterleaveDataset`, with the exception
+that if retrieving the next value from a dataset would cause the requester to
+block, it will skip that input dataset. This dataset is especially useful
+when loading data from a variable-latency datastores (e.g. HDFS, GCS), as it
+allows the training step to proceed so long as some data is available.
+
+!! WARNING !! This dataset is not deterministic!
+
+f: A function mapping elements of `input_dataset`, concatenated with
+   `other_arguments`, to a Dataset resource that contains elements matching
+   `output_types` and `output_shapes`.
+)doc");
+
 REGISTER_OP("GroupByWindowDataset")
     .Input("input_dataset: resource")
     .Input("key_func_other_arguments: Tkey_func_other_arguments")

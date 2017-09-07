@@ -5588,6 +5588,20 @@ cc_library(
 )
 
 cc_library(
+    name = "dataset_utils",
+    srcs = ["dataset_utils.cc"],
+    hdrs = ["dataset_utils.h"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+cc_library(
     name = "captured_function",
     srcs = ["captured_function.cc"],
     hdrs = ["captured_function.h"],
@@ -5713,6 +5727,7 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5727,6 +5742,22 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "sloppy_interleave_dataset_op",
+    srcs = ["sloppy_interleave_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5963,6 +5994,7 @@ tf_kernel_library(
         ":repeat_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
+        ":sloppy_interleave_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":sql_dataset_ops",
         ":take_dataset_op",
