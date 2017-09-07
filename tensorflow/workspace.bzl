@@ -161,10 +161,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://github.com/mozilla/tensorflow/releases/download/eigen-osx-fix-8d1ccfd9c5a0/eigen-osx_fixed-8d1ccfd9c5a0.tar.gz",
+          "http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/55a00df9b8fd.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/55a00df9b8fd.tar.gz",
       ],
-      sha256 = "6342da2ea319edb65673284db96b64565d5209d1aea9dcc57162acd6f163da6e",
-      strip_prefix = "eigen-eigen-8d1ccfd9c5a0",
+      sha256 = "7778c3736cec673fa23d99d83fd8c1c0020d73ffe97393d3e2bf70ec90436728",
+      strip_prefix = "eigen-eigen-55a00df9b8fd",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
