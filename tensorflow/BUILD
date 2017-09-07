@@ -9,6 +9,9 @@ licenses(["notice"])  # Apache 2.0
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
 ])
 
 # Config setting for determining if we are building for Android.
@@ -287,12 +290,14 @@ filegroup(
         "//tensorflow/contrib/decision_trees/proto:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/eager/python:all_files",
+        "//tensorflow/contrib/estimator:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/fused_conv:all_files",
+        "//tensorflow/contrib/gan:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/hooks:all_files",
@@ -320,6 +325,7 @@ filegroup(
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
+        "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
         "//tensorflow/contrib/remote_fused_graph/pylib:all_files",
         "//tensorflow/contrib/resampler:all_files",
@@ -339,6 +345,7 @@ filegroup(
         "//tensorflow/contrib/staging:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/stateless:all_files",
+        "//tensorflow/contrib/summary:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensor_forest/kernels/v4:all_files",
@@ -401,6 +408,7 @@ filegroup(
         "//tensorflow/python/eager:all_files",
         "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/feature_column:all_files",
+        "//tensorflow/python/keras:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/ops/distributions:all_files",

@@ -148,6 +148,7 @@ py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["canned/dnn_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -201,7 +202,7 @@ py_test(
     name = "dnn_linear_combined_test",
     size = "medium",
     srcs = ["canned/dnn_linear_combined_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -552,11 +553,9 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["canned/linear_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "noasan",  # times out b/63680444
-    ],
+    tags = ["no_pip"],
     deps = [
         ":linear",
         ":linear_testing_utils",

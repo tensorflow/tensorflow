@@ -56,10 +56,11 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name, bool is_fusion_computation = false)
+    explicit Builder(const string& name,
+                     HloInstruction* fusion_instruction = nullptr)
         : name_(name),
           last_added_instruction_(nullptr),
-          is_fusion_computation_(is_fusion_computation) {}
+          fusion_instruction_(fusion_instruction) {}
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -78,7 +79,7 @@ class HloComputation {
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
-    bool is_fusion_computation_;
+    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
@@ -274,13 +275,18 @@ class HloComputation {
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  bool IsFusionComputation() const { return is_fusion_computation_; }
+  bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
+
+  // Returns the owning fusion instruction, or nullptr if this is not a fusion
+  // computation.
+  HloInstruction* FusionInstruction() const { return fusion_instruction_; }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, bool is_fusion_computation = false);
+      HloInstruction* root_instruction,
+      HloInstruction* fusion_instruction = nullptr);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -309,8 +315,9 @@ class HloComputation {
   string name_;
   HloInstruction* root_instruction_;
 
-  // A tag shows if this is a fusion computation.
-  bool is_fusion_computation_;
+  // If this computation is a fusion computation, this field points to the
+  // corresponding fusion instruction.  Otherwise, this is null.
+  HloInstruction* fusion_instruction_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

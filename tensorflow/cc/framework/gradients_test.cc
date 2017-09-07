@@ -364,6 +364,73 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
       test::AsTensor<int>({60, 61, 62, 63, 66, 66, 66, 67}, {4, 2}));
 }
 
+TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
+
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
+  auto m1 = MatMul(scope_test_, x, y);
+
+  auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
+  auto m2 = MatMul(scope_test_, y, z);
+
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(
+      AddSymbolicGradients(scope_test_, {m1}, {y}, {dm1}, &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
+                   {grad_outputs[0]}, &outputs);
+  // dz/dy = xT * dm1
+  test::ExpectTensorNear<double>(
+      outputs[0], test::AsTensor<double>({2.5, 3.5, 4.5}, {3, 1}), 1e-5);
+}
+
+TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
+
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
+  auto m1 = MatMul(scope_test_, x, y);
+
+  auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
+  auto m2 = MatMul(scope_test_, y, z);
+
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+  auto dm2 =
+      Const(scope_test_, {{0.5, 0.5, 0.5}, {0.6, 0.7, 0.8}, {0.6, 0.7, 0.9}});
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(AddSymbolicGradients(scope_test_, {m1, m2}, {y}, {dm1, dm2},
+                                    &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
+                   {grad_outputs[0]}, &outputs);
+
+  // the gradients from m1 and m2 will be summed to compute the gradient
+  // w.r.t y
+  // dz/dy = xT * dm1 + dm2 * zT
+  test::ExpectTensorNear<double>(
+      outputs[0], test::AsTensor<double>({17.5, 24.7, 26.8}, {3, 1}), 1e-5);
+}
+
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
 // 'NoGradient' (induced by StopGradient op) returned along multiple edges from
 // a single nodes output.

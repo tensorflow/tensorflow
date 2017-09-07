@@ -338,6 +338,38 @@ TEST(Uppercase, Basic) {
   EXPECT_EQ("HELLO WORLD", str_util::Uppercase("Hello World"));
 }
 
+TEST(SnakeCase, Basic) {
+  EXPECT_EQ("", str_util::ArgDefCase(""));
+  EXPECT_EQ("", str_util::ArgDefCase("!"));
+  EXPECT_EQ("", str_util::ArgDefCase("5"));
+  EXPECT_EQ("", str_util::ArgDefCase("!:"));
+  EXPECT_EQ("", str_util::ArgDefCase("5-5"));
+  EXPECT_EQ("", str_util::ArgDefCase("_!"));
+  EXPECT_EQ("", str_util::ArgDefCase("_5"));
+  EXPECT_EQ("a", str_util::ArgDefCase("_a"));
+  EXPECT_EQ("a", str_util::ArgDefCase("_A"));
+  EXPECT_EQ("i", str_util::ArgDefCase("I"));
+  EXPECT_EQ("i", str_util::ArgDefCase("i"));
+  EXPECT_EQ("i_", str_util::ArgDefCase("I%"));
+  EXPECT_EQ("i_", str_util::ArgDefCase("i%"));
+  EXPECT_EQ("i", str_util::ArgDefCase("%I"));
+  EXPECT_EQ("i", str_util::ArgDefCase("-i"));
+  EXPECT_EQ("i", str_util::ArgDefCase("3i"));
+  EXPECT_EQ("i", str_util::ArgDefCase("32i"));
+  EXPECT_EQ("i3", str_util::ArgDefCase("i3"));
+  EXPECT_EQ("i_a3", str_util::ArgDefCase("i_A3"));
+  EXPECT_EQ("i_i", str_util::ArgDefCase("II"));
+  EXPECT_EQ("i_i", str_util::ArgDefCase("I_I"));
+  EXPECT_EQ("i__i", str_util::ArgDefCase("I__I"));
+  EXPECT_EQ("i_i_32", str_util::ArgDefCase("II-32"));
+  EXPECT_EQ("ii_32", str_util::ArgDefCase("Ii-32"));
+  EXPECT_EQ("hi_there", str_util::ArgDefCase("HiThere"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("Hi!Hi"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("HiHi"));
+  EXPECT_EQ("hihi", str_util::ArgDefCase("Hihi"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("Hi_Hi"));
+}
+
 TEST(TitlecaseString, Basic) {
   string s = "sparse_lookup";
   str_util::TitlecaseString(&s, "_");

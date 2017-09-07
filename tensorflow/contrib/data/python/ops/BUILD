@@ -32,6 +32,21 @@ py_library(
     ],
 )
 
+py_library(
+    name = "sloppy_ops",
+    srcs = ["sloppy_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_ops",
+        "//tensorflow/contrib/data/python/framework:function",
+        "//tensorflow/contrib/data/python/util:nest",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
