@@ -101,6 +101,13 @@ class PoolingTest(test.TestCase):
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 4])
 
+  def testSpatialPyramidPooling(self):
+    width = 7
+    images = random_ops.random_uniform((5, width, 4))
+    layer = pooling_layers.SpatialPyramidPooling()
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 4])
+
   def testCreateAveragePooling1D(self):
     width = 7
     images = random_ops.random_uniform((5, width, 4))
