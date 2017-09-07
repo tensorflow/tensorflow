@@ -26,14 +26,18 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import moving_averages
 from tensorflow.python.framework import tensor_util
@@ -229,6 +233,7 @@ class BatchNormalization(base.Layer):
           shape=(param_dim,),
           initializer=self.moving_variance_initializer,
           trainable=False)
+      self._one_minus_decay = 1.0 - self.momentum
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
         # These are used in training and thus are different from the moving
@@ -264,6 +269,19 @@ class BatchNormalization(base.Layer):
       if partitioner:
         self._scope.set_partitioner(partitioner)
     self.built = True
+
+  def _assign_moving_average(self, variable, value, one_minus_decay):
+    with ops.name_scope(None, 'AssignMovingAvg',
+                        [variable, value, one_minus_decay]) as scope:
+      with ops.colocate_with(variable):
+        update_delta = (variable.read_value() - value) * one_minus_decay
+        if isinstance(variable, resource_variable_ops.ResourceVariable):
+          # state_ops.assign_sub does an extra read_variable_op after the
+          # assign. We avoid that here.
+          return gen_resource_variable_ops.assign_sub_variable_op(
+              variable.handle, update_delta, name=scope)
+        else:
+          return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
@@ -301,12 +319,17 @@ class BatchNormalization(base.Layer):
       variance *= factor
 
     training_value = utils.constant_value(training)
-    if training_value is not False:
-      decay = _smart_select(training, lambda: self.momentum, lambda: 1.)
-      mean_update = moving_averages.assign_moving_average(
-          self.moving_mean, mean, decay, zero_debias=False)
-      variance_update = moving_averages.assign_moving_average(
-          self.moving_variance, variance, decay, zero_debias=False)
+    if training_value is None:
+      one_minus_decay = _smart_select(training,
+                                      lambda: self._one_minus_decay,
+                                      lambda: 0.)
+    else:
+      one_minus_decay = self._one_minus_decay
+    if training_value or training_value is None:
+      mean_update = self._assign_moving_average(self.moving_mean, mean,
+                                                one_minus_decay)
+      variance_update = self._assign_moving_average(self.moving_variance,
+                                                    variance, one_minus_decay)
       if context.in_graph_mode():
         # Note that in Eager mode, the updates are already executed when running
         # assign_moving_averages. So we do not need to put them into

@@ -16,6 +16,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from collections import namedtuple
 
 import os
 import threading
@@ -489,8 +490,8 @@ class MapDatasetTest(test.TestCase):
     dataset_tuple = dataset_ops.Dataset.zip((labels, images))
 
     # convert dataset of tuples to dataset of namedtuples
-    Example = namedtuple("Example", ["label", "image"])
-    dataset_namedtuple = dataset_tuple.map(Example)
+    example = namedtuple("Example", ["label", "image"])
+    dataset_namedtuple = dataset_tuple.map(example)
 
     def preprocess_tuple(label, image):
       image = 2 * image
