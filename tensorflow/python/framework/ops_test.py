@@ -291,6 +291,11 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
       self.assertAllEqual(values, tensor.eval())
 
+  def testShapeTuple(self):
+    with self.test_session():
+      c = constant_op.constant(1)
+      self.assertEqual(c._shape_tuple(), ())  # pylint: disable=protected-access
+
   def testConvertToTensorEager(self):
     with context.eager_mode():
       t = ops.EagerTensor(1)
@@ -394,7 +399,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertIsInstance(x, dtypes.DType)
     self.assertEqual([dtypes.string, dtypes.double], l)
 
-  # TODO(skyewm): test adding cycles, other error cases
+  # TODO(nolivia): test all error cases
   @test_util.enable_c_api
   def testAddControlInput(self):
     with ops.Graph().as_default():
@@ -402,6 +407,22 @@ class OperationTest(test_util.TensorFlowTestCase):
       y = constant_op.constant(2).op
     y._add_control_input(x)  # pylint: disable=protected-access
     self.assertEqual(y.control_inputs, [x])
+
+  @test_util.enable_c_api
+  def testControlInputCycle(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      z = constant_op.constant(0)
+      x = constant_op.constant(1)
+      y = constant_op.constant(2)
+      y.op._add_control_input(z.op)  # pylint: disable=protected-access
+      y.op._add_control_input(x.op)  # pylint: disable=protected-access
+      x.op._add_control_input(y.op)  # pylint: disable=protected-access
+    with self.test_session(graph=graph) as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Graph is invalid, contains a cycle with 2 nodes"):
+        sess.run(x)
 
 
 class CreateOpTest(test_util.TensorFlowTestCase):

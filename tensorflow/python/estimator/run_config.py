@@ -19,10 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import json
+import os
 
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 
 
 _USE_DEFAULT = object()
@@ -43,6 +47,56 @@ _DEFAULT_REPLACEABLE_LIST = [
 _SAVE_CKPT_ERR = (
     '`save_checkpoints_steps` and `save_checkpoints_secs` cannot be both set.'
 )
+
+_TF_CONFIG_ENV = 'TF_CONFIG'
+_TASK_ENV_KEY = 'task'
+_TASK_TYPE_KEY = 'type'
+_TASK_ID_KEY = 'index'
+_CLUSTER_KEY = 'cluster'
+_LOCAL_MASTER = ''
+_GRPC_SCHEME = 'grpc://'
+
+
+def _get_master(cluster_spec, task_type, task_id):
+  """Returns the appropriate string for the TensorFlow master."""
+  if not cluster_spec:
+    return _LOCAL_MASTER
+
+  jobs = cluster_spec.jobs
+  # Lookup the master in cluster_spec using task_type and task_id,
+  # if possible.
+  if task_type not in jobs:
+    raise ValueError(
+        '%s is not a valid task_type in the cluster_spec:\n'
+        '%s\n\n'
+        'Note that these values may be coming from the TF_CONFIG environment '
+        'variable.' % (task_type, cluster_spec))
+  addresses = cluster_spec.job_tasks(task_type)
+  if not 0 <= task_id < len(addresses):
+    raise ValueError(
+        '%d is not a valid task_id for task_type %s in the cluster_spec:\n'
+        '%s\n\n'
+        'Note that these values may be coming from the TF_CONFIG environment '
+        'variable.' % (task_id, task_type, cluster_spec))
+  return _GRPC_SCHEME + addresses[task_id]
+
+
+def _count_ps(cluster_spec):
+  """Counts the number of parameter servers in cluster_spec."""
+  if not cluster_spec:
+    return 0
+
+  return len(cluster_spec.as_dict().get(TaskType.PS, []))
+
+
+def _count_worker(cluster_spec):
+  """Counts the number of workers (including chief) in cluster_spec."""
+  if not cluster_spec:
+    raise RuntimeError(
+        'Internal error: `_count_worker` does not expect empty cluster_spec.')
+
+  return (len(cluster_spec.as_dict().get(TaskType.WORKER, [])) +
+          len(cluster_spec.as_dict().get(TaskType.CHIEF, [])))
 
 
 def _validate_save_ckpt_with_replaced_keys(new_copy, replaced_keys):
@@ -103,6 +157,8 @@ class TaskType(object):
   MASTER = 'master'
   PS = 'ps'
   WORKER = 'worker'
+  CHIEF = 'chief'
+  EVALUATOR = 'evaluator'
 
 
 class RunConfig(object):
@@ -119,6 +175,95 @@ class RunConfig(object):
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100):
     """Constructs a RunConfig.
+
+    All distributed training related properties `cluster_spec`, `is_chief`,
+    `master` , `num_worker_replicas`, `num_ps_replicas`, `task_id`, and
+    `task_type` are set based on the `TF_CONFIG` environment variable, if the
+    pertinent information is present. The `TF_CONFIG` environment variable is a
+    JSON object with attributes: `cluster` and `task`.
+
+    `cluster` is a JSON serialized version of `ClusterSpec`'s Python dict from
+    `server_lib.py`, mapping task types (usually one of the `TaskType` enums) to
+    a list of task addresses.
+
+    `task` has two attributes: `type` and `index`, where `type` can be any of
+    the task types in `cluster`. ` When `TF_CONFIG` contains said information,
+    the following properties are set on this class:
+
+    * `cluster_spec` is parsed from `TF_CONFIG['cluster']`. Defaults to {}. If
+      present, must have one and only one node in the `chief` attribute of
+      `cluster_spec`.
+    * `task_type` is set to `TF_CONFIG['task']['type']`. Must set if
+      `cluster_spec` is present; must be `worker` (the default value) if
+      `cluster_spec` is not set.
+    * `task_id` is set to `TF_CONFIG['task']['index']`. Must set if
+      `cluster_spec` is present; must be 0 (the default value) if
+      `cluster_spec` is not set.
+    * `master` is determined by looking up `task_type` and `task_id` in the
+      `cluster_spec`. Defaults to ''.
+    * `num_ps_replicas` is set by counting the number of nodes listed
+      in the `ps` attribute of `cluster_spec`. Defaults to 0.
+    * `num_worker_replicas` is set by counting the number of nodes listed
+      in the `worker` and `chief` attributes of `cluster_spec`. Defaults to 1.
+    * `is_chief` is determined based on `task_type` and `cluster`.
+
+    There is a special node with `task_type` as `evaluator`, which is not part
+    of the (training) `cluster_spec`. It handles the distributed evaluation job.
+
+    Example of non-chief node:
+    ```
+      cluster = {'chief': ['host0:2222'],
+                 'ps': ['host1:2222', 'host2:2222'],
+                 'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+      os.environ['TF_CONFIG'] = json.dumps(
+          {'cluster': cluster,
+           'task': {'type': 'worker', 'index': 1}})
+      config = ClusterConfig()
+      assert config.master == 'host4:2222'
+      assert config.task_id == 1
+      assert config.num_ps_replicas == 2
+      assert config.num_worker_replicas == 4
+      assert config.cluster_spec == server_lib.ClusterSpec(cluster)
+      assert config.task_type == 'worker'
+      assert not config.is_chief
+    ```
+
+    Example of chief node:
+    ```
+      cluster = {'chief': ['host0:2222'],
+                 'ps': ['host1:2222', 'host2:2222'],
+                 'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+      os.environ['TF_CONFIG'] = json.dumps(
+          {'cluster': cluster,
+           'task': {'type': 'chief', 'index': 0}})
+      config = ClusterConfig()
+      assert config.master == 'host0:2222'
+      assert config.task_id == 0
+      assert config.num_ps_replicas == 2
+      assert config.num_worker_replicas == 4
+      assert config.cluster_spec == server_lib.ClusterSpec(cluster)
+      assert config.task_type == 'chief'
+      assert config.is_chief
+    ```
+
+    Example of evaluator node (evaluator is not part of training cluster):
+    ```
+      cluster = {'chief': ['host0:2222'],
+                 'ps': ['host1:2222', 'host2:2222'],
+                 'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+      os.environ['TF_CONFIG'] = json.dumps(
+          {'cluster': cluster,
+           'task': {'type': 'evaluator', 'index': 0}})
+      config = ClusterConfig()
+      assert config.master == ''
+      assert config.evaluator_master == ''
+      assert config.task_id == 0
+      assert config.num_ps_replicas == 0
+      assert config.num_worker_replicas == 0
+      assert config.cluster_spec == {}
+      assert config.task_type == 'evaluator'
+      assert not config.is_chief
+    ```
 
     N.B.: If `save_checkpoints_steps` or `save_checkpoints_secs` is set,
     `keep_checkpoint_max` might need to be adjusted accordingly, especially in
@@ -137,9 +282,10 @@ class RunConfig(object):
       save_checkpoints_steps: Save checkpoints every this many steps. Can not be
           specified with `save_checkpoints_secs`.
       save_checkpoints_secs: Save checkpoints every this many seconds. Can not
-          be specified with `save_checkpoints_steps`. Defaults to 600 seconds.
-          If both `save_checkpoints_steps` and `save_checkpoints_secs` are None,
-          then checkpoints are disabled.
+          be specified with `save_checkpoints_steps`. Defaults to 600 seconds if
+          both `save_checkpoints_steps` and `save_checkpoints_secs` are not set
+          in constructor.  If both `save_checkpoints_steps` and
+          `save_checkpoints_secs` are None, then checkpoints are disabled.
       session_config: a ConfigProto used to set session parameters, or None.
       keep_checkpoint_max: The maximum number of recent checkpoint files to
         keep. As new files are created, older files are deleted. If None or 0,
@@ -181,9 +327,79 @@ class RunConfig(object):
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps)
 
+    self._init_distributed_setting_from_environment_var()
+
+  def _init_distributed_setting_from_environment_var(self):
+    """Initialize distributed properties based on environment variable."""
+
+    tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV) or '{}')
+    if tf_config:
+      logging.info('TF_CONFIG environment variable: %s', tf_config)
+
+    self._cluster_spec = server_lib.ClusterSpec(tf_config.get(_CLUSTER_KEY, {}))
+    task_env = tf_config.get(_TASK_ENV_KEY, {})
+
+    if self._cluster_spec:
+      # Distributed mode.
+      if TaskType.CHIEF not in self._cluster_spec.jobs:
+        raise ValueError(
+            'If "cluster" is set in TF_CONFIG, it must have one "chief" node.')
+      if len(self._cluster_spec.job_tasks(TaskType.CHIEF)) > 1:
+        raise ValueError(
+            'The "cluster" in TF_CONFIG must have only one "chief" node.')
+
+      self._task_type = task_env.get(_TASK_TYPE_KEY, None)
+      task_id = task_env.get(_TASK_ID_KEY, None)
+
+      if not self._task_type:
+        raise ValueError(
+            'If "cluster" is set in TF_CONFIG, task type must be set.')
+      if task_id is None:
+        raise ValueError(
+            'If "cluster" is set in TF_CONFIG, task index must be set.')
+
+      self._task_id = int(task_id)
+
+      # Check the task id bounds. Upper bound is not necessary as
+      # - for evaluator, there is no upper bound.
+      # - for non-evaluator, task id is upper bounded by the number of jobs in
+      # cluster spec, which will be checked later (when retrieving the `master`)
+      if self._task_id < 0:
+        raise ValueError('Task index must be non-negative number.')
+
+      if self._task_type != TaskType.EVALUATOR:
+        self._master = _get_master(
+            self._cluster_spec, self._task_type, self._task_id)
+        self._num_ps_replicas = _count_ps(self._cluster_spec)
+        self._num_worker_replicas = _count_worker(self._cluster_spec)
+      else:
+        # Evaluator is not part of the training cluster.
+        self._cluster_spec = server_lib.ClusterSpec({})
+        self._master = _LOCAL_MASTER
+        self._num_ps_replicas = 0
+        self._num_worker_replicas = 0
+
+      self._is_chief = self._task_type == TaskType.CHIEF
+    else:
+      # Local mode.
+      self._task_type = task_env.get(_TASK_TYPE_KEY, TaskType.WORKER)
+      self._task_id = int(task_env.get(_TASK_ID_KEY, 0))
+
+      if self._task_type != TaskType.WORKER:
+        raise ValueError(
+            'If "cluster" is not set in TF_CONFIG, task type must be WORKER.')
+      if self._task_id != 0:
+        raise ValueError(
+            'If "cluster" is not set in TF_CONFIG, task index must be 0.')
+
+      self._master = ''
+      self._is_chief = True
+      self._num_ps_replicas = 0
+      self._num_worker_replicas = 1
+
   @property
   def cluster_spec(self):
-    return None
+    return self._cluster_spec
 
   @property
   def evaluation_master(self):
@@ -191,27 +407,27 @@ class RunConfig(object):
 
   @property
   def is_chief(self):
-    return True
+    return self._is_chief
 
   @property
   def master(self):
-    return ''
+    return self._master
 
   @property
   def num_ps_replicas(self):
-    return 0
+    return self._num_ps_replicas
 
   @property
   def num_worker_replicas(self):
-    return 1
+    return self._num_worker_replicas
 
   @property
   def task_id(self):
-    return 0
+    return self._task_id
 
   @property
   def task_type(self):
-    return TaskType.WORKER
+    return self._task_type
 
   @property
   def tf_random_seed(self):

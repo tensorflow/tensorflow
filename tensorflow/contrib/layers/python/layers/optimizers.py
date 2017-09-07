@@ -156,9 +156,9 @@ def optimize_loss(loss,
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
   if global_step is None:
-    global_step = contrib_framework.get_global_step()
+    global_step = train.get_global_step()
   else:
-    contrib_framework.assert_global_step(global_step)
+    train.assert_global_step(global_step)
   with vs.variable_scope(name, "OptimizeLoss", [loss, global_step]):
     # Update ops take UPDATE_OPS collection if not provided.
     if update_ops is None:

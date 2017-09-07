@@ -23,7 +23,9 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
+from tensorflow.python.eager import tensor_node
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -74,12 +76,16 @@ class BackpropTest(test.TestCase):
 
       self.assertAllClose(grad.numpy(), tf_dense_grad.eval())
 
+  def testTensoVspaceNoneMutAdd(self):
+    t = tensor.Tensor(1.0)
+    self.assertEqual(tensor_node.TensorVSpace(t).mut_add(t, None).numpy(), 1.0)
+
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=tensor.Tensor(1.0), name='x')
 
     def fn():
-      tape.watch(x.handle)
+      tape.watch_variable(x)
       b = tensor.Tensor(2.0)
       c = math_ops.add(x.value(), b)
       return math_ops.add(c, tensor.Tensor(3.0))
@@ -154,6 +160,29 @@ class BackpropTest(test.TestCase):
     f = tensor.Tensor([[0.1]])
     grad = backprop.gradients_function(second, [0])(f)[0]
     self.assertAllEqual([[0.0]], grad.numpy())
+
+  def testGradGrad(self):
+
+    def sq(x):
+      return x * x
+
+    def grad(x):
+      value = backprop.gradients_function(sq, [0])(x)[0]
+      return value
+
+    gradgrad = backprop.gradients_function(grad, [0])
+
+    self.assertAllEqual(gradgrad(tensor.Tensor(3.0))[0].numpy(), 2.0)
+
+  def testGradGradExp(self):
+
+    def grad(x):
+      value = backprop.gradients_function(math_ops.exp, [0])(x)[0]
+      return value
+
+    gradgrad = backprop.gradients_function(grad, [0])
+
+    self.assertAllEqual(gradgrad(tensor.Tensor(0.0))[0].numpy(), 1.0)
 
   def testGPU(self):
     if not context.context().num_gpus():
@@ -253,6 +282,15 @@ class BackpropTest(test.TestCase):
     self.assertEqual([dtypes.float32],
                      backprop.make_attr([pywrap_tensorflow.TF_ATTR_TYPE], [1]))
 
+  def testMulType(self):
+
+    def mul(x):
+      return math_ops._mul_dispatch(x, x)  # pylint: disable=protected-access
+
+    self.assertAllEqual(
+        backprop.gradients_function(mul)(constant_op.constant(3.0))[0].numpy(),
+        6.0)
+
   def testMakeAttrShape(self):
     for s in ([], None, [1, 2, 3], [None, None], [1, None, 3]):
       expected = tensor_shape.TensorShape(s).as_proto()
@@ -268,6 +306,20 @@ class BackpropTest(test.TestCase):
     self.assertEqual(
         [tensor_shape.TensorShape(s).as_proto() for s in shape_list],
         backprop.make_attr([pywrap_tensorflow.TF_ATTR_SHAPE], shape_list))
+
+  def testMultiValueConvertToTensor(self):
+    x = resource_variable_ops.ResourceVariable(
+        initial_value=array_ops.constant([1.0]), name='x')
+
+    def fn():
+      tape.watch_variable(x)
+      a = math_ops.add(x.value(), 1.0)
+      # Make sure convert_to_tensor works correctly with list of TensorNodes.
+      b = array_ops.stack([a, a], axis=0)
+      return math_ops.reduce_mean(b)
+
+    grad = backprop.implicit_grad(fn)()[0][1]
+    self.assertAllEqual([1.0], grad.numpy())
 
 
 if __name__ == '__main__':

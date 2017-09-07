@@ -151,10 +151,10 @@ Take the following steps to install TensorFlow with Virtualenv:
      (tensorflow)$ <b>pip install --upgrade tensorflow-gpu</b>  # for Python 2.7 and GPU
      (tensorflow)$ <b>pip3 install --upgrade tensorflow-gpu</b> # for Python 3.n and GPU</pre>
 
-     If the preceding command succeeds, skip Step 5. If the preceding
-     command fails, perform Step 5.
+     If the preceding command succeeds, skip Step 6. If the preceding
+     command fails, perform Step 6.
 
-  5. (Optional) If Step 4 failed (typically because you invoked a pip version
+  6. (Optional) If Step 5 failed (typically because you invoked a pip version
      lower than 8.1), install TensorFlow in the active virtualenv environment
      by issuing a command of the following format:
 

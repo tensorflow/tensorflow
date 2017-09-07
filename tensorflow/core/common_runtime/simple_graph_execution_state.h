@@ -25,19 +25,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 struct SessionOptions;
-class StepStats;
-class Timeline;
 
 namespace subgraph {
 struct RewriteGraphMetadata;
@@ -167,7 +162,6 @@ class SimpleGraphExecutionState {
   // Returns the map of stateful placements as a map of
   // node name to placement string.
   std::unordered_map<string, string> GetStatefulPlacements() const {
-    mutex_lock l(mu_);
     return stateful_placements_;
   }
 
@@ -192,9 +186,6 @@ class SimpleGraphExecutionState {
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
-
-  mutable mutex mu_;
-  CostModel costs_ GUARDED_BY(mu_);
 
   // Map from name to Node for the full graph in placed_.
   NodeNameToCostIdMap node_name_to_cost_id_map_;

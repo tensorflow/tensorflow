@@ -37,7 +37,7 @@ namespace io {
 // by multiple threads
 class ZlibInputStream : public InputStreamInterface {
  public:
-  // Create a ZlibInputBuffer for `input_stream` with a buffer of size
+  // Create a ZlibInputStream for `input_stream` with a buffer of size
   // `input_buffer_bytes` bytes for reading contents from `input_stream` and
   // another buffer with size `output_buffer_bytes` for caching decompressed
   // contents. Does *not* take ownership of "input_stream".

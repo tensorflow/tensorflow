@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -548,6 +549,209 @@ Status ConjGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Conj", ConjGrad);
+
+// Integer division x / y, assuming x and y >=0, but treats x/0 = x
+Output SafeDivHelper(const Scope& scope, const Output& x, const Output& y) {
+  return Div(scope, x, Maximum(scope, y, Const(scope, 1)));
+}
+
+// Helper function for reduction ops.
+//
+// input_shape: 1-D Tensor, the shape of the Tensor being reduced.
+// axes: 1-D Tensor, the reduction axes.
+//   Note that the reduction indices are in the range
+//   -rank(input_shape), rank(input_shape)
+// returns a 1-D Tensor, the output shape as if keep_dims were set to True.
+Output ReducedShapeHelper(const Scope& scope, const Output& input_shape,
+                          const Output& reduction_axes) {
+  auto zero = Const(scope, 0);
+  auto one = Const(scope, 1);
+
+  // Running example in comments
+  // input_shape = [2, 3, 5, 7]
+  // axes = [1, 2]
+  // The result (a shape after a reduction with keep_dims=True)
+  // [2, 1, 1, 7]
+  //
+  // We can treat each entry in axes as an index into input_shape that
+  // should be replaced by 1.
+  // We use DynamicStitch to do this.
+
+  // input_rank = 4
+  auto input_rank = Size(scope, input_shape);
+
+  // Normalize any negative indices in the reduction_axes to positive
+  // values.
+  auto axes = Mod(scope, Add(scope, reduction_axes, input_rank), input_rank);
+
+  // This [0..input_rank) range of integers is used in DynamicStitch to
+  // first copy input_shape to the result.
+  // input_rank_range = [0, 1, 2, 3]
+  auto input_rank_range = Range(scope, zero, input_rank, one);
+
+  // A 1-filled tensor with the same shape as axes. DynamicStitch will
+  // merge these 1s (using axes for indices) to the correct
+  // position in the result.
+  // axes_ones = [1, 1]
+  auto axes_ones = OnesLike(scope, axes);
+
+  // using DynamicStitch:
+  // indices = { input_rank_range, axes }
+  //         = { [0, 1, 2, 3], [1, 2] }
+  // data = { input_shape, axes_ones }
+  //      = { [2, 3, 5, 7], [1, 1] }
+  // The input_rank_range entry in indices first replicates the
+  // input_shape to the result.
+  // The axes entry in indices then moves a 1 to each of its entries,
+  // resulting in
+  // [2, 1, 1, 7]
+  std::vector<Output> indices = {input_rank_range, axes};
+  std::vector<Output> data = {input_shape, axes_ones};
+  return DynamicStitch(scope, indices, data);
+}
+
+// SumGradHelper returns the gradient for the Sum operator, and is used
+// by SumGrad and MeanGrad.
+Output SumGradHelper(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs) {
+  // The partial derivative for any input along a "reduced" dimension
+  // is just 1, so we only need replicate the output gradient on such a
+  // dimension to its "expanded" shape.
+  // Running example:
+  // input is
+  // [[a, b, c],
+  //  [d, e, f]]
+  // reduction_indices = [1]
+  // Sum = [a + b + c, d + e + f]
+  // if the gradient is [g1, g2]
+  // We want the propagated gradient to be
+  // [[g1, g1, g1],
+  //  [g2, g2, g2]]
+
+  // input_shape = [2, 3]
+  auto input_shape = Shape(scope, op.input(0));
+
+  // output_shape_kept_dims = [2, 1]
+  auto output_shape_kept_dims =
+      ReducedShapeHelper(scope, input_shape, op.input(1));
+
+  // This step "flips" any 1s with values from the input_shape, and
+  // replaces remaining entries with 1. This creates a shape that
+  // shows how much each dimension in the incoming gradient should be
+  // replicated.
+  // tile_scaling = [1, 3]
+  auto tile_scaling = SafeDivHelper(scope, input_shape, output_shape_kept_dims);
+
+  // grad = [[g1], [g2]]
+  auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
+
+  // tile(grad, tile_scaling) = [[g1, g1, g1], [g2, g2, g2]]
+  return Tile(scope, grad, tile_scaling);
+}
+
+Status SumGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(SumGradHelper(scope, op, grad_inputs));
+
+  // Stop propagation along reduction_indices
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sum", SumGrad);
+
+Status MeanGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // The Mean gradient is just like the Sum gradient, except that
+  // all gradients are also divided by the size of reduced groups.
+  auto sum_grad = SumGradHelper(scope, op, grad_inputs);
+
+  // The product of all entries in a tensor's shape is the total
+  // number of entries in the tensor. This step calculates
+  // n_input_entries/n_output_entries
+  // = group_size
+  auto input_shape = Shape(scope, op.input(0));
+  auto output_shape = Shape(scope, op.output(0));
+  auto zero = Const(scope, 0);
+  auto group_size = SafeDivHelper(scope, Prod(scope, input_shape, zero),
+                                  Prod(scope, output_shape, zero));
+
+  // propagate sum_grad/group_size
+  grad_outputs->push_back(
+      Div(scope, sum_grad, Cast(scope, group_size, sum_grad.type())));
+
+  // Stop propagation along reduction_indices
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Mean", MeanGrad);
+
+Status MinOrMaxGrad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
+  // The partial derivative for any input along a "reduced" dimension
+  // is 1 when it is the min (or max) and 0 everywhere else. So the
+  // gradient calculation is identical for both operators.
+  //
+  // There's a special case for propagating gradients when there are
+  // multiple minima (or maxima) - we choose to divide the gradient
+  // equally among all matching inputs.
+  //
+  // Please note this comment
+  // https://github.com/tensorflow/tensorflow/issues/4886#issuecomment-256836063
+  // for details.
+
+  // Running example:
+  // input: [[5, 5, 5],
+  //         [1, 2, -3]]
+  // reduction_indices: [1]
+  auto input = op.input(0);
+  auto reduction_indices = op.input(1);
+
+  // [2, 3]
+  auto input_shape = Shape(scope, input);
+
+  // [2, 1]
+  auto output_shape_kept_dims =
+      ReducedShapeHelper(scope, input_shape, reduction_indices);
+
+  // for op=min (say)
+  // output = [5, -3]
+  // y = [[5],
+  //      [-3]]
+  auto y = Reshape(scope, op.output(0), output_shape_kept_dims);
+
+  // reshape([g1, g2], [2, 1]) = [[g1],
+  //                              [g2]]
+  auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
+
+  // indicators = equal(y, input)
+  //  = equal([[5],   [[5, 5, 5],
+  //           [-3]],  [1, 2, -3]])
+  //  = [[1, 1, 1],
+  //     [0, 0, 1]]
+  auto indicators = Cast(scope, Equal(scope, y, input), grad_inputs[0].type());
+
+  // [[3],
+  //  [1]]
+  auto num_selected = Reshape(scope, Sum(scope, indicators, reduction_indices),
+                              output_shape_kept_dims);
+
+  // [[1/3, 1/3, 1/3],
+  //  [0, 0, 1]]
+  auto scale = Div(scope, indicators, num_selected);
+
+  // [[g1/3, g1/3, g1/3],
+  //  [0, 0, g2]]
+  grad_outputs->push_back(Mul(scope, scale, grad));
+
+  // Stop propagation along reduction_indices
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Min", MinOrMaxGrad);
+REGISTER_GRADIENT_OP("Max", MinOrMaxGrad);
 
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.

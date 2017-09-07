@@ -1496,6 +1496,15 @@ class StreamingAUCTest(test.TestCase):
       for _ in range(10):
         self.assertAlmostEqual(initial_auc, auc.eval(), 5)
 
+  def testPredictionsOutOfRange(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [1, -1, 1, -1], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+      _, update_op = metrics.streaming_auc(predictions, labels)
+      sess.run(variables.local_variables_initializer())
+      self.assertRaises(errors_impl.InvalidArgumentError, update_op.eval)
+
   def testAllCorrect(self):
     self.allCorrectAsExpected('ROC')
 

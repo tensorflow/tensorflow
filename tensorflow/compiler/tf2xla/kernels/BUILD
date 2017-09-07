@@ -31,7 +31,6 @@ tf_kernel_library(
         "function_ops.cc",
         "gather_op.cc",
         "identity_op.cc",
-        "is_finite_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
@@ -145,31 +144,35 @@ tf_kernel_library(
     ],
 )
 
-tf_kernel_library(
+cc_library(
     name = "gather_op_kernel_float_int32",
     srcs = ["gather_op_kernel_float_int32.cc"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:gather_functor_hdr",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "gather_op_kernel_float_int64",
     srcs = ["gather_op_kernel_float_int64.cc"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:gather_functor_hdr",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
     visibility = ["//visibility:public"],
@@ -177,9 +180,10 @@ tf_kernel_library(
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
     visibility = ["//visibility:public"],
@@ -187,6 +191,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------
