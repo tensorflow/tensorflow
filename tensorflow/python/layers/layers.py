@@ -110,6 +110,7 @@ from tensorflow.python.layers.pooling import average_pooling2d
 from tensorflow.python.layers.pooling import max_pooling2d
 from tensorflow.python.layers.pooling import average_pooling3d
 from tensorflow.python.layers.pooling import max_pooling3d
+from tensorflow.python.layers.pooling import spatial_pyramid_pooling
 
 # Normalization layers.
 from tensorflow.python.layers.normalization import BatchNormalization
