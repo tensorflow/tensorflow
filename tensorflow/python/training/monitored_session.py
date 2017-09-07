@@ -20,6 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import sys
+
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import errors
@@ -947,20 +950,21 @@ class _CoordinatedSession(_WrappedSession):
   def run(self, *args, **kwargs):
     try:
       return self._sess.run(*args, **kwargs)
-    except _PREEMPTION_ERRORS as original_exception:
-      raise original_exception
-    except Exception as original_exception:  # pylint: disable=broad-except
+    except _PREEMPTION_ERRORS:
+      raise
+    except Exception:  # pylint: disable=broad-except
       # A non-preemption error could have been caused by a preemption error
       # in the coordinator. If this is the case, raise that exception instead,
-      # since it's the root cause. Otherwise, stick to the `original_exception`.
+      # since it's the root cause. Otherwise, stick to the `original_exc_info`.
+      original_exc_info = sys.exc_info()
       try:
         self._coord.raise_requested_exception()
-      except _PREEMPTION_ERRORS as preemption_in_coordinator:
-        raise preemption_in_coordinator
+      except _PREEMPTION_ERRORS:
+        raise
       except Exception:  # pylint: disable=broad-except
-        raise original_exception
+        raise six.reraise(*original_exc_info)
       else:
-        raise original_exception
+        raise six.reraise(*original_exc_info)
 
 
 class _HookedSession(_WrappedSession):
