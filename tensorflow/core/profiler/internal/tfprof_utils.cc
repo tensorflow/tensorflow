@@ -297,6 +297,7 @@ void PrintHelp() {
       "See https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/"
       "g3doc/command_line.md for command line tool tutorial.\n");
   printf(
+      "profiler --profile_path=<ProfileProto binary file> # required\nor:\n"
       "profiler --graph_path=<GraphDef proto file>  # required\n"
       "         --run_meta_patn=<RunMetadata proto file>  # optional\n"
       "         --run_log_path=<OpLogProto proto file>  # optional\n\n");

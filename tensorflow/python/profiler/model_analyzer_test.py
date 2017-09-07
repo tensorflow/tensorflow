@@ -69,57 +69,65 @@ class PrintModelAnalysisTest(test.TestCase):
             .select(['micros', 'bytes', 'params', 'float_ops', 'occurrence',
                      'device', 'op_types', 'input_shapes']).build())
 
-    config = config_pb2.ConfigProto()
-    with session.Session(config=config) as sess, ops.device(dev):
-      x = lib.BuildSmallModel()
+    with profile_context.ProfileContext(test.get_temp_dir(),
+                                        trace_steps=[],
+                                        dump_steps=[]) as pctx:
+      with session.Session() as sess, ops.device(dev):
+        x = lib.BuildSmallModel()
 
-      sess.run(variables.global_variables_initializer())
-      run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+        sess.run(variables.global_variables_initializer())
+        pctx.trace_next_step()
+        pctx.dump_next_step()
+        _ = sess.run(x)
 
-      model_analyzer.profile(
-          sess.graph, run_meta, options=opts)
+        pctx.profiler.profile_name_scope(options=opts)
 
-      with gfile.Open(outfile, 'r') as f:
-        # pylint: disable=line-too-long
-        outputs = f.read().split('\n')
+        with gfile.Open(outfile, 'r') as f:
+          # pylint: disable=line-too-long
+          dump_str = f.read()
+          outputs = dump_str.split('\n')
 
-        self.assertEqual(outputs[0],
-                         'node name | # parameters | # float_ops | requested bytes | total execution time | accelerator execution time | cpu execution time | assigned devices | op types | op count (run|defined) | input shapes')
-        for o in outputs[1:]:
-          if o.find('Conv2D ') > 0:
-            metrics = o[o.find('(') +1: o.find(')')].split(',')
-            # Make sure time is profiled.
-            gap = 1 if test.is_gpu_available() else 2
-            for i in range(3, 6, gap):
-              mat = re.search('(.*)[um]s/(.*)[um]s', metrics[i])
+          self.assertEqual(outputs[0],
+                           'node name | # parameters | # float_ops | requested bytes | total execution time | accelerator execution time | cpu execution time | assigned devices | op types | op count (run|defined) | input shapes')
+          for o in outputs[1:]:
+            if o.find('Conv2D ') > 0:
+              metrics = o[o.find('(') +1: o.find(')')].split(',')
+              # Make sure time is profiled.
+              gap = 1 if test.is_gpu_available() else 2
+              for i in range(3, 6, gap):
+                mat = re.search('(.*)[um]s/(.*)[um]s', metrics[i])
+                self.assertGreater(float(mat.group(1)), 0.0)
+                self.assertGreater(float(mat.group(2)), 0.0)
+              # Make sure device is profiled.
+              if test.is_gpu_available():
+                self.assertTrue(metrics[6].find('gpu') > 0)
+                self.assertFalse(metrics[6].find('cpu') > 0)
+              else:
+                self.assertFalse(metrics[6].find('gpu') > 0)
+                self.assertTrue(metrics[6].find('cpu') > 0)
+              # Make sure float_ops is profiled.
+              mat = re.search('(.*)k/(.*)k flops', metrics[1].strip())
               self.assertGreater(float(mat.group(1)), 0.0)
               self.assertGreater(float(mat.group(2)), 0.0)
-            # Make sure device is profiled.
-            if test.is_gpu_available():
-              self.assertTrue(metrics[6].find('gpu') > 0)
-              self.assertFalse(metrics[6].find('cpu') > 0)
-            else:
-              self.assertFalse(metrics[6].find('gpu') > 0)
-              self.assertTrue(metrics[6].find('cpu') > 0)
-            # Make sure float_ops is profiled.
-            mat = re.search('(.*)k/(.*)k flops', metrics[1].strip())
-            self.assertGreater(float(mat.group(1)), 0.0)
-            self.assertGreater(float(mat.group(2)), 0.0)
-            # Make sure op_count is profiled.
-            self.assertEqual(metrics[8].strip(), '1/1|1/1')
-            # Make sure input_shapes is profiled.
-            self.assertEqual(metrics[9].strip(), '0:2x6x6x3|1:3x3x3x6')
+              # Make sure op_count is profiled.
+              self.assertEqual(metrics[8].strip(), '1/1|1/1')
+              # Make sure input_shapes is profiled.
+              self.assertEqual(metrics[9].strip(), '0:2x6x6x3|1:3x3x3x6')
 
-          if o.find('DW (3x3x3x6') > 0:
-            metrics = o[o.find('(') +1: o.find(')')].split(',')
-            mat = re.search('(.*)/(.*) params', metrics[1].strip())
-            self.assertGreater(float(mat.group(1)), 0.0)
-            self.assertGreater(float(mat.group(2)), 0.0)
-        # pylint: enable=line-too-long
+            if o.find('DW (3x3x3x6') > 0:
+              metrics = o[o.find('(') +1: o.find(')')].split(',')
+              mat = re.search('(.*)/(.*) params', metrics[1].strip())
+              self.assertGreater(float(mat.group(1)), 0.0)
+              self.assertGreater(float(mat.group(2)), 0.0)
+          # pylint: enable=line-too-long
+
+    # Test that profiler restored from profile file gives the same result.
+    gfile.Remove(outfile)
+    profile_file = os.path.join(test.get_temp_dir(), 'profile_1')
+    with lib.ProfilerFromFile(profile_file) as profiler:
+      profiler.profile_name_scope(options=opts)
+      with gfile.Open(outfile, 'r') as f:
+        self.assertEqual(dump_str, f.read())
 
   def testSelectEverything(self):
     ops.reset_default_graph()
@@ -198,56 +206,54 @@ class PrintModelAnalysisTest(test.TestCase):
             .account_displayed_op_only(False)
             .select(['params', 'float_ops']).build())
 
-    with session.Session() as sess:
-      x = lib.BuildFullModel()
+    with profile_context.ProfileContext(test.get_temp_dir(),
+                                        trace_steps=[],
+                                        dump_steps=[]) as pctx:
+      with session.Session() as sess:
+        x = lib.BuildFullModel()
 
-      sess.run(variables.global_variables_initializer())
-      run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+        sess.run(variables.global_variables_initializer())
+        pctx.trace_next_step()
+        _ = sess.run(x)
+        tfprof_node = pctx.profiler.profile_python(options=opts)
 
-      tfprof_node = model_analyzer.profile(
-          sess.graph, run_meta, cmd='code', options=opts)
+        # pylint: disable=line-too-long
+        with gfile.Open(outfile, 'r') as f:
+          lines = f.read().split('\n')
+          result = '\n'.join([l[:min(len(l), 80)] for l in lines])
+          self.assertEqual('node name | # parameters | # float_ops\n_TFProfRoot (--/2.84k params, --/91.04k flops)\n  model_analyzer_testlib.py:63:BuildFullModel (0/1.80k params, 0/41.76k flops)\n    model_analyzer_testlib.py:40:BuildSmallModel (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:44:BuildSmallModel (0/4 params, 0/0 flops)\n    model_analyzer_testlib.py:48:BuildSmallModel (0/648 params, 0/0 flops)\n    model_analyzer_testlib.py:49:BuildSmallModel (0/0 params, 0/23.33k flops)\n    model_analyzer_testlib.py:53:BuildSmallModel (0/1.15k params, 0/0 flops)\n    model_analyzer_testlib.py:54:BuildSmallModel (0/0 params, 0/18.43k flops)\n  model_analyzer_testlib.py:63:BuildFullModel (gradient) (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:49:BuildSmallModel (gradient) (0/0 params, 0/0 flo\n    model_analyzer_testlib.py:54:BuildSmallModel (gradient) (0/0 params, 0/0 flo\n  model_analyzer_testlib.py:67:BuildFullModel (0/1.04k params, 0/16.51k flops)\n  model_analyzer_testlib.py:67:BuildFullModel (gradient) (0/0 params, 0/32.77k f\n  model_analyzer_testlib.py:69:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:70:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:70:BuildFullModel (gradient) (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:72:BuildFullModel (0/0 params, 0/0 flops)\n',
+                           result)
 
-      # pylint: disable=line-too-long
-      with gfile.Open(outfile, 'r') as f:
-        lines = f.read().split('\n')
-        result = '\n'.join([l[:min(len(l), 80)] for l in lines])
-        self.assertEqual('node name | # parameters | # float_ops\n_TFProfRoot (--/2.84k params, --/91.04k flops)\n  model_analyzer_testlib.py:58:BuildFullModel (0/1.80k params, 0/41.76k flops)\n    model_analyzer_testlib.py:35:BuildSmallModel (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:39:BuildSmallModel (0/4 params, 0/0 flops)\n    model_analyzer_testlib.py:43:BuildSmallModel (0/648 params, 0/0 flops)\n    model_analyzer_testlib.py:44:BuildSmallModel (0/0 params, 0/23.33k flops)\n    model_analyzer_testlib.py:48:BuildSmallModel (0/1.15k params, 0/0 flops)\n    model_analyzer_testlib.py:49:BuildSmallModel (0/0 params, 0/18.43k flops)\n  model_analyzer_testlib.py:58:BuildFullModel (gradient) (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:44:BuildSmallModel (gradient) (0/0 params, 0/0 flo\n    model_analyzer_testlib.py:49:BuildSmallModel (gradient) (0/0 params, 0/0 flo\n  model_analyzer_testlib.py:62:BuildFullModel (0/1.04k params, 0/16.51k flops)\n  model_analyzer_testlib.py:62:BuildFullModel (gradient) (0/0 params, 0/32.77k f\n  model_analyzer_testlib.py:64:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:65:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:65:BuildFullModel (gradient) (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:67:BuildFullModel (0/0 params, 0/0 flops)\n',
-                         result)
-
-      self.assertLess(0, tfprof_node.total_exec_micros)
-      self.assertEqual(2844, tfprof_node.total_parameters)
-      self.assertEqual(91040, tfprof_node.total_float_ops)
-      self.assertEqual(8, len(tfprof_node.children))
-      self.assertEqual('_TFProfRoot', tfprof_node.name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:58:BuildFullModel',
-          tfprof_node.children[0].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:58:BuildFullModel (gradient)',
-          tfprof_node.children[1].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:62:BuildFullModel',
-          tfprof_node.children[2].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:62:BuildFullModel (gradient)',
-          tfprof_node.children[3].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:64:BuildFullModel',
-          tfprof_node.children[4].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:65:BuildFullModel',
-          tfprof_node.children[5].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:65:BuildFullModel (gradient)',
-          tfprof_node.children[6].name)
-      self.assertEqual(
-          'model_analyzer_testlib.py:67:BuildFullModel',
-          tfprof_node.children[7].name)
-      # pylint: enable=line-too-long
+        self.assertLess(0, tfprof_node.total_exec_micros)
+        self.assertEqual(2844, tfprof_node.total_parameters)
+        self.assertEqual(91040, tfprof_node.total_float_ops)
+        self.assertEqual(8, len(tfprof_node.children))
+        self.assertEqual('_TFProfRoot', tfprof_node.name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:63:BuildFullModel',
+            tfprof_node.children[0].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:63:BuildFullModel (gradient)',
+            tfprof_node.children[1].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:67:BuildFullModel',
+            tfprof_node.children[2].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:67:BuildFullModel (gradient)',
+            tfprof_node.children[3].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:69:BuildFullModel',
+            tfprof_node.children[4].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:70:BuildFullModel',
+            tfprof_node.children[5].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:70:BuildFullModel (gradient)',
+            tfprof_node.children[6].name)
+        self.assertEqual(
+            'model_analyzer_testlib.py:72:BuildFullModel',
+            tfprof_node.children[7].name)
+        # pylint: enable=line-too-long
 
   def testCodeViewLeafGraphNode(self):
     ops.reset_default_graph()
@@ -590,8 +596,7 @@ class PrintModelAnalysisTest(test.TestCase):
           self.assertEqual(len(gfile.ListDirectory(memory_dir)), 0)
         if i in dump_step:
           ret = gfile.ListDirectory(profile_dir)
-          self.assertAllEqual(sorted(ret),
-                              ['graph.pbtxt', 'run_metadata', 'tfprof_log'])
+          self.assertAllEqual(ret, ['profile_%d' % i])
           _ = [gfile.Remove(os.path.join(profile_dir, x)) for x in ret]
         else:
           if i < dump_step[0]:
@@ -620,10 +625,11 @@ class PrintModelAnalysisTest(test.TestCase):
     dump_steps = [3, 4]
 
     x = lib.BuildSmallModel()
-    with profile_context.ProfileContext() as pctx:
+    with profile_context.ProfileContext(profile_dir,
+                                        trace_steps=[1, 2, 3],
+                                        dump_steps=[3, 4]) as pctx:
       pctx.add_auto_profiling('scope', time_opts, time_steps)
       pctx.add_auto_profiling('scope', memory_opts, memory_steps)
-      pctx.add_auto_profile_dump(profile_dir, dump_steps)
 
       self._trainLoop(x, 10, time_dir, time_steps,
                       memory_dir, memory_steps, profile_dir, dump_steps)
