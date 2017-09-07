@@ -32,6 +32,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_service_pb2_grpc
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 
 DebugWatch = collections.namedtuple("DebugWatch",
                                     ["node_name", "output_slot", "debug_op"])
@@ -219,7 +220,8 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     """
 
     value = event.summary.value[0]
-    debugger_plugin_metadata = json.loads(value.metadata.plugin_data.content)
+    debugger_plugin_metadata = json.loads(
+        compat.as_text(value.metadata.plugin_data.content))
     device_name = debugger_plugin_metadata["device"]
     num_chunks = debugger_plugin_metadata["numChunks"]
     chunk_index = debugger_plugin_metadata["chunkIndex"]
