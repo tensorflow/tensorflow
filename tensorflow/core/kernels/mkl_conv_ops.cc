@@ -270,22 +270,22 @@ class MklConv2DOp : public OpKernel {
     MklShape mkl_filter_output_mkl_shape;
     mkl_filter_output_mkl_shape.SetMklTensor(true);
     mkl_filter_output_mkl_shape.SetMklLayout(mkl_context.prim_fwd,
-        dnnResourceFilter);
+                                             dnnResourceFilter);
 
     size_t filter_sizes[4] = {filter.dim_size(0), filter.dim_size(1),
-        filter.dim_size(2), filter.dim_size(3)};
+                              filter.dim_size(2), filter.dim_size(3)};
     mkl_filter_output_mkl_shape.SetTfLayout(filter.dims(), filter_sizes,
-    mkl_context.filter_strides);
+                                            mkl_context.filter_strides);
 
     mkl_filter_output_mkl_shape.SetTfDimOrder(mkl_context.filter_dims,
-        data_format_);
+                                              data_format_);
     mkl_filter_output_tf_shape.AddDim(
-        dnnLayoutGetMemorySize_F32(
-            static_cast<dnnLayout_t>(
-                mkl_filter_output_mkl_shape.GetMklLayout())) /
-                    sizeof(T));
+        dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
+            mkl_filter_output_mkl_shape.GetMklLayout())) /
+        sizeof(T));
     AllocateOutputSetMklShape(context, 1, &mkl_context.output_filter,
-        mkl_filter_output_tf_shape, mkl_filter_output_mkl_shape);
+                              mkl_filter_output_tf_shape,
+                              mkl_filter_output_mkl_shape);
 
     mkl_context.conv_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -406,8 +406,13 @@ class MklConv2DOp : public OpKernel {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_filter, lt_filter,
                                          mkl_lt_internal_filter),
                  E_SUCCESS);
+<<<<<<< HEAD
         mkl_buf_convert_filter = const_cast<void*>(static_cast<const void*>(
             output_filter->flat<T>().data()));
+=======
+        mkl_buf_convert_filter = const_cast<void*>(
+            static_cast<const void*>(output_filter->flat<T>().data()));
+>>>>>>> e722358e7e96dd2aa20d7e2c56336e76845daa6a
         CHECK_EQ(
             dnnConversionExecute_F32(mkl_prim_convert_filter, mkl_buf_filter,
                                      mkl_buf_convert_filter),

@@ -82,6 +82,10 @@ class SymbolicGradientBuilder {
   // from outputs_. Keyed by node id.
   std::vector<bool> GetReachableNodes();
 
+  // Returns a list mapping whether each node in the graph is reachable
+  // from outputs_. Keyed by node id.
+  std::vector<bool> GetReachableNodes();
+
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
   const std::vector<Output>& outputs_;
@@ -156,7 +160,7 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
       reachable_nodes[out.node()->id()] = true;
     }
   }
-  
+
   while (!queue.empty()) {
     Node* n = queue.front();
     queue.pop_front();

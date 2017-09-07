@@ -198,8 +198,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx);
-    TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
-        &profile_candidates_for_computation));
+    TF_RETURN_IF_ERROR(
+        computation->Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -433,6 +433,10 @@ Status InitializeModuleHooks(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  const string timer_message =
+      "Compiling [" + module->name() + "] for CPU using JIT";
+  ScopedLoggingTimer compiling_timer(timer_message, 1);
+
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,

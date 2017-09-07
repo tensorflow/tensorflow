@@ -298,11 +298,11 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
 
   def decorator(f):
     """Test method decorator."""
-    def decorated(self):
+    def decorated(self, **kwargs):
       """Decorated the test method."""
       with context.graph_mode():
         with self.test_session(graph, config, use_gpu, force_gpu):
-          f(self)
+          f(self, **kwargs)
 
       if reset_test:
         # This decorator runs the wrapped test twice.
@@ -319,10 +319,10 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
             f(self)
         elif use_gpu:
           # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self)
+          f(self, **kwargs)
         else:
           with context.device("/device:CPU:0"):
-            f(self)
+            f(self, **kwargs)
 
       eager_graph = graph or ops.Graph()
       with context.eager_mode():
