@@ -259,11 +259,10 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
     update_op: An operation that increments the confusion matrix.
   """
   # Local variable to accumulate the predictions in the confusion matrix.
-  cm_dtype = dtypes.float64 if weights is not None else dtypes.int64
   total_cm = _create_local(
       'total_confusion_matrix',
       shape=[num_classes, num_classes],
-      dtype=cm_dtype)
+      dtype=dtypes.float64)
 
   # Cast the type to int64 required by confusion_matrix_ops.
   predictions = math_ops.to_int64(predictions)
@@ -282,7 +281,7 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
 
   # Accumulate the prediction to current confusion matrix.
   current_cm = confusion_matrix.confusion_matrix(
-      labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
+      labels, predictions, num_classes, weights=weights, dtype=dtypes.float64)
   update_op = state_ops.assign_add(total_cm, current_cm)
   return total_cm, update_op
 
