@@ -139,6 +139,46 @@ Status QrShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+
+// Input is [...,M,M].
+// First and second outputs are:
+//   [...,M,M]; [...,M,M]
+Status LuShapeFn(InferenceContext* c) {
+  /*
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+  DimensionHandle m = c->Dim(input, -2);  
+  //DimensionHandle p;  
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+  ShapeHandle l_shape;
+  ShapeHandle u_shape;     
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &l_shape));
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &u_shape));  
+  c->set_output(0, l_shape);
+  c->set_output(1, u_shape);
+  LOG(WARNING) << "In LuShapeFu";
+  return Status::OK();
+  */
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+  DimensionHandle m = c->Dim(input, -2);
+  DimensionHandle n = c->Dim(input, -1);
+  DimensionHandle p;
+  TF_RETURN_IF_ERROR(c->Min(m, n, &p));
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+  ShapeHandle q_shape;
+  ShapeHandle r_shape;
+   
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &q_shape));
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, n), &r_shape));
+  
+  c->set_output(0, q_shape);
+  c->set_output(1, r_shape);
+  return Status::OK();
+}
+
 // Input is [...,M,N].  First output is [...,min(M,N)].
 // Second and third outputs are:
 //   [0]; [0], if compute_uv is false.
@@ -514,7 +554,7 @@ REGISTER_OP("Lu")
     .Output("l: T")
     .Output("u: T")
     .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(BatchUnchangedSquareShapeFn)
+    .SetShapeFn(LuShapeFn)
     .Doc(R"doc(
 Computes the LU decomposition of one or more square matrices.
 

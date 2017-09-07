@@ -40,22 +40,27 @@ class LuOp : public LinearAlgebraOp<Scalar> {
   explicit LuOp(OpKernelConstruction* context) : Base(context) {}
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-                     MatrixMaps* outputs) final {
-    const ConstMatrixMap& input = inputs[0];
+                     MatrixMaps* outputs) final {    
+    const ConstMatrixMap& input = inputs[0];    
     if (input.rows() == 0) {
       return;
     }
     // Perform the actual LU decomposition.   
     Eigen::FullPivLU<
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
-        lu_decomposition(input);
-
+        lu_decomposition;
+    lu_decomposition.compute(input);
+    LOG(WARNING) << " in LU before outputs assignment.";
     OP_REQUIRES(context, lu_decomposition.isInvertible() == true,
-                errors::InvalidArgument(kErrMsg));
-
+                errors::InvalidArgument(kErrMsg));        
+    // Output the lower triangular in a dense form.
+    //LOG(WARNING) << "isInvertible? ";
+    //std::cout<<lu_decomposition.matrixLU().template triangularView<Eigen::Upper>()<<std::endl;
     // Output the lower triangular in a dense form.
     outputs->at(0) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
     outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Lower>();
+    LOG(WARNING) << " in LU after outputs assignment.";
+    return;
   }
 };
 
