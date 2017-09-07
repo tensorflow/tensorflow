@@ -247,12 +247,23 @@ cc_library(
 )
 
 cc_library(
+    name = "safe_ptr",
+    srcs = ["lib/core/safe_ptr.cc"],
+    hdrs = ["lib/core/safe_ptr.h"],
+    deps = [
+        "//tensorflow/c:c_api",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
     deps = [
         ":ndarray_tensor_bridge",
         ":numpy_lib",
+        ":safe_ptr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
@@ -2860,6 +2871,7 @@ tf_cuda_library(
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":numpy_lib",
+        ":safe_ptr",
         ":test_ops_kernels",
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
@@ -2917,6 +2929,7 @@ tf_py_wrap_cc(
         ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",
+        ":safe_ptr",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
