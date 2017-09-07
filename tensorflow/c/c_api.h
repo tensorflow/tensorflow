@@ -357,6 +357,14 @@ typedef struct TF_Output {
   int index;  // The index of the output within oper.
 } TF_Output;
 
+// TF_Function is a grouping of operations with defined inputs and outputs.
+// Once created and added to graphs, functions can be invoked by creating an
+// operation whose operation type matches the function name.
+typedef struct TF_Function TF_Function;
+
+// Function definition options. TODO(iga): Define and implement
+typedef struct TF_FunctionOptions TF_FunctionOptions;
+
 // Sets the shape of the Tensor referenced by `output` in `graph` to
 // the shape described by `dims` and `num_dims`.
 //
@@ -914,6 +922,15 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
 
+// Add `function` to graph `g`. Once `function` is added to `g`,
+// it can be called by creating an operation using the function's name.
+//
+// If successful, status is set to OK and function is added to g
+// Otherwise, status is set to the encountered error and g is unmodified
+TF_CAPI_EXPORT extern void TF_GraphAddFunction(TF_Graph* g,
+                                               const TF_Function* function,
+                                               TF_Status* status);
+
 // Note: The following function may fail on very large protos in the future.
 
 TF_CAPI_EXPORT extern void TF_OperationToNodeDef(TF_Operation* oper,
@@ -1000,6 +1017,105 @@ TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
                                     TF_Output* x, int nx, TF_Output* dx,
                                     TF_Status* status, TF_Output* dy);
+
+// Create a TF_Function from a TF_Graph
+//
+// Params:
+//  fn_body - the graph whose operations (or subset of whose operations) will be
+//            converted to TF_Function.
+//  fn_name - the name of the new TF_Function. Should match the operation
+//            name (OpDef.name) regexp [A-Z][A-Za-z0-9_.\\-/]* and be distinct
+//            from other operation names (at least those registered in graphs
+//            where this function will be used).
+//            TODO(iga): Allow null in here and have C API come up with
+//            a unique name with high probability (similarly to
+//            _create_hash_str in function.py)
+//  num_opers - `num_opers` contains the number of elements in the `opers` array
+//              or a special value of -1 meaning that no array is given.
+//              The distinction between an empty array of operations and no
+//              array of operations is necessary to distinguish the case of
+//              creating a function with no body (e.g. identity or permutation)
+//              and the case of creating a function whose body contains all
+//              the nodes in the graph (except for the automatic skipping, see
+//              below).
+//  opers - Array of operations to become the body of the function or null.
+//          - If no array is given (`num_opers`  = -1), all the
+//          operations in `fn_body` will become part of the function
+//          except operations referenced in `inputs`. These operations
+//          must have a single output (these operations are typically
+//          placeholders created for the sole purpose of representing
+//          an input. We can relax this constraint if there are
+//          compelling use cases).
+//          - If an array is given (`num_opers` >= 0), all operations
+//          in it will become part of the function. In particular, no
+//          automatic skipping of dummy input operations is performed.
+//  ninputs - number of elements in `inputs` array
+//  inputs - array of TF_Outputs that specify the inputs to the function.
+//           If `ninputs` is zero (the function takes no inputs), `inputs`
+//           can be null. The names used for function inputs are normalized
+//           names of the operations (usually placeholders) pointed to by
+//           `inputs`. These operation names should start with a letter.
+//           Normalization will convert all letters to lowercase and
+//           non-alphanumeric characters to '_' to make resulting names match
+//           the "[a-z][a-z0-9_]*" pattern for operation argument names.
+//           `inputs` cannot contain the same tensor twice.
+//  noutputs - number of elements in `outputs` array
+//  outputs - array of TF_Outputs that specify the outputs of the function.
+//            If `noutputs` is zero (the function returns no outputs), `outputs`
+//            can be null. `outputs` can contain the same tensor more than once.
+//  output_names - The names of the function's outputs. `output_names` array
+//                 must either have the same length as `outputs`
+//                 (i.e. `noutputs`) or be null. In the former case,
+//                 the names should match the regular expression for ArgDef
+//                 names - "[a-z][a-z0-9_]*". In the latter case,
+//                 names for outputs will be generated automatically.
+//  opts - various options for the function, e.g. XLA's inlining control.
+//  status - Set to OK on success and an appropriate error on failure.
+//
+// Note that when the same TF_Output is listed as both an input and an output,
+// the corresponding function's output will equal to this input,
+// instead of the original node's output.
+//
+// Callers must also satisfy the following constraints:
+// - `inputs` cannot refer to TF_Outputs within a control flow context. For
+//   example, one cannot use the output of "switch" node as input.
+// - No TF_Output of a function (inside any of `inputs`, `outputs`, `fn_body`)
+//   is allowed to have a reference type. Reference types are not exposed
+//   through C API and are being deprecated.
+// - Every node in the function's body must have all of its inputs (including
+//   control inputs). In other words, for every node in the body, each input
+//   must be either listed in `inputs` or must come from another node in
+//   the body. In particular, it is an error to have a control edge going from
+//   a node outside of the body into a node in the body. This applies to control
+//   edges going from nodes referenced in `inputs` to nodes in the body when
+//   the former nodes are not in the body (automatically skipped or not
+//   included in explicitly specified body).
+//
+// Returns:
+//  On successful, a newly created TF_Function instance. It must be deleted by
+//  calling TF_DeleteFunction.
+//
+//  On failure, null.
+//
+// TODO(iga): Add input_names argument and get output_names working (they are
+// currently ignored)
+TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
+    const TF_Graph* fn_body, const char* fn_name, int num_opers,
+    const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
+    int noutputs, const TF_Output* outputs, const char* const* output_names,
+    const TF_FunctionOptions* opts, TF_Status* status);
+
+// Write out a serialized representation of `func` (as a FunctionDef protocol
+// message) to `output_func_def` (allocated by TF_NewBuffer()).
+// `output_func_def`'s underlying buffer will be freed when TF_DeleteBuffer()
+// is called.
+//
+// May fail on very large graphs in the future.
+TF_CAPI_EXPORT extern void TF_FunctionToFunctionDef(TF_Function* func,
+                                                    TF_Buffer* output_func_def,
+                                                    TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function*);
 
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.

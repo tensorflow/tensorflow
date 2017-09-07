@@ -239,7 +239,8 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
 
 def start_server_on_separate_thread(dump_to_filesystem=True,
                                     server_start_delay_sec=0.0,
-                                    poll_server=False):
+                                    poll_server=False,
+                                    blocking=True):
   """Create a test gRPC debug server and run on a separate thread.
 
   Args:
@@ -249,6 +250,7 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
       start up for.
     poll_server: (bool) whether the server will be polled till success on
       startup.
+    blocking: (bool) whether the server should be started in a blocking mode.
 
   Returns:
     server_port: (int) Port on which the server runs.
@@ -270,7 +272,8 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
 
   def delay_then_run_server():
     time.sleep(server_start_delay_sec)
-    server.run_server()
+    server.run_server(blocking=blocking)
+
   server_thread = threading.Thread(target=delay_then_run_server)
   server_thread.start()
 

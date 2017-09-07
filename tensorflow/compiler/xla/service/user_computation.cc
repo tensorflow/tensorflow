@@ -2478,7 +2478,7 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   std::vector<int64> broadcast_dimensions;
   std::vector<int64> reshaped_dimensions;
   for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
-    if (operand->shape().dimensions(i) > 1) {
+    if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
       broadcast_dimensions.push_back(i);
       reshaped_dimensions.push_back(operand->shape().dimensions(i));
     }

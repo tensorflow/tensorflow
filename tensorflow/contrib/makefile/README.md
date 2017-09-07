@@ -201,7 +201,8 @@ tensorflow/contrib/makefile/compile_ios_protobuf.sh
 
 Then, you will need to compile the nsync library for iOS:
 
-```export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+```bash
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
 export TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
 ```
 

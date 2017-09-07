@@ -19,12 +19,73 @@ from __future__ import division
 from __future__ import print_function
 
 from itertools import cycle
+import os
+import tarfile
 import threading
+import zipfile
 
 import numpy as np
+from six.moves.urllib.parse import urljoin
+from six.moves.urllib.request import pathname2url
 
 from tensorflow.contrib.keras.python import keras
 from tensorflow.python.platform import test
+
+
+class TestGetFileAndValidateIt(test.TestCase):
+
+  def test_get_file_and_validate_it(self):
+    """Tests get_file from a url, plus extraction and validation.
+    """
+    dest_dir = self.get_temp_dir()
+    orig_dir = self.get_temp_dir()
+
+    text_file_path = os.path.join(orig_dir, 'test.txt')
+    zip_file_path = os.path.join(orig_dir, 'test.zip')
+    tar_file_path = os.path.join(orig_dir, 'test.tar.gz')
+
+    with open(text_file_path, 'w') as text_file:
+      text_file.write('Float like a butterfly, sting like a bee.')
+
+    with tarfile.open(tar_file_path, 'w:gz') as tar_file:
+      tar_file.add(text_file_path)
+
+    with zipfile.ZipFile(zip_file_path, 'w') as zip_file:
+      zip_file.write(text_file_path)
+
+    origin = urljoin('file://', pathname2url(os.path.abspath(tar_file_path)))
+
+    path = keras.utils.data_utils.get_file('test.txt', origin,
+                                           untar=True, cache_subdir=dest_dir)
+    filepath = path + '.tar.gz'
+    hashval_sha256 = keras.utils.data_utils._hash_file(filepath)
+    hashval_md5 = keras.utils.data_utils._hash_file(filepath, algorithm='md5')
+    path = keras.utils.data_utils.get_file(
+        'test.txt', origin, md5_hash=hashval_md5,
+        untar=True, cache_subdir=dest_dir)
+    path = keras.utils.data_utils.get_file(
+        filepath, origin, file_hash=hashval_sha256,
+        extract=True, cache_subdir=dest_dir)
+    self.assertTrue(os.path.exists(filepath))
+    self.assertTrue(keras.utils.data_utils.validate_file(filepath,
+                                                         hashval_sha256))
+    self.assertTrue(keras.utils.data_utils.validate_file(filepath, hashval_md5))
+    os.remove(filepath)
+
+    origin = urljoin('file://', pathname2url(os.path.abspath(zip_file_path)))
+
+    hashval_sha256 = keras.utils.data_utils._hash_file(zip_file_path)
+    hashval_md5 = keras.utils.data_utils._hash_file(zip_file_path,
+                                                    algorithm='md5')
+    path = keras.utils.data_utils.get_file(
+        'test', origin, md5_hash=hashval_md5,
+        extract=True, cache_subdir=dest_dir)
+    path = keras.utils.data_utils.get_file(
+        'test', origin, file_hash=hashval_sha256,
+        extract=True, cache_subdir=dest_dir)
+    self.assertTrue(os.path.exists(path))
+    self.assertTrue(keras.utils.data_utils.validate_file(path, hashval_sha256))
+    self.assertTrue(keras.utils.data_utils.validate_file(path, hashval_md5))
 
 
 class ThreadsafeIter(object):

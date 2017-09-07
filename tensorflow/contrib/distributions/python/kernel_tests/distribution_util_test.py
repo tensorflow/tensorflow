@@ -338,5 +338,41 @@ class TridiagTest(test.TestCase):
           rtol=1e-5, atol=0.)
 
 
+class MixtureStddevTest(test.TestCase):
+
+  def test_mixture_dev(self):
+    mixture_weights = np.array([
+        [1.0/3, 1.0/3, 1.0/3],
+        [0.750, 0.250, 0.000]
+    ])
+    component_means = np.array([
+        [1.0, 1.0, 1.0],
+        [-5, 0, 1.25]
+    ])
+    component_devs = np.array([
+        [1.0, 1.0, 1.0],
+        [0.01, 2.0, 0.1]
+    ])
+
+    # The first case should trivially have a standard deviation of 1.0 because
+    # all components are identical and have that standard deviation.
+    # The second case was computed by hand.
+    expected_devs = np.array([
+        1.0,
+        2.3848637277
+    ])
+
+    weights_tf = array_ops.constant(mixture_weights)
+    means_tf = array_ops.constant(component_means)
+    sigmas_tf = array_ops.constant(component_devs)
+    mix_dev = distribution_util.mixture_stddev(weights_tf,
+                                               means_tf,
+                                               sigmas_tf)
+
+    with self.test_session() as sess:
+      actual_devs = sess.run(mix_dev)
+
+    self.assertAllClose(actual_devs, expected_devs)
+
 if __name__ == "__main__":
   test.main()

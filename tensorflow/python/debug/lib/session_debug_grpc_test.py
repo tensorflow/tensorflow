@@ -94,6 +94,15 @@ class GrpcDebugServerTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "Server has already stopped"):
       server.run_server()
 
+  def testStartServerWithoutBlocking(self):
+    (_, _, _, server_thread,
+     server) = grpc_debug_test_server.start_server_on_separate_thread(
+         poll_server=True, blocking=False)
+    # The thread that starts the server shouldn't block, so we should be able to
+    # join it before stopping the server.
+    server_thread.join()
+    server.stop_server().wait()
+
 
 class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 

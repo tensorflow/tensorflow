@@ -1421,6 +1421,7 @@ class MonitoredSessionTest(test.TestCase):
       with monitored_session.MonitoredSession() as session:
         session.close()
 
+
 class SingularMonitoredSessionTest(test.TestCase):
   """Tests SingularMonitoredSession."""
 

@@ -45,6 +45,11 @@ bool IsEnter(const NodeDef& node) {
   return op == "Enter" || op == "RefEnter";
 }
 
+bool IsExit(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Exit" || op == "RefExit";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Identity" || op == "RefIdentity";
@@ -84,6 +89,11 @@ bool IsReduction(const NodeDef& node) {
 
 bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 
+bool IsRestore(const NodeDef& node) {
+  return (node.op() == "Restore" || node.op() == "RestoreV2" ||
+          node.op() == "RestoreSlice");
+}
+
 bool IsSend(const NodeDef& node) {
   const auto op = node.op();
   return op == "_Send";
@@ -107,7 +117,7 @@ bool IsTranspose(const NodeDef& node) {
 bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp" || op == "TemporaryVariable";
+         op == "VarHandleOp" || op == "ReadVariableOp";
 }
 
 }  // end namespace grappler

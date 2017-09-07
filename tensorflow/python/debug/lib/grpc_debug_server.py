@@ -301,10 +301,11 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
         self._gated_grpc_debug_watches.add(
             DebugWatch(node_name, output_slot, debug_op))
 
-  def run_server(self):
+  def run_server(self, blocking=True):
     """Start running the server.
 
-    Blocks until `stop_server` is invoked.
+    Args:
+      blocking: If `True`, block until `stop_server()` is invoked.
 
     Raises:
       ValueError: If server stop has already been requested, or if the server
@@ -326,8 +327,9 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     finally:
       self._server_lock.release()
 
-    while not self._stop_requested:
-      time.sleep(1.0)
+    if blocking:
+      while not self._stop_requested:
+        time.sleep(1.0)
 
   def stop_server(self, grace=1.0):
     """Request server stopping.

@@ -327,7 +327,7 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
           or (3, 224, 224) (with `channels_first` data format).
-          It should have exactly 3 inputs channels,
+          It should have exactly 3 input channels,
           and width and height should be no smaller than 32.
           E.g. `(200, 200, 3)` would be one valid value.
       alpha: controls the width of the network.
@@ -388,12 +388,26 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
                      'as true, `classes` should be 1000')
 
   # Determine proper input shape.
+  if input_shape is None:
+    default_size = 224
+  else:
+    if K.image_data_format() == 'channels_first':
+      rows = input_shape[1]
+      cols = input_shape[2]
+    else:
+      rows = input_shape[0]
+      cols = input_shape[1]
+    if rows == cols and rows in [128, 160, 192, 224]:
+      default_size = rows
+    else:
+      default_size = 224
   input_shape = _obtain_input_shape(
       input_shape,
-      default_size=224,
+      default_size=default_size,
       min_size=32,
       data_format=K.image_data_format(),
-      include_top=include_top or weights)
+      require_flatten=include_top,
+      weights=weights)
   if K.image_data_format() == 'channels_last':
     row_axis, col_axis = (0, 1)
   else:

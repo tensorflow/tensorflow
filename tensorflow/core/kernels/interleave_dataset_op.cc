@@ -188,12 +188,7 @@ class InterleaveDatasetOp : public OpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         FunctionLibraryRuntime::Options opts;
         opts.runner = ctx->runner();
-        // Choose a step ID that is guaranteed not to clash with any
-        // Session-generated step ID. DirectSession only generates
-        // non-negative step IDs (contiguous, starting from 0), and
-        // MasterSession generates 56-bit random step IDs whose MSB
-        // is always 0, so a negative random step ID should suffice.
-        opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+        opts.step_id = CapturedFunction::generate_step_id();
         ScopedStepContainer step_container(
             opts.step_id, [this, ctx](const string& name) {
               dataset()
@@ -203,8 +198,8 @@ class InterleaveDatasetOp : public OpKernel {
             });
         opts.step_container = &step_container;
         std::vector<Tensor> return_values;
-        TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(
-            opts, input_element, &return_values, prefix()));
+        TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(opts, input_element,
+                                                          &return_values));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_RESOURCE &&

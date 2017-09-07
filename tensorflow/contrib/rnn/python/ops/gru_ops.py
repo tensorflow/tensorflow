@@ -97,6 +97,8 @@ def _GRUBlockCellGrad(op, *grad):
 class GRUBlockCell(rnn_cell_impl.RNNCell):
   r"""Block GRU cell implementation.
 
+  Deprecated: use GRUBlockCellV2 instead.
+
   The implementation is based on:  http://arxiv.org/abs/1406.1078
   Computes the GRU cell forward propagation for 1 time step.
 
@@ -171,6 +173,50 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
       b_c = vs.get_variable(
           "b_c", [self._cell_size],
           initializer=init_ops.constant_initializer(0.0))
+
+      _gru_block_cell = gen_gru_ops.gru_block_cell  # pylint: disable=invalid-name
+      _, _, _, new_h = _gru_block_cell(
+          x=x, h_prev=h_prev, w_ru=w_ru, w_c=w_c, b_ru=b_ru, b_c=b_c)
+
+      return new_h, new_h
+
+
+class GRUBlockCellV2(GRUBlockCell):
+  """Temporary GRUBlockCell impl with a different variable naming scheme.
+
+  Only differs from GRUBlockCell by variable names.
+  """
+
+  def __call__(self, x, h_prev, scope=None):
+    """GRU cell."""
+    with vs.variable_scope(scope or type(self).__name__):
+      input_size = x.get_shape().with_rank(2)[1]
+
+      # Check if the input size exist.
+      if input_size is None:
+        raise ValueError("Expecting input_size to be set.")
+
+      # Check cell_size == state_size from h_prev.
+      cell_size = h_prev.get_shape().with_rank(2)[1]
+      if cell_size != self._cell_size:
+        raise ValueError("Shape of h_prev[1] incorrect: cell_size %i vs %s" %
+                         (self._cell_size, cell_size))
+
+      if cell_size is None:
+        raise ValueError("cell_size from `h_prev` should not be None.")
+
+      with vs.variable_scope("gates"):
+        w_ru = vs.get_variable("kernel", [input_size + self._cell_size,
+                                          self._cell_size * 2])
+        b_ru = vs.get_variable(
+            "bias", [self._cell_size * 2],
+            initializer=init_ops.constant_initializer(1.0))
+      with vs.variable_scope("candidate"):
+        w_c = vs.get_variable("kernel",
+                              [input_size + self._cell_size, self._cell_size])
+        b_c = vs.get_variable(
+            "bias", [self._cell_size],
+            initializer=init_ops.constant_initializer(0.0))
 
       _gru_block_cell = gen_gru_ops.gru_block_cell  # pylint: disable=invalid-name
       _, _, _, new_h = _gru_block_cell(

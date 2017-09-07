@@ -87,7 +87,11 @@ bool NewProfiler(const string* graph, const string* op_log) {
   CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
   CHECK(graph) << "graph mustn't be null";
   std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
-  graph_ptr->ParseFromString(*graph);
+  if (!graph_ptr->ParseFromString(*graph)) {
+    if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
+      fprintf(stderr, "Failed to parse graph\n");
+    }
+  }
 
   std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {

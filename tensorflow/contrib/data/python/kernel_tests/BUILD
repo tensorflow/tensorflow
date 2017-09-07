@@ -223,9 +223,25 @@ py_test(
 )
 
 py_test(
+    name = "sql_dataset_op_test",
+    size = "small",
+    srcs = ["sql_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "resample_test",
     size = "medium",
     srcs = ["resample_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",

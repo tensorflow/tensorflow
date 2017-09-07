@@ -19,10 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from autograd import core as ag_core
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import custom_gradient
+from tensorflow.python.eager import tape
+from tensorflow.python.eager import tensor_node
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -223,6 +227,7 @@ class ResourceVariable(variables.Variable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
+    self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     self._save_slice_info = None
@@ -249,14 +254,21 @@ class ResourceVariable(variables.Variable):
                   dtype=initial_value.dtype.base_dtype,
                   shared_name=handle_name,
                   name=name)
+              self._handle_device = (self._handle.device if in_graph_mode else
+                                     context.get_default_context().device_name)
           else:
             initial_value = initial_value()
+            with ops.name_scope("Initializer"):
+              initial_value = ops.convert_to_tensor(
+                  initial_value, name="initial_value", dtype=dtype)
             self._handle = gen_resource_variable_ops.var_handle_op(
                 shape=initial_value.get_shape(),
                 dtype=initial_value.dtype.base_dtype,
                 shared_name=handle_name,
                 name=name,
                 container="")
+            self._handle_device = (self._handle.device if in_graph_mode else
+                                   context.get_default_context().device_name)
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
@@ -265,8 +277,7 @@ class ResourceVariable(variables.Variable):
             initial_value = ops.convert_to_tensor(
                 initial_value, name="initial_value", dtype=dtype)
           # pylint: disable=protected-access
-          if (in_graph_mode and
-              initial_value is not None and
+          if (in_graph_mode and initial_value is not None and
               initial_value.op._get_control_flow_context() is not None):
             raise ValueError(
                 "Initializer for variable %s is from inside a control-flow "
@@ -280,6 +291,8 @@ class ResourceVariable(variables.Variable):
               shared_name=handle_name,
               name=name,
               container="")
+          self._handle_device = (self._handle.device if in_graph_mode else
+                                 context.get_default_context().device_name)
 
         self._initial_value = initial_value if in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -300,8 +313,8 @@ class ResourceVariable(variables.Variable):
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
             # messages.
-            with ops.device(self._handle.device):
-              value = read_variable_op(self._handle, dtype=self._dtype)
+            with ops.device(self._handle_device):
+              value = self._read_variable_op()
             self._graph_element = value
             if caching_device is not None:
               # Variables may be created in a tf.device() or ops.colocate_with()
@@ -324,14 +337,14 @@ class ResourceVariable(variables.Variable):
           self._graph_element = None
           if caching_device:
             with ops.device(caching_device):
-              self._cached_value = read_variable_op(self._handle,
-                                                    dtype=self._dtype)
+              self._cached_value = self._read_variable_op()
           else:
             self._cached_value = None
         ops.add_to_collections(collections, self)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
+    # Note that init_from_proto is currently not supported in Eager mode.
     assert context.in_graph_mode()
     assert isinstance(variable_def, variable_pb2.VariableDef)
     if not variable_def.is_resource:
@@ -342,6 +355,7 @@ class ResourceVariable(variables.Variable):
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
+    self._handle_device = self._handle.device
     self._handle_name = self._handle.name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
@@ -370,7 +384,7 @@ class ResourceVariable(variables.Variable):
   @property
   def device(self):
     """The device this variable is on."""
-    return self._handle.device
+    return self._handle_device
 
   @property
   def graph(self):
@@ -387,9 +401,8 @@ class ResourceVariable(variables.Variable):
     """The shape of this variable."""
     if context.in_graph_mode():
       return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
-    else:
-      # TODO(agarwal): avoid a call to value here.
-      return self.value().shape
+    return tensor_shape.TensorShape(
+        gen_resource_variable_ops.variable_shape(self._handle).numpy())
 
   @property
   def create(self):
@@ -408,8 +421,8 @@ class ResourceVariable(variables.Variable):
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(self._handle.device):
-        return read_variable_op(self._handle, dtype=self._dtype)
+      with ops.device(self._handle_device):
+        return self._read_variable_op()
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -424,7 +437,7 @@ class ResourceVariable(variables.Variable):
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable."""
     if context.in_eager_mode():
-      raise RuntimeError("initial_value not supported in EAGER mode.""")
+      raise RuntimeError("initial_value not supported in EAGER mode.")
     return self._initial_value
 
   @property
@@ -459,6 +472,11 @@ class ResourceVariable(variables.Variable):
   def _get_save_slice_info(self):
     return self._save_slice_info
 
+  def _read_variable_op(self):
+    if context.in_eager_mode() and self._trainable:
+      tape.watch(self._handle)
+    return read_variable_op(self._handle, dtype=self._dtype)
+
   def read_value(self):
     """Constructs an op which reads the value of this variable.
 
@@ -476,10 +494,10 @@ class ResourceVariable(variables.Variable):
       # separate notions of device and memory, so handle.device can be GPU while
       # handle.memory_space is always CPU.
       if context.in_graph_mode():
-        with ops.device(self._handle.device):
-          value = read_variable_op(self._handle, dtype=self._dtype)
+        with ops.device(self._handle_device):
+          value = self._read_variable_op()
       else:
-        value = read_variable_op(self._handle, dtype=self._dtype)
+        value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
@@ -487,7 +505,9 @@ class ResourceVariable(variables.Variable):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
-      value = gen_resource_variable_ops.resource_gather(
+      if self._trainable:
+        tape.watch(self._handle)
+      value = resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
 
@@ -559,7 +579,14 @@ class ResourceVariable(variables.Variable):
 
     def _run_op(a, *args):
       # pylint: disable=protected-access
-      return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
+      value = a._AsTensor()
+      if ag_core.isnode(value):
+        # This avoids autograd trying to wrap a ResourceVariable.
+        value = ops.convert_to_tensor(value)
+        args = [ops.convert_to_tensor(x) for x in args]
+        return getattr(tensor_node.TensorNode, operator)(value, *args)
+      else:
+        return getattr(ops.Tensor, operator)(value, *args)
 
     # Propagate __doc__ to wrapper
     try:
@@ -652,8 +679,10 @@ def read_variable_op(handle, dtype):
     A `Tensor` of type `dtype`.
   """
   result = gen_resource_variable_ops.read_variable_op(handle, dtype)
+
   def grad(dresult):
     return dresult
+
   return result, grad
 
 
@@ -679,6 +708,51 @@ ops.register_dense_tensor_like_type(ResourceVariable)
 def _ReadGrad(_, grad):
   """Gradient for read op."""
   return grad
+
+
+# TODO(apassos) do not use custom_gradient here by making other entry points
+# than custom_gradient also aware of how to deal with variables implicitly
+# watched in the tape (i.e. the call to _watch_value in custom_gradient)
+@custom_gradient.custom_gradient
+def resource_gather(resource, indices, dtype, validate_indices=True, name=None):
+  """Gather slices from the variable pointed to by `resource`.
+
+  `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+  Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+  ```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+  ```
+
+  Args:
+    resource: A `Tensor` of type `resource`.
+      handle to the resource in which to store the variable.
+    indices: a integer `Tensor` containing the indices to be gathered.
+    dtype: A `tf.DType`. the dtype of the value.
+    validate_indices: optional `bool`. If false will not validate that the
+      indices fit in the variable.
+    name: The optional name for the operation to be added.
+
+  Returns:
+    A `Tensor` of type `dtype`.
+  """
+  result = gen_resource_variable_ops.resource_gather(
+      resource, indices, dtype, validate_indices=validate_indices, name=name)
+
+  def grad(dresult):
+    return ops.IndexedSlices(
+        dresult,
+        indices,
+        dense_shape=gen_resource_variable_ops.variable_shape(resource))
+
+  return result, grad
 
 
 @ops.RegisterGradient("ResourceGather")

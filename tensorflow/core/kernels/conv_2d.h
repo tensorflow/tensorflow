@@ -225,13 +225,13 @@ struct PadInput {
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, IndexType>::Tensor out,
                   TensorFormat format) {
-    Eigen::array<std::pair<IndexType, IndexType>, NDIMS> padding;
-    padding[GetTensorDimIndex<NDIMS - 2>(format, 'N')] = std::make_pair(0, 0);
+    Eigen::array<Eigen::IndexPair<IndexType>, NDIMS> padding;
+    padding[GetTensorDimIndex<NDIMS - 2>(format, 'N')] = {0, 0};
     for (int i = 0; i < NDIMS - 2; ++i) {
-      padding[GetTensorDimIndex<NDIMS - 2>(format, '0' + i)] =
-          std::make_pair(padding_left[i], padding_right[i]);
+      padding[GetTensorDimIndex<NDIMS - 2>(format, '0' + i)] = {
+          padding_left[i], padding_right[i]};
     }
-    padding[GetTensorDimIndex<NDIMS - 2>(format, 'C')] = std::make_pair(0, 0);
+    padding[GetTensorDimIndex<NDIMS - 2>(format, 'C')] = {0, 0};
     out.device(d) = in.pad(padding);
   }
 };

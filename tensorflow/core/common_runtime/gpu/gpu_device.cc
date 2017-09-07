@@ -671,7 +671,10 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   }
 
   int64 total_memory, available_memory;
-  CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
+  if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
+    return errors::Unknown(
+        strings::StrCat("Failed to query available memory for GPU ", gpu_id));
+  }
 
   int64 allocated_memory;
   double config_memory_fraction =

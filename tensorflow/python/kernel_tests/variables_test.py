@@ -44,12 +44,14 @@ class VariablesTestCase(test.TestCase):
     with self.test_session():
       var0 = variables.Variable(0.0)
       self.assertEqual("Variable:0", var0.name)
+      self.assertEqual("Variable", var0._shared_name)
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.shape)
 
       var1 = variables.Variable(1.1)
       self.assertEqual("Variable_1:0", var1.name)
+      self.assertEqual("Variable_1", var1._shared_name)
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.shape)
@@ -466,6 +468,32 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(expected_group_v2, v2.op.colocation_groups())
       for i in v2.initializer.inputs:
         self.assertEqual(expected_group_v2, i.op.colocation_groups())
+
+  def testVariableDefInitializedInstances(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      v_def = variables.Variable(
+          initial_value=constant_op.constant(3.0)).to_proto()
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      # v describes a VariableDef-based variable without an initial value.
+      v = variables.Variable(variable_def=v_def)
+      self.assertEqual(3.0, sess.run(v.initialized_value()))
+
+      # initialized_value should not rerun the initializer_op if the variable
+      # has already been initialized elsewhere.
+      sess.run(v.assign(1.0))
+      self.assertEqual(1.0, v.initialized_value().eval())
+
+    v_def.ClearField("initial_value_name")
+    with ops.Graph().as_default(), self.test_session() as sess:
+      # Restoring a legacy VariableDef proto that does not have
+      # initial_value_name set should still work.
+      v = variables.Variable(variable_def=v_def)
+      # We should also be able to re-export the variable to a new meta graph.
+      self.assertProtoEquals(v_def, v.to_proto())
+      # But attempts to use initialized_value will result in errors.
+      with self.assertRaises(ValueError):
+        sess.run(v.initialized_value())
 
   def testLoad(self):
     with self.test_session():

@@ -112,7 +112,6 @@ struct FusedBatchNorm<CPUDevice, T> {
       batch_var.device(d) = variance * rest_size_adjust;
       saved_var.device(d) = variance;
     } else {
-      mean.device(d) = estimated_mean;
       variance.device(d) = estimated_variance;
     }
 

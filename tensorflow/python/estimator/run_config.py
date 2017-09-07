@@ -120,6 +120,14 @@ class RunConfig(object):
                log_step_count_steps=100):
     """Constructs a RunConfig.
 
+    N.B.: If `save_checkpoints_steps` or `save_checkpoints_secs` is set,
+    `keep_checkpoint_max` might need to be adjusted accordingly, especially in
+    distributed training. For example, setting `save_checkpoints_secs` as 60
+    without adjusting `keep_checkpoint_max` (defaults to 5) leads to situation
+    that checkpoint would be garbage collected after 5 minutes. In distributed
+    training, the evaluation job starts asynchronously and might fail to load or
+    find the checkpoint due to race condition.
+
     Args:
       model_dir: directory where model parameters, graph, etc are saved. If
         `None`, will use a default value set by the Estimator.

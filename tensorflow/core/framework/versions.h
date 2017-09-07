@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_VERSIONS_H_
 #define TENSORFLOW_FRAMEWORK_VERSIONS_H_
 
-#include "tensorflow/core/framework/versions.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

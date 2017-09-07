@@ -33,6 +33,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -63,11 +64,84 @@ def _OptimizerOptions():
                 do_constant_folding=cfold)))
 
 
-class FunctionTest(test.TestCase):
+class FunctionTestMethods(object):
+  """Test methods for verifying Function support.
+
+  These test methods are used as mix-ins in two test cases: with
+  and without C API support.
+  """
+
+  def testIdentity(self):
+
+    @function.Defun(dtypes.float32, func_name="MyIdentity")
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      call = MyIdentityFunc([18.0])
+      self.assertEqual("MyIdentity", call.op.name)
+      with session.Session() as sess:
+        self.assertAllEqual([18.0], sess.run(call))
+
+  def testIdentityOutputName(self):
+
+    @function.Defun(
+        dtypes.float32, func_name="MyIdentity", out_names=["my_result_name"])
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      call = MyIdentityFunc([18.0])
+      self.assertEqual("MyIdentity", call.op.name)
+      with session.Session() as sess:
+        self.assertAllEqual([18.0], sess.run(call))
+
+  def testTooManyOutputNames(self):
+
+    @function.Defun(
+        dtypes.float32, func_name="MyIdentity",
+        out_names=["my_result1", "my_result2"])
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          ValueError, (r"Length of out_names \(2\) does not match number of "
+                       r"outputs \(1\): my_result1, my_result2")):
+        MyIdentityFunc([18.0])
 
   def testDefineFunction2Args(self):
 
     @function.Defun(dtypes.float32, dtypes.float32, func_name="APlus2B")
+    def APlus2B(a, b):
+      return a + b * 2
+
+    with ops.Graph().as_default():
+      call = APlus2B([1.0], [2.0])
+      self.assertEqual("APlus2B", call.op.name)
+      with session.Session() as sess:
+        self.assertAllEqual([5.0], sess.run(call))
+
+  def testValueErrorOnFunctionWithNoOutput(self):
+    # TODO(iga): Remove this restriction and this test
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def APlus2B(a, b):
+      print(a + b * 2)  # Create some ops to have nodes in the body
+                        # Using 'print' to make lint happy
+
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError,
+                                   "Function can not return None"):
+        APlus2B([1.0], [2.0])
+
+  def testDefineFunction2ArgsOutputName(self):
+
+    @function.Defun(
+        dtypes.float32,
+        dtypes.float32,
+        func_name="APlus2B",
+        out_names=["my_result_name"])
     def APlus2B(a, b):
       return a + b * 2
 
@@ -137,6 +211,7 @@ class FunctionTest(test.TestCase):
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
+  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradient(self):
     dtype = dtypes.float32
 
@@ -169,6 +244,7 @@ class FunctionTest(test.TestCase):
         out, = sess.run(dlogits, {logits: x, labels: y})
       self.assertAllClose(out, np.exp(prob - y))
 
+  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradientError(self):
     dtype = dtypes.float32
 
@@ -194,6 +270,7 @@ class FunctionTest(test.TestCase):
           "SymGrad expects to return 1.*but get 2.*instead"):
         _ = sess.run(dinp, {inp: x})
 
+  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradShape(self):
     g = ops.Graph()
     with g.as_default():
@@ -209,6 +286,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
+  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)
@@ -312,6 +390,7 @@ class FunctionTest(test.TestCase):
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
+  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testAssertWrapper(self):
 
     @function.Defun(dtypes.float32)
@@ -326,6 +405,7 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
+  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testWhileLoopCallsFunc(self):
     with self.test_session(use_gpu=True) as sess:
 
@@ -345,6 +425,7 @@ class FunctionTest(test.TestCase):
       ans = sess.run(loop)
       self.assertAllClose(ans, 131072.)
 
+  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -607,6 +688,7 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
+  @test_util.disable_c_api   # Function Declaration doesn't work with C API
   def testDeclare(self):
     foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
                                                              dtypes.float32)])
@@ -626,6 +708,7 @@ class FunctionTest(test.TestCase):
       expected = rand * rand + 1.0
       self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
 
+  @test_util.disable_c_api   # Function Declaration doesn't work with C API
   def testDeclareUsedInDefun(self):
     foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
                                                              dtypes.float32)])
@@ -649,6 +732,7 @@ class FunctionTest(test.TestCase):
       expected = rand * rand + 1.0
       self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
 
+  @test_util.disable_c_api   # Function Declaration doesn't work with C API
   def testDeclareTypeMistake(self):
     foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
                                                              dtypes.float32)])
@@ -859,6 +943,32 @@ class FunctionTest(test.TestCase):
         [s, u, v],
         [result])
     self.assertEqual(len(f.signature.input_arg), 3)
+
+
+class FunctionTest(FunctionTestMethods, test.TestCase):
+  """Test case that invokes test methods with _USE_C_API=False."""
+
+  def setUp(self):
+    self.prev_use_c_api = ops._USE_C_API
+    ops._USE_C_API = False
+    super(FunctionTest, self).setUp()
+
+  def tearDown(self):
+    ops._USE_C_API = self.prev_use_c_api
+    super(FunctionTest, self).tearDown()
+
+
+class FunctionWithCApiTest(FunctionTestMethods, test.TestCase):
+  """Test case that invokes test methods with _USE_C_API=True."""
+
+  def setUp(self):
+    self.prev_use_c_api = ops._USE_C_API
+    ops._USE_C_API = True
+    super(FunctionWithCApiTest, self).setUp()
+
+  def tearDown(self):
+    ops._USE_C_API = self.prev_use_c_api
+    super(FunctionWithCApiTest, self).tearDown()
 
 
 class FunctionsFromProtos(test.TestCase):

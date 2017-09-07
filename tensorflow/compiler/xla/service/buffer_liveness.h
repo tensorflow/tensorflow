@@ -76,7 +76,7 @@ class BufferLiveness {
            id < buffer_liveness.points_to_analysis().num_logical_buffers();
            id++) {
         auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
-        buffer->set_color(LogicalBuffer::Color(0));
+        buffer.set_color(LogicalBuffer::Color(0));
       }
       return Status::OK();
     };

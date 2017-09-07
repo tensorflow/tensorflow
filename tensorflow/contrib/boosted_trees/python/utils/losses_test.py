@@ -61,15 +61,15 @@ class LossesTest(test_util.TensorFlowTestCase):
       # For positive labels, points <= 0.3 get max loss of e.
       # For negative labels, these points have minimum loss of 1/e.
       for i in range(2):
-        self.assertEqual(math.exp(1), pos_loss[i])
-        self.assertEqual(math.exp(-1), neg_loss[i])
+        self.assertAlmostEqual(math.exp(1), pos_loss[i], places=4)
+        self.assertAlmostEqual(math.exp(-1), neg_loss[i], places=4)
 
       # For positive lables, p oints with predictions 0.7 and larger get minimum
       # loss value of 1/e. For negative labels, these points are wrongly
       # classified and get loss e.
       for i in range(6, 10):
-        self.assertEqual(math.exp(-1), pos_loss[i])
-        self.assertEqual(math.exp(1), neg_loss[i])
+        self.assertAlmostEqual(math.exp(-1), pos_loss[i], places=4)
+        self.assertAlmostEqual(math.exp(1), neg_loss[i], places=4)
 
       # Points in between 0.5-eps, 0..5+eps get loss exp(-label_m*y), where
       # y = 1/eps *x -1/(2eps), where x is the probability and label_m is either
@@ -77,10 +77,12 @@ class LossesTest(test_util.TensorFlowTestCase):
       for i in range(2, 6):
         self.assertAlmostEqual(
             math.exp(-1.0 * (predictions_probs[i] * 1.0 / eps - 0.5 / eps)),
-            pos_loss[i])
+            pos_loss[i],
+            places=4)
         self.assertAlmostEqual(
             math.exp(1.0 * (predictions_probs[i] * 1.0 / eps - 0.5 / eps)),
-            neg_loss[i])
+            neg_loss[i],
+            places=4)
 
   def test_per_example_squared_loss(self):
 
@@ -99,7 +101,7 @@ class LossesTest(test_util.TensorFlowTestCase):
       loss = loss_tensor.eval()
       for i in range(5):
         self.assertAlmostEqual(
-            _squared_loss(labels[i], predictions[i]), loss[i])
+            _squared_loss(labels[i], predictions[i]), loss[i], places=4)
 
 
 if __name__ == "__main__":

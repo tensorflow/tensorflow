@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import os
 import threading
-import warnings
+from collections import namedtuple
 
 import numpy as np
 
@@ -224,28 +224,6 @@ class MapDatasetTest(test.TestCase):
       for _ in range(3):
         sess.run(get_next)
 
-  def testParallelMapUnspecifiedThreads(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
-
-    with warnings.catch_warnings(record=True) as w:
-      dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-                 .map(lambda x: array_ops.check_numerics(x, "message"),
-                      output_buffer_size=2))
-      self.assertTrue(len(w) >= 1)
-      self.assertTrue(
-          ("Dataset.map() is ignoring output_buffer_size since the argument "
-           "num_threads was not set. To buffer elements, set num_threads >= 1")
-          in [str(x.message) for x in w])
-
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op)
-      for _ in range(3):
-        sess.run(get_next)
-
   def testParallelMapError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -406,6 +384,32 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testCaptureSameResourceMultipleTimes(self):
+    elements = np.random.randint(100, size=[200])
+    queue = data_flow_ops.FIFOQueue(
+        200, dtypes.int64, shapes=[], shared_name="shared_queue")
+    queue_2 = data_flow_ops.FIFOQueue(
+        200, dtypes.int64, shapes=[], shared_name="shared_queue")
+
+    enqueue_op = queue.enqueue_many(elements)
+    close_op = queue.close()
+
+    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(-1)
+                .map(lambda _: (queue.dequeue(), queue_2.dequeue()))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(enqueue_op)
+      sess.run(close_op)
+      sess.run(init_op)
+      for i in range(100):
+        self.assertEqual(sorted([elements[i * 2], elements[i * 2 + 1]]),
+                         sorted(sess.run(get_next)))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
@@ -477,6 +481,40 @@ class MapDatasetTest(test.TestCase):
         self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testMapNamedtuple(self, count=10):
+    # construct dataset of tuples
+    labels = dataset_ops.Dataset.range(count)
+    images = labels.map(lambda l: -l)
+    dataset_tuple = dataset_ops.Dataset.zip((labels, images))
+
+    # convert dataset of tuples to dataset of namedtuples
+    Example = namedtuple("Example", ["label", "image"])
+    dataset_namedtuple = dataset_tuple.map(Example)
+
+    def preprocess_tuple(label, image):
+      image = 2 * image
+      return label, image
+
+    def preprocess_namedtuple(example):
+      return example._replace(image=2 * example.image)
+
+    # preprocess both datasets
+    dataset_tuple = dataset_tuple.map(preprocess_tuple)
+    dataset_namedtuple = dataset_namedtuple.map(preprocess_namedtuple)
+
+    next_tuple = dataset_tuple.make_one_shot_iterator().get_next()
+    next_namedtuple = dataset_namedtuple.make_one_shot_iterator().get_next()
+
+    # make sure both datasets contain the same data
+    with self.test_session() as sess:
+      for i in range(count):
+        tuple_, namedtuple_ = sess.run([next_tuple, next_namedtuple])
+        self.assertEqual(tuple_, namedtuple_)
+        self.assertEqual(tuple_, (i, -2 * i))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_namedtuple)
 
   def testUseStepContainerInMap(self):
     row = np.arange(6)

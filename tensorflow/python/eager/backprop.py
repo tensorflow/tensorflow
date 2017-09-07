@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import threading
 
+from autograd import container_types
 from autograd import convenience_wrappers
 from autograd import core as ag_core
 
@@ -145,17 +146,17 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   # It is imperative we make a copy of results here as otherwise we create a
   # dependency cycle in the captured function and this can delay garbage
   # collecting of the tensors arbitrarily.
-  result_copies = results[:]
+  results_size = len(results) if isinstance(results, (list, tuple)) else 1
 
-  def grad_fn(*outputs):
+  def grad_fn(*orig_outputs):
     """Generated gradient function."""
-    tensors = inputs + result_copies + list(outputs)
-    tensors = [ag_core.getval(x) for x in tensors]
+    tensors = inputs + list(orig_outputs)
+    tensors = container_types.make_sequence(tape.EagerList, *tensors)
     result = _magic_gradient_function(op_name, attrs, len(inputs),
                                       num_outputs, *(tensors))
     if _tracing:
       print("Gradient for", (name if name else op_name), "inputs", inputs,
-            "output_grads", outputs)
+            "output_grads", orig_outputs[results_size:], "gradients", result)
     return result
 
   results = tape.record_operation(results, inputs, [], grad_fn)
@@ -168,14 +169,12 @@ def _record_gradient(op_name, inputs, attrs, results, name):
 execute.record_gradient = _record_gradient
 
 
-def _ones(shape, dtype):
-  return array_ops.fill(shape, tensor.Tensor(1, dtype=dtype))
-
-
 def _aggregate_grads(gradients):
   """Aggregate gradients of the same tensor."""
   grad_lists = dict()
   for t, g in gradients:
+    if g is None:
+      continue
     if id(t) not in grad_lists:
       grad_lists[id(t)] = [(t, g)]
     else:
@@ -222,7 +221,7 @@ def implicit_val_and_grad(f):
                        (end_node.progenitors, repr(start_node)))
     output_gradients = kwds.get("output_gradients", None)
     if output_gradients is None:
-      output_gradients = _ones(end_node.shape, end_node.dtype)
+      output_gradients = array_ops.ones_like(end_node.value)
     grad = ag_core.backward_pass(output_gradients, end_node, start_node)
     return end_node.value, _aggregate_grads(grad.gradients)
 

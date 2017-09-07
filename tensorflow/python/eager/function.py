@@ -276,9 +276,15 @@ class _GraphModeFunction(object):
           break
       else:  # Note: for-else here done on purpose
         watched_extra_inputs.append(t)
-    real_outputs = tape.record_operation(real_outputs,
-                                         (args + watched_extra_inputs),
-                                         side_outputs, self._backward_function)
+
+    def backward_function_wrapper(*outputs):
+      outputs = outputs[len(real_outputs):]
+      return self._backward_function(*outputs)
+    real_outputs = tape.record_operation(
+        real_outputs,
+        (args + watched_extra_inputs),
+        side_outputs,
+        backward_function_wrapper)
 
     return self._build_call_outputs(self._returns, real_outputs)
 

@@ -2151,7 +2151,7 @@ bool CudnnSupport::DoConvolveImpl(
   if (status != CUDNN_STATUS_SUCCESS) {
     // Silently return when we are profiling.
     if (!is_profiling) {
-      LOG(FATAL) << "failed to enqueue convolution on stream: "
+      LOG(ERROR) << "failed to enqueue convolution on stream: "
                  << ToString(status);
     }
     return false;
@@ -2768,7 +2768,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
   if (status != CUDNN_STATUS_SUCCESS) {
     // Silently return when we are profiling.
     if (!is_profiling) {
-      LOG(FATAL) << "failed to enqueue convolution on stream: "
+      LOG(ERROR) << "failed to enqueue convolution on stream: "
                  << ToString(status);
     }
     return false;
@@ -3018,7 +3018,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
   if (status != CUDNN_STATUS_SUCCESS) {
     // Silently return when we are profiling.
     if (!is_profiling) {
-      LOG(FATAL) << "failed to enqueue convolution on stream: "
+      LOG(ERROR) << "failed to enqueue convolution on stream: "
                  << ToString(status);
     }
     return false;
@@ -3091,7 +3091,7 @@ bool CudnnSupport::DoConvolveBackwardBiasImpl(
       input_data.opaque(), &beta, bias_nd.handle(),
       backward_bias_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
-    LOG(FATAL) << "failed to enqueue backward convolution on stream: "
+    LOG(ERROR) << "failed to enqueue backward convolution on stream: "
                << ToString(status);
     return false;
   }

@@ -156,7 +156,6 @@ if __name__ == "__main__":
       nargs="?",
       const=True,
       default=False,
-      help="If true, write v2 checkpoint files."
-  )
+      help="If true, write v2 checkpoint files.")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

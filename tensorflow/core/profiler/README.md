@@ -54,9 +54,9 @@ with tf.contrib.tfprof.ProfileContext() as pctx:
   train_loop()
 ```
 
-```python
+```shell
 # Profiling from Python API is not interactive.
-# Dump the profiles to files and profile with interactive command line.
+# Dump the profiles to files and profile with interactive command line or web UI.
 with tf.contrib.tfprof.ProfileContext() as pctx:
   pctx.add_auto_profile_dump('/tmp/profiles', [100])
   train_loop()
@@ -66,7 +66,15 @@ bazel-bin/tensorflow/core/profiler/profiler \
     --run_meta_path=/tmp/profiles/run_meta \
     --op_log_path=/tmp/profiles/tfprof_log \
 tfprof> op -select micros,bytes,occurrence -order_by micros
+
+
+# To be open sourced...
+bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
+    --graph_path=/tmp/profiles/graph.pbtxt \
+    --run_meta_path=/tmp/profiles/run_meta \
+    --op_log_path=/tmp/profiles/tfprof_log \
 ```
+![ProfilerUI](g3doc/profiler_ui.jpg)
 
 <b>Detail Tutorials</b>
 
@@ -137,7 +145,7 @@ ApplyAdam                      231.65MB (85.28%, 0.31%),        92.66ms (23.43%,
 
 ### Auto-profile.
 
-```
+```shell
 tfprof> advise
 Not running under xxxx. Skip JobChecker.
 
@@ -194,8 +202,9 @@ seq2seq_attention_model.py:363:build_graph:self._add_train_o..., cpu: 1.28sec, a
       optimizer.py:97:update_op:return optimizer...., cpu: 84.76ms, accelerator: 0us, total: 84.76ms
 ```
 
-### Visualize time and memory.
-```
+### Visualize time and memory
+
+```shell
 # The following example generates a timeline.
 tfprof> graph -step 0 -max_depth 100000 -output timeline:outfile=<filename>
 
@@ -206,11 +215,10 @@ Timeline file is written to <filename>.
 Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
-<left>
-![Timeline](g3doc/graph_timeline.png)
-</left>
 
-```
+![Timeline](g3doc/graph_timeline.png)
+
+```shell
 # The following example generates a pprof graph (only supported by code view).
 # Since TensorFlow runs the graph instead of Python code, the pprof graph
 # doesn't profile the statistics of Python, but the TensorFlow graph
@@ -226,9 +234,7 @@ tfprof> code -select accelerator_micros -max_depth 100000 -output pprof:outfile=
 pprof -png --nodecount=100 --sample_index=1 <filename>
 ```
 
-<left>
 ![PprofGraph](g3doc/pprof.jpg)
-</left>
 
 ### Feature Request and Bug Report
 
@@ -241,5 +247,6 @@ bug fix. `OpLogProto` is a good plus if it is used.
 #### Teams
 
 * Xin Pan (xpan@google.com, github: panyx0718)
+* Chris Antaki
 * Yao Zhang
 * Jon Shlens
