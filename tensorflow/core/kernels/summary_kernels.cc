@@ -40,12 +40,7 @@ class CreateSummaryFileWriterOp : public OpKernel {
     SummaryWriterInterface* s;
     OP_REQUIRES_OK(ctx, CreateSummaryWriter(max_queue, flush_millis, logdir,
                                             filename_suffix, ctx->env(), &s));
-    Status status = CreateResource(ctx, HandleFromInput(ctx, 0), s);
-    if (!status.ok()) {
-      s->Unref();
-      ctx->SetStatus(status);
-      return;
-    }
+    OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryFileWriter").Device(DEVICE_CPU),

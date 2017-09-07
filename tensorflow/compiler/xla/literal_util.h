@@ -237,6 +237,9 @@ class Literal {
   // The src_literal and this literal must have the same primitive type,
   // src_base+copy_size must fit the source literal dimensions, as well as
   // dest_base+copy_size must fit the destination literal dimensions.
+  // Note: if either src_literal or this literal contains dimensions with zero
+  // element, then copy_size must be 0 in these dimensions while the
+  // corresponding base indices being 0.
   Status Copy(const Literal& src_literal,
               tensorflow::gtl::ArraySlice<int64> src_base,
               tensorflow::gtl::ArraySlice<int64> dest_base,

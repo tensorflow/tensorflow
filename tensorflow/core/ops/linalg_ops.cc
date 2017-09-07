@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -557,34 +558,39 @@ REGISTER_OP("BatchSelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .Deprecated(11, "Use SelfAdjointEigV2 instead.");
+    .Deprecated(11, "Use SelfAdjointEigV2 instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 // Can all be deleted after 9mar2017.
 REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double, complex64, complex128}")
-    .Deprecated(13, "Use MatrixDeterminant instead.");
+    .Deprecated(13, "Use MatrixDeterminant instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixInverse")
     .Input("input: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use MatrixInverse instead.");
+    .Deprecated(13, "Use MatrixInverse instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchCholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use Cholesky instead.");
+    .Deprecated(13, "Use Cholesky instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchCholeskyGrad")
     .Input("l: T")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .Deprecated(13, "Use CholeskyGrad instead.");
+    .Deprecated(13, "Use CholeskyGrad instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchSelfAdjointEigV2")
     .Input("input: T")
@@ -592,7 +598,8 @@ REGISTER_OP("BatchSelfAdjointEigV2")
     .Output("v: T")
     .Attr("compute_v: bool = True")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use SelfAdjointEigV2 instead.");
+    .Deprecated(13, "Use SelfAdjointEigV2 instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixSolve")
     .Input("matrix: T")
@@ -600,7 +607,8 @@ REGISTER_OP("BatchMatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use MatrixSolve instead.");
+    .Deprecated(13, "Use MatrixSolve instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixTriangularSolve")
     .Input("matrix: T")
@@ -609,7 +617,8 @@ REGISTER_OP("BatchMatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use MatrixTriangularSolve instead.");
+    .Deprecated(13, "Use MatrixTriangularSolve instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixSolveLs")
     .Input("matrix: T")
@@ -618,7 +627,8 @@ REGISTER_OP("BatchMatrixSolveLs")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
-    .Deprecated(13, "Use MatrixSolveLs instead.");
+    .Deprecated(13, "Use MatrixSolveLs instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchSvd")
     .Input("input: T")
@@ -628,6 +638,7 @@ REGISTER_OP("BatchSvd")
     .Attr("compute_uv: bool = True")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float, complex64, complex128}")
-    .Deprecated(13, "Use Svd instead.");
+    .Deprecated(13, "Use Svd instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow

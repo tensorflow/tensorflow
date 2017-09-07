@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -542,6 +543,22 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.values, [0, 10, 13, 14])
       self.assertAllEqual(output.dense_shape, [2, 6])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
+
+
+class SparseAddTest(test_util.TensorFlowTestCase):
+
+  def testValuesInVariable(self):
+    indices = constant_op.constant([[1]], dtype=dtypes.int64)
+    values = variables.Variable([1], trainable=False, dtype=dtypes.float32)
+    shape = constant_op.constant([1], dtype=dtypes.int64)
+
+    sp_input = sparse_tensor.SparseTensor(indices, values, shape)
+    sp_output = sparse_ops.sparse_add(sp_input, sp_input)
+
+    with self.test_session(use_gpu=False) as sess:
+      sess.run(variables.global_variables_initializer())
+      output = sess.run(sp_output)
+      self.assertAllEqual(output.values, [2])
 
 
 class SparseReduceTest(test_util.TensorFlowTestCase):
