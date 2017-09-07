@@ -1070,8 +1070,8 @@ class _MultiClassHead(_SingleHead):
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
     if self._label_keys:
-      table = lookup_ops.index_table_from_tensor(self._label_keys,
-                                                 name="label_id_lookup")
+      table = lookup_ops.index_table_from_tensor(
+          self._label_keys, name="label_id_lookup")
       return {
           "labels": labels_tensor,
           "label_ids": table.lookup(labels_tensor),

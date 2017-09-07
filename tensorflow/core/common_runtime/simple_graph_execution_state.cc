@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
@@ -54,7 +53,6 @@ SimpleGraphExecutionState::SimpleGraphExecutionState(
     : stateful_placements_(options.stateful_placements),
       device_set_(options.device_set),
       session_options_(options.session_options),
-      costs_(true /*is_global*/),
       flib_def_(new FunctionLibraryDefinition(OpRegistry::Global(),
                                               graph_def->library())),
       graph_(nullptr) {
@@ -258,19 +256,11 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   // Save stateful placements before placing.
   RestoreStatefulNodes(new_graph.get());
 
-  CostModel costs(true /*is_global*/);
-  {
-    mutex_lock l(mu_);
-    costs_.InitFromGraph(*new_graph);
-    costs.MergeFromGlobal(costs_);
-  }
-
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
   optimization_options.graph = &new_graph;
   optimization_options.flib_def = flib_def_.get();
   optimization_options.device_set = device_set_;
-  optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -420,14 +410,11 @@ Status SimpleGraphExecutionState::BuildGraph(
       new FunctionLibraryDefinition(*flib_def_));
 
   // TODO(andydavis): Clarify optimization pass requirements around CostModel.
-  CostModel costs(true /*is_global*/);
-  costs.MergeFromGlobal(costs_);
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
   optimization_options.graph = &ng;
   optimization_options.flib_def = flib.get();
   optimization_options.device_set = device_set_;
-  optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));

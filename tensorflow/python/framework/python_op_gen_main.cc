@@ -81,7 +81,6 @@ Status ParseOpListCommandLine(const char* arg, std::vector<string>* op_list) {
   return Status::OK();
 }
 
-  
 // Use the name of the current executable to infer the C++ source file
 // where the REGISTER_OP() call for the operator can be found.
 // Returns the name of the file.
@@ -103,9 +102,8 @@ string InferSourceFileName(const char* argv_zero) {
   }
 }
 
-void PrintAllPythonOps(const std::vector<string>& op_list, 
-                       const string& source_file_name,
-                       bool require_shapes,
+void PrintAllPythonOps(const std::vector<string>& op_list,
+                       const string& source_file_name, bool require_shapes,
                        bool op_list_is_whitelist) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);

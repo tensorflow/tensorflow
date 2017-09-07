@@ -29,20 +29,21 @@ STEPS = 1000
 def main(argv):
   """Builds, trains, and evaluates the model."""
   assert len(argv) == 1
-  (x_train, y_train), (x_test, y_test) = imports85.load_data()
+  (train, test) = imports85.dataset()
 
   # Build the training input_fn.
-  input_train = tf.estimator.inputs.pandas_input_fn(
-      x=x_train,
-      y=y_train,
-      # Setting `num_epochs` to `None` lets the `inpuf_fn` generate data
-      # indefinitely, leaving the call to `Estimator.train` in control.
-      num_epochs=None,
-      shuffle=True)
+  def input_train():
+    return (
+        # Shuffling with a buffer larger than the data set ensures
+        # that the examples are well mixed.
+        train.shuffle(1000).batch(128)
+        # Repeat forever
+        .repeat().make_one_shot_iterator().get_next())
 
   # Build the validation input_fn.
-  input_test = tf.estimator.inputs.pandas_input_fn(
-      x=x_test, y=y_test, shuffle=True)
+  def input_test():
+    return (test.shuffle(1000).batch(128)
+            .make_one_shot_iterator().get_next())
 
   feature_columns = [
       # "curb-weight" and "highway-mpg" are numeric columns.

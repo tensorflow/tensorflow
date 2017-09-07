@@ -128,6 +128,7 @@ class MklReshapeOp : public OpKernel {
       CopyTfTensorInToOutWithShape(context, 0, 0, shape);
     }
   }
+
  private:
   template <typename Tshape>
   Status ValidateSizes(const Tensor& sizes, int64* product, int* unknown_index,

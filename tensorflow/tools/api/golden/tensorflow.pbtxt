@@ -365,6 +365,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "keras"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "layers"
     mtype: "<type \'module\'>"
   }

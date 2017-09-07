@@ -68,7 +68,8 @@ def never_record_summaries():
 def create_summary_file_writer(logdir,
                                max_queue=None,
                                flush_secs=None,
-                               filename_suffix=None):
+                               filename_suffix=None,
+                               name=None):
   """Creates a summary file writer in the current context."""
   if max_queue is None:
     max_queue = constant_op.constant(10)
@@ -76,7 +77,7 @@ def create_summary_file_writer(logdir,
     flush_secs = constant_op.constant(120)
   if filename_suffix is None:
     filename_suffix = constant_op.constant("")
-  resource = gen_summary_ops.summary_writer()
+  resource = gen_summary_ops.summary_writer(shared_name=name)
   gen_summary_ops.create_summary_file_writer(resource, logdir, max_queue,
                                              flush_secs, filename_suffix)
   context.context().summary_writer_resource = resource
@@ -84,76 +85,87 @@ def create_summary_file_writer(logdir,
 
 def _nothing():
   """Convenient else branch for when summaries do not record."""
-  return
+  return False
+
+
+def summary_writer_function(name, tensor, function, family=None):
+  """Helper function to write summaries.
+
+  Args:
+    name: name of the summary
+    tensor: main tensor to form the summary
+    function: function taking a tag and a scope which writes the summary
+    family: optional, the summary's family
+
+  Returns:
+    The result of writing the summary.
+  """
+  def record():
+    with summary_op_util.summary_scope(
+        name, family, values=[tensor]) as (tag, scope):
+      function(tag, scope)
+      return True
+
+  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
 
 
 def generic(name, tensor, metadata, family=None):
   """Writes a tensor summary if possible."""
 
-  def record():
-    with summary_op_util.summary_scope(
-        name, family, values=[tensor]) as (tag, scope):
-      gen_summary_ops.write_summary(context.context().summary_writer_resource,
-                                    training_util.get_global_step(), tensor,
-                                    tag, metadata, name=scope)
-  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
+  def function(tag, scope):
+    gen_summary_ops.write_summary(context.context().summary_writer_resource,
+                                  training_util.get_global_step(), tensor,
+                                  tag, metadata, name=scope)
+  return summary_writer_function(name, tensor, function, family=family)
 
 
 def scalar(name, tensor, family=None):
   """Writes a scalar summary if possible."""
 
-  def record():
-    with summary_op_util.summary_scope(
-        name, family, values=[tensor]) as (tag, scope):
-      gen_summary_ops.write_scalar_summary(
-          context.context().summary_writer_resource,
-          training_util.get_global_step(), tag, tensor, name=scope)
+  def function(tag, scope):
+    gen_summary_ops.write_scalar_summary(
+        context.context().summary_writer_resource,
+        training_util.get_global_step(), tag, tensor, name=scope)
 
-  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
+  return summary_writer_function(name, tensor, function, family=family)
 
 
 def histogram(name, tensor, family=None):
   """Writes a histogram summary if possible."""
 
-  def record():
-    with summary_op_util.summary_scope(
-        name, family, values=[tensor]) as (tag, scope):
-      gen_summary_ops.write_histogram_summary(
-          context.context().summary_writer_resource,
-          training_util.get_global_step(), tag, tensor, name=scope)
+  def function(tag, scope):
+    gen_summary_ops.write_histogram_summary(
+        context.context().summary_writer_resource,
+        training_util.get_global_step(), tag, tensor, name=scope)
 
-  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
+  return summary_writer_function(name, tensor, function, family=family)
 
 
 def image(name, tensor, bad_color=None, max_images=3, family=None):
   """Writes an image summary if possible."""
 
-  def record():
+  def function(tag, scope):
     if bad_color is None:
       bad_color_ = constant_op.constant([255, 0, 0, 255], dtype=dtypes.uint8)
-    with summary_op_util.summary_scope(
-        name, family, values=[tensor]) as (tag, scope):
-      gen_summary_ops.write_image_summary(
-          context.context().summary_writer_resource,
-          training_util.get_global_step(), tag, tensor, bad_color_, max_images,
-          name=scope)
+    gen_summary_ops.write_image_summary(
+        context.context().summary_writer_resource,
+        training_util.get_global_step(), tag, tensor, bad_color_, max_images,
+        name=scope)
 
-  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
+  return summary_writer_function(name, tensor, function, family=family)
 
 
 def audio(name, tensor, sample_rate, max_outputs, family=None):
   """Writes an audio summary if possible."""
 
-  def record():
-    with summary_op_util.summary_scope(
-        name, family, values=[tensor]) as (tag, scope):
-      gen_summary_ops.write_audio_summary(
-          context.context().summary_writer_resource,
-          training_util.get_global_step(),
-          tag,
-          tensor,
-          sample_rate=sample_rate,
-          max_outputs=max_outputs,
-          name=scope)
+  def function(tag, scope):
+    gen_summary_ops.write_audio_summary(
+        context.context().summary_writer_resource,
+        training_util.get_global_step(),
+        tag,
+        tensor,
+        sample_rate=sample_rate,
+        max_outputs=max_outputs,
+        name=scope)
 
-  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
+  return summary_writer_function(name, tensor, function, family=family)

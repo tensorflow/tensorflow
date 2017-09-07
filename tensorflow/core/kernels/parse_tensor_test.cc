@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -33,27 +33,23 @@ namespace {
 class SerializeTensorOpTest : public OpsTestBase {
  protected:
   template <typename T>
-  void MakeOp(const TensorShape& input_shape,
-              std::function<T(int)> functor) {
-    TF_ASSERT_OK(
-        NodeDefBuilder("myop", "SerializeTensor")
-            .Input(FakeInput(DataTypeToEnum<T>::value))
-            .Finalize(node_def()));
+  void MakeOp(const TensorShape& input_shape, std::function<T(int)> functor) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "SerializeTensor")
+                     .Input(FakeInput(DataTypeToEnum<T>::value))
+                     .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
     AddInput<T>(input_shape, functor);
   }
   void ParseSerializedWithNodeDef(const NodeDef& parse_node_def,
-                                    Tensor* serialized,
-                                    Tensor* parse_output) {
+                                  Tensor* serialized, Tensor* parse_output) {
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
     gtl::InlinedVector<TensorValue, 4> inputs;
     inputs.push_back({nullptr, serialized});
     Status status;
-    std::unique_ptr<OpKernel> op(
-        CreateOpKernel(DEVICE_CPU, device.get(),
-                       cpu_allocator(), parse_node_def,
-                       TF_GRAPH_DEF_VERSION, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                                cpu_allocator(), parse_node_def,
+                                                TF_GRAPH_DEF_VERSION, &status));
     TF_EXPECT_OK(status);
     OpKernelContext::Params params;
     params.device = device.get();
@@ -80,8 +76,8 @@ class SerializeTensorOpTest : public OpsTestBase {
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_half) {
   MakeOp<Eigen::half>(TensorShape({10}), [](int x) -> Eigen::half {
-      return static_cast<Eigen::half>(x / 10.);
-    });
+    return static_cast<Eigen::half>(x / 10.);
+  });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<Eigen::half>(GetOutput(0), &parse_output);
@@ -89,9 +85,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_half) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_float) {
-  MakeOp<float>(TensorShape({1, 10}), [](int x) -> float {
-      return static_cast<float>(x / 10.);
-    });
+  MakeOp<float>(TensorShape({1, 10}),
+                [](int x) -> float { return static_cast<float>(x / 10.); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<float>(GetOutput(0), &parse_output);
@@ -99,9 +94,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_float) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_double) {
-  MakeOp<double>(TensorShape({5, 5}), [](int x) -> double {
-      return static_cast<double>(x / 10.);
-    });
+  MakeOp<double>(TensorShape({5, 5}),
+                 [](int x) -> double { return static_cast<double>(x / 10.); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<double>(GetOutput(0), &parse_output);
@@ -109,9 +103,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_double) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int64) {
-  MakeOp<int64>(TensorShape({2, 3, 4}), [](int x) -> int64 {
-      return static_cast<int64>(x - 10);
-    });
+  MakeOp<int64>(TensorShape({2, 3, 4}),
+                [](int x) -> int64 { return static_cast<int64>(x - 10); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<int64>(GetOutput(0), &parse_output);
@@ -119,9 +112,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int64) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int32) {
-  MakeOp<int32>(TensorShape({4, 2}), [](int x) -> int32 {
-      return static_cast<int32>(x + 7);
-    });
+  MakeOp<int32>(TensorShape({4, 2}),
+                [](int x) -> int32 { return static_cast<int32>(x + 7); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<int32>(GetOutput(0), &parse_output);
@@ -129,9 +121,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int32) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int16) {
-  MakeOp<int16>(TensorShape({8}), [](int x) -> int16 {
-      return static_cast<int16>(x + 18);
-    });
+  MakeOp<int16>(TensorShape({8}),
+                [](int x) -> int16 { return static_cast<int16>(x + 18); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<int16>(GetOutput(0), &parse_output);
@@ -139,9 +130,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int16) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int8) {
-  MakeOp<int8>(TensorShape({2}), [](int x) -> int8 {
-      return static_cast<int8>(x + 8);
-    });
+  MakeOp<int8>(TensorShape({2}),
+               [](int x) -> int8 { return static_cast<int8>(x + 8); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<int8>(GetOutput(0), &parse_output);
@@ -149,9 +139,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int8) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_uint16) {
-  MakeOp<uint16>(TensorShape({1, 3}), [](int x) -> uint16 {
-      return static_cast<uint16>(x + 2);
-    });
+  MakeOp<uint16>(TensorShape({1, 3}),
+                 [](int x) -> uint16 { return static_cast<uint16>(x + 2); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<uint16>(GetOutput(0), &parse_output);
@@ -159,9 +148,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_uint16) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_uint8) {
-  MakeOp<uint8>(TensorShape({2, 1, 1}), [](int x) -> uint8 {
-      return static_cast<uint8>(x + 1);
-    });
+  MakeOp<uint8>(TensorShape({2, 1, 1}),
+                [](int x) -> uint8 { return static_cast<uint8>(x + 1); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<uint8>(GetOutput(0), &parse_output);
@@ -170,9 +158,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_uint8) {
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_complex64) {
   MakeOp<complex64>(TensorShape({}), [](int x) -> complex64 {
-      return complex64{ static_cast<float>(x / 8.),
-            static_cast<float>(x / 2.) };
-    });
+    return complex64{static_cast<float>(x / 8.), static_cast<float>(x / 2.)};
+  });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<complex64>(GetOutput(0), &parse_output);
@@ -181,8 +168,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_complex64) {
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_complex128) {
   MakeOp<complex128>(TensorShape({3}), [](int x) -> complex128 {
-      return complex128{ x / 3., x / 2. };
-    });
+    return complex128{x / 3., x / 2.};
+  });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<complex128>(GetOutput(0), &parse_output);
@@ -190,9 +177,8 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_complex128) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_bool) {
-  MakeOp<bool>(TensorShape({1}), [](int x) -> bool {
-      return static_cast<bool>(x % 2);
-    });
+  MakeOp<bool>(TensorShape({1}),
+               [](int x) -> bool { return static_cast<bool>(x % 2); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<bool>(GetOutput(0), &parse_output);
@@ -200,13 +186,12 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_bool) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_string) {
-  MakeOp<std::string>(TensorShape({10}), [](int x) -> std::string {
-      return std::to_string(x / 10.);
-    });
+  MakeOp<string>(TensorShape({10}),
+                 [](int x) -> string { return std::to_string(x / 10.); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
-  ParseSerializedOutput<std::string>(GetOutput(0), &parse_output);
-  test::ExpectTensorEqual<std::string>(parse_output, GetInput(0));
+  ParseSerializedOutput<string>(GetOutput(0), &parse_output);
+  test::ExpectTensorEqual<string>(parse_output, GetInput(0));
 }
 
 }  // namespace
