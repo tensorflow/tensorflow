@@ -79,29 +79,29 @@ public class TensorFlowInferenceInterface {
         throw new RuntimeException("Failed to load model from '" + model + "'", e);
       }
     }
-
-    if (VERSION.SDK_INT >= 18) {
-      Trace.beginSection("initializeTensorFlow");
-      Trace.beginSection("readGraphDef");
-    }
     
-    // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
-    byte[] graphDef = new byte[is.available()];
-
-    if (VERSION.SDK_INT >= 18) {
-      Trace.endSection(); // readGraphDef.
-    }
-      
     try {
+      if (VERSION.SDK_INT >= 18) {
+        Trace.beginSection("initializeTensorFlow");
+        Trace.beginSection("readGraphDef");
+      }
+    
+      // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
+      byte[] graphDef = new byte[is.available()];
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // readGraphDef.
+      }
+      
       loadGraph(graphDef, g);
       is.close();
       Log.i(TAG, "Successfully loaded model from '" + model + "'");
+          
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // initializeTensorFlow.
+      }
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from '" + model + "'", e);
-    }
-      
-    if (VERSION.SDK_INT >= 18) {
-      Trace.endSection(); // initializeTensorFlow.
     }
   }
 
@@ -121,34 +121,34 @@ public class TensorFlowInferenceInterface {
     this.g = new Graph();
     this.sess = new Session(g);
     this.runner = sess.runner();
-
-    if (VERSION.SDK_INT >= 18) {
-      Trace.beginSection("initializeTensorFlow");
-      Trace.beginSection("readGraphDef");
-    }
-
-    int baosInitSize = is.available() > 16384 ? is.available() : 16384;
-    ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
-    int numBytesRead;
-    byte[] buf = new byte[16384];
-    while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
-      baos.write(buf, 0, numBytesRead);
-    }
-    byte[] graphDef = baos.toByteArray();
-
-    if (VERSION.SDK_INT >= 18) {
-      Trace.endSection(); // readGraphDef.
-    }
-
+    
     try {
+      if (VERSION.SDK_INT >= 18) {
+        Trace.beginSection("initializeTensorFlow");
+        Trace.beginSection("readGraphDef");
+      }
+    
+      int baosInitSize = is.available() > 16384 ? is.available() : 16384;
+      ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
+      int numBytesRead;
+      byte[] buf = new byte[16384];
+      while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
+        baos.write(buf, 0, numBytesRead);
+      }
+      byte[] graphDef = baos.toByteArray();
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // readGraphDef.
+      }
+
       loadGraph(graphDef, g);
       Log.i(TAG, "Successfully loaded model from the input stream");
+      
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // initializeTensorFlow.
+      }
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from the input stream", e);
-    }
-
-    if (VERSION.SDK_INT >= 18) {
-      Trace.endSection(); // initializeTensorFlow.
     }
   }
 
