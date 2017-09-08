@@ -218,7 +218,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 

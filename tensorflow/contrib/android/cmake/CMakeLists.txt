@@ -62,6 +62,7 @@ add_library(tensorflow_inference SHARED
 # Include libraries needed for hello-jni lib
 target_link_libraries(tensorflow_inference
                       android
+                      dl
                       log
                       m
                       z

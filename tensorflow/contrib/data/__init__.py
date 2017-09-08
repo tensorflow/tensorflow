@@ -38,6 +38,7 @@ from tensorflow.contrib.data.python.ops.dataset_ops import group_by_window
 from tensorflow.contrib.data.python.ops.dataset_ops import Iterator
 from tensorflow.contrib.data.python.ops.dataset_ops import read_batch_features
 from tensorflow.contrib.data.python.ops.dataset_ops import rejection_resample
+from tensorflow.contrib.data.python.ops.dataset_ops import SqlDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import TextLineDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import TFRecordDataset
 from tensorflow.contrib.data.python.ops.sloppy_ops import sloppy_interleave

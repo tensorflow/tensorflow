@@ -407,8 +407,8 @@ class MklConv2DOp : public OpKernel {
                                          mkl_lt_internal_filter),
                  E_SUCCESS);
 
-      mkl_buf_convert_filter = const_cast<void*>(static_cast<const void*>(
-            output_filter->flat<T>().data()));
+        mkl_buf_convert_filter = const_cast<void*>(
+            static_cast<const void*>(output_filter->flat<T>().data()));
 
         CHECK_EQ(
             dnnConversionExecute_F32(mkl_prim_convert_filter, mkl_buf_filter,

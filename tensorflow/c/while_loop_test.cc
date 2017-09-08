@@ -288,19 +288,85 @@ TEST_F(CApiWhileLoopTest, NestedLoop) {
   ExpectOutputValue(1, 3);
 }
 
-TEST_F(CApiWhileLoopTest, BadCondOutput) {
+TEST_F(CApiWhileLoopTest, UnsetCondOutput) {
   Init(1);
   params_->body_outputs[0] = params_->body_inputs[0];
   ExpectError(TF_INVALID_ARGUMENT,
               "TF_WhileParams `cond_output` field isn't set");
 }
 
-TEST_F(CApiWhileLoopTest, BadBodyOutput) {
+TEST_F(CApiWhileLoopTest, WrongCondOutputType) {
+  Init(1);
+  params_->cond_output = params_->cond_inputs[0];
+  params_->body_outputs[0] = params_->body_inputs[0];
+  ExpectError(TF_INVALID_ARGUMENT,
+              "BuildWhileLoop: 'cond' argument must return a boolean output, "
+              "got int32");
+}
+
+TEST_F(CApiWhileLoopTest, InvalidCondOutputNode) {
+  Init(1);
+  // Try to reuse node from parent graph
+  params_->cond_output = inputs_[0];
+  params_->body_outputs[0] = params_->body_inputs[0];
+  // TODO(skyewm): this error message could be more informative. Add explicit
+  // checks for this case in the while loop implementation?
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Requested return node 'p0' not found in graph def");
+}
+
+TEST_F(CApiWhileLoopTest, InvalidCondOutputIndex) {
+  Init(1);
+  CreateCondGraph();
+  params_->cond_output.index = 100;
+  params_->body_outputs[0] = params_->body_inputs[0];
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Invalid return output 100 of node 'less_than', which has 1 "
+              "output(s)");
+}
+
+// TODO(skyewm): test bad cond output shape
+
+TEST_F(CApiWhileLoopTest, UnsetBodyOutput) {
   Init(1);
   CreateCondGraph();
   ExpectError(TF_INVALID_ARGUMENT,
               "TF_WhileParams `body_outputs[0]` field isn't set");
 }
+
+// TODO(skyewm): enable this when it works (currently doesn't error)
+// TEST_F(CApiWhileLoopTest, WrongBodyOutputType) {
+//   Init(1);
+//   CreateCondGraph();
+//   TF_Operation* double_scalar =
+//       ScalarConst(1.0, params_->body_graph, s_, "double_scalar");
+//   params_->body_outputs[0] = {double_scalar, 0};
+//   ExpectError(TF_INVALID_ARGUMENT, "bad body output type");
+// }
+
+TEST_F(CApiWhileLoopTest, InvalidBodyOutputNode) {
+  Init(1);
+  CreateCondGraph();
+  // Try to reuse node from parent graph
+  params_->body_outputs[0] = inputs_[0];
+  // TODO(skyewm): this error message could be more informative. Add explicit
+  // checks for this case in the while loop implementation?
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Requested return node 'p0' not found in graph def");
+}
+
+// TODO(skyewm): enable this when it works (currently segfaults!)
+// TEST_F(CApiWhileLoopTest, InvalidBodyOutputIndex) {
+//   Init(1);
+//   CreateCondGraph();
+//   params_->body_outputs[0] = params_->body_inputs[0];
+//   params_->body_outputs[0].index = 100;
+//   ExpectError(TF_INVALID_ARGUMENT,
+//               "Invalid return output 100 of node 'less_than', which has 1 "
+//               "output(s)");
+// }
+
+// TODO(skyewm): test bad body output shape
 
 TEST_F(CApiWhileLoopTest, NullName) {
   Init(1);
