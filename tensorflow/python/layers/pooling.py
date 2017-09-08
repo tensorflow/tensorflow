@@ -525,7 +525,6 @@ class SpatialPyramidPooling(base.Layer):
     self.dimensions = dimensions if dimensions is not None else [4, 2, 1]
 
   def call(self, inputs):
-    import numpy as np
     pool_list = []
     if self.implementation == 'kaiming':
       for pool_dim in self.dimensions:
@@ -548,7 +547,6 @@ class SpatialPyramidPooling(base.Layer):
 
   def _compute_output_shape(self, input_shape):
     num_features = sum(p * p for p in self.dimensions)
-    # TODO(yardstick17) Make sure this convention works in tensorflow
     return tensor_shape.TensorShape([None, input_shape[0] * num_features])
 
 class _Pooling3D(base.Layer):
