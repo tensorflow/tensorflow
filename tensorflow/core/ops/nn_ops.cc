@@ -1344,11 +1344,13 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(
+        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
+        "half, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::MaxPoolShape)
@@ -1369,9 +1371,11 @@ output: The max pooled output tensor.
 )doc");
 
 REGISTER_OP("MaxPoolV2")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(
+        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
+        "half, qint8} = DT_FLOAT")
     .Attr(GetPaddingAttrString())
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Input("ksize: int32")
     .Input("strides: int32")
