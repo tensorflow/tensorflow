@@ -1,10 +1,12 @@
-VERS_1.0 {
-  # Export symbols in c_api.h.
+tensorflow {
   global:
-    *TF_*;
-    *TFE_*;
-
-  # Hide everything else.
+    *tensorflow*;
+    *perftools*gputools*;
+    TF_*;
+    TFE_*;
+    *nsync_*;
   local:
     *;
 };
+
+
