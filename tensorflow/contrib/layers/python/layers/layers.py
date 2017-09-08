@@ -50,6 +50,7 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
+from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
@@ -92,7 +93,8 @@ __all__ = ['avg_pool2d',
            'unit_norm',
            'legacy_fully_connected',
            'legacy_linear',
-           'legacy_relu']
+           'legacy_relu',
+           'maxout']
 
 DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
