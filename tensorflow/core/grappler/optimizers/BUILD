@@ -310,6 +310,7 @@ cc_library(
         ":layout_optimizer",
         ":memory_optimizer",
         ":model_pruner",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
