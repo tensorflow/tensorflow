@@ -37,7 +37,7 @@ export TASKCLUSTER_ARTIFACTS=${TASKCLUSTER_ARTIFACTS:-/tmp/artifacts}
 
 PATH=${DS_ROOT_TASK}/bin:$PATH
 if [ "${OS}" = "Darwin" ]; then
-    PATH=${DS_ROOT_TASK}/homebrew/bin/:$PATH
+    PATH=${DS_ROOT_TASK}/homebrew/bin/:${DS_ROOT_TASK}/homebrew/opt/node@6/bin:$PATH
 fi;
 export PATH
 

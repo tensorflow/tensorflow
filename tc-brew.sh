@@ -26,7 +26,11 @@ if [ "${LOCAL_BREW}" != "${local_prefix}" ]; then
     exit 1
 fi;
 
-# for realpath
-brew install coreutils
+# coreutils, pyenv-virtualenv required for build of tensorflow
+# node@6 pkg-config sox swig required for later build of deepspeech
+all_pkgs="coreutils pyenv-virtualenv node@6 pkg-config sox swig"
 
-brew install pyenv-virtualenv
+for pkg in ${all_pkgs};
+do
+	brew list --versions ${pkg} || brew install ${pkg}
+done;
