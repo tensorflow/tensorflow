@@ -248,6 +248,21 @@ cc_library_with_android_deps(
     ],
 )
 
+tf_cc_test(
+    name = "ops_while_loop_test",
+    size = "small",
+    srcs = ["ops/while_loop_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":testutil",
+        ":while_loop",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "grad_op_registry",
     srcs = ["framework/grad_op_registry.cc"],
@@ -326,6 +341,7 @@ cc_library(
         ":cc_ops",
         ":cc_ops_internal",
         ":grad_op_registry",
+        ":gradients",
     ],
     alwayslink = 1,
 )

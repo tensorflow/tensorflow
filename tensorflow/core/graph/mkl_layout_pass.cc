@@ -256,6 +256,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
   MklLayoutRewritePass() {
     // NOTE: names are alphabetically sorted.
+    csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
     csinfo_.avg_pool_grad = "AvgPoolGrad";
     csinfo_.bias_add = "BiasAdd";
@@ -294,6 +295,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // End - element-wise ops. See note above.
 
     // NOTE: names are alphabetically sorted.
+    rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn), CopyAttrsAddN,
+                      AddNRewrite, nullptr});
     rinfo_.push_back({csinfo_.add,
                       mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
@@ -453,6 +456,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure to store all constant strings
   /// NOTE: names are alphabetically sorted.
   typedef struct {
+    string addn;
     string add;
     string avg_pool;
     string avg_pool_grad;
@@ -624,6 +628,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return false;
   }
 
+  static bool AddNRewrite(const Node* n, const ContextInfo* c) {
+    CHECK_NOTNULL(n);
+
+    int num;
+    CHECK_EQ(GetNodeAttr(n->def(), "N", &num).ok(), true);
+
+    // Condition that specifies non-batch-wise and non-depth-wise pooling.
+    if (num == 2) {
+      return true;
+    }
+
+    return false;
+  }
   // Is BiasAddGrad node in 'n' is associated with Conv2DWithBias node
   // specified in contextinfo 'ci'. Function updates fwd_node to point
   // to Conv2DWithBias node if 'n' is associated with Conv2DWithBias.
@@ -927,6 +944,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // We need operator-specific function to copy attributes because the framework
   // does not provide any generic function for it.
   // NOTE: names are alphabetically sorted.
+  static void CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
@@ -1473,6 +1491,20 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   nb->Attr("padding", padding);
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
+}
+
+void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node,
+                                         NodeBuilder* nb) {
+  DataType T;
+  int N;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "N", &N));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("N", N);
 }
 
 void MklLayoutRewritePass::CopyAttrsBiasAddGrad(const Node* orig_node,

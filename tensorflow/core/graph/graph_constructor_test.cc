@@ -1607,7 +1607,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
   opts.return_tensors.push_back({"new_input", 2});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
               {"Invalid return output 2 of node 'new_input', which has 2 "
-               "outputs"},
+               "output(s)"},
               nullptr, &return_tensors);
 }
 
