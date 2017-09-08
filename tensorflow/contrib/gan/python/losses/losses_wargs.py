@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2017 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,14 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """TFGAN grouped API. Please see README.md for details and usage."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse TFGAN into a tiered namespace.
-from tensorflow.contrib.gan.python import losses
+# pylint: disable=wildcard-import
+from tensorflow.contrib.gan.python.losses import losses_impl
+from tensorflow.contrib.gan.python.losses.losses_impl import *
+# pylint: enable=wildcard-import
 
-del absolute_import
-del division
-del print_function
+from tensorflow.python.util.all_util import remove_undocumented
+
+remove_undocumented(__name__, losses_impl.__all__)

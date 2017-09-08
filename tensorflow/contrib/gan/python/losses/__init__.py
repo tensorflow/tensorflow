@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2017 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse TFGAN into a tiered namespace.
-from tensorflow.contrib.gan.python import losses
+# Collapse losses into a single namespace.
+from tensorflow.contrib.gan.python.losses import losses_wargs as wargs
+from tensorflow.contrib.gan.python.losses import tuple_losses
 
-del absolute_import
-del division
-del print_function
+# pylint: disable=wildcard-import
+from tensorflow.contrib.gan.python.losses.tuple_losses import *
+# pylint: enable=wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['wargs'] + tuple_losses.__all__
+remove_undocumented(__name__, _allowed_symbols)
