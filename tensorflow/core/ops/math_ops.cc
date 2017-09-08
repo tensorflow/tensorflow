@@ -28,7 +28,7 @@ REGISTER_OP("AddN")
     .Input("inputs: N * T")
     .Output("sum: T")
     .Attr("N: int >= 1")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, variant}")
     .SetIsCommutative()
     .SetIsAggregate()
     .SetShapeFn([](InferenceContext* c) {
