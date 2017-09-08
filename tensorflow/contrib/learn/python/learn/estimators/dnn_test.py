@@ -24,6 +24,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.contrib import layers
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
@@ -125,6 +126,33 @@ class EmbeddingMultiplierTest(test.TestCase):
       self.assertTrue(np.all(np.isclose(language_value, initial_value)))
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
+class LayerNormalizationTest(test.TestCase):
+  """dnn_model_fn tests with layer batch normalization."""
+
+  def _getModelForLayerNormalization(self, layer_norm_fn, layer_norm_params):
+    embedding_language = feature_column.embedding_column(
+        feature_column.sparse_column_with_hash_bucket('language', 10),
+        dimension=1,
+        initializer=init_ops.constant_initializer(0.1))
+    params = {
+        'feature_columns': [embedding_language],
+        'head': head_lib._multi_class_head(2),
+        'hidden_units': [1],
+        'layer_norm_fn': layer_norm_fn,
+        'layer_norm_params': layer_norm_params,
+    }
+    features = {
+        'language':
+            sparse_tensor.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+    }
+    labels = constant_op.constant([[0], [0], [0]], dtype=dtypes.int32)
+    return dnn._dnn_model_fn(features, labels, model_fn.ModeKeys.TRAIN, params)
+
+  def testLayerBatchNormalization(self):
+    _ = self._getModelForLayerNormalization(layers.batch_norm, {'scale':0.9})
 
 class ActivationFunctionTest(test.TestCase):
 
@@ -1021,6 +1049,27 @@ class DNNClassifierTest(test.TestCase):
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
 
+  def testEnableLayerNorm(self):
+    """Tests that we can enable layer normalization together with centered bias."""
+    cont_features = [feature_column.real_valued_column('feature', dimension=4)]
+
+    classifier = dnn.DNNClassifier(
+        n_classes=3,
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        enable_centered_bias=True,
+        layer_norm_fn=layers.batch_norm,
+        layer_norm_params={'scale':0.5},
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    input_fn = test_data.iris_input_multiclass_fn
+    classifier.fit(input_fn=input_fn, steps=5)
+    self.assertIn('centered_bias_weight', classifier.get_variable_names())
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+
+
 
 class DNNRegressorTest(test.TestCase):
 
@@ -1592,6 +1641,45 @@ class DNNRegressorTest(test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores)
 
+  def testEnableLayerNorm(self):
+    """Tests that we can enable layer normalization together with centered bias."""
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[0.8], [0.15], [0.]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      return features, constant_op.constant([1., 0., 0.2], dtype=dtypes.float32)
+
+    sparse_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        feature_column.embedding_column(
+            sparse_column, dimension=1),
+        feature_column.real_valued_column('age')
+    ]
+
+    regressor = dnn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        enable_centered_bias=True,
+        layer_norm_fn=layers.batch_norm,
+        layer_norm_params={'scale':0.5},
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=5)
+    self.assertIn('centered_bias_weight', regressor.get_variable_names())
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertIn('loss', scores)
 
 def boston_input_fn():
   boston = base.load_boston()

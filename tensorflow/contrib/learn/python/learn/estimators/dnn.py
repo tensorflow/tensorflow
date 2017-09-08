@@ -127,6 +127,11 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
       params.get("input_layer_min_slice_size") or 64 << 20)
   num_ps_replicas = config.num_ps_replicas if config else 0
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
+  layer_norm_fn = params.get("layer_norm_fn")
+  layer_norm_params = params.get("layer_norm_params")
+  if not layer_norm_params:
+    layer_norm_params = {}
+  layer_norm_params["is_training"] = (mode == model_fn.ModeKeys.TRAIN)
 
   features = _get_feature_dict(features)
   parent_scope = "dnn"
@@ -181,6 +186,8 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
           net,
           head.logits_dimension,
           activation_fn=None,
+          normalizer_fn=layer_norm_fn,
+          normalizer_params=layer_norm_params,
           variables_collections=[parent_scope],
           scope=logits_scope)
     _add_hidden_layer_summary(logits, logits_scope.name)
@@ -297,6 +304,8 @@ class DNNClassifier(estimator.Estimator):
                weight_column_name=None,
                optimizer=None,
                activation_fn=nn.relu,
+               layer_norm_fn=None,
+               layer_norm_params=None,
                dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=False,
@@ -375,6 +384,8 @@ class DNNClassifier(estimator.Estimator):
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
             "input_layer_min_slice_size": input_layer_min_slice_size,
+            "layer_norm_fn": layer_norm_fn,
+            "layer_norm_params": layer_norm_params,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -581,6 +592,8 @@ class DNNRegressor(estimator.Estimator):
                weight_column_name=None,
                optimizer=None,
                activation_fn=nn.relu,
+               layer_norm_fn=None,
+               layer_norm_params=None,
                dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=False,
@@ -653,6 +666,8 @@ class DNNRegressor(estimator.Estimator):
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
             "input_layer_min_slice_size": input_layer_min_slice_size,
+            "layer_norm_fn": layer_norm_fn,
+            "layer_norm_params": layer_norm_params,
         },
         feature_engineering_fn=feature_engineering_fn)
 

@@ -198,6 +198,11 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
   fix_global_step_increment_bug = params.get(
       "fix_global_step_increment_bug", True)
+  dnn_layer_norm_fn = params.get("dnn_layer_norm_fn")
+  dnn_layer_norm_params = params.get("dnn_layer_norm_params")
+  if not dnn_layer_norm_params:
+    dnn_layer_norm_params = {}
+  dnn_layer_norm_params["is_training"] = (mode == model_fn.ModeKeys.TRAIN)
 
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
@@ -254,6 +259,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
               net,
               num_hidden_units,
               activation_fn=dnn_activation_fn,
+              normalizer_fn=dnn_layer_norm_fn,
+              normalizer_params=dnn_layer_norm_params,
               variables_collections=[dnn_parent_scope],
               scope=dnn_hidden_layer_scope)
           if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
@@ -404,6 +411,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
                dnn_hidden_units=None,
                dnn_activation_fn=None,
                dnn_dropout=None,
+               dnn_layer_norm_fn=None,
+               dnn_layer_norm_params=None,
                gradient_clip_norm=None,
                config=None,
                feature_engineering_fn=None,
@@ -480,6 +489,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
+            "dnn_layer_norm_fn": dnn_layer_norm_fn,
+            "dnn_layer_norm_params": dnn_layer_norm_params,
             "embedding_lr_multipliers": embedding_lr_multipliers,
             "fix_global_step_increment_bug": fix_global_step_increment_bug,
             "input_layer_partitioner": input_layer_partitioner
@@ -586,6 +597,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
+               dnn_layer_norm_fn=None,
+               dnn_layer_norm_params=None,
                gradient_clip_norm=None,
                enable_centered_bias=False,
                config=None,
@@ -690,6 +703,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
             "dnn_hidden_units": dnn_hidden_units,
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,
+            "dnn_layer_norm_fn": dnn_layer_norm_fn,
+            "dnn_layer_norm_params": dnn_layer_norm_params,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
             "input_layer_partitioner": input_layer_partitioner,
@@ -907,6 +922,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
+               dnn_layer_norm_fn=None,
+               dnn_layer_norm_params=None,
                gradient_clip_norm=None,
                enable_centered_bias=False,
                label_dimension=1,
@@ -1006,6 +1023,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
             "dnn_hidden_units": dnn_hidden_units,
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,
+            "dnn_layer_norm_fn": dnn_layer_norm_fn,
+            "dnn_layer_norm_params": dnn_layer_norm_params,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
             "input_layer_partitioner": input_layer_partitioner,

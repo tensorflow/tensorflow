@@ -24,6 +24,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.contrib import layers
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
@@ -186,6 +187,54 @@ class EmbeddingMultiplierTest(test.TestCase):
     self.assertAllClose(language_value, language_initial_value)
     # We could also test that wire_value changed, but that test would be flaky.
 
+class LayerNormalizationTest(test.TestCase):
+  """dnn_linear_combined_model_fn tests with layer batch normalization."""
+
+  def testEnableLayerBatchNorm(self):
+    embedding_language = feature_column.embedding_column(
+        feature_column.sparse_column_with_hash_bucket('language', 10),
+        dimension=1,
+        initializer=init_ops.constant_initializer(0.1))
+    embedding_wire = feature_column.embedding_column(
+        feature_column.sparse_column_with_hash_bucket('wire', 10),
+        dimension=1,
+        initializer=init_ops.constant_initializer(0.1))
+
+    params = {
+        'dnn_feature_columns': [embedding_language, embedding_wire],
+        'head': head_lib._multi_class_head(2),
+        'dnn_hidden_units': [1],
+        # Set batch layer normalization.
+        'layer_norm_fn': layers.batch_norm,
+        'layer_norm_params': {'scale':0.5},
+        'dnn_optimizer': 'Adagrad',
+    }
+    features = {
+        'language':
+             sparse_tensor.SparseTensor(
+                 values=['en', 'fr', 'zh'],
+                 indices=[[0, 0], [1, 0], [2, 0]],
+                 dense_shape=[3, 1]),
+         'wire':
+              sparse_tensor.SparseTensor(
+                  values=['omar', 'stringer', 'marlo'],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 1]),
+    }
+    labels = constant_op.constant([[0], [0], [0]], dtype=dtypes.int32)
+    model_ops = dnn_linear_combined._dnn_linear_combined_model_fn(
+        features, labels, model_fn.ModeKeys.TRAIN, params)
+    with monitored_session.MonitoredSession() as sess:
+      language_var = dnn_linear_combined._get_embedding_variable(
+          embedding_language, 'dnn', 'dnn/input_from_feature_columns')
+      wire_var = dnn_linear_combined._get_embedding_variable(
+          embedding_wire, 'dnn', 'dnn/input_from_feature_columns')
+      for _ in range(2):
+        _, language_value, wire_value = sess.run(
+            [model_ops.train_op, language_var, wire_var])
+      initial_value = np.full_like(language_value, 0.1)
+      self.assertFalse(np.all(np.isclose(language_value, initial_value)))
+      self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 class DNNLinearCombinedEstimatorTest(test.TestCase):
 
@@ -1184,6 +1233,35 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     self.assertIn('dnn/logits/weights', variable_names)
     self.assertIn('dnn/logits/biases', variable_names)
 
+  def testEnableLayerNorm(self):
+    """Tests enable layer batch normalization."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      labels = constant_op.constant([[1], [0], [0], [0]])
+      features = {'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32)}
+      return features, labels
+
+    def _input_fn_predict():
+      y = input_lib.limit_epochs(
+          array_ops.ones(
+              shape=[4, 1], dtype=dtypes.float32), num_epochs=1)
+      features = {'x': y}
+      return features
+
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=[feature_column.real_valued_column('x')],
+        dnn_feature_columns=[feature_column.real_valued_column('x')],
+        dnn_layer_norm_fn = layers.batch_norm,
+        dnn_layer_norm_params = {'scale':0.999},
+        dnn_hidden_units=[3, 3])
+
+    classifier.fit(input_fn=_input_fn_train, steps=100)
+
+    probs = list(classifier.predict_proba(input_fn=_input_fn_predict))
+    classes = list(classifier.predict(input_fn=_input_fn_predict))
+    self.assertListEqual([0] * 4, classes)
+
 
 class DNNLinearCombinedRegressorTest(test.TestCase):
 
@@ -1767,6 +1845,45 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores.keys())
 
+  def testEnableLayerNorm(self):
+    """Tests that we can enable layer batch normalization."""
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[0.8], [0.15], [0.]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['en', 'fr', 'zh'],
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      return features, constant_op.constant([1., 0., 0.2], dtype=dtypes.float32)
+
+    language_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+
+    regressor = dnn_linear_combined.DNNLinearCombinedRegressor(
+        linear_feature_columns=[
+            language_column, feature_column.real_valued_column('age')
+        ],
+        dnn_feature_columns=[
+            feature_column.embedding_column(
+                language_column, dimension=1),
+            feature_column.real_valued_column('age')
+        ],
+        dnn_hidden_units=[3, 3],
+        dnn_layer_norm_fn=layers.batch_norm,
+        dnn_layer_norm_params={'scale':0.999},
+        enable_centered_bias=False,
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=100)
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertIn('loss', scores.keys())
 
 class FeatureEngineeringFunctionTest(test.TestCase):
   """Tests feature_engineering_fn."""
