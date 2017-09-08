@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/util.h"
 
 #ifndef IS_MOBILE_PLATFORM
@@ -338,14 +339,24 @@ Status SimpleGraphExecutionState::OptimizeGraph(
     }
 
     std::unordered_map<string, DeviceProperties> device_map;
+    Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
       device_map[device->name()] =
           grappler::GetDeviceInfo(device->parsed_name());
+      if (device->parsed_name().id == 0 &&
+          StringPiece(device->parsed_name().type) == "CPU" &&
+          device->GetAllocator(AllocatorAttributes()) != nullptr) {
+        cpu_device = device;
+      }
+    }
+    if (cpu_device == nullptr) {
+      return errors::Internal(
+          "Unable to find CPU device needed for constant folding");
     }
     grappler::VirtualCluster cluster(device_map);
     GraphDef new_graph;
-    TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(item, rewrite_options,
-                                                  &cluster, &new_graph));
+    TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
+        item, rewrite_options, cpu_device, &cluster, &new_graph));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     optimized_graph->reset(new Graph(OpRegistry::Global()));
