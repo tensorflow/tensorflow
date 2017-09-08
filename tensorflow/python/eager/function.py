@@ -261,7 +261,7 @@ class _GraphModeFunction(object):
         outputs[i].set_shape(s)
     else:
       outputs = execute.execute(
-          signature.name,
+          str(signature.name),
           num_outputs=len(signature.output_arg),
           inputs=all_args)
     real_outputs = outputs[:len(self._returns)]
@@ -321,7 +321,7 @@ class _GraphModeFunction(object):
           for x in tensor_inputs
       ]
       result = execute.execute(
-          self._func_name,
+          str(self._func_name),
           num_outputs=self._num_outputs,
           inputs=tensor_inputs + self._extra_inputs)
 
