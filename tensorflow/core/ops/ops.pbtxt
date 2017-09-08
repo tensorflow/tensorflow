@@ -334,6 +334,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_VARIANT
       }
     }
   }
