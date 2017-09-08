@@ -73,5 +73,44 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   EXPECT_EQ(prior->literal().GetFirstElement<float>(), 24);
 }
 
+// Tests for referential transparency (a function that calls a function that
+// returns false should be identical to just returning false).
+TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
+  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  auto module = CreateNewModule();
+
+  // Create a lambda that calls a function that returns the false predicate.
+  // Note we also use this lambda twice by reference, just to make the test a
+  // little trickier.
+  HloComputation::Builder just_false(TestName() + ".false");
+  just_false.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(just_false.Build());
+
+  HloComputation::Builder call_false_builder(TestName() + ".call_false");
+  call_false_builder.AddInstruction(
+      HloInstruction::CreateCall(pred, {}, false_computation));
+  HloComputation* call_false =
+      module->AddEmbeddedComputation(call_false_builder.Build());
+
+  HloComputation::Builder outer(TestName() + ".outer");
+  HloInstruction* init_value = outer.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  outer.AddInstruction(
+      HloInstruction::CreateWhile(pred, call_false, call_false, init_value));
+
+  auto computation = module->AddEntryComputation(outer.Build());
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+  EXPECT_THAT(
+      computation->root_instruction()->while_condition()->root_instruction(),
+      op::Constant());
+  EXPECT_THAT(computation->root_instruction()->while_body()->root_instruction(),
+              op::Constant());
+}
+
 }  // namespace
 }  // namespace xla

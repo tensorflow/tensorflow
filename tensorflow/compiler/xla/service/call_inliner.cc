@@ -20,30 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
-
-StatusOr<bool> CallInliner::Run(HloModule* module) {
-  std::deque<HloInstruction*> work_queue;
-
-  // Seed the work queue with call instructions from the main computation.
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->Accept([&](HloInstruction* hlo) {
-        if (hlo->opcode() == HloOpcode::kCall) {
-          work_queue.push_back(hlo);
-        }
-        return Status::OK();
-      }));
-
-  VLOG(1) << "Work queue seeded with " << work_queue.size() << " entries.";
-
-  bool mutated = false;
-  while (!work_queue.empty()) {
-    mutated = true;
-    HloInstruction* call = work_queue.front();
-    work_queue.pop_front();
-    TF_RETURN_IF_ERROR(ReplaceWithInlinedBody(call, &work_queue));
-  }
-  return mutated;
-}
+namespace {
 
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
@@ -140,6 +117,64 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
       subcomputation_hlo_to_new_hlo_;
   std::deque<HloInstruction*>* work_queue_;
 };
+
+}  // namespace
+
+StatusOr<bool> CallInliner::Run(HloModule* module) {
+  std::deque<HloInstruction*> work_queue;
+  tensorflow::gtl::FlatSet<HloComputation*> seen;
+
+  auto scan_computation = [&work_queue,
+                           &seen](HloComputation* computation) -> Status {
+    if (!seen.insert(computation).second) {
+      return Status::OK();  // Already seen.
+    }
+    return computation->Accept([&](HloInstruction* hlo) {
+      if (!hlo->called_computations().empty()) {
+        work_queue.push_back(hlo);
+      }
+      return Status::OK();
+    });
+  };
+
+  // Seed the work queue with call instructions from the main computation.
+  TF_RETURN_IF_ERROR(scan_computation(module->entry_computation()));
+
+  VLOG(1) << "Work queue seeded with " << work_queue.size() << " entries.";
+
+  bool mutated = false;
+  while (!work_queue.empty()) {
+    HloInstruction* caller = work_queue.front();
+    work_queue.pop_front();
+    switch (caller->opcode()) {
+      case HloOpcode::kCall:
+        mutated = true;
+        TF_RETURN_IF_ERROR(ReplaceWithInlinedBody(caller, &work_queue));
+        break;
+      case HloOpcode::kWhile:
+        TF_RETURN_IF_ERROR(scan_computation(caller->while_condition()));
+        TF_RETURN_IF_ERROR(scan_computation(caller->while_body()));
+        break;
+      case HloOpcode::kSelectAndScatter:
+        TF_RETURN_IF_ERROR(scan_computation(caller->select()));
+        TF_RETURN_IF_ERROR(scan_computation(caller->scatter()));
+        break;
+      case HloOpcode::kMap:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReduce:
+        TF_RETURN_IF_ERROR(scan_computation(caller->to_apply()));
+        break;
+      case HloOpcode::kFusion:
+        // Fusion nodes don't represent true calls, but instead delimit a
+        // boundary for the backend-specific fusion capabilities.
+        break;
+      default:
+        return Unimplemented("Unknown higher-order HLO opcode: %s",
+                             caller->ToString().c_str());
+    }
+  }
+  return mutated;
+}
 
 Status CallInliner::ReplaceWithInlinedBody(
     HloInstruction* call, std::deque<HloInstruction*>* work_queue) {
