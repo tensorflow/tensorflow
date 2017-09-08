@@ -51,6 +51,7 @@ See the @{$python/contrib.layers} guide.
 @@unit_norm
 @@bow_encoder
 @@embed_sequence
+@@maxout
 
 @@apply_regularization
 @@l1_l2_regularizer

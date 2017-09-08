@@ -46,12 +46,11 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<OpLogProto> op_log,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
-      graph_(std::move(graph)),
       ckpt_reader_(std::move(ckpt_reader)) {
-  CHECK(graph_) << "Must at least have GraphDef";
+  CHECK(graph) << "Must at least have GraphDef";
 
   printf("Parsing Inputs...\n");
-  ParseGraph();
+  AddGraph(std::move(graph));
   if (run_meta && run_meta->has_step_stats()) {
     AddRunMeta(0, std::move(run_meta));
   }
@@ -65,6 +64,30 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
       }
     }
   }
+}
+
+TFStats::TFStats(const string& filename,
+                 std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
+    : has_code_traces_(false), ckpt_reader_(std::move(ckpt_reader)) {
+  string str;
+  Status s = ReadFileToString(Env::Default(), filename, &str);
+  if (!s.ok()) {
+    fprintf(stderr, "Failed to read profile: %s", s.ToString().c_str());
+    return;
+  }
+
+  ProfileProto profile;
+  if (!profile.ParseFromString(str)) {
+    fprintf(stderr, "Failed to parse profile\n");
+    return;
+  }
+
+  for (const auto& node_pb : profile.nodes()) {
+    std::unique_ptr<TFGraphNode> node(new TFGraphNode(node_pb.second, profile));
+    nodes_map_.insert(std::pair<string, std::unique_ptr<TFGraphNode>>(
+        node_pb.second.name(), std::move(node)));
+  }
+  has_code_traces_ = profile.has_trace();
 }
 
 void TFStats::BuildView(const string& cmd) {
@@ -135,16 +158,20 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
   }
 }
 
-void TFStats::ParseGraph() {
-  for (const NodeDef& node : graph_->node()) {
-    CHECK(nodes_map_.find(node.name()) == nodes_map_.end());
+void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
+  std::map<string, const NodeDef*> node_defs;
+  for (const NodeDef& node : graph->node()) {
+    if (nodes_map_.find(node.name()) != nodes_map_.end()) {
+      continue;
+    }
     nodes_map_[node.name()] =
-        std::unique_ptr<TFGraphNode>(new TFGraphNode(&node));
+        std::unique_ptr<TFGraphNode>(new TFGraphNode(&node, nodes_map_.size()));
+    node_defs[node.name()] = &node;
   }
-  for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
-    const NodeDef* node_def = it->second->node_def();
-    for (int i = 0; i < node_def->input_size(); ++i) {
-      string node_input = node_def->input(i);
+  for (auto it = node_defs.begin(); it != node_defs.end(); it++) {
+    TFGraphNode* node = nodes_map_.at(it->first).get();
+    for (int i = 0; i < it->second->input_size(); ++i) {
+      string node_input = it->second->input(i);
       int output_idx = 0;
       // input name format can be: "^node:src_output"
       auto prefix_pos = node_input.find(":");
@@ -160,10 +187,12 @@ void TFStats::ParseGraph() {
         node_input = node_input.substr(1);
       }
       auto input_node = nodes_map_.find(node_input);
+      // TODO(xpan): P1: Add the input even if it doesn't exist yet, because
+      // this can be a partial graph.
       if (input_node == nodes_map_.end()) {
         continue;
       }
-      it->second->AddInput(input_node->second.get(), output_idx, i);
+      node->AddInput(input_node->second.get(), output_idx, i);
     }
   }
 }
@@ -210,16 +239,33 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
       if (node == nodes_map_.end()) {
         NodeDef def;
         if (CreateRunMetadataNode(name, &def)) {
-          NodeDef* ndef = graph_->mutable_node()->Add();
-          ndef->MergeFrom(def);
-          nodes_map_[name] =
-              std::unique_ptr<TFGraphNode>(new TFGraphNode(ndef));
+          nodes_map_[name] = std::unique_ptr<TFGraphNode>(
+              new TFGraphNode(&def, nodes_map_.size()));
           nodes_map_.at(name)->AddStepStat(step, dev_stat.device(), node_stat);
         }
       } else {
         node->second->AddStepStat(step, dev_stat.device(), node_stat);
       }
     }
+  }
+}
+
+void TFStats::WriteProfile(const string& filename) {
+  ProfileProto profile;
+  for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
+    if (it->second->id() < 0) {
+      continue;
+    }
+    (*profile.mutable_nodes())[it->second->id()].MergeFrom(
+        it->second->ToProto(nodes_map_));
+    if (it->second->code().traces_size() > 0) {
+      profile.set_has_trace(true);
+    }
+  }
+  Status s =
+      WriteStringToFile(Env::Default(), filename, profile.SerializeAsString());
+  if (!s.ok()) {
+    fprintf(stderr, "%s\n", s.ToString().c_str());
   }
 }
 

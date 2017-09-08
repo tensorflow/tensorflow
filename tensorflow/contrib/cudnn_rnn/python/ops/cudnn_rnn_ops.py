@@ -693,6 +693,7 @@ _cudnn_rnn_common_doc_string = """
   canonical format.
 
   This is a typical use case:
+
     * The user creates a CudnnRNN model.
     * The user query that parameter buffer size.
     * The user creates a variable of that size that serves as the parameter

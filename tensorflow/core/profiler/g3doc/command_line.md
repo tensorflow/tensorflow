@@ -57,7 +57,7 @@ Note: this feature is not well maintained now.
 
 ```shell
 # Build the tool.
-bazel build --config opt third_party/tensorflow/core/profiler/...
+bazel build --config opt tensorflow/core/profiler:profiler
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/core/profiler/profiler help

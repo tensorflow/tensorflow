@@ -20,6 +20,7 @@ package_group(
     packages = [
         "//learning/brain/contrib/...",
         "//learning/brain/research/sparse_matrix/...",
+        "//learning/faster_training/...",
         "//tensorflow/...",
     ],
 )
@@ -2334,7 +2335,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]),
 )
 
 cc_library(
@@ -2589,7 +2593,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_cuda([
+        ":cuda_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -3341,6 +3347,19 @@ tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
     deps = PARSING_DEPS,
+)
+
+tf_cc_test(
+    name = "parse_tensor_test",
+    srcs = ["parse_tensor_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":parse_tensor_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(
@@ -5486,6 +5505,22 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_input_conversion_op",
+    hdrs = ["mkl_tfconv_op.h"],
+    prefix = "mkl_input_conversion",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_pooling_ops",
     srcs = [
         "mkl_avgpooling_op.cc",
@@ -5528,6 +5563,14 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_aggregate_ops",
+    prefix = "mkl_aggregate_ops",
+    deps = MATH_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
     deps = ARRAY_DEPS + [
@@ -5559,11 +5602,39 @@ tf_mkl_kernel_library(
     ],
 )
 
+tf_mkl_kernel_library(
+    name = "mkl_cwise_ops_common",
+    hdrs = [
+        "cwise_ops.h",
+        "cwise_ops_common.h",
+        "cwise_ops_gradients.h",
+    ],
+    prefix = "mkl_cwise_ops_common",
+    deps = NN_DEPS + [
+        "cwise_op",
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
 cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+cc_library(
+    name = "dataset_utils",
+    srcs = ["dataset_utils.cc"],
+    hdrs = ["dataset_utils.h"],
+    deps = [
+        ":captured_function",
+        ":dataset",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -5697,6 +5768,7 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5711,6 +5783,22 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "sloppy_interleave_dataset_op",
+    srcs = ["sloppy_interleave_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5947,6 +6035,7 @@ tf_kernel_library(
         ":repeat_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
+        ":sloppy_interleave_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":sql_dataset_ops",
         ":take_dataset_op",
@@ -5965,7 +6054,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
 )

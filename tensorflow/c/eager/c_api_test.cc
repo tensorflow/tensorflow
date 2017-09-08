@@ -38,6 +38,7 @@ TFE_TensorHandle* TestMatrixTensorHandle() {
   TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
   return th;
 }
 
@@ -385,7 +386,8 @@ TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
   memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
 
   std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      value_handle(TFE_NewTensorHandle(t.get(), status), TFE_DeleteTensorHandle);
+      value_handle(TFE_NewTensorHandle(t.get(), status),
+                   TFE_DeleteTensorHandle);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   TFE_OpAddInput(op, value_handle.get(), status);

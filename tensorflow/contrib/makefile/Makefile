@@ -299,6 +299,7 @@ ifeq ($(TARGET),ANDROID)
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-$(SYSROOT_ARCH) \
 -Wno-narrowing \
+-fomit-frame-pointer \
 $(MARCH_OPTION) \
 -fPIE
 	INCLUDES = \
@@ -321,7 +322,8 @@ $(TARGET_NSYNC_LIB) \
 -lprotobuf \
 -llog \
 -lz \
--lm
+-lm \
+-ldl
 
 	LD := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_OS_ARCH)/$(BIN_PREFIX)/bin/ld
 

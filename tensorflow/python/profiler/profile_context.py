@@ -18,15 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import os
-import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_tensorflow as print_mdl
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import model_analyzer
-from tensorflow.python.profiler import tfprof_logger
+from tensorflow.python.util import compat
+
+MAX_TRACED_STEPS = 100
 
 
 def _profiled_init(self, target='', graph=None, config=None):
@@ -42,51 +46,56 @@ def _profiled_run(self,
   """Overwrites the session.run()."""
   # pylint: disable=protected-access
   # Count the session steps.
-  self.profile_context._new_step()
-  # Fast path if no need for profiling.
-  to_profiles = self.profile_context._profile_candidates()
-  to_dumps = self.profile_context._dump_candidates()
-  if (not to_profiles and not to_dumps and
-      not self.profile_context._is_capture_enforced()):
-    return self._profiler_run_internal(
-        fetches, feed_dict, options, run_metadata)
+  with self.profile_context._new_step():
+    # Fast path if no need for profiling.
+    if self.profile_context._is_fast_path():
+      return self._profiler_run_internal(
+          fetches, feed_dict, options, run_metadata)
 
-  # Enable tracing, perform auto profiling or auto dump.
-  if not run_metadata:
-    run_metadata = config_pb2.RunMetadata()
+    step = self.profile_context._step
 
-  if not options:
-    options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    old_trace_level = options.trace_level
-  else:
-    old_trace_level = options.trace_level
-    options.trace_level = config_pb2.RunOptions.FULL_TRACE
+    # Maybe trace this step.
+    if self.profile_context._should_trace():
+      # Enable tracing, perform auto profiling or auto dump.
+      if not run_metadata:
+        run_metadata = config_pb2.RunMetadata()
 
-  ret = self._profiler_run_internal(fetches, feed_dict, options, run_metadata)
+      if not options:
+        options = config_pb2.RunOptions(
+            trace_level=config_pb2.RunOptions.FULL_TRACE)
+        old_trace_level = options.trace_level
+      else:
+        old_trace_level = options.trace_level
+        options.trace_level = config_pb2.RunOptions.FULL_TRACE
 
-  if self.profile_context._capture_next_step:
-    self.profile_context._add_run_meta(run_metadata)
+      ret = self._profiler_run_internal(
+          fetches, feed_dict, options, run_metadata)
 
-  for to_dump in to_dumps:
-    outdir, _ = to_dump
-    if not gfile.Exists(outdir):
-      gfile.MakeDirs(outdir)
-    with gfile.Open(os.path.join(outdir, 'graph.pbtxt'), 'w') as f:
-      f.write('%s' % self.graph.as_graph_def(add_shapes=True))
-    with gfile.Open(os.path.join(outdir, 'run_metadata'), 'w') as f:
-      f.write(run_metadata.SerializeToString())
-    tfprof_logger.write_op_log(
-        self.graph, outdir, run_meta=run_metadata, add_trace=True)
+      self.profile_context.profiler._graph = self.graph
+      self.profile_context.profiler.add_step(step, run_metadata)
+      options.trace_level = old_trace_level
+    else:
+      ret = self._profiler_run_internal(fetches, feed_dict, options)
 
-  for to_prof in to_profiles:
-    cmd, opts, _ = to_prof
-    model_analyzer.profile(
-        self.graph, run_meta=run_metadata, cmd=cmd, options=opts)
+    # Maybe dump profile.
+    self.profile_context._maybe_dump()
 
-  # Restore to default.
-  options.trace_level = old_trace_level
-  return ret
+    # Maybe profile:
+    to_profiles = self.profile_context._profile_candidates()
+    for to_prof in to_profiles:
+      cmd, opts, _ = to_prof
+      if cmd == 'graph':
+        self.profile_context.profiler.profile_graph(opts)
+      elif cmd == 'scope':
+        self.profile_context.profiler.profile_name_scope(opts)
+      elif cmd == 'op':
+        self.profile_context.profiler.profile_operations(opts)
+      elif cmd == 'code':
+        self.profile_context.profiler.profile_python(opts)
+      else:
+        raise ValueError('Unknown cmd: %s\n' % cmd)
+
+    return ret
   # pylint: enable=protected-access
 
 
@@ -94,111 +103,134 @@ class ProfileContext(object):
   """A Context that captures RunMetadata and performs profiling.
 
   ```python
-    # Auto profiling at step 1, 100 and 1000.:
-    with tf.contrib.tfprof.ProfileContext() as pctx:
-      # Create the profiling options.
+    # Trace steps 10~20, profile at [15, 18, 20] and dump profile at 20.
+    with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+                                          trace_steps=range(10, 20),
+                                          dump_steps=[20]) as pctx:
       opts = tf.profiler.ProfileOptionBuilder.time_and_memory()
-      # Run profiling at certain steps. Multiple ones can be added.
-      pctx.add_auto_profiling('op', opts, [1, 100, 1000])
-      # Or dump the profile files at certain steps.
-      pctx.add_auto_profile_dump('/tmp/profiles', [1000])
-      # Run train/eval loop.
+      pctx.add_auto_profiling('op', opts, [15, 18, 20])
       train_loop().
 
-    # Alternatively, enable and capture RunMetadata of next step.
-    with tf.contrib.tfprof.ProfileContext() as pctx:
-      pctx.capture_next_run_meta()
+    # Tracing only.
+    with tf.contrib.tfprof.ProfileContext('/tmp/train_dir') as pctx:
+      # Run train/eval loop for at least few hundred steps. Profiles will be
+      # dumped to train_dir. Use web UI or command line to do profiling.
+      train_loop().
+
+    # When session object is available, do explicit trace, profile and dump.
+    with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+                                          trace_steps=[],
+                                          dump_steps=[]) as pctx:
       opts = tf.profiler.ProfileOptionBuilder.time_and_memory()
+      pctx.trace_next_step()
       _ = session.run(train_op)
-      tf.profiler.profile(session.graph,
-                          run_meta=pctx.run_meta(),
-                          cmd='op',
-                          options=opts)
+      pctx.profiler.profile_operations(options=opts)
   ```
+
+  Args:
+    profile_dir: Directory to store profiles.
+    trace_steps: A list of session run steps to trace. If None, use
+        pre-defined steps.
+    dump_steps: A list of steps to dump the profile to `profile_dir`. If None,
+        use pre-defined steps.
   """
 
-  def __init__(self):
-    self._lock = threading.Lock()
-    self._capture_next_step = False
-    self._step = 0
-    self._auto_profiles = []
-    self._auto_dumps = []
-    self._run_meta = None
+  def __init__(self,
+               profile_dir,
+               trace_steps=None,
+               dump_steps=None):
+    if not profile_dir:
+      raise ValueError('Must have a directory for profile.\n')
+    self._profiler_dir = profile_dir
 
-  def add_auto_profiling(self, cmd, profile_options, profile_steps):
-    """Runs profiling at some steps with provided command and options.
+    if trace_steps is None:
+      self._trace_steps = set(list(range(10, 50, 3)) +
+                              list(range(100, 10000, 1000)))
+    else:
+      if len(trace_steps) > MAX_TRACED_STEPS:
+        raise ValueError('Only support tracing up to 100 steps.\n')
+      self._trace_steps = set(trace_steps[:])
+
+    if dump_steps is None:
+      self._dump_steps = set([50] + list(range(100, 10000, 2000)))
+    else:
+      self._dump_steps = set(dump_steps[:])
+
+    self._slow_path_steps = self._dump_steps | self._trace_steps
+    self._trace_next_step = False
+    self._dump_next_step = False
+    self._step = 0
+    self._traced_steps = 0
+    self._auto_profiles = []
+    self._profiler = None
+
+  def add_auto_profiling(self, cmd, options, profile_steps):
+    """Traces and profiles at some session run steps.
 
     Args:
-      cmd: The profiling commands.
-      profile_options: The profiling options.
+      cmd: The profiling commands. (i.e. scope, op, python, graph)
+      options: The profiling options.
       profile_steps: A list/set of integers. The profiling command and options
           will be run automatically at these integer steps. Each step is
           a session.run.
     """
-    with self._lock:
-      self._auto_profiles.append((cmd, profile_options, profile_steps))
+    self._auto_profiles.append((cmd, options, profile_steps[:]))
+    self._slow_path_steps |= set(profile_steps)
+    self._trace_steps |= set(profile_steps)
 
-  def add_auto_profile_dump(self, outdir, dump_steps):
-    """Dumps profiles at some steps to the directory.
+  @property
+  def profiler(self):
+    """Returns the current profiler object."""
+    if not self._profiler:
+      self._profiler = model_analyzer.Profiler(ops.get_default_graph())
+    return self._profiler
 
-    Args:
-      outdir: The directory to dump the profile files.
-      dump_steps: A list/set of integers. The profile files will be dump at
-          these integer steps. Each step is a session.run.
-    """
-    with self._lock:
-      self._auto_dumps.append((outdir, dump_steps))
+  def trace_next_step(self):
+    """Enables tracing and add traces to profiler at next step."""
+    self._trace_next_step = True
 
-  def capture_next_run_meta(self):
-    """Enables tracing and captures RunMetadata at next session.run.
+  def dump_next_step(self):
+    """Enable tracing and dump profiles at next step."""
+    self._dump_next_step = True
 
-      The captured RunMetadata can be retrieved via run_meta(). It
-      will be cleared one step later.
-    """
-    with self._lock:
-      self._capture_next_step = True
+  def _is_fast_path(self):
+    if (self._step in self._slow_path_steps or
+        self._trace_next_step or
+        self._dump_next_step):
+      return False
+    return True
 
-  def run_meta(self):
-    """Returns the RunMetadata captured at previous session.run.
+  def _should_trace(self):
+    if self._traced_steps > MAX_TRACED_STEPS:
+      return False
+    trace = self._step in self._trace_steps or self._trace_next_step
+    if trace:
+      self._traced_steps += 1
+    return trace
 
-      Needs to call capture_next_run_meta() before session.run to enable
-      capturing.
-    """
-    with self._lock:
-      assert self._run_meta, 'Need to call capture_next_run_meta()'
-      return self._run_meta
+  def _maybe_dump(self):
+    if not (self._step in self._dump_steps or self._dump_next_step):
+      return
+    if not gfile.Exists(self._profiler_dir):
+      gfile.MakeDirs(self._profiler_dir)
+    print_mdl.WriteProfile(
+        os.path.join(compat.as_bytes(self._profiler_dir),
+                     compat.as_bytes('profile_%d' % self._step)))
 
-  def _is_capture_enforced(self):
-    with self._lock:
-      return self._capture_next_step
-
-  def _add_run_meta(self, run_meta):
-    with self._lock:
-      self._run_meta = run_meta
-      self._capture_next_step = False
-
+  @contextlib.contextmanager
   def _new_step(self):
-    with self._lock:
-      self._run_meta = None
-      self._step += 1
+    yield
+    self._step += 1
+    self._trace_next_step = False
+    self._dump_next_step = False
 
   def _profile_candidates(self):
     to_profile = []
-    with self._lock:
-      for auto_prof in self._auto_profiles:
-        _, _, prof_steps = auto_prof
-        if self._step - 1 in prof_steps:
-          to_profile.append(auto_prof)
+    for auto_prof in self._auto_profiles:
+      _, _, prof_steps = auto_prof
+      if self._step in prof_steps:
+        to_profile.append(auto_prof)
     return to_profile
-
-  def _dump_candidates(self):
-    to_dump = []
-    with self._lock:
-      for auto_dump in self._auto_dumps:
-        _, dump_steps = auto_dump
-        if self._step - 1 in dump_steps:
-          to_dump.append(auto_dump)
-    return to_dump
 
   def __enter__(self):
     self.old_run = getattr(session.BaseSession, 'run', None)
@@ -223,6 +255,7 @@ class ProfileContext(object):
       return self
 
   def __exit__(self, exec_type, exec_value, exec_tb):
+    print_mdl.DeleteProfiler()
     setattr(session.BaseSession, 'run', self.old_run)
     setattr(session.BaseSession, '__init__', self.old_init)
     setattr(session.BaseSession, '_profiler_run_internal', None)

@@ -20,23 +20,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
 from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
-from tensorflow.python import framework
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn
 
 
 class _Conv(base.Layer):
