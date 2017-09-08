@@ -5560,6 +5560,14 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_aggregate_ops",
+    prefix = "mkl_aggregate_ops",
+    deps = MATH_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
     deps = ARRAY_DEPS + [
