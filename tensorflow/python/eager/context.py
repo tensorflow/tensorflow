@@ -53,6 +53,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.scalar_cache = {}
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -156,6 +157,10 @@ class Context(object):
   def in_eager_mode(self):
     """Returns True if current thread is in EAGER mode."""
     return self._eager_context.mode == EAGER_MODE
+
+  def scalar_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.scalar_cache
 
   @property
   def scope_name(self):
