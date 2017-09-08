@@ -102,11 +102,16 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
       scope.NewSubScope("cond").WithControlDependencies(inputs[0]);
   Output raw_cond_out;
   TF_RETURN_IF_ERROR(cond(cond_scope, inputs, &raw_cond_out));
+
+  TF_RETURN_IF_ERROR(scope.graph()->IsValidOutputTensor(raw_cond_out.node(),
+                                                        raw_cond_out.index()));
   if (raw_cond_out.type() != DT_BOOL) {
     return errors::InvalidArgument(
         "BuildWhileLoop: 'cond' argument must return a boolean output, got ",
         DataTypeString(raw_cond_out.type()));
   }
+  // TODO(skyewm): check that raw_cond_out is scalar
+
   *output = LoopCond(scope, raw_cond_out).output;
   return Status::OK();
 }
@@ -123,13 +128,18 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
   Scope body_scope =
       scope.NewSubScope("body").WithControlDependencies(inputs[0]);
   TF_RETURN_IF_ERROR(body(body_scope, inputs, outputs));
+
   const size_t num_loop_vars = inputs.size();
   if (outputs->size() != num_loop_vars) {
     return errors::InvalidArgument(
         "BuildWhileLoop: 'body' argument expected to return ", num_loop_vars,
-        "outputs, got ", outputs->size());
+        " output(s), got ", outputs->size());
   }
-  // TODO(skyewm): check output types/shapes
+  for (const Output& output : *outputs) {
+    TF_RETURN_IF_ERROR(
+        scope.graph()->IsValidOutputTensor(output.node(), output.index()));
+    // TODO(skyewm): check output types/shapes
+  }
   return Status::OK();
 }
 

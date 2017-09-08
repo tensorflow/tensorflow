@@ -920,6 +920,11 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
     if (LayoutUtil::IsMonotonicWithDim0Major(lhs_shape.layout()) &&
         LayoutUtil::IsMonotonicWithDim0Major(rhs_shape.layout()) &&
         LayoutUtil::IsMonotonicWithDim0Major(convolution_shape.layout())) {
+      // We lower 1D convolutions into calls to the same Eigen function as 2D
+      // convolutions, except that we pretend that the 1D convolution is really
+      // a 2D convolution with the missing dimension set to 1.  We also adjust
+      // the padding, dilation parameters as needed.
+      bool one_dim_convolution = lhs_shape.dimensions_size() == 3;
       llvm::Value* lhs_address = GetEmittedValueFor(lhs);
       llvm::Value* rhs_address = GetEmittedValueFor(rhs);
       TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
@@ -932,7 +937,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       const Shape& input_shape = convolution->operand(0)->shape();
       int64 input_batch = input_shape.dimensions(dnums.batch_dimension());
       int64 input_rows = input_shape.dimensions(dnums.spatial_dimensions(0));
-      int64 input_cols = input_shape.dimensions(dnums.spatial_dimensions(1));
+      int64 input_cols =
+          one_dim_convolution
+              ? 1
+              : input_shape.dimensions(dnums.spatial_dimensions(1));
       int64 input_channels = input_shape.dimensions(dnums.feature_dimension());
 
       // Kernel tensor.
@@ -940,7 +948,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       int64 kernel_rows =
           kernel_shape.dimensions(dnums.kernel_spatial_dimensions(0));
       int64 kernel_cols =
-          kernel_shape.dimensions(dnums.kernel_spatial_dimensions(1));
+          one_dim_convolution
+              ? 1
+              : kernel_shape.dimensions(dnums.kernel_spatial_dimensions(1));
       int64 kernel_channels =
           kernel_shape.dimensions(dnums.kernel_input_feature_dimension());
       int64 kernel_filters =
@@ -951,22 +961,29 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       int64 output_rows =
           convolution_shape.dimensions(dnums.spatial_dimensions(0));
       int64 output_cols =
-          convolution_shape.dimensions(dnums.spatial_dimensions(1));
+          one_dim_convolution
+              ? 1
+              : convolution_shape.dimensions(dnums.spatial_dimensions(1));
 
       // Extract the window stride for the convolution.
       const Window& window = convolution->window();
       int64 row_stride = window.dimensions(0).stride();
-      int64 col_stride = window.dimensions(1).stride();
+      int64 col_stride =
+          one_dim_convolution ? 1 : window.dimensions(1).stride();
 
       int64 padding_top = window.dimensions(0).padding_low();
       int64 padding_bottom = window.dimensions(0).padding_high();
-      int64 padding_left = window.dimensions(1).padding_low();
-      int64 padding_right = window.dimensions(1).padding_high();
+      int64 padding_left =
+          one_dim_convolution ? 0 : window.dimensions(1).padding_low();
+      int64 padding_right =
+          one_dim_convolution ? 0 : window.dimensions(1).padding_high();
 
       int64 lhs_row_dilation = window.dimensions(0).base_dilation();
-      int64 lhs_col_dilation = window.dimensions(1).base_dilation();
+      int64 lhs_col_dilation =
+          one_dim_convolution ? 1 : window.dimensions(1).base_dilation();
       int64 rhs_row_dilation = window.dimensions(0).window_dilation();
-      int64 rhs_col_dilation = window.dimensions(1).window_dilation();
+      int64 rhs_col_dilation =
+          one_dim_convolution ? 1 : window.dimensions(1).window_dilation();
 
       // Args have been computed, make the call.
       llvm::Type* float_ptr_type = ir_builder_.getFloatTy()->getPointerTo();

@@ -68,6 +68,23 @@ class TFProfShowTest : public ::testing::Test {
     tf_stats_->BuildAllViews();
   }
 
+  string TestToFromProto(const string& cmd, const Options& opts,
+                         bool show_multi_node = false) {
+    string profile_file = io::JoinPath(testing::TmpDir(), "profile");
+    tf_stats_->WriteProfile(profile_file);
+    TFStats new_stats(profile_file, nullptr);
+    new_stats.BuildAllViews();
+    if (show_multi_node) {
+      new_stats.ShowMultiGraphNode(cmd, opts);
+    } else {
+      new_stats.ShowGraphNode(cmd, opts);
+    }
+    string dump_str;
+    TF_CHECK_OK(ReadFileToString(Env::Default(),
+                                 opts.output_options.at("outfile"), &dump_str));
+    return dump_str;
+  }
+
   std::unique_ptr<TFStats> tf_stats_;
 };
 
@@ -95,6 +112,8 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
       "0us/0us, 11us/11us)\n  ScalarW (1, 1/1 params, 0/0 flops, 0B/0B, 0B/0B, "
       "0B/0B, 0B/0B, 0us/0us, 0us/0us, 0us/0us)\n",
       dump_str);
+
+  EXPECT_EQ(dump_str, TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfShowTest, DumpAcceleratorAndCPUMicros) {
@@ -140,6 +159,8 @@ TEST_F(TFProfShowTest, DumpAcceleratorAndCPUMicros) {
       "0us/0us)\n    ScalarW/read (0us/0us, 0us/0us)\n  init (0us/0us, "
       "0us/0us)\n",
       dump_str);
+
+  EXPECT_EQ(dump_str, TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfShowTest, DumpOpMode) {
@@ -182,6 +203,8 @@ TEST_F(TFProfShowTest, DumpOpMode) {
       "0|defined*1)\texec_time:0us\ninput_type:0:3x3x3x6\t(run*0|defined*1)"
       "\texec_time:0us\n\n",
       StringReplace(dump_str, " ", ""));
+
+  EXPECT_EQ(dump_str, TestToFromProto("op", opts, true));
 }
 }  // namespace tfprof
 }  // namespace tensorflow

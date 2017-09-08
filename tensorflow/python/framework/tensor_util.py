@@ -239,6 +239,7 @@ def _FilterInt(v):
   return None if isinstance(v, (compat.integral_types,
                                 tensor_shape.Dimension)) else _NotNone(v)
 
+
 def _FilterFloat(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterFloat(x) for x in v])
