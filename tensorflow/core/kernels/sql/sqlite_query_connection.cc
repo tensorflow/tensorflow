@@ -84,10 +84,9 @@ Status SqliteQueryConnection::GetNext(std::vector<Tensor>* out_tensors,
     for (int i = 0; i < column_count_; i++) {
       // TODO(b/64276939) Support other tensorflow types. Interpret columns as
       // the types that the client specifies.
-      Tensor tensor(cpu_allocator(), DT_STRING, {});
-      string value(
-          reinterpret_cast<const char*>(sqlite3_column_text(stmt_, i)));
-      tensor.scalar<string>()() = value;
+      DataType dt = output_types_[i];
+      Tensor tensor(cpu_allocator(), dt, {});
+      FillTensorWithResultSetEntry(dt, i, &tensor);
       out_tensors->emplace_back(std::move(tensor));
     }
     *end_of_sequence = false;
@@ -114,6 +113,30 @@ Status SqliteQueryConnection::ExecuteQuery() {
     column_count_ = column_count;
   }
   return s;
+}
+
+void SqliteQueryConnection::FillTensorWithResultSetEntry(
+    const DataType& data_type, int column_index, Tensor* tensor) {
+  switch (data_type) {
+    case DT_STRING: {
+      const void* bytes = sqlite3_column_blob(stmt_, column_index);
+      int num_bytes = sqlite3_column_bytes(stmt_, column_index);
+      string value(reinterpret_cast<const char*>(bytes), num_bytes);
+      tensor->scalar<string>()() = value;
+      break;
+    }
+    case DT_INT32: {
+      int32 value = sqlite3_column_int(stmt_, column_index);
+      tensor->scalar<int32>()() = value;
+      break;
+    }
+    // Error preemptively thrown by SqlDatasetOp::MakeDataset in this case.
+    default: {
+      LOG(FATAL)
+          << "Use of unsupported TensorFlow data type by 'SqlQueryConnection': "
+          << DataTypeString(data_type) << ".";
+    }
+  }
 }
 
 }  // namespace sql

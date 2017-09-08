@@ -1202,7 +1202,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
 StatusOr<bool> HloRematerialization::Run(
     HloModule* module, SequentialHloOrdering::HloModuleSequence* sequence,
-    int64 memory_limit_bytes) {
+    int64 memory_limit_bytes, RematerializationSizes* sizes) {
   // The sequence is constructed entirely by this method.
   TF_RET_CHECK(sequence->empty());
 
@@ -1319,13 +1319,20 @@ StatusOr<bool> HloRematerialization::Run(
           << HumanReadableNumBytes(reduced_peak_memory) << " ("
           << reduced_peak_memory << " bytes)";
 
+  if (sizes != nullptr) {
+    sizes->before_bytes = before_peak_memory;
+    sizes->after_bytes = current_peak_memory;
+  }
+
   XLA_VLOG_LINES(3, "After HloRematerialization:\n" + module->ToString());
 
   if (current_peak_memory > memory_limit_bytes) {
-    LOG(WARNING) << "Can't reduce memory use below "
-                 << HumanReadableNumBytes(memory_limit_bytes)
-                 << " by rematerialization (only reduced to "
-                 << HumanReadableNumBytes(current_peak_memory) << ")";
+    LOG(WARNING) << tensorflow::strings::Printf(
+        "Can't reduce memory use below %s (%lld bytes) by rematerialization; "
+        "only reduced to %s (%lld bytes)",
+        HumanReadableNumBytes(memory_limit_bytes).c_str(), memory_limit_bytes,
+        HumanReadableNumBytes(current_peak_memory).c_str(),
+        current_peak_memory);
   }
 
   return changed;
@@ -1334,9 +1341,10 @@ StatusOr<bool> HloRematerialization::Run(
 /* static */ StatusOr<bool> HloRematerialization::RematerializeAndSchedule(
     const HloRematerialization::ShapeSizeFunction& size_function,
     int64 memory_limit_bytes, HloModule* hlo_module,
-    SequentialHloOrdering::HloModuleSequence* sequence) {
+    SequentialHloOrdering::HloModuleSequence* sequence,
+    RematerializationSizes* sizes) {
   HloRematerialization remat(size_function);
-  return remat.Run(hlo_module, sequence, memory_limit_bytes);
+  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes);
 }
 
 }  // namespace xla

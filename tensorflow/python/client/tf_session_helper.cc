@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
 

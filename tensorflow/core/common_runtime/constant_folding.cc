@@ -55,19 +55,20 @@ bool IsShapeOp(const Node* n) {
 // in shape_map.
 bool ReadPartialShapesFromShapeMap(
     const Node* n,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     std::vector<PartialTensorShape>* input_shapes) {
   CHECK(shape_map != nullptr);
   for (const Edge* in : n->in_edges()) {
     // Don't need to check if incoming control edges have known shapes.
     if (in->IsControlEdge()) continue;
-    if (shape_map->count(in->src()) == 0) {
+    const auto known_shape_iter = shape_map->find(in->src()->name());
+    if (known_shape_iter == shape_map->end()) {
       // One of n's inputs doesn't have known shapes, so don't replace n.
       return false;
     }
-    const auto& known_shape = shape_map->at(in->src());
-    CHECK_GT(known_shape.size(), in->src_output());
+    const auto& known_shape = known_shape_iter->second;
+    CHECK_GT(known_shape.size(), in->src_output()) << known_shape_iter->first;
     input_shapes->push_back(known_shape[in->src_output()]);
   }
   return true;
@@ -169,7 +170,7 @@ bool MaybeReplaceSizeOp(const Node* n,
 // be replaced.
 bool MaybeReplaceShapeOp(
     const Node* n,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
@@ -208,7 +209,7 @@ bool MaybeReplaceShapeOp(
 // (Shape, ShapeN, Size, or Rank).
 bool IsConstantFoldable(
     const Node* n,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& consider,
     std::unordered_map<const Node*, std::vector<Tensor>>*

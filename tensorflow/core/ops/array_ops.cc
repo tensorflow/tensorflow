@@ -5488,24 +5488,28 @@ REGISTER_OP("BatchMatrixDiag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixDiag");
+    .Deprecated(14, "Use MatrixDiag")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixSetDiag")
     .Input("input: T")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixSetDiag");
+    .Deprecated(14, "Use MatrixSetDiag")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixDiagPart");
+    .Deprecated(14, "Use MatrixDiagPart")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixBandPart")
     .Input("input: T")
     .Input("num_lower: int64")
     .Input("num_upper: int64")
     .Output("band: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixBandPart");
+    .Deprecated(14, "Use MatrixBandPart")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow

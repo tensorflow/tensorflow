@@ -556,6 +556,7 @@ template struct functor::NCHWToNHWC<GPUDevice, double, 4>;
 template struct functor::NCHWToNHWC<GPUDevice, float, 4>;
 template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 4>;
 
+template struct functor::PadInput<GPUDevice, int, int, 4>;
 template struct functor::PadInput<GPUDevice, float, int, 4>;
 template struct functor::PadInput<GPUDevice, Eigen::half, int, 4>;
 

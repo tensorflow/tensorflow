@@ -685,10 +685,13 @@ def set_tf_cunn_version(environ_cp):
       ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
-                                           cudnn_path_from_ldconfig).group(1)
-      if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
-        cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
-        break
+                                           cudnn_path_from_ldconfig)
+      if cudnn_path_from_ldconfig:
+        cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
+        if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig,
+                                     tf_cudnn_version)):
+          cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
+          break
 
     # Reset and Retry
     print(
@@ -992,7 +995,8 @@ def main():
     set_computecpp_toolkit_path(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
-  if environ_cp.get('TF_NEED_CUDA') == '1':
+  if (environ_cp.get('TF_NEED_CUDA') == '1' and
+      'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
     set_tf_cunn_version(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
