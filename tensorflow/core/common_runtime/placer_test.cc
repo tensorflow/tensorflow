@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/common_runtime/placer.h"
 
 #include <memory>
 #include <string>
@@ -44,7 +44,7 @@ namespace {
 //
 // Op, kernel, and device registrations to set up the environment.
 //
-// The SimplePlacer uses information about the op (input types),
+// The Placer uses information about the op (input types),
 // kernel (device constraints), and available devices to make
 // placement decisions. To avoid depending on the full runtime, we
 // define dummy implementations of these, and register them with the
@@ -164,17 +164,17 @@ REGISTER_KERNEL_BUILDER(Name("Shape").Device("FakeGPU"), DummyOp);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// A SimplePlacerTest method has three phases:
+// A PlacerTest method has three phases:
 //
 // 1. Build a TensorFlow graph, with no (or partial) device assignments.
-// 2. Attempt to compute a placement using the SimplePlacer.
+// 2. Attempt to compute a placement using the Placer.
 // 3. EITHER: test that the constraints implied by the graph are respected;
 //    or that an appropriate error was reported.
 //
 ////////////////////////////////////////////////////////////////////////////////
-class SimplePlacerTest : public ::testing::Test {
+class PlacerTest : public ::testing::Test {
  protected:
-  SimplePlacerTest() {
+  PlacerTest() {
     // Build a set of 10 GPU and 10 CPU devices.
     // NOTE: this->local_devices_ owns the device objects;
     // this->devices_ contains borrowed pointers to the device
@@ -201,12 +201,12 @@ class SimplePlacerTest : public ::testing::Test {
     return Status::OK();
   }
 
-  // Invokes the SimplePlacer on "graph". If no DeviceSet is specified, the
+  // Invokes the Placer on "graph". If no DeviceSet is specified, the
   // placement will use the default DeviceSet (of 10 CPU and 10 GPU devices).
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, SessionOptions* options) {
-    SimplePlacer placer(graph, devices, options);
+    Placer placer(graph, devices, options);
     return placer.Run();
   }
 
@@ -232,7 +232,7 @@ class SimplePlacerTest : public ::testing::Test {
  protected:
   std::vector<std::unique_ptr<Device>> local_devices_;
   DeviceSet devices_;
-  SimplePlacer::NodeNameToIdMap nodes_by_name_;
+  Placer::NodeNameToIdMap nodes_by_name_;
 
   Status ReferenceTestHelper(const string& variable_op_type,
                              const string& assign_op_type,
@@ -267,7 +267,7 @@ class SimplePlacerTest : public ::testing::Test {
 
 // Test that a graph with no constraints will successfully assign nodes to the
 // "best available" device (i.e. prefer GPU over CPU).
-TEST_F(SimplePlacerTest, TestNoConstraints) {
+TEST_F(PlacerTest, TestNoConstraints) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -286,7 +286,7 @@ TEST_F(SimplePlacerTest, TestNoConstraints) {
 // Test that a graph with device type and reference constraints on
 // some of the ops will successfully assign nodes to the constrained
 // device, and colocate nodes with reference connections.
-TEST_F(SimplePlacerTest, TestDeviceTypeConstraints) {
+TEST_F(PlacerTest, TestDeviceTypeConstraints) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -308,7 +308,7 @@ TEST_F(SimplePlacerTest, TestDeviceTypeConstraints) {
   EXPECT_COLOCATED(g, "var_gpu", "assign_gpu");
 }
 
-TEST_F(SimplePlacerTest, TestMetadataColocatedWithInput) {
+TEST_F(PlacerTest, TestMetadataColocatedWithInput) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -330,7 +330,7 @@ TEST_F(SimplePlacerTest, TestMetadataColocatedWithInput) {
 // Heuristic A implements "Island fusing": if a node only generates
 // an output and it has only one consumer, we place the node
 // with its consumer.
-TEST_F(SimplePlacerTest, TestHeuristicGeneratorFollowsSingleConsumer) {
+TEST_F(PlacerTest, TestHeuristicGeneratorFollowsSingleConsumer) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -355,7 +355,7 @@ TEST_F(SimplePlacerTest, TestHeuristicGeneratorFollowsSingleConsumer) {
   EXPECT_COLOCATED(g, "assign", "in");
 }
 
-TEST_F(SimplePlacerTest, TestIgnoreGeneratorHeuristicIfWrongDevice) {
+TEST_F(PlacerTest, TestIgnoreGeneratorHeuristicIfWrongDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -382,7 +382,7 @@ TEST_F(SimplePlacerTest, TestIgnoreGeneratorHeuristicIfWrongDevice) {
   EXPECT_COLOCATED(g, "var_cpu", "assign");
 }
 
-TEST_F(SimplePlacerTest, TestIgnoreGeneratorHeuristicIfWrongPartialDevice) {
+TEST_F(PlacerTest, TestIgnoreGeneratorHeuristicIfWrongPartialDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -416,7 +416,7 @@ TEST_F(SimplePlacerTest, TestIgnoreGeneratorHeuristicIfWrongPartialDevice) {
 
 // Test that a graph with partial device specifications on the ops
 // will successfully
-TEST_F(SimplePlacerTest, TestPartialSpec) {
+TEST_F(PlacerTest, TestPartialSpec) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -434,7 +434,7 @@ TEST_F(SimplePlacerTest, TestPartialSpec) {
 }
 
 // Test that a node with a pre-assigned device is not relocated.
-TEST_F(SimplePlacerTest, TestAssignedDevicePreserved) {
+TEST_F(PlacerTest, TestAssignedDevicePreserved) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -452,7 +452,7 @@ TEST_F(SimplePlacerTest, TestAssignedDevicePreserved) {
 
 // Test that a graph with partial device specifications for CPU-only ops
 // will be relocated to CPU.
-TEST_F(SimplePlacerTest, TestPartialSpecGpuToCpu) {
+TEST_F(PlacerTest, TestPartialSpecGpuToCpu) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -474,7 +474,7 @@ TEST_F(SimplePlacerTest, TestPartialSpecGpuToCpu) {
 
 // Test that a node with an assigned GPU device but has not registered
 // OpKernel will fail.
-TEST_F(SimplePlacerTest, TestAssignedGpuDeviceToCpuDevice) {
+TEST_F(PlacerTest, TestAssignedGpuDeviceToCpuDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -499,9 +499,9 @@ TEST_F(SimplePlacerTest, TestAssignedGpuDeviceToCpuDevice) {
 // Build a graph containing a Variable op of "variable_op_type" and an
 // Assign op of "assign_op_type", and expect all of the ops to be
 // placed on a device of type "expected_device_type".
-Status SimplePlacerTest::ReferenceTestHelper(
-    const string& variable_op_type, const string& assign_op_type,
-    const DeviceType& expected_device_type) {
+Status PlacerTest::ReferenceTestHelper(const string& variable_op_type,
+                                       const string& assign_op_type,
+                                       const DeviceType& expected_device_type) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -530,7 +530,7 @@ Status SimplePlacerTest::ReferenceTestHelper(
 
 // Test all 2^3 combinations of Variable and Assignment op types
 // (unconstrained, CPU-only, and GPU-only).
-TEST_F(SimplePlacerTest, TestReferenceConnection) {
+TEST_F(PlacerTest, TestReferenceConnection) {
   Status s;
   TF_EXPECT_OK(ReferenceTestHelper("TestVariable", "TestAssign", "FakeGPU"));
   TF_EXPECT_OK(ReferenceTestHelper("TestVariable", "AssignCPU", "FakeCPU"));
@@ -575,7 +575,7 @@ REGISTER_OP("HandleAssignGPU").Input("i: resource").Input("v: float");
 REGISTER_KERNEL_BUILDER(Name("HandleAssignGPU").Device("FakeGPU"), DummyOp);
 
 // Tests all combinations of resource handles and ops using them.
-TEST_F(SimplePlacerTest, TestResourceHandle) {
+TEST_F(PlacerTest, TestResourceHandle) {
   auto handle_test = [this](const string& var_op_name,
                             const string& use_op_name, DeviceType device) {
     Graph g(OpRegistry::Global());
@@ -611,7 +611,7 @@ TEST_F(SimplePlacerTest, TestResourceHandle) {
 // Test that an assignment of an operator to the wrong device
 // is ignored when it could never be satisfied (due to reference
 // edges, for example).
-TEST_F(SimplePlacerTest, TestReferenceConnectionIgnoreInfeasible) {
+TEST_F(PlacerTest, TestReferenceConnectionIgnoreInfeasible) {
   Status s;
   Graph g(OpRegistry::Global());
   {
@@ -640,8 +640,7 @@ TEST_F(SimplePlacerTest, TestReferenceConnectionIgnoreInfeasible) {
 
 // Test that an assignment of an operator to the a more specified device
 // causes the device to maintain its more specific placement.
-TEST_F(SimplePlacerTest,
-       TestReferenceConnectionMoreSpecificDestinationSourceWins) {
+TEST_F(PlacerTest, TestReferenceConnectionMoreSpecificDestinationSourceWins) {
   Status s;
   Graph g(OpRegistry::Global());
   {
@@ -675,7 +674,7 @@ TEST_F(SimplePlacerTest,
 // where the assign has a device but the variable does not.  In this
 // case, the variable gets placed on the location of the assign
 // operation.
-TEST_F(SimplePlacerTest, TestReferenceConnectionNoSourceDevice) {
+TEST_F(PlacerTest, TestReferenceConnectionNoSourceDevice) {
   Status s;
   Graph g(OpRegistry::Global());
   {
@@ -697,7 +696,7 @@ TEST_F(SimplePlacerTest, TestReferenceConnectionNoSourceDevice) {
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
 }
 
-TEST_F(SimplePlacerTest, TestColocationGroup) {
+TEST_F(PlacerTest, TestColocationGroup) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -720,7 +719,7 @@ TEST_F(SimplePlacerTest, TestColocationGroup) {
   EXPECT_NOT_COLOCATED(g, "in", "foo");
 }
 
-TEST_F(SimplePlacerTest, TestMultipleColocationGroups) {
+TEST_F(PlacerTest, TestMultipleColocationGroups) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -742,7 +741,7 @@ TEST_F(SimplePlacerTest, TestMultipleColocationGroups) {
   EXPECT_COLOCATED(g, "in", "foo");
 }
 
-TEST_F(SimplePlacerTest, TestInvalidMultipleColocationGroups) {
+TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -766,7 +765,7 @@ TEST_F(SimplePlacerTest, TestInvalidMultipleColocationGroups) {
                             "other nodes colocated with them"));
 }
 
-TEST_F(SimplePlacerTest, TestColocationGroupWithReferenceConnections) {
+TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -793,8 +792,7 @@ TEST_F(SimplePlacerTest, TestColocationGroupWithReferenceConnections) {
   EXPECT_COLOCATED(g, "var2", "assign1");
 }
 
-TEST_F(SimplePlacerTest,
-       TestColocationGroupWithUnsatisfiableReferenceConnections) {
+TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -832,7 +830,7 @@ TEST_F(SimplePlacerTest,
                     "nodes colocated with them."));
 }
 
-TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {
+TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -877,7 +875,7 @@ TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {
 }
 
 // Test that placement fails when no devices are registered.
-TEST_F(SimplePlacerTest, TestEmptyDeviceSet) {
+TEST_F(PlacerTest, TestEmptyDeviceSet) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -894,7 +892,7 @@ TEST_F(SimplePlacerTest, TestEmptyDeviceSet) {
 
 // Test that placement fails when the requested device forces an
 // indirect constraint to be violated.
-TEST_F(SimplePlacerTest, TestHeterogeneousDeviceSetFailure) {
+TEST_F(PlacerTest, TestHeterogeneousDeviceSetFailure) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -928,7 +926,7 @@ TEST_F(SimplePlacerTest, TestHeterogeneousDeviceSetFailure) {
 }
 
 // Test that placement fails when an unknown device is requested.
-TEST_F(SimplePlacerTest, TestUnknownDevice) {
+TEST_F(PlacerTest, TestUnknownDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -943,7 +941,7 @@ TEST_F(SimplePlacerTest, TestUnknownDevice) {
 
 // Test that placement fails when the combination of partial
 // constraints leads to an unknown device.
-TEST_F(SimplePlacerTest, TestUnknownMergedDevice) {
+TEST_F(PlacerTest, TestUnknownMergedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -958,7 +956,7 @@ TEST_F(SimplePlacerTest, TestUnknownMergedDevice) {
 
 // Test that placement fails when the previously-assigned device for a
 // node is unknown.
-TEST_F(SimplePlacerTest, TestUnknownAssignedDevice) {
+TEST_F(PlacerTest, TestUnknownAssignedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -977,7 +975,7 @@ TEST_F(SimplePlacerTest, TestUnknownAssignedDevice) {
 
 // Test that placement fails when an op with no registered kernels is
 // requested.
-TEST_F(SimplePlacerTest, TestNoKernelsRegistered) {
+TEST_F(PlacerTest, TestNoKernelsRegistered) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -997,7 +995,7 @@ TEST_F(SimplePlacerTest, TestNoKernelsRegistered) {
 
 // Test that placement fails when a kernel is registered but no known
 // device supports it.
-TEST_F(SimplePlacerTest, TestNoDevicesRegistered) {
+TEST_F(PlacerTest, TestNoDevicesRegistered) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1019,7 +1017,7 @@ TEST_F(SimplePlacerTest, TestNoDevicesRegistered) {
 }
 
 // Test that placement fails when a requested device is malformed.
-TEST_F(SimplePlacerTest, TestMalformedDeviceSpecification) {
+TEST_F(PlacerTest, TestMalformedDeviceSpecification) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1034,7 +1032,7 @@ TEST_F(SimplePlacerTest, TestMalformedDeviceSpecification) {
 }
 
 // Test that placement fails when a previously-assigned device is malformed.
-TEST_F(SimplePlacerTest, TestMalformedAssignedDevice) {
+TEST_F(PlacerTest, TestMalformedAssignedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1052,7 +1050,7 @@ TEST_F(SimplePlacerTest, TestMalformedAssignedDevice) {
 
 // Test that placement fails when a device was previously assigned to
 // a node, but it does not uniquely identify a particular device.
-TEST_F(SimplePlacerTest, TestNonUniqueAssignedDevice) {
+TEST_F(PlacerTest, TestNonUniqueAssignedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1071,7 +1069,7 @@ TEST_F(SimplePlacerTest, TestNonUniqueAssignedDevice) {
 
 // Test that ops request to be placed on non-existent devices will be relocated
 // to existing device of the same type if allow_soft_placement is set.
-TEST_F(SimplePlacerTest, TestNonexistentGpuAllowSoftPlacement) {
+TEST_F(PlacerTest, TestNonexistentGpuAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1088,7 +1086,7 @@ TEST_F(SimplePlacerTest, TestNonexistentGpuAllowSoftPlacement) {
 
 // Test that ops request to be placed on non-existent devices will fail if
 // allow_soft_placement is not set.
-TEST_F(SimplePlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
+TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1105,7 +1103,7 @@ TEST_F(SimplePlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
 
 // Test that placement fails when a node requests an explicit device that is not
 // supported by the registered kernels if allow_soft_placement is no set.
-TEST_F(SimplePlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
+TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1125,7 +1123,7 @@ TEST_F(SimplePlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
 
 // Test that placement fails when a node requests an explicit device that is not
 // supported by the registered kernels if allow_soft_placement is no set.
-TEST_F(SimplePlacerTest, TestNonExistentDevice) {
+TEST_F(PlacerTest, TestNonExistentDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1143,7 +1141,7 @@ TEST_F(SimplePlacerTest, TestNonExistentDevice) {
                             "but available devices"));
 }
 
-TEST_F(SimplePlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
+TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1160,7 +1158,7 @@ TEST_F(SimplePlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
 // Test that a graph with device type and reference constraints on
 // some of the ops will successfully assign nodes to the constrained
 // device, and colocate nodes with reference connections.
-TEST_F(SimplePlacerTest, TestDeviceTypeConstraintsAllowSoftPlacement) {
+TEST_F(PlacerTest, TestDeviceTypeConstraintsAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1194,7 +1192,7 @@ TEST_F(SimplePlacerTest, TestDeviceTypeConstraintsAllowSoftPlacement) {
 
 // Test that placement fails when two nodes have a reference connection
 // constraint, and each node requires a mutually incompatible device.
-TEST_F(SimplePlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
+TEST_F(PlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1212,7 +1210,7 @@ TEST_F(SimplePlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
 
 // Test that a generator node follows its consumers (where there are several
 // consumer nodes on the same devices).
-TEST_F(SimplePlacerTest, TestGeneratorNodeFollowsConsumerNode) {
+TEST_F(PlacerTest, TestGeneratorNodeFollowsConsumerNode) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1245,7 +1243,7 @@ TEST_F(SimplePlacerTest, TestGeneratorNodeFollowsConsumerNode) {
 
 // Test that a generator node does not follow its consumers (where there are
 // several consumers on different devices).
-TEST_F(SimplePlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
+TEST_F(PlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
