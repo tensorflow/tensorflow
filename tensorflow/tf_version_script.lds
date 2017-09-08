@@ -2,7 +2,8 @@ tensorflow {
   global:
     *tensorflow*;
     *perftools*gputools*;
-    TF_*;
+    *TF_*;
+    *TFE_*;
     *nsync_*;
   local:
     *;

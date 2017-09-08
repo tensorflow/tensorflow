@@ -318,8 +318,8 @@ class TensorUtilTest(test.TestCase):
     # Github issue: 11974
     dtype = dtypes.int32
     nptype = np.int32
-    t = tensor_util.make_tensor_proto([10, tensor_shape.Dimension(20), 30],
-                                      dtype=dtype)
+    t = tensor_util.make_tensor_proto(
+        [10, tensor_shape.Dimension(20), 30], dtype=dtype)
     self.assertEquals(dtype, t.dtype)
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(nptype, a.dtype)

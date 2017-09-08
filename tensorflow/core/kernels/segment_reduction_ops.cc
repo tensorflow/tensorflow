@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
 
-
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
@@ -249,10 +248,11 @@ class SegmentSumGPUOp : public AsyncOpKernel {
 
     auto stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(
-        context, stream
-                     ->ThenMemcpy(output_rows_host.mutable_data(),
-                                  output_rows_device, sizeof(Index))
-                     .ok(),
+        context,
+        stream
+            ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
+                         sizeof(Index))
+            .ok(),
         errors::Internal(
             "SegmentSumGPUOp: failed to copy output_rows from device"),
         done);

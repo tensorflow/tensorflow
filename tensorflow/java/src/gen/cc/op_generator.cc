@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
@@ -41,14 +41,12 @@ string CamelCase(const string& str, char delimiter, bool upper) {
 
 }  // namespace
 
-OpGenerator::OpGenerator()
-  : env(Env::Default()) {
-}
+OpGenerator::OpGenerator() : env(Env::Default()) {}
 
 OpGenerator::~OpGenerator() {}
 
 Status OpGenerator::Run(const OpList& ops, const string& lib_name,
-    const string& base_package, const string& output_dir) {
+                        const string& base_package, const string& output_dir) {
   const string package =
       base_package + '.' + str_util::StringReplace(lib_name, "_", "", true);
   const string package_path =
