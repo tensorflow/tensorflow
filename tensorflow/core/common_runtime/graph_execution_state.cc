@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/common_runtime/graph_execution_state.h"
 
 #include <memory>
 #include <string>
@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -49,8 +49,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-SimpleGraphExecutionState::SimpleGraphExecutionState(
-    GraphDef* graph_def, const SimpleGraphExecutionStateOptions& options)
+GraphExecutionState::GraphExecutionState(
+    GraphDef* graph_def, const GraphExecutionStateOptions& options)
     : stateful_placements_(options.stateful_placements),
       device_set_(options.device_set),
       session_options_(options.session_options),
@@ -65,16 +65,16 @@ SimpleGraphExecutionState::SimpleGraphExecutionState(
   // placement option.
 }
 
-SimpleGraphExecutionState::~SimpleGraphExecutionState() {
+GraphExecutionState::~GraphExecutionState() {
   node_name_to_cost_id_map_.clear();
   delete graph_;
 }
 
-/* static */ Status SimpleGraphExecutionState::MakeForBaseGraph(
-    GraphDef* graph_def, const SimpleGraphExecutionStateOptions& options,
-    std::unique_ptr<SimpleGraphExecutionState>* out_state) {
-  std::unique_ptr<SimpleGraphExecutionState> ret(
-      new SimpleGraphExecutionState(graph_def, options));
+/* static */ Status GraphExecutionState::MakeForBaseGraph(
+    GraphDef* graph_def, const GraphExecutionStateOptions& options,
+    std::unique_ptr<GraphExecutionState>* out_state) {
+  std::unique_ptr<GraphExecutionState> ret(
+      new GraphExecutionState(graph_def, options));
 
   TF_RETURN_IF_ERROR(
       AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
@@ -88,12 +88,12 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   return Status::OK();
 }
 
-/* static */ Status SimpleGraphExecutionState::MakeForPrunedGraph(
+/* static */ Status GraphExecutionState::MakeForPrunedGraph(
     const FunctionDefLibrary& func_def_lib,
-    const SimpleGraphExecutionStateOptions& options, const GraphDef& graph_def,
+    const GraphExecutionStateOptions& options, const GraphDef& graph_def,
     const BuildGraphOptions& subgraph_options,
-    std::unique_ptr<SimpleGraphExecutionState>* out_state,
-    std::unique_ptr<SimpleClientGraph>* out_client_graph) {
+    std::unique_ptr<GraphExecutionState>* out_state,
+    std::unique_ptr<ClientGraph>* out_client_graph) {
   DCHECK(options.session_options->config.graph_options().place_pruned_graph());
   // NOTE(mrry): This makes a copy of `graph_def`, which is
   // regrettable. We could make `GraphDef` objects sharable between
@@ -103,8 +103,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   // also that the previous version used `Extend()`, which is strictly
   // more expensive than copying a `GraphDef`.)
   GraphDef temp(graph_def);
-  std::unique_ptr<SimpleGraphExecutionState> ret(
-      new SimpleGraphExecutionState(&temp, options));
+  std::unique_ptr<GraphExecutionState> ret(
+      new GraphExecutionState(&temp, options));
   TF_RETURN_IF_ERROR(
       AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
@@ -113,9 +113,9 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   return Status::OK();
 }
 
-Status SimpleGraphExecutionState::Extend(
+Status GraphExecutionState::Extend(
     const GraphDef& extension_def,
-    std::unique_ptr<SimpleGraphExecutionState>* out) const {
+    std::unique_ptr<GraphExecutionState>* out) const {
   GraphDef gdef;
 
   // 1. Copy the function library.
@@ -186,15 +186,15 @@ Status SimpleGraphExecutionState::Extend(
   }
 
   // 6. Add the extension.
-  SimpleGraphExecutionStateOptions combined_options;
+  GraphExecutionStateOptions combined_options;
   combined_options.device_set = device_set_;
   combined_options.session_options = session_options_;
   combined_options.stateful_placements = stateful_placements_;
 
   // NOTE(mrry): `gdef` is no longer valid after the constructor
   // executes.
-  std::unique_ptr<SimpleGraphExecutionState> new_execution_state(
-      new SimpleGraphExecutionState(&gdef, combined_options));
+  std::unique_ptr<GraphExecutionState> new_execution_state(
+      new GraphExecutionState(&gdef, combined_options));
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
       &new_execution_state->original_graph_def_, *flib_def_, 0));
@@ -212,7 +212,7 @@ Status SimpleGraphExecutionState::Extend(
   return Status::OK();
 }
 
-void SimpleGraphExecutionState::SaveStatefulNodes(Graph* graph) {
+void GraphExecutionState::SaveStatefulNodes(Graph* graph) {
   for (Node* n : graph->nodes()) {
     if (n->op_def().is_stateful()) {
       VLOG(2) << "Saving " << n->DebugString();
@@ -221,7 +221,7 @@ void SimpleGraphExecutionState::SaveStatefulNodes(Graph* graph) {
   }
 }
 
-void SimpleGraphExecutionState::RestoreStatefulNodes(Graph* graph) {
+void GraphExecutionState::RestoreStatefulNodes(Graph* graph) {
   for (Node* n : graph->nodes()) {
     if (n->op_def().is_stateful()) {
       auto iter = stateful_placements_.find(n->name());
@@ -233,8 +233,7 @@ void SimpleGraphExecutionState::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
-Status SimpleGraphExecutionState::InitBaseGraph(
-    const BuildGraphOptions& options) {
+Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   const GraphDef* graph_def = &original_graph_def_;
 
   std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
@@ -266,8 +265,8 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  SimplePlacer placer(new_graph.get(), device_set_, session_options_);
-  // TODO(mrry): Consider making the SimplePlacer cancelable.
+  Placer placer(new_graph.get(), device_set_, session_options_);
+  // TODO(mrry): Consider making the Placer cancelable.
   TF_RETURN_IF_ERROR(placer.Run());
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -278,7 +277,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   return Status::OK();
 }
 
-Status SimpleGraphExecutionState::OptimizeGraph(
+Status GraphExecutionState::OptimizeGraph(
     const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph) {
 #ifndef IS_MOBILE_PLATFORM
   if (session_options_->config.graph_options().place_pruned_graph()) {
@@ -378,8 +377,8 @@ Status SimpleGraphExecutionState::OptimizeGraph(
 #endif  // IS_MOBILE_PLATFORM
 }
 
-Status SimpleGraphExecutionState::BuildGraph(
-    const BuildGraphOptions& options, std::unique_ptr<SimpleClientGraph>* out) {
+Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
+                                       std::unique_ptr<ClientGraph>* out) {
   VLOG(1) << "BuildGraph";
   if (!graph_) {
     // It is only valid to call this method directly when the original graph
@@ -406,7 +405,7 @@ Status SimpleGraphExecutionState::BuildGraph(
         options.target_nodes, device_set_->client_device()->attributes(),
         options.use_function_convention, &rewrite_metadata));
   } else {
-    // This SimpleGraphExecutionState represents a graph that was
+    // This GraphExecutionState represents a graph that was
     // pruned when this was constructed, so we copy the metadata from
     // a member variable.
     CHECK(rewrite_metadata_);
@@ -433,9 +432,9 @@ Status SimpleGraphExecutionState::BuildGraph(
   // Copy the extracted graph in order to make its node ids dense,
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
-  std::unique_ptr<SimpleClientGraph> dense_copy(
-      new SimpleClientGraph(std::move(flib), rewrite_metadata.feed_types,
-                            rewrite_metadata.fetch_types));
+  std::unique_ptr<ClientGraph> dense_copy(
+      new ClientGraph(std::move(flib), rewrite_metadata.feed_types,
+                      rewrite_metadata.fetch_types));
   CopyGraph(*ng, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.
