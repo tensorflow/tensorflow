@@ -60,12 +60,14 @@ tf_kernel_library(
     srcs = [
         "kernels/fused_conv2d_bias_activation_op.cc",
         "kernels/fused_conv2d_bias_activation_op.h",
+        "kernels/fused_conv_ops_gpu.h",
     ],
     prefix = "fused_conv2d_bias_activation_op",
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:conv_2d_hdrs",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
@@ -81,6 +83,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/fused_conv2d_bias_activation_op.cc",
         "kernels/fused_conv2d_bias_activation_op.h",
+        "kernels/fused_conv_ops_gpu.h",
         "ops/fused_conv2d_bias_activation_op.cc",
     ],
     deps = [
@@ -94,12 +97,8 @@ tf_custom_op_library(
 )
 
 tf_gen_op_libs(
-    op_lib_names = [
-        "fused_conv2d_bias_activation_op",
-    ],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-    ],
+    op_lib_names = ["fused_conv2d_bias_activation_op"],
+    deps = ["//tensorflow/core:lib_proto_parsing"],
 )
 
 tf_gen_op_wrapper_py(
@@ -109,7 +108,7 @@ tf_gen_op_wrapper_py(
 
 cuda_py_test(
     name = "fused_conv2d_bias_activation_op_test",
-    size = "small",
+    size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_op_test.py"],
     additional_deps = [
         ":fused_conv_py",

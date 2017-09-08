@@ -30,6 +30,7 @@ const double kDelta = 1e-5;
 
 TEST(NodeStatsTest, AlmostZero) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   NodeStats node_stats(learner_config, GradientStats(1e-8f, 1e-8f));
   EXPECT_EQ(0, node_stats.weight_contribution[0]);
   EXPECT_EQ(0, node_stats.gain);
@@ -37,6 +38,7 @@ TEST(NodeStatsTest, AlmostZero) {
 
 TEST(NodeStatsTest, LessThanMinWeightConstraint) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   learner_config.mutable_constraints()->set_min_node_weight(3.2f);
   NodeStats node_stats(learner_config, GradientStats(7.32f, 1.63f));
   EXPECT_EQ(0, node_stats.weight_contribution[0]);
@@ -45,6 +47,7 @@ TEST(NodeStatsTest, LessThanMinWeightConstraint) {
 
 TEST(NodeStatsTest, L1RegSquashed) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   learner_config.mutable_regularization()->set_l1(10.0f);
   NodeStats node_stats(learner_config, GradientStats(7.32f, 1.63f));
   EXPECT_EQ(0, node_stats.weight_contribution[0]);
@@ -53,6 +56,7 @@ TEST(NodeStatsTest, L1RegSquashed) {
 
 TEST(NodeStatsTest, L1RegPos) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   learner_config.mutable_regularization()->set_l1(5.0f);
   NodeStats node_stats(learner_config, GradientStats(7.32f, 1.63f));
   const float expected_clipped_grad = 7.32f - 5.0f;
@@ -66,6 +70,7 @@ TEST(NodeStatsTest, L1RegPos) {
 
 TEST(NodeStatsTest, L1RegNeg) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   learner_config.mutable_regularization()->set_l1(5.0f);
   NodeStats node_stats(learner_config, GradientStats(-7.32f, 1.63f));
   const float expected_clipped_grad = -7.32f + 5.0f;
@@ -79,6 +84,7 @@ TEST(NodeStatsTest, L1RegNeg) {
 
 TEST(NodeStatsTest, L2Reg) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   learner_config.mutable_regularization()->set_l2(8.0f);
   NodeStats node_stats(learner_config, GradientStats(7.32f, 1.63f));
   const float expected_denom = 1.63f + 8.0f;
@@ -91,6 +97,7 @@ TEST(NodeStatsTest, L2Reg) {
 
 TEST(NodeStatsTest, L1L2Reg) {
   LearnerConfig learner_config;
+  learner_config.set_multi_class_strategy(LearnerConfig::TREE_PER_CLASS);
   learner_config.mutable_regularization()->set_l1(5.0f);
   learner_config.mutable_regularization()->set_l2(8.0f);
   NodeStats node_stats(learner_config, GradientStats(7.32f, 1.63f));

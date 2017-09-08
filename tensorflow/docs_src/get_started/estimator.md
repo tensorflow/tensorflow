@@ -273,9 +273,7 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
     containing 10, 20, and 10 neurons, respectively.
 *   `n_classes=3`. Three target classes, representing the three Iris species.
 *   `model_dir=/tmp/iris_model`. The directory in which TensorFlow will save
-    checkpoint data during model training. For more on logging and monitoring
-    with TensorFlow, see
-    @{$monitors$Logging and Monitoring Basics with tf.estimator}.
+    checkpoint data and TensorBoard summaries during model training.
 
 ## Describe the training input pipeline {#train-input}
 
@@ -315,9 +313,7 @@ classifier.train(input_fn=train_input_fn, steps=1000)
 
 However, if you're looking to track the model while it trains, you'll likely
 want to instead use a TensorFlow @{tf.train.SessionRunHook$`SessionRunHook`}
-to perform logging operations. See the tutorial
-@{$monitors$Logging and Monitoring Basics with tf.estimator}
-for more on this topic.
+to perform logging operations.
 
 ## Evaluate Model Accuracy {#evaluate-accuracy}
 

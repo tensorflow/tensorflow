@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 #include "tensorflow/core/kernels/captured_function.h"
+#include "tensorflow/core/kernels/dataset_utils.h"
 
 namespace tensorflow {
 
@@ -125,58 +126,9 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          FunctionLibraryRuntime::Options opts;
-          opts.runner = ctx->runner();
-          opts.step_id = CapturedFunction::generate_step_id();
-          ScopedStepContainer step_container(
-              opts.step_id, [this, ctx](const string& name) {
-                dataset()
-                    ->captured_func_->resource_manager()
-                    ->Cleanup(name)
-                    .IgnoreError();
-              });
-          opts.step_container = &step_container;
-          std::vector<Tensor> return_values;
-          TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(
-              opts, args, &return_values, prefix()));
-
-          if (!(return_values.size() == 1 &&
-                return_values[0].dtype() == DT_RESOURCE &&
-                TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-            return errors::InvalidArgument(
-                "`f` must return a single scalar of dtype DT_RESOURCE.");
-          }
-
-          // Retrieve the dataset that was created in `f`.
-          DatasetBase* returned_dataset;
-          const ResourceHandle& dataset_resource =
-              return_values[0].scalar<ResourceHandle>()();
-
-          // NOTE(mrry): We cannot use the core `LookupResource()` or
-          // `DeleteResource()` functions, because we have an
-          // `IteratorContext*` and not an `OpKernelContext*`, so we
-          // replicate the necessary functionality here.
-          auto type_index = MakeTypeIndex<DatasetBase>();
-          if (type_index.hash_code() != dataset_resource.hash_code()) {
-            return errors::InvalidArgument(
-                "`f` must return a Dataset resource.");
-          }
-          TF_RETURN_IF_ERROR(
-              dataset()->captured_func_->resource_manager()->Lookup(
-                  dataset_resource.container(), dataset_resource.name(),
-                  &returned_dataset));
-          core::ScopedUnref unref_dataset(returned_dataset);
-
-          // Create an iterator for the dataset that was returned by
-          // `f`. This transfers ownership of the dataset to the
-          // iterator, so we can delete it from the resource manager.
-          current_element_iterator_ = returned_dataset->MakeIterator(
-              strings::StrCat(prefix(), "[", element_index_++, "]"));
-          TF_RETURN_IF_ERROR(
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Delete<DatasetBase>(dataset_resource.container(),
-                                        dataset_resource.name()));
+          TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+              ctx, args, element_index_++, dataset()->captured_func_.get(),
+              prefix(), &current_element_iterator_));
         } while (true);
       }
 

@@ -16,8 +16,8 @@ limitations under the License.
 package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
-import android.os.Trace;
 import android.os.Build.VERSION;
+import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.FileInputStream;
@@ -104,7 +104,7 @@ public class TensorFlowInferenceInterface {
       Trace.endSection(); // initializeTensorFlow.
     }
   }
-    
+
   /*
    * Load a TensorFlow model from provided InputStream.
    * Note: The InputStream will not be closed after loading model, users need to
@@ -114,7 +114,7 @@ public class TensorFlowInferenceInterface {
    */
   public TensorFlowInferenceInterface(InputStream is) {
     prepareNativeRuntime();
-    
+
     // modelName is redundant for model loading from input stream, here is for
     // avoiding error in initialization as modelName is marked final.
     this.modelName = "";
@@ -231,8 +231,9 @@ public class TensorFlowInferenceInterface {
   }
 
   /**
-   * Cleans up the state associated with this Object. initializeTensorFlow() can then be called
-   * again to initialize a new session.
+   * Cleans up the state associated with this Object.
+   *
+   * <p>The TenosrFlowInferenceInterface object is no longer usable after this method returns.
    */
   public void close() {
     closeFeeds();
@@ -304,6 +305,25 @@ public class TensorFlowInferenceInterface {
    */
   public void feed(String inputName, byte[] src, long... dims) {
     addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
+  }
+
+  /**
+   * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
+   * bytes, not a Java {@code String} (which is a sequence of characters).
+   */
+  public void feedString(String inputName, byte[] src) {
+    addFeed(inputName, Tensor.create(src));
+  }
+
+  /**
+   * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
+   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
+   * characters).
+   */
+  public void feedString(String inputName, byte[][] src) {
+    addFeed(inputName, Tensor.create(src));
   }
 
   // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
@@ -457,7 +477,7 @@ public class TensorFlowInferenceInterface {
   public void fetch(String outputName, ByteBuffer dst) {
     getTensor(outputName).writeTo(dst);
   }
-  
+
   private void prepareNativeRuntime() {
     Log.i(TAG, "Checking to see if TensorFlow native methods are already loaded");
     try {
@@ -563,7 +583,7 @@ public class TensorFlowInferenceInterface {
     fetchNames.clear();
   }
 
-  // State immutable between initializeTensorFlow calls.
+  // Immutable state.
   private final String modelName;
   private final Graph g;
   private final Session sess;

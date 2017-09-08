@@ -296,7 +296,7 @@ def sparse_add(a, b, thresh=0):
     a = _convert_to_sparse_tensor(a)
     b = _convert_to_sparse_tensor(b)
     thresh = ops.convert_to_tensor(
-        thresh, dtype=a.values.dtype.real_dtype, name="thresh")
+        thresh, dtype=a.values.dtype.real_dtype.base_dtype, name="thresh")
     output_ind, output_val, output_shape = (gen_sparse_ops._sparse_add(
         a.indices, a.values, a.dense_shape,
         b.indices, b.values, b.dense_shape,

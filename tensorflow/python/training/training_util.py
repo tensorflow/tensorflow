@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
@@ -55,6 +56,8 @@ def global_step(sess, global_step_tensor):
   Returns:
     The global step value.
   """
+  if context.in_eager_mode():
+    return int(global_step_tensor.numpy())
   return int(sess.run(global_step_tensor))
 
 
@@ -154,6 +157,7 @@ def assert_global_step(global_step_tensor):
     raise TypeError('Existing "global_step" does not have integer type: %s' %
                     global_step_tensor.dtype)
 
-  if global_step_tensor.get_shape().ndims != 0:
+  if (global_step_tensor.get_shape().ndims != 0 and
+      global_step_tensor.get_shape().is_fully_defined()):
     raise TypeError('Existing "global_step" is not scalar: %s' %
                     global_step_tensor.get_shape())

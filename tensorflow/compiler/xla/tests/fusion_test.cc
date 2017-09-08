@@ -153,8 +153,8 @@ float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
 }
 
 template <>
-uint8 FusionTest::ComputeElementwiseAnswer<uint8>(HloOpcode opcode,
-                                                  ArraySlice<float> xs) {
+bool FusionTest::ComputeElementwiseAnswer<bool>(HloOpcode opcode,
+                                                ArraySlice<float> xs) {
   switch (opcode) {
     case HloOpcode::kEq:
       return xs[0] == xs[1];
@@ -569,12 +569,12 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceImplicitBroadcast)) {
       ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
   auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kNegate, reduce2));
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, reduce2));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate3, reduce2},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-15}),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(-15),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
@@ -690,26 +690,24 @@ XLA_TEST_F(FusionTest, Maximum2D) {
   TestElementwise2D<float, 2>(HloOpcode::kMaximum);
 }
 
-XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<uint8, 2>(HloOpcode::kEq); }
+XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<bool, 2>(HloOpcode::kEq); }
 
 XLA_TEST_F(FusionTest, Inequal2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kNe);
+  TestElementwise2D<bool, 2>(HloOpcode::kNe);
 }
 
 XLA_TEST_F(FusionTest, Greater2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kGt);
+  TestElementwise2D<bool, 2>(HloOpcode::kGt);
 }
 
-XLA_TEST_F(FusionTest, Lesser2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kLt);
-}
+XLA_TEST_F(FusionTest, Lesser2D) { TestElementwise2D<bool, 2>(HloOpcode::kLt); }
 
 XLA_TEST_F(FusionTest, GreaterOrEqual2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kGe);
+  TestElementwise2D<bool, 2>(HloOpcode::kGe);
 }
 
 XLA_TEST_F(FusionTest, LesserOrEqual2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kLe);
+  TestElementwise2D<bool, 2>(HloOpcode::kLe);
 }
 
 XLA_TEST_F(FusionTest, Clamp2D) {

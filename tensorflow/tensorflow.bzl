@@ -167,7 +167,7 @@ def tf_copts():
       "-fno-exceptions",
       "-ftemplate-depth=900",
   ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
+      ["-mfpu=neon", "-fomit-frame-pointer"]) + if_linux_x86_64(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",

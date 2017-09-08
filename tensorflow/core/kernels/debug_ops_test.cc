@@ -573,7 +573,8 @@ TEST_F(DebugNumericSummaryOpTest, UInt8Success) {
 
 TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
   TF_ASSERT_OK(Init(DT_BOOL));
-  AddInputFromArray<bool>(TensorShape({2, 3}), {0, 0, 1, 1, 1, 0});
+  AddInputFromArray<bool>(TensorShape({2, 3}),
+                          {false, false, true, true, true, false});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));

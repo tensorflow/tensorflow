@@ -289,7 +289,7 @@ the sparse feature tensors.
 REGISTER_OP("BucketizeWithInputBoundaries")
     .Input("input: T")
     .Input("boundaries: float")
-    .Output("output: int64")
+    .Output("output: int32")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
