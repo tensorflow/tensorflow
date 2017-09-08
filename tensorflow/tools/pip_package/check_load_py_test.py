@@ -45,7 +45,7 @@ def main():
     targets = subprocess.check_output([
         'bazel', 'query',
         'kind(py_test, //tensorflow/contrib/... + '
-        '//tensorflow/python/...)']).strip()
+        '//tensorflow/python/...']).strip()
   except subprocess.CalledProcessError as e:
     targets = e.output
 

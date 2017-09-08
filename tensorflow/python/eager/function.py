@@ -373,6 +373,13 @@ def _defun_internal(name, func, args, kwds):
   """Defines and returns graph-mode version of func."""
   with context.graph_mode():
     tmp_graph = ops.Graph()
+    # Copy the graph collections to ensure summaries and other things work. This
+    # lets the function access (but not mutate) collections of the containing
+    # graph, such as the global step and the summary writer collections.
+    curr_graph = ops.get_default_graph()
+    for collection in curr_graph.collections:
+      tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
+          collection)
     with tmp_graph.as_default():
       func_inputs = _get_defun_inputs(args)
 

@@ -234,7 +234,7 @@ cc_library(
 
 cc_test(
     name = "session_bundle_test",
-    size = "small",
+    size = "medium",
     srcs = ["session_bundle_test.cc"],
     data = [":session_bundle_half_plus_two"],
     # Link in all registered kernels.

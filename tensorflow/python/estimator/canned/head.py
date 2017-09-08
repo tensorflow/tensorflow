@@ -200,8 +200,11 @@ def _check_labels(labels, expected_labels_dimension):
         dim1 = static_shape[1]
         if (dim1 is not None) and (dim1 != expected_labels_dimension):
           raise ValueError(
-              'labels shape must be [batch_size, labels_dimension], got %s.' %
-              (static_shape,))
+              'Mismatched label shape. '
+              'Classifier configured with n_classes=%s.  Received %s. '
+              'Suggested Fix: check your n_classes argument to the estimator '
+              'and/or the shape of your label.' %
+              (expected_labels_dimension, dim1))
       assert_dimension = check_ops.assert_equal(
           expected_labels_dimension, labels_shape[1], message=err_msg)
       with ops.control_dependencies([assert_dimension]):

@@ -201,6 +201,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
 
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
+
   // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
   // treats it as a CUDA kernel.
   llvm::NamedMDNode* nvvm_annotations_node =

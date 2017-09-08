@@ -34,6 +34,9 @@ class HloVerifier : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  // CHECKs various invariants of a fusion instruction.
+  Status CheckFusionInstruction(HloInstruction* fusion) const;
+
   // Returns the size of a Shape in bytes.
   const std::function<int64(const Shape&)> shape_size_fn_;
 };

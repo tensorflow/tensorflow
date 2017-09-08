@@ -847,6 +847,7 @@ cc_test(
     srcs = ["hlo_ordering_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_ordering",
         ":hlo_scheduling",
         "//tensorflow/compiler/xla:shape_util",

@@ -215,9 +215,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 

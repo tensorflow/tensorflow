@@ -96,7 +96,12 @@ void SplitCollectionOperator::AddExample(
 }
 
 bool SplitCollectionOperator::IsInitialized(int32 node_id) const {
-  return stats_.at(node_id)->IsInitialized();
+  auto it = stats_.find(node_id);
+  if (it == stats_.end()) {
+    LOG(WARNING) << "IsInitialized called with unknown node_id = " << node_id;
+    return false;
+  }
+  return it->second->IsInitialized();
 }
 
 void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(

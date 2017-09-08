@@ -548,6 +548,14 @@ class HloInstruction {
   string ToString(bool compact_operands = false,
                   bool include_metadata = true) const;
 
+  // Components of the ToString() representation:
+
+  // Returns a string representation of the operand list.
+  string OperandsToString(bool compact) const;
+
+  // Returns string representation of op-specific attributes.
+  std::vector<string> ExtraAttributesToString() const;
+
   string ToStringNoMetadata() const { return ToString(false, false); }
 
   // As ToString, but returns a shorter string.
@@ -797,8 +805,7 @@ class HloInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Returns the computations this instruction calls (if any). This includes
-  // computations called by fused instructions inside of a fusion instruction.
+  // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
     return called_computations_;
   }
@@ -892,9 +899,6 @@ class HloInstruction {
   // Returns whether we could assign input and output layouts to this
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
-
-  // CHECKs various invariants of a fusion instruction.
-  void CheckFusionInstruction() const;
 
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu

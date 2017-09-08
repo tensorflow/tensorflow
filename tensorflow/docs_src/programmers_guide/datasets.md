@@ -1,4 +1,4 @@
-# Using the `Dataset` API for TensorFlow Input Pipelines
+# Importing Data
 
 The `Dataset` API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
@@ -145,6 +145,9 @@ for i in range(100):
   value = sess.run(next_element)
   assert i == value
 ```
+
+Note: Currently, one-shot iterators are the only type that is easily usable
+with an `Estimator`.
 
 An **initializable** iterator requires you to run an explicit
 `iterator.initializer` operation before using it. In exchange for this
@@ -452,6 +455,9 @@ dataset = dataset.flat_map(
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
 
+For a full example of parsing a CSV file using datasets, see [`imports85.py`](https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py)
+in @{$get_started/linear_regression}.
+
 <!--
 TODO(mrry): Add these sections.
 
@@ -735,7 +741,7 @@ def dataset_input_fn():
 
     return {"image_data": image, "date_time": parsed["date_time"]}, label
 
-  # Use `Dataset.map()` to build a pair of a feature dictionary and a label 
+  # Use `Dataset.map()` to build a pair of a feature dictionary and a label
   # tensor for each example.
   dataset = dataset.map(parser)
   dataset = dataset.shuffle(buffer_size=10000)

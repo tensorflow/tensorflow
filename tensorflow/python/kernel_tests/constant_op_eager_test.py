@@ -26,27 +26,33 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import compat
 
 
-# TODO(josh11b): add tests with string types, lists/tuples, Shape.
+# TODO(josh11b): add tests with lists/tuples, Shape.
 class ConstantTest(test.TestCase):
 
   def _testCpu(self, x):
     np_ans = np.array(x)
-    tf_ans = ops.convert_to_tensor(x).numpy()
+    with context.device("/device:CPU:0"):
+      tf_ans = ops.convert_to_tensor(x).numpy()
     if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
       self.assertAllClose(np_ans, tf_ans)
     else:
       self.assertAllEqual(np_ans, tf_ans)
 
   def _testGpu(self, x):
-    np_ans = np.array(x)
-    tf_ans = ops.convert_to_tensor(x).numpy()
-    if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
-      self.assertAllClose(np_ans, tf_ans)
-    else:
-      self.assertAllEqual(np_ans, tf_ans)
+    device = test_util.gpu_device_name()
+    if device:
+      np_ans = np.array(x)
+      with context.device(device):
+        tf_ans = ops.convert_to_tensor(x).numpy()
+      if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+        self.assertAllClose(np_ans, tf_ans)
+      else:
+        self.assertAllEqual(np_ans, tf_ans)
 
   def _testAll(self, x):
     self._testCpu(x)
@@ -78,11 +84,11 @@ class ConstantTest(test.TestCase):
 
   def testComplex64(self):
     self._testAll(
-        np.complex(1, 2) * np.arange(-15, 15).reshape([2, 3, 5
-                                                      ]).astype(np.complex64))
+        np.complex(1, 2) *
+        np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(
-        np.complex(1, 2) * np.random.normal(size=30).reshape(
-            [2, 3, 5]).astype(np.complex64))
+        np.complex(1, 2) *
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex64))
 
   def testComplex128(self):
@@ -93,6 +99,26 @@ class ConstantTest(test.TestCase):
         np.complex(1, 2) * np.random.normal(size=30).reshape(
             [2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
+
+  def testString(self):
+    val = [compat.as_bytes(str(x)) for x in np.arange(-15, 15)]
+    self._testCpu(np.array(val).reshape([2, 3, 5]))
+    self._testCpu(np.empty((2, 0, 5)).astype(np.str_))
+
+  def testStringWithNulls(self):
+    val = ops.convert_to_tensor(b"\0\0\0\0").numpy()
+    self.assertEqual(len(val), 4)
+    self.assertEqual(val, b"\0\0\0\0")
+
+    val = ops.convert_to_tensor(b"xx\0xx").numpy()
+    self.assertEqual(len(val), 5)
+    self.assertAllEqual(val, b"xx\0xx")
+
+    nested = [[b"\0\0\0\0", b"xx\0xx"], [b"\0_\0_\0_\0", b"\0"]]
+    val = ops.convert_to_tensor(nested).numpy()
+    # NOTE(mrry): Do not use assertAllEqual, because it converts nested to a
+    #   numpy array, which loses the null terminators.
+    self.assertEqual(val.tolist(), nested)
 
   def testExplicitShapeNumPy(self):
     c = constant_op.constant(

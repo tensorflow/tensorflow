@@ -1466,12 +1466,15 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
 
-    if tensor.shape.is_fully_defined():
+    # For now, variant types must be created via zeros_like; as we need to
+    # pass the input variant object to the proper zeros callback.
+
+    if tensor.shape.is_fully_defined() and tensor.dtype != dtypes.variant:
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
 
-    if dtype is not None and dtype != tensor.dtype:
+    if dtype is not None and dtype != tensor.dtype and dtype != dtypes.variant:
       return zeros(
           shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
     else:
