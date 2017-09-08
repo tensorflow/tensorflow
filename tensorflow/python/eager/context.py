@@ -389,3 +389,12 @@ def enable_eager_execution():
   global _default_mode
   assert _default_mode == GRAPH_MODE
   _default_mode = EAGER_MODE
+
+
+def list_devices():
+  """List the names of the devices available to the default context.
+
+  Returns:
+    Names of the available devices, as a `list`.
+  """
+  return context().devices()
