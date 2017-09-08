@@ -955,7 +955,7 @@ def streaming_specificity_at_sensitivity(
 def streaming_sensitivity_at_specificity(
     predictions, labels, specificity, weights=None, num_thresholds=200,
     metrics_collections=None, updates_collections=None, name=None):
-  """Computes the specificity at a given sensitivity.
+  """Computes the sensitivity at a given specificity.
 
   The `streaming_sensitivity_at_specificity` function creates four local
   variables, `true_positives`, `true_negatives`, `false_positives` and
