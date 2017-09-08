@@ -245,6 +245,23 @@ class Context(object):
     # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
     return len(self._devices) - 1
 
+  def add_function_def(self, fdef):
+    """Add a function definition to the context.
+
+    Once added, the function (identified by its name) can be executed like any
+    other operation.
+
+    Args:
+      fdef: A FunctionDef protocol buffer message.
+    """
+    fdef_string = fdef.SerializeToString()
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAddFunctionDef(
+          self._handle,  # pylint: disable=protected-access
+          fdef_string,
+          len(fdef_string),
+          status)
+
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
 

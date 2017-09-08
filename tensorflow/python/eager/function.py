@@ -26,14 +26,12 @@ import threading
 from autograd import core as ag_core
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
@@ -438,20 +436,10 @@ def _cache_key(x):
   return x
 
 
-def register_function_def(fdef):
-  fdef_string = fdef.SerializeToString()
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.TFE_ContextAddFunctionDef(
-        context.get_default_context()._handle,  # pylint: disable=protected-access
-        fdef_string,
-        len(fdef_string),
-        status)
-
-
 def _register_with_name(name, fdef):
   """Registers the function `fdef` with the name `name`."""
   fdef.signature.name = name
-  register_function_def(fdef)
+  context.context().add_function_def(fdef)
 
 
 # TODO(apassos): better error messages for non-hashable arguments.
