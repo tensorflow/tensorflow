@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # Collapse TFGAN into a tiered namespace.
+from tensorflow.contrib.gan.python import features
 from tensorflow.contrib.gan.python import losses
 
 del absolute_import

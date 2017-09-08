@@ -14,6 +14,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":features",
         ":losses",
     ],
 )
@@ -25,6 +26,18 @@ py_library(
     deps = [
         ":losses_impl",
         ":tuple_losses",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "features",
+    srcs = ["python/features/__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":clip_weights",
+        ":conditioning_utils",
+        ":virtual_batchnorm",
         "//tensorflow/python:util",
     ],
 )
@@ -93,6 +106,90 @@ py_test(
         ":tuple_losses",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "conditioning_utils",
+    srcs = ["python/features/conditioning_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "conditioning_utils_test",
+    srcs = ["python/features/conditioning_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":conditioning_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+py_library(
+    name = "virtual_batchnorm",
+    srcs = ["python/features/virtual_batchnorm.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "virtual_batchnorm_test",
+    srcs = ["python/features/virtual_batchnorm_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":virtual_batchnorm",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "clip_weights",
+    srcs = ["python/features/clip_weights.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow/contrib/opt:opt_py"],
+)
+
+py_test(
+    name = "clip_weights_test",
+    srcs = ["python/features/clip_weights_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":clip_weights",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
