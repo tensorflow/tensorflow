@@ -15,28 +15,35 @@ limitations under the License.
 
 package org.tensorflow.contrib.android;
 
+import android.content.Context;
 import android.content.res.AssetManager;
 import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.nio.LongBuffer;
-import java.util.ArrayList;
-import java.util.List;
+
 import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
@@ -46,8 +53,68 @@ import org.tensorflow.TensorFlow;
  * example usage.
  */
 public class TensorFlowInferenceInterface {
-  private static final String TAG = "TensorFlowInferenceInterface";
+  private static final String TAG = "TensorFlowInferenceInt";
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
+
+  /*
+   * Load a TensorFlow model via FileChannel mmap
+   * This requires that assets files are copied to internal storage already
+   * getFileStreamPath() points to that directory; context used must be passed in here
+   *
+   * @param ctx The context to use to load the model file; same as one used to copy files
+   * @param model The filepath to the GraphDef proto representing the model.
+   */
+  public TensorFlowInferenceInterface(Context ctx, String model) {
+    prepareNativeRuntime();
+    File mModelFile = null;
+    this.modelName = model;
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+    MappedByteBuffer buffer = null;
+    FileChannel fileChannel = null;
+    RandomAccessFile raf = null;
+    mModelFile = ctx.getFileStreamPath(model);
+
+    try {
+      raf = new RandomAccessFile(mModelFile, "r");
+      fileChannel = raf.getChannel();
+      buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load model from: " + mModelFile, e);
+
+    }
+
+    try {
+      if (!buffer.isLoaded()) {
+        buffer.load();
+      }
+      byte[] graphDef = new byte[buffer.limit()];
+      buffer.get(graphDef);
+      loadGraph(graphDef, g);
+      Log.i(TAG, "Successfully loaded model from map '" + model + "'");
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load model from '" + model + "'", e);
+    } finally {
+      try {
+
+        raf.close();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to close FileChannel '" + fileChannel + "'", e);
+      }
+      try {
+        //@todo individual exceptions
+        fileChannel.close();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to close RAF '" + fileChannel + "'", e);
+      }
+      if (buffer != null) {
+        buffer.clear();
+        buffer = null;
+      }
+
+    }
+  }
 
   /*
    * Load a TensorFlow model from the AssetManager or from disk if it is not an asset file.
@@ -79,24 +146,24 @@ public class TensorFlowInferenceInterface {
         throw new RuntimeException("Failed to load model from '" + model + "'", e);
       }
     }
-    
+
     try {
       if (VERSION.SDK_INT >= 18) {
         Trace.beginSection("initializeTensorFlow");
         Trace.beginSection("readGraphDef");
       }
-    
+
       // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
       byte[] graphDef = new byte[is.available()];
 
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // readGraphDef.
       }
-      
+
       loadGraph(graphDef, g);
       is.close();
       Log.i(TAG, "Successfully loaded model from '" + model + "'");
-          
+
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // initializeTensorFlow.
       }
@@ -121,13 +188,13 @@ public class TensorFlowInferenceInterface {
     this.g = new Graph();
     this.sess = new Session(g);
     this.runner = sess.runner();
-    
+
     try {
       if (VERSION.SDK_INT >= 18) {
         Trace.beginSection("initializeTensorFlow");
         Trace.beginSection("readGraphDef");
       }
-    
+
       int baosInitSize = is.available() > 16384 ? is.available() : 16384;
       ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
       int numBytesRead;
@@ -143,7 +210,7 @@ public class TensorFlowInferenceInterface {
 
       loadGraph(graphDef, g);
       Log.i(TAG, "Successfully loaded model from the input stream");
-      
+
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // initializeTensorFlow.
       }
@@ -211,7 +278,9 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  /** Returns a reference to the Graph describing the computation run during inference. */
+  /**
+   * Returns a reference to the Graph describing the computation run during inference.
+   */
   public Graph graph() {
     return g;
   }
@@ -225,7 +294,9 @@ public class TensorFlowInferenceInterface {
     return operation;
   }
 
-  /** Returns the last stat summary string if logging is enabled. */
+  /**
+   * Returns the last stat summary string if logging is enabled.
+   */
   public String getStatString() {
     return (runStats == null) ? "" : runStats.summary();
   }
