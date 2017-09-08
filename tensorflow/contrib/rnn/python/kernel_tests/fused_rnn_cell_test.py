@@ -18,23 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
-from tensorflow.contrib.rnn.python.ops import core_rnn
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -48,7 +41,7 @@ class FusedRnnCellTest(test.TestCase):
     with self.test_session() as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890212)
-      cell = core_rnn_cell_impl.BasicRNNCell(10)
+      cell = rnn_cell.BasicRNNCell(10)
       batch_size = 5
       input_size = 20
       timelen = 15
@@ -56,7 +49,7 @@ class FusedRnnCellTest(test.TestCase):
           np.random.randn(timelen, batch_size, input_size))
       with variable_scope.variable_scope("basic", initializer=initializer):
         unpacked_inputs = array_ops.unstack(inputs)
-        outputs, state = core_rnn.static_rnn(
+        outputs, state = rnn.static_rnn(
             cell, unpacked_inputs, dtype=dtypes.float64)
         packed_outputs = array_ops.stack(outputs)
         basic_vars = [
@@ -71,7 +64,8 @@ class FusedRnnCellTest(test.TestCase):
 
       with variable_scope.variable_scope(
           "fused_static", initializer=initializer):
-        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(cell)
+        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(
+            rnn_cell.BasicRNNCell(10))
         outputs, state = fused_cell(inputs, dtype=dtypes.float64)
         fused_static_vars = [
             v for v in variables.trainable_variables()
@@ -92,7 +86,7 @@ class FusedRnnCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "fused_dynamic", initializer=initializer):
         fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(
-            cell, use_dynamic_rnn=True)
+            rnn_cell.BasicRNNCell(10), use_dynamic_rnn=True)
         outputs, state = fused_cell(inputs, dtype=dtypes.float64)
         fused_dynamic_vars = [
             v for v in variables.trainable_variables()
@@ -115,7 +109,8 @@ class FusedRnnCellTest(test.TestCase):
     with self.test_session() as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890213)
-      cell = core_rnn_cell_impl.BasicRNNCell(10)
+      fw_cell = rnn_cell.BasicRNNCell(10)
+      bw_cell = rnn_cell.BasicRNNCell(10)
       batch_size = 5
       input_size = 20
       timelen = 15
@@ -125,8 +120,8 @@ class FusedRnnCellTest(test.TestCase):
       # test bi-directional rnn
       with variable_scope.variable_scope("basic", initializer=initializer):
         unpacked_inputs = array_ops.unstack(inputs)
-        outputs, fw_state, bw_state = core_rnn.static_bidirectional_rnn(
-            cell, cell, unpacked_inputs, dtype=dtypes.float64)
+        outputs, fw_state, bw_state = rnn.static_bidirectional_rnn(
+            fw_cell, bw_cell, unpacked_inputs, dtype=dtypes.float64)
         packed_outputs = array_ops.stack(outputs)
         basic_vars = [
             v for v in variables.trainable_variables()
@@ -140,13 +135,15 @@ class FusedRnnCellTest(test.TestCase):
             gradients_impl.gradients(packed_outputs, basic_vars))
 
       with variable_scope.variable_scope("fused", initializer=initializer):
-        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(cell)
-        fused_bw_cell = fused_rnn_cell.TimeReversedFusedRNN(fused_cell)
+        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(
+            rnn_cell.BasicRNNCell(10))
+        fused_bw_cell = fused_rnn_cell.TimeReversedFusedRNN(
+            fused_rnn_cell.FusedRNNCellAdaptor(rnn_cell.BasicRNNCell(10)))
         fw_outputs, fw_state = fused_cell(
             inputs, dtype=dtypes.float64, scope="fw")
         bw_outputs, bw_state = fused_bw_cell(
             inputs, dtype=dtypes.float64, scope="bw")
-        outputs = array_ops.concat_v2([fw_outputs, bw_outputs], 2)
+        outputs = array_ops.concat([fw_outputs, bw_outputs], 2)
         fused_vars = [
             v for v in variables.trainable_variables()
             if v.name.startswith("fused/")

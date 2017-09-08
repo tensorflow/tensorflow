@@ -22,12 +22,29 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace test {
 namespace function {
+
+// A helper class to make AttrSlice from initializer lists
+class Attrs {
+ public:
+  Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
+        std::pair<string, FunctionDefHelper::AttrValueWrapper>>& attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
+  operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
+
+ private:
+  AttrValueMap map_;
+};
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
@@ -60,6 +77,8 @@ FunctionDef NonZero();
 
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();
+
+void FunctionTestSchedClosure(std::function<void()> fn);
 
 }  // end namespace function
 }  // end namespace test

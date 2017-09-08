@@ -34,20 +34,25 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSlice<GPUDevice, T, 4>;       \
   template struct functor::StridedSlice<GPUDevice, T, 5>;       \
   template struct functor::StridedSlice<GPUDevice, T, 6>;       \
+  template struct functor::StridedSlice<GPUDevice, T, 7>;       \
   template struct functor::StridedSliceGrad<GPUDevice, T, 1>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 2>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 3>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 4>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 5>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 6>;   \
+  template struct functor::StridedSliceGrad<GPUDevice, T, 7>;   \
   template struct functor::StridedSliceAssign<GPUDevice, T, 1>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 2>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 3>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 4>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 5>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 6>; \
+  template struct functor::StridedSliceAssign<GPUDevice, T, 7>; \
   template struct functor::StridedSliceAssignScalar<GPUDevice, T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_complex64(DEFINE_GPU_KERNELS);
+TF_CALL_complex128(DEFINE_GPU_KERNELS);
 DEFINE_GPU_KERNELS(int32);
 
 #undef DEFINE_GPU_KERNELS

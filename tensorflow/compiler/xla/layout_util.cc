@@ -23,7 +23,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -39,35 +38,17 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using DimensionOrder = legacy_flags::DefaultLayout::DimensionOrder;
-
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
 void SetDefaultLayoutToContainer(
     tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
         minor_to_major) {
+  // The default XLA layout is major-to-minor (dim 0 is major).
+  // For more information on XLA layouts, see:
+  // https://www.tensorflow.org/performance/xla/shapes
   const int64 size = minor_to_major->size();
-  legacy_flags::LayoutUtilFlags* flags = legacy_flags::GetLayoutUtilFlags();
-  auto default_layout = flags->xla_default_layout;
-  switch (default_layout.dimension_order) {
-    case DimensionOrder::kMajorToMinor:
-      for (int64 i = 0; i < size; ++i) {
-        minor_to_major->Set(i, size - 1 - i);
-      }
-      break;
-    case DimensionOrder::kMinorToMajor:
-      for (int64 i = 0; i < size; ++i) {
-        minor_to_major->Set(i, i);
-      }
-      break;
-    case DimensionOrder::kRandom:
-      for (int64 i = 0; i < size; ++i) {
-        minor_to_major->Set(i, i);
-      }
-      std::shuffle(
-          minor_to_major->begin(), minor_to_major->end(),
-          std::mt19937(default_layout.seed != 0 ? default_layout.seed
-                                                : std::random_device()()));
+  for (int64 i = 0; i < size; ++i) {
+    minor_to_major->Set(i, size - 1 - i);
   }
 }
 
@@ -152,7 +133,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   } else {
     // Array shape.
     if (!shape.has_layout()) {
-      return InvalidArgument("shape does not have a layout");
+      return InvalidArgument("shape %s does not have a layout",
+                             ShapeUtil::HumanString(shape).c_str());
     }
     return ValidateLayoutForShape(shape.layout(), shape);
   }
@@ -303,16 +285,25 @@ namespace {
 
 // Internal helper for recursively copying layouts.
 tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+  if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
+    return InvalidArgument(
+        "cannot copy layout from shape: shape structure differs");
+  }
   if (ShapeUtil::IsTuple(src)) {
-    DCHECK(ShapeUtil::IsTuple(*dst));
-    DCHECK_EQ(ShapeUtil::TupleElementCount(src),
-              ShapeUtil::TupleElementCount(*dst));
+    if (ShapeUtil::TupleElementCount(src) !=
+        ShapeUtil::TupleElementCount(*dst)) {
+      return InvalidArgument(
+          "cannot copy layout from shape: tuple element count differs");
+    }
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
       TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
                                             dst->mutable_tuple_shapes(i)));
     }
   } else {
     if (src.has_layout()) {
+      if (ShapeUtil::Rank(src) != ShapeUtil::Rank(*dst)) {
+        return InvalidArgument("cannot copy layout from shape: ranks differs");
+      }
       TF_RETURN_IF_ERROR(
           LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
       *dst->mutable_layout() = src.layout();
@@ -328,13 +319,6 @@ tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
 /* static */
 tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
                                                        Shape* dst) {
-  if (!ShapeUtil::Compatible(src, *dst)) {
-    return InvalidArgument(
-        "cannot copy layout from shape %s to shape %s: "
-        "shapes are not compatible",
-        ShapeUtil::HumanString(src).c_str(),
-        ShapeUtil::HumanString(*dst).c_str());
-  }
   return CopyLayoutInternal(src, dst);
 }
 
@@ -355,9 +339,25 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
     }
     return true;
   } else {
-    return ShapeUtil::SameDimensions(lhs, rhs) &&
+    return ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
            LayoutUtil::Equal(lhs.layout(), rhs.layout());
   }
+}
+
+/* static */ bool LayoutUtil::AreDimensionsConsecutive(
+    const Layout& layout, tensorflow::gtl::ArraySlice<int64> dims) {
+  std::vector<int64> positions_in_layout;
+  for (int64 dim : dims) {
+    positions_in_layout.push_back(
+        PositionInContainer(layout.minor_to_major(), dim));
+  }
+  std::sort(positions_in_layout.begin(), positions_in_layout.end());
+  for (size_t i = 1; i < positions_in_layout.size(); ++i) {
+    if (1 != positions_in_layout[i] - positions_in_layout[i - 1]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace xla

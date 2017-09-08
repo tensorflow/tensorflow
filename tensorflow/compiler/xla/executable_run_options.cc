@@ -67,4 +67,24 @@ const Eigen::ThreadPoolDevice* ExecutableRunOptions::intra_op_thread_pool()
   return intra_op_thread_pool_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_execution_profile(
+    ExecutionProfile* profile) {
+  execution_profile_ = profile;
+  return *this;
+}
+
+ExecutionProfile* ExecutableRunOptions::execution_profile() const {
+  return execution_profile_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
+    DeviceAssignment* device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
+DeviceAssignment* ExecutableRunOptions::device_assignment() const {
+  return device_assignment_;
+}
+
 }  // namespace xla

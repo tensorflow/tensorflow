@@ -1,0 +1,16 @@
+index.md
+using_gpu.md
+image_recognition.md
+image_retraining.md
+layers.md
+deep_cnn.md
+word2vec.md
+recurrent.md
+seq2seq.md
+linear.md
+wide.md
+wide_and_deep.md
+kernel_methods.md
+audio_recognition.md
+mandelbrot.md
+pdes.md

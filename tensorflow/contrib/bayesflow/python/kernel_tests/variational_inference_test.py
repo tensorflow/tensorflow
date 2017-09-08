@@ -18,27 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib import layers
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
-from tensorflow.contrib.bayesflow.python.ops import variational_inference
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
-from tensorflow.contrib.distributions.python.ops import normal
+from tensorflow.contrib.bayesflow.python.ops import variational_inference_impl
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.ops.distributions import normal
 from tensorflow.python.platform import test
 
 st = stochastic_tensor
-vi = variational_inference
+vi = variational_inference_impl
 distributions = distributions_lib
 
 
@@ -59,12 +52,12 @@ def generative_net(z, data_size):
 
 def mini_vae():
   x = [[-6., 3., 6.], [-8., 4., 8.]]
-  prior = distributions.Normal(mu=0., sigma=1.)
+  prior = distributions.Normal(loc=0., scale=1.)
   variational = st.StochasticTensor(
       distributions.Normal(
-          mu=inference_net(x, 1), sigma=1.))
+          loc=inference_net(x, 1), scale=1.))
   vi.register_prior(variational, prior)
-  px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
+  px = distributions.Normal(loc=generative_net(variational, 3), scale=1.)
   log_likelihood = math_ops.reduce_sum(px.log_prob(x), 1)
   log_likelihood = array_ops.expand_dims(log_likelihood, -1)
   return x, prior, variational, px, log_likelihood
@@ -75,7 +68,7 @@ class VariationalInferenceTest(test.TestCase):
   def testDefaultVariationalAndPrior(self):
     _, prior, variational, _, log_likelihood = mini_vae()
     elbo = vi.elbo(log_likelihood)
-    expected_elbo = log_likelihood - kullback_leibler.kl(
+    expected_elbo = log_likelihood - kullback_leibler.kl_divergence(
         variational.distribution, prior)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -84,10 +77,10 @@ class VariationalInferenceTest(test.TestCase):
   def testExplicitVariationalAndPrior(self):
     with self.test_session() as sess:
       _, _, variational, _, log_likelihood = mini_vae()
-      prior = normal.Normal(mu=3., sigma=2.)
+      prior = normal.Normal(loc=3., scale=2.)
       elbo = vi.elbo(
           log_likelihood, variational_with_prior={variational: prior})
-      expected_elbo = log_likelihood - kullback_leibler.kl(
+      expected_elbo = log_likelihood - kullback_leibler.kl_divergence(
           variational.distribution, prior)
       sess.run(variables.global_variables_initializer())
       self.assertAllEqual(*sess.run([expected_elbo, elbo]))
@@ -121,14 +114,14 @@ class VariationalInferenceTest(test.TestCase):
     prior = distributions.Bernoulli(0.5)
     variational = st.StochasticTensor(
         NormalNoEntropy(
-            mu=inference_net(x, 1), sigma=1.))
+            loc=inference_net(x, 1), scale=1.))
     vi.register_prior(variational, prior)
-    px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
+    px = distributions.Normal(loc=generative_net(variational, 3), scale=1.)
     log_likelihood = math_ops.reduce_sum(px.log_prob(x), 1)
 
     # No analytic KL available between prior and variational distributions.
     with self.assertRaisesRegexp(NotImplementedError, "No KL"):
-      distributions.kl(variational.distribution, prior)
+      distributions.kl_divergence(variational.distribution, prior)
 
     elbo = vi.elbo(
         variational_with_prior={variational: prior},

@@ -46,6 +46,16 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
+  // Output fusion is not currently supported on GPUs.
+  if (producer->opcode() == HloOpcode::kFusion) {
+    return false;
+  }
+
+  // RNG operations are not currently parallel-friendly on GPU.
+  if (producer->opcode() == HloOpcode::kRng) {
+    return false;
+  }
+
   // Do not fuse to-vector reduction into other consumers. They should be
   // unfused or the root of a kInput fusion.
   if (IsReductionToVector(*producer)) {

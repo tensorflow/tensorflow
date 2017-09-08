@@ -27,8 +27,6 @@ limitations under the License.
 namespace tensorflow {
 namespace strings {
 
-AlphaNum gEmptyAlphaNum("");
-
 AlphaNum::AlphaNum(const Eigen::half &f)
     : piece_(digits_, strlen(FloatToBuffer(static_cast<float>(f), digits_))) {}
 
@@ -40,7 +38,7 @@ AlphaNum::AlphaNum(Hex hex) {
   // We accomplish minimum width by OR'ing in 0x10000 to the user's value,
   // where 0x10000 is the smallest hex number that is as wide as the user
   // asked for.
-  uint64 mask = ((static_cast<uint64>(1) << (width - 1) * 4)) | value;
+  uint64 mask = (static_cast<uint64>(1) << (width - 1) * 4) | value;
   static const char hexdigits[] = "0123456789abcdef";
   do {
     *--writer = hexdigits[value & 0xF];

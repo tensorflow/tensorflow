@@ -14,11 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/no_op.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
 
-REGISTER_XLA_OP("NoOp", NoOp);
+// XLA_* devices also register a "real" NoOp operator so we suppress the
+// dummy operator using CompilationOnly().
+REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
+
+// We register ControlTrigger as a no-op. This is correct since nodes seen
+// by the XLA compiler are never dead. This may need rethinking when we add
+// support for conditionals to XLA.
+REGISTER_XLA_OP(Name("ControlTrigger"), NoOp);
 
 }  // namespace tensorflow

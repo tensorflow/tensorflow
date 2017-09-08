@@ -131,7 +131,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENETUNREACH:   // Network unreachable
     case ENOLCK:        // No locks available
     case ENOLINK:       // Link has been severed
-#if !(defined(__APPLE__) || defined(_WIN32))
+#if !(defined(__APPLE__) || defined(__FreeBSD__) || defined(_WIN32))
     case ENONET:  // Machine is not on the network
 #endif
       code = error::UNAVAILABLE;
@@ -171,11 +171,7 @@ error::Code ErrnoToCode(int err_number) {
 
 Status IOError(const string& context, int err_number) {
   auto code = ErrnoToCode(err_number);
-  if (code == error::UNKNOWN) {
-    return Status(code, strings::StrCat(context, "; ", strerror(err_number)));
-  } else {
-    return Status(code, context);
-  }
+  return Status(code, strings::StrCat(context, "; ", strerror(err_number)));
 }
 
 }  // namespace tensorflow

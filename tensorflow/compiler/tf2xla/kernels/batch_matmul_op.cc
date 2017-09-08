@@ -18,8 +18,8 @@ limitations under the License.
 // dimension.
 // TODO(dominikg,phawkins): Use a real batched matmul instead of unrolling.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {
@@ -94,12 +94,14 @@ class BatchMatMulOp : public XlaOpKernel {
       // Slice off individual matrices and reshape to 2D tensors.
       auto x_slice = builder->Slice(
           x_flat, {i, 0, 0},
-          {i + 1, x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)});
+          {i + 1, x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)},
+          {1, 1, 1});
       x_slice = builder->Reshape(
           x_slice, {x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)});
       auto y_slice = builder->Slice(
           y_flat, {i, 0, 0},
-          {i + 1, y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)});
+          {i + 1, y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)},
+          {1, 1, 1});
       y_slice = builder->Reshape(
           y_slice, {y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)});
 
@@ -135,7 +137,7 @@ class BatchMatMulOp : public XlaOpKernel {
   bool adj_y_;
 };
 
-REGISTER_XLA_OP("BatchMatMul", BatchMatMulOp);
+REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

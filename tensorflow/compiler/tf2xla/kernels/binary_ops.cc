@@ -16,8 +16,8 @@ limitations under the License.
 // Native XLA implementations of simple unary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -28,10 +28,10 @@ namespace {
 // A subclass of a XlaBinaryOp must build the computation that
 // describes the (tensor,tensor)->tensor function to apply to each element of
 // the input.
-#define XLA_MAKE_BINARY(Name, HLO)                                      \
-  class Name##Op : public XlaBinaryOp {                                 \
+#define XLA_MAKE_BINARY(NAME, HLO)                                      \
+  class NAME##Op : public XlaBinaryOp {                                 \
    public:                                                              \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}  \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}  \
     xla::ComputationDataHandle Computation(                             \
         XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs, \
         const gtl::ArraySlice<int64>& lhs_shape,                        \
@@ -43,7 +43,7 @@ namespace {
       return HLO;                                                       \
     }                                                                   \
   };                                                                    \
-  REGISTER_XLA_OP(#Name, Name##Op)
+  REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, b->Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, b->Sub(lhs, rhs, extend_dimensions));
@@ -102,11 +102,16 @@ XLA_MAKE_BINARY(Mod, b->Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Maximum, b->Max(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Minimum, b->Min(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(RealDiv, b->Div(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(ReciprocalGrad, b->Neg(b->Mul(rhs, b->Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
     b->Mul(b->Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
            b->Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
            extend_dimensions));
+XLA_MAKE_BINARY(SqrtGrad,
+                b->Div(b->Mul(rhs,
+                              XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                       lhs, extend_dimensions));
 
 static xla::ComputationDataHandle Square(xla::ComputationBuilder* builder,
                                          const xla::ComputationDataHandle& x) {
@@ -127,32 +132,45 @@ XLA_MAKE_BINARY(GreaterEqual, b->Ge(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Less, b->Lt(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(LessEqual, b->Le(lhs, rhs, extend_dimensions));
 
+// Non-linear ops
+XLA_MAKE_BINARY(SigmoidGrad,
+                b->Mul(b->Mul(rhs, lhs),
+                       b->Sub(XlaHelpers::One(b, input_type(0)), lhs)));
+
+XLA_MAKE_BINARY(SoftplusGrad,
+                b->Div(lhs, b->Add(b->Exp(b->Neg(rhs)),
+                                   XlaHelpers::One(b, input_type(1)))));
+
+// softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
+XLA_MAKE_BINARY(SoftsignGrad,
+                b->Div(lhs, Square(b, b->Add(XlaHelpers::One(b, input_type(0)),
+                                             b->Abs(rhs)))));
+
+XLA_MAKE_BINARY(TanhGrad, b->Mul(rhs, b->Sub(XlaHelpers::One(b, input_type(0)),
+                                             b->Mul(lhs, lhs))));
+
+XLA_MAKE_BINARY(Pow, b->Pow(lhs, rhs, extend_dimensions));
+
 #undef XLA_MAKE_BINARY
 
-#define XLA_MAKE_BINARY_MAP(Name, HLO)                                    \
-  class Name##Op : public XlaBinaryMapOp {                                \
-   public:                                                                \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaBinaryMapOp(ctx) {} \
-    void BuildMapLambda(xla::ComputationBuilder* b,                       \
-                        const xla::ComputationDataHandle& lhs,            \
-                        const xla::ComputationDataHandle& rhs) override { \
-      HLO;                                                                \
-    }                                                                     \
-  };                                                                      \
-  REGISTER_XLA_OP(#Name, Name##Op)
+class ApproximateEqualOp : public XlaOpKernel {
+ public:
+  explicit ApproximateEqualOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tolerance", &tolerance_));
+  }
 
-XLA_MAKE_BINARY_MAP(Pow, b->Pow(lhs, rhs));
-XLA_MAKE_BINARY_MAP(SigmoidGrad,
-                    b->Mul(b->Mul(rhs, lhs),
-                           b->Sub(XlaHelpers::One(b, input_type(0)), lhs)));
-XLA_MAKE_BINARY_MAP(SoftplusGrad,
-                    b->Div(lhs, b->Add(b->Exp(b->Neg(rhs)),
-                                       XlaHelpers::One(b, input_type(1)))));
-XLA_MAKE_BINARY_MAP(TanhGrad,
-                    b->Mul(rhs, b->Sub(XlaHelpers::One(b, input_type(0)),
-                                       b->Mul(lhs, lhs))));
+  // Computes the max of the scalar input x and 0.
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* b = ctx->builder();
+    auto result = b->Lt(b->Abs(b->Sub(ctx->Input(0), ctx->Input(1))),
+                        XlaHelpers::FloatLiteral(b, input_type(0), tolerance_));
+    ctx->SetOutput(0, result);
+  }
 
-#undef XLA_MAKE_BINARY_MAP
+ private:
+  float tolerance_;
+};
+REGISTER_XLA_OP(Name("ApproximateEqual"), ApproximateEqualOp);
 
 }  // namespace
 }  // namespace tensorflow

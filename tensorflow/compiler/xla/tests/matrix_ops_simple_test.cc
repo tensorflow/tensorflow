@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -87,8 +86,8 @@ TEST_F(MatOpsSimpleTest, ExpTwoByTwoValues) {
   builder.Exp(data);
 
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2<float>({{2.71828, 1.00000},    // row 0
-                                    {0.36788, 1.64872}});  // row 1
+      Literal::CreateR2<float>({{2.71828, 1.00000},    // row 0
+                                {0.36788, 1.64872}});  // row 1
 
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
@@ -115,8 +114,8 @@ TEST_F(MatOpsSimpleTest, MapTwoByTwo) {
   auto map = builder.Map({data}, add_half);
 
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2<float>({{1.5, 0.5},     // row 0
-                                    {-0.5, 1.0}});  // row 1
+      Literal::CreateR2<float>({{1.5, 0.5},     // row 0
+                                {-0.5, 1.0}});  // row 1
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
@@ -133,8 +132,8 @@ TEST_F(MatOpsSimpleTest, MaxTwoByTwoValues) {
   auto max = builder.Max(lhs, rhs);
 
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2<float>({{7.0, 6.0},     // row 0
-                                    {3.0, -4.0}});  // row 1
+      Literal::CreateR2<float>({{7.0, 6.0},     // row 0
+                                {3.0, -4.0}});  // row 1
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6));
 }
 
@@ -158,22 +157,69 @@ TEST_F(MatOpsSimpleTest, Max32x8Linspace) { TestLinspaceMax(32, 8); }
 
 TEST_F(MatOpsSimpleTest, Max64x8Linspace) { TestLinspaceMax(64, 8); }
 
+class MatOpsDotAddTest
+    : public ClientLibraryTestBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {};
+
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2) {
+  bool row_major = std::get<0>(GetParam());
+  bool add_lhs = std::get<1>(GetParam());
+  bool transpose = std::get<2>(GetParam());
+  Array2D<float> lhs({{1.0, 2.0}, {3.0, 4.0}});
+  Array2D<float> rhs({{10.0, 11.0}, {12.0, 13.0}});
+
+  auto minor_to_major = [](bool row_major) -> std::vector<int64> {
+    return {row_major ? 1 : 0, row_major ? 0 : 1};
+  };
+
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+  Shape lhs_shape =
+      ShapeUtil::MakeShape(prim_type, {lhs.height(), lhs.width()});
+  Shape rhs_shape =
+      ShapeUtil::MakeShape(prim_type, {rhs.height(), rhs.width()});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto lhs_handle,
+      client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<float>(
+          lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto rhs_handle,
+      client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<float>(
+          rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs_arg = builder.Parameter(0, lhs_shape, "lhs");
+  auto lhs_mat_arg = lhs_arg;
+  if (transpose) {
+    lhs_mat_arg = builder.Transpose(lhs_mat_arg, {1, 0});
+  }
+  auto rhs_arg = builder.Parameter(1, rhs_shape, "rhs");
+  auto result = builder.Dot(lhs_mat_arg, rhs_arg);
+  Array2D<float> expected;
+  if (add_lhs) {
+    result = builder.Add(result, lhs_arg);
+    if (transpose) {
+      expected = Array2D<float>({{47, 52}, {71, 78}});
+    } else {
+      expected = Array2D<float>({{35, 39}, {81, 89}});
+    }
+  } else {
+    result = builder.Add(result, rhs_arg);
+    if (transpose) {
+      expected = Array2D<float>({{56, 61}, {80, 87}});
+    } else {
+      expected = Array2D<float>({{44, 48}, {90, 98}});
+    }
+  }
+
+  ComputeAndCompareR2<float>(&builder, expected,
+                             {lhs_handle.get(), rhs_handle.get()},
+                             ErrorSpec(1e-6));
+}
+
+INSTANTIATE_TEST_CASE_P(MatOpsDotAddTestInstances, MatOpsDotAddTest,
+                        ::testing::Combine(::testing::Bool(), ::testing::Bool(),
+                                           ::testing::Bool()));
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

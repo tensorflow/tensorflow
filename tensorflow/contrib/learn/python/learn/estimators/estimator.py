@@ -20,33 +20,27 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import copy
-import inspect
-import itertools
 import os
 import tempfile
-import time
 
 import numpy as np
 import six
 
-from tensorflow.contrib import framework as contrib_framework
+from google.protobuf import message
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.framework.python.framework import experimental
-from tensorflow.contrib.framework.python.ops import ops as contrib_ops
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -55,27 +49,32 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedE
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.contrib.meta_graph_transform import meta_graph_transform
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import summary_io
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -90,6 +89,24 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
     'available in the SKCompat class, Estimator will only accept input_fn.\n'
     'Example conversion:\n'
     '  est = Estimator(...) -> est = SKCompat(Estimator(...))')
+
+
+def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
+  """Verifies validity of co-existence of input arguments."""
+  if input_fn is None:
+    if x is None:
+      raise ValueError('Either x or input_fn must be provided.')
+
+    if tensor_util.is_tensor(x) or y is not None and tensor_util.is_tensor(y):
+      raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
+
+    if feed_fn is not None:
+      raise ValueError('Can not provide both feed_fn and x or y.')
+  else:
+    if (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and x or y.')
+    if batch_size is not None:
+      raise ValueError('Can not provide both input_fn and batch_size.')
 
 
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
@@ -110,29 +127,17 @@ def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
   Raises:
     ValueError: Only one of `(x & y)` or `input_fn` must be provided.
   """
-  if input_fn is None:
-    if x is None:
-      raise ValueError('Either x or input_fn must be provided.')
-
-    if contrib_framework.is_tensor(x) or (y is not None and
-                                          contrib_framework.is_tensor(y)):
-      raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
-
-    if feed_fn is not None:
-      raise ValueError('Can not provide both feed_fn and x or y.')
-
-    df = data_feeder.setup_train_data_feeder(x, y, n_classes=None,
-                                             batch_size=batch_size,
-                                             shuffle=shuffle,
-                                             epochs=epochs)
-    return df.input_builder, df.get_feed_dict_fn()
-
-  if (x is not None) or (y is not None):
-    raise ValueError('Can not provide both input_fn and x or y.')
-  if batch_size is not None:
-    raise ValueError('Can not provide both input_fn and batch_size.')
-
-  return input_fn, feed_fn
+  _verify_input_args(x, y, input_fn, feed_fn, batch_size)
+  if input_fn is not None:
+    return input_fn, feed_fn
+  df = data_feeder.setup_train_data_feeder(
+      x,
+      y,
+      n_classes=None,
+      batch_size=batch_size,
+      shuffle=shuffle,
+      epochs=epochs)
+  return df.input_builder, df.get_feed_dict_fn()
 
 
 def infer_real_valued_columns_from_input_fn(input_fn):
@@ -172,17 +177,27 @@ def infer_real_valued_columns_from_input(x):
   return infer_real_valued_columns_from_input_fn(input_fn)
 
 
-def _get_arguments(func):
-  """Returns list of arguments this function has."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func).args
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  _, fn = tf_decorator.unwrap(fn)
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _get_replica_device_setter(config):
@@ -196,7 +211,9 @@ def _get_replica_device_setter(config):
   """
   ps_ops = [
       'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+      'MutableHashTableV2', 'MutableHashTableOfTensors',
+      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
+      'MutableDenseHashTableV2'
   ]
 
   if config.task_type:
@@ -298,12 +315,18 @@ def _dict_to_str(dictionary):
   Returns:
     A `str` representing the `dictionary`.
   """
-  return ', '.join('%s = %s' % (k, v) for k, v in sorted(dictionary.items()))
+  results = []
+  for k, v in sorted(dictionary.items()):
+    if isinstance(v, float) or isinstance(v, np.float32) or isinstance(
+        v, int) or isinstance(v, np.int64) or isinstance(v, np.int32):
+      results.append('%s = %s' % (k, v))
+    else:
+      results.append('Type of %s = %s' % (k, type(v)))
+
+  return ', '.join(results)
 
 
-def _write_dict_to_summary(output_dir,
-                           dictionary,
-                           current_global_step):
+def _write_dict_to_summary(output_dir, dictionary, current_global_step):
   """Writes a `dict` into summary file in given output directory.
 
   Args:
@@ -311,41 +334,54 @@ def _write_dict_to_summary(output_dir,
     dictionary: the `dict` to be written to summary file.
     current_global_step: `int`, the current global step.
   """
-  logging.info(
-      'Saving dict for global step %d: %s' %
-      (current_global_step, _dict_to_str(dictionary)))
-  summary_writer = summary_io.SummaryWriterCache.get(output_dir)
+  logging.info('Saving dict for global step %d: %s', current_global_step,
+               _dict_to_str(dictionary))
+  summary_writer = core_summary.FileWriterCache.get(output_dir)
   summary_proto = summary_pb2.Summary()
   for key in dictionary:
     if dictionary[key] is None:
       continue
-    value = summary_proto.value.add()
-    value.tag = key
+    if key == 'global_step':
+      continue
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
-      value.simple_value = float(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=float(dictionary[key]))
+    elif (isinstance(dictionary[key], np.int64) or
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
+      summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
+    elif isinstance(dictionary[key], six.string_types):
+      try:
+        summ = summary_pb2.Summary.FromString(dictionary[key])
+        for i, _ in enumerate(summ.value):
+          summ.value[i].tag = key
+        summary_proto.value.extend(summ.value)
+      except message.DecodeError:
+        logging.warn('Skipping summary for %s, cannot parse string to Summary.',
+                     key)
+        continue
     else:
-      logging.warn('Skipping summary for %s, must be a float or np.float32.',
-                   key)
+      logging.warn(
+          'Skipping summary for %s, must be a float, np.float32, np.int64, '
+          'np.int32 or int or a serialized string of Summary.', key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
+
+
+GraphRewriteSpec = collections.namedtuple('GraphRewriteSpec',
+                                          ['tags', 'transforms'])
 
 
 class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Concrete implementation of this class should provide the following functions:
-
-    * _get_train_ops
-    * _get_eval_ops
-    * _get_predict_ops
-
-  `Estimator` implemented below is a good example of how to use this class.
+  Users should not instantiate or subclass this class. Instead, use an
+  `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
-  # Note that for Google users, this is overriden with
+  # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
@@ -356,22 +392,40 @@ class BaseEstimator(
     Args:
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same.
       config: A RunConfig instance.
     """
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
-
     # Create a run configuration.
     if config is None:
       self._config = BaseEstimator._Config()
       logging.info('Using default config.')
     else:
       self._config = config
+
+    if self._config.session_config is None:
+      self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    else:
+      self._session_config = self._config.session_config
+
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # TODO(b/9965722): remove this suppression after it is no longer
+        #                  necessary.
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
@@ -404,15 +458,25 @@ class BaseEstimator(
     """
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
+    _verify_input_args(x, y, input_fn, None, batch_size)
+    if x is not None:
+      SKCompat(self).fit(x, y, batch_size, steps, max_steps, monitors)
+      return self
 
-    input_fn, feed_fn = _get_input_fn(x, y, input_fn, feed_fn=None,
-                                      batch_size=batch_size, shuffle=True,
-                                      epochs=None)
-    loss = self._train_model(input_fn=input_fn,
-                             feed_fn=feed_fn,
-                             steps=steps,
-                             monitors=monitors,
-                             max_steps=max_steps)
+    if max_steps is not None:
+      try:
+        start_step = load_variable(self._model_dir, ops.GraphKeys.GLOBAL_STEP)
+        if max_steps <= start_step:
+          logging.info('Skipping training since max_steps has already saved.')
+          return self
+      except:  # pylint: disable=bare-except
+        pass
+
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+    if steps is not None or max_steps is not None:
+      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+
+    loss = self._train_model(input_fn=input_fn, hooks=hooks)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -485,9 +549,10 @@ class BaseEstimator(
           `input_fn` or `feed_fn` is provided.
           Or if `metrics` is not `None` or `dict`.
     """
-    input_fn, feed_fn = _get_input_fn(x, y, input_fn=input_fn,
-                                      feed_fn=feed_fn, batch_size=batch_size,
-                                      shuffle=False, epochs=1)
+    _verify_input_args(x, y, input_fn, feed_fn, batch_size)
+    if x is not None:
+      return SKCompat(self).score(x, y, batch_size, steps, metrics, name)
+
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
@@ -537,11 +602,15 @@ class BaseEstimator(
     Raises:
       ValueError: If x and input_fn are both provided or both `None`.
     """
-    input_fn, feed_fn = _get_input_fn(
-        x, None, input_fn=input_fn, feed_fn=None, batch_size=batch_size,
-        shuffle=False, epochs=1)
+    _verify_input_args(x, None, input_fn, None, batch_size)
+    if x is not None and not as_iterable:
+      return SKCompat(self).predict(x, batch_size)
+
+    input_fn, feed_fn = _get_input_fn(x, None, input_fn, None, batch_size)
     return self._infer_model(
-        input_fn=input_fn, feed_fn=feed_fn, outputs=outputs,
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   def get_variable_value(self, name):
@@ -567,15 +636,7 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  @deprecated_arg_values(
-      '2016-09-23',
-      'The signature of the input_fn accepted by export is changing to be '
-      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-      'input_fn (and in most cases, input_feature_key) will become required '
-      'args, and use_deprecated_input_fn will default to False and be removed '
-      'altogether.',
-      use_deprecated_input_fn=True,
-      input_fn=None)
+  @deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
   def export(self,
              export_dir,
              input_fn=export._default_input_fn,  # pylint: disable=protected-access
@@ -584,7 +645,8 @@ class BaseEstimator(
              signature_fn=None,
              prediction_key=None,
              default_batch_size=1,
-             exports_to_keep=None):
+             exports_to_keep=None,
+             checkpoint_path=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -611,6 +673,9 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+      checkpoint_path: the checkpoint path of the model to be exported. If it is
+          `None` (which is default), will use the latest checkpoint in
+          export_dir.
 
     Returns:
       The string path to the exported directory. NB: this functionality was
@@ -628,7 +693,8 @@ class BaseEstimator(
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
+        exports_to_keep=exports_to_keep,
+        checkpoint_path=checkpoint_path)
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
@@ -660,7 +726,7 @@ class BaseEstimator(
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -728,91 +794,6 @@ class BaseEstimator(
         self._labels_info = tensor_signature.create_signatures(labels)
         logging.debug('Setting labels info to %s', str(self._labels_info))
 
-  def _train_model(self,
-                   input_fn,
-                   steps,
-                   feed_fn=None,
-                   init_op=None,
-                   init_feed_fn=None,
-                   init_fn=None,
-                   device_fn=None,
-                   monitors=None,
-                   log_every_steps=100,
-                   fail_on_nan_loss=True,
-                   max_steps=None):
-    # TODO(wicke): Remove this once Model and associated code are gone.
-    if hasattr(self._config, 'execution_mode'):
-      if self._config.execution_mode not in ('all', 'train'):
-        return
-
-      # Stagger startup of worker sessions based on task id.
-      sleep_secs = min(
-          self._config.training_worker_max_startup_secs,
-          self._config.task_id *
-          self._config.training_worker_session_startup_stagger_secs)
-      if sleep_secs:
-        logging.info('Waiting %d secs before starting task %d.', sleep_secs,
-                     self._config.task_id)
-        time.sleep(sleep_secs)
-
-    # Device allocation
-    device_fn = device_fn or self._device_fn
-
-    self._graph = ops.Graph()
-    with self._graph.as_default() as g, g.device(device_fn):
-      random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
-      features, labels = input_fn()
-      self._check_inputs(features, labels)
-
-      # The default return type of _get_train_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_train_ops returns a
-      # (train_op, loss) tuple. The following else-statement code covers these
-      # cases, but will soon be deleted after the subclasses are updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
-      train_ops = self._get_train_ops(features, labels)
-      if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-        train_op = train_ops.train_op
-        loss_op = train_ops.loss
-        if self.config.is_chief:
-          hooks = train_ops.training_chief_hooks + train_ops.training_hooks
-        else:
-          hooks = train_ops.training_hooks
-      else:  # Legacy signature
-        if len(train_ops) != 2:
-          raise ValueError('Expected a tuple of train_op and loss, got {}'.
-                           format(train_ops))
-        train_op = train_ops[0]
-        loss_op = train_ops[1]
-        hooks = []
-
-      hooks += monitor_lib.replace_monitors_with_hooks(monitors, self)
-
-      ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
-      return graph_actions._monitored_train(  # pylint: disable=protected-access
-          graph=g,
-          output_dir=self._model_dir,
-          train_op=train_op,
-          loss_op=loss_op,
-          global_step_tensor=global_step,
-          init_op=init_op,
-          init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
-          init_fn=init_fn,
-          log_every_steps=log_every_steps,
-          supervisor_is_chief=self.config.is_chief,
-          supervisor_master=self._config.master,
-          supervisor_save_model_secs=self._config.save_checkpoints_secs,
-          supervisor_save_model_steps=self._config.save_checkpoints_steps,
-          supervisor_save_summaries_steps=self._config.save_summary_steps,
-          keep_checkpoint_max=self._config.keep_checkpoint_max,
-          keep_checkpoint_every_n_hours=self._config.keep_checkpoint_every_n_hours,
-          feed_fn=feed_fn,
-          steps=steps,
-          fail_on_nan_loss=fail_on_nan_loss,
-          hooks=hooks,
-          max_steps=max_steps)
-
   def _extract_metric_update_ops(self, eval_dict):
     """Separate update operations from metric value operations."""
     update_ops = []
@@ -865,28 +846,23 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
+      global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      # The default return type of _get_eval_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_eval_ops returns an
-      # `eval_dict` dictionary of Tensors. The following else-statement code
-      # covers these cases, but will soon be deleted after the subclasses are
-      # updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
-      eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
-        eval_dict = eval_ops.eval_metric_ops
-      else:  # Legacy signature
-        eval_dict = eval_ops
+      model_fn_results = self._get_eval_ops(features, labels, metrics)
+      eval_dict = model_fn_results.eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
-      hooks = hooks or []
+      # We need to copy the hook array as we modify it, thus [:].
+      hooks = hooks[:] if hooks else []
       if feed_fn:
-        hooks.append(_FeedFnHook(feed_fn))
+        hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
+      if steps == 0:
+        logging.warning('evaluation steps are 0. If `input_fn` does not raise'
+                        'OutOfRangeError`, the evaluation will never stop.'
+                        'Use steps=None if intended.')
       if steps:
         hooks.append(
             evaluation.StopAfterNEvalsHook(
@@ -900,9 +876,11 @@ class BaseEstimator(
       eval_results = evaluation.evaluate_once(
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
+          scaffold=model_fn_results.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
-          hooks=hooks)
+          hooks=hooks,
+          config=self._session_config)
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -915,8 +893,12 @@ class BaseEstimator(
       return result[0]
     return result
 
-  def _infer_model(
-      self, input_fn, feed_fn=None, outputs=None, as_iterable=True):
+  def _infer_model(self,
+                   input_fn,
+                   feed_fn=None,
+                   outputs=None,
+                   as_iterable=True,
+                   iterate_batches=False):
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
@@ -925,105 +907,133 @@ class BaseEstimator(
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      contrib_framework.create_global_step(g)
+      training_util.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
-
-      # The default return type of _get_predict_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_predict_ops returns a
-      # `predictions` Tensor or dict or Tensors. The following else-statement
-      # code covers these cases, but will soon be deleted after the subclasses
-      # are updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
       infer_ops = self._get_predict_ops(features)
-      if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
-        predictions = infer_ops.predictions
-      else:  # Legacy signature
-        predictions = infer_ops
-
-      # If predictions is single output - wrap it into dict, and remember to
-      # return not a dict.
-      return_dict = isinstance(predictions, dict)
-      if not return_dict:
-        predictions = {'predictions': predictions}
-
-      # Filter what to run predictions on, if outputs provided.
-      if outputs:
-        existing_keys = predictions.keys()
-        predictions = {
-            key: value
-            for key, value in six.iteritems(predictions) if key in outputs
-        }
-        if not predictions:
-          raise ValueError('Expected to run at least one output from %s, '
-                           'provided %s.' % (existing_keys, outputs))
-
-      if as_iterable:
-        return self._infer_model_as_iterable(
-            checkpoint_path, predictions, feed_fn, return_dict)
+      predictions = self._filter_predictions(infer_ops.predictions, outputs)
+      mon_sess = monitored_session.MonitoredSession(
+          session_creator=monitored_session.ChiefSessionCreator(
+              checkpoint_filename_with_path=checkpoint_path,
+              scaffold=infer_ops.scaffold,
+              config=self._session_config))
+      if not as_iterable:
+        with mon_sess:
+          if not mon_sess.should_stop():
+            return mon_sess.run(predictions, feed_fn() if feed_fn else None)
       else:
-        return self._infer_model_single(
-            checkpoint_path, predictions, feed_fn, return_dict)
+        return self._predict_generator(mon_sess, predictions, feed_fn,
+                                       iterate_batches)
 
-  def _infer_model_single(
-      self, checkpoint_path, predictions, feed_fn, return_dict):
-    if feed_fn is None:
-      preds = graph_actions.infer(checkpoint_path, predictions)
-    else:
-      def _feed_fn():
-        while True:
-          yield feed_fn()
-
-      outputs = graph_actions.run_feeds(
-          output_dict=predictions,
-          feed_dicts=_feed_fn(),
-          restore_checkpoint_path=checkpoint_path)
-      preds = {
-          key: np.concatenate([output[key] for output in outputs], axis=0)
-          for key in predictions}
-
-    return preds if return_dict else preds['predictions']
-
-  def _infer_model_as_iterable(
-      self, checkpoint_path, predictions, feed_fn, return_dict):
-    if feed_fn is None:
-      # If there are no queue_runners, the input `predictions` is a
-      # constant, and we should stop after the first epoch.  If,
-      # instead, there are queue_runners, eventually they should throw
-      # an `OutOfRangeError`.
-      graph = contrib_ops.get_graph_from_inputs(predictions.values())
-      if graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
-        feed_dicts = itertools.repeat(None)
-      else:
-        feed_dicts = [None]
-    else:
-      def _feed_fn():
-        while True:
-          yield feed_fn()
-      feed_dicts = _feed_fn()
-
-    try:
-      for output_batch in graph_actions.run_feeds_iter(
-          output_dict=predictions,
-          feed_dicts=feed_dicts,
-          restore_checkpoint_path=checkpoint_path):
-        # Unpack batches into individual predictions
-        if return_dict:
-          first_tensor = list(output_batch.values())[0]
+  def _predict_generator(self, mon_sess, predictions, feed_fn, iterate_batches):
+    with mon_sess:
+      while not mon_sess.should_stop():
+        preds = mon_sess.run(predictions, feed_fn() if feed_fn else None)
+        if iterate_batches:
+          yield preds
+        elif not isinstance(predictions, dict):
+          for pred in preds:
+            yield pred
+        else:
+          first_tensor = list(preds.values())[0]
           if isinstance(first_tensor, sparse_tensor.SparseTensorValue):
             batch_length = first_tensor.dense_shape[0]
           else:
             batch_length = first_tensor.shape[0]
           for i in range(batch_length):
-            yield {key: value[i] for key, value in six.iteritems(output_batch)}
-        else:
-          for pred in output_batch['predictions']:
-            yield pred
+            yield {key: value[i] for key, value in six.iteritems(preds)}
+        if self._is_input_constant(feed_fn, mon_sess.graph):
+          return
 
-    except errors.OutOfRangeError:
-      # We fall out of the above loop naturally if feed_fn raises StopIteration,
-      # or we catch an OutOfRangeError if we've reached the end of inputs.
-      logging.info('Reached end of inputs for predict_iter.')
+  def _is_input_constant(self, feed_fn, graph):
+    # If there are no queue_runners, the input `predictions` is a
+    # constant, and we should stop after the first epoch.  If,
+    # instead, there are queue_runners, eventually they should throw
+    # an `OutOfRangeError`.
+    if graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+      return False
+    # data_feeder uses feed_fn to generate `OutOfRangeError`.
+    if feed_fn is not None:
+      return False
+    return True
+
+  def _filter_predictions(self, predictions, outputs):
+    if not outputs:
+      return predictions
+    if not isinstance(predictions, dict):
+      raise ValueError(
+          'outputs argument is not valid in case of non-dict predictions.')
+    existing_keys = predictions.keys()
+    predictions = {
+        key: value
+        for key, value in six.iteritems(predictions) if key in outputs
+    }
+    if not predictions:
+      raise ValueError('Expected to run at least one output from %s, '
+                       'provided %s.' % (existing_keys, outputs))
+    return predictions
+
+  def _train_model(self, input_fn, hooks):
+    all_hooks = []
+    self._graph = ops.Graph()
+    with self._graph.as_default() as g, g.device(self._device_fn):
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      global_step = training_util.create_global_step(g)
+      features, labels = input_fn()
+      self._check_inputs(features, labels)
+      model_fn_ops = self._get_train_ops(features, labels)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
+      all_hooks.extend(hooks)
+      all_hooks.extend([
+          basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
+          basic_session_run_hooks.LoggingTensorHook(
+              {
+                  'loss': model_fn_ops.loss,
+                  'step': global_step
+              },
+              every_n_iter=100)
+      ])
+
+      scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
+      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
+        ops.add_to_collection(
+            ops.GraphKeys.SAVERS,
+            saver.Saver(
+                sharded=True,
+                max_to_keep=self._config.keep_checkpoint_max,
+                defer_build=True,
+                save_relative_paths=True))
+
+      chief_hooks = []
+      if (self._config.save_checkpoints_secs or
+          self._config.save_checkpoints_steps):
+        saver_hook_exists = any([
+            isinstance(h, basic_session_run_hooks.CheckpointSaverHook)
+            for h in (all_hooks + model_fn_ops.training_hooks + chief_hooks +
+                      model_fn_ops.training_chief_hooks)
+        ])
+        if not saver_hook_exists:
+          chief_hooks = [
+              basic_session_run_hooks.CheckpointSaverHook(
+                  self._model_dir,
+                  save_secs=self._config.save_checkpoints_secs,
+                  save_steps=self._config.save_checkpoints_steps,
+                  scaffold=scaffold)
+          ]
+      with monitored_session.MonitoredTrainingSession(
+          master=self._config.master,
+          is_chief=self._config.is_chief,
+          checkpoint_dir=self._model_dir,
+          scaffold=scaffold,
+          hooks=all_hooks + model_fn_ops.training_hooks,
+          chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
+          save_checkpoint_secs=0,  # Saving is handled by a hook.
+          save_summaries_steps=self._config.save_summary_steps,
+          config=self._session_config
+      ) as mon_sess:
+        loss = None
+        while not mon_sess.should_stop():
+          _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
+      return loss
 
 
 def _identity_feature_engineering_fn(features, labels):
@@ -1106,10 +1116,11 @@ class Estimator(BaseEstimator):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
     if model_fn is not None:
       # Check number of arguments of the given function matches requirements.
-      model_fn_args = _get_arguments(model_fn)
+      model_fn_args = _model_fn_args(model_fn)
       if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
-                         'arguments, but not None params (%s) are passed.' %
+        raise ValueError('Estimator\'s model_fn (%s) does not have a params '
+                         'argument, but params (%s) were passed to the '
+                         'Estimator\'s constructor.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) includes params '
@@ -1120,13 +1131,14 @@ class Estimator(BaseEstimator):
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
-  def _call_model_fn(self, features, labels, mode):
+  def _call_model_fn(self, features, labels, mode, metrics=None):
     """Calls model function with support of 2, 3 or 4 arguments.
 
     Args:
       features: features dict.
       labels: labels dict.
       mode: ModeKeys
+      metrics: Dict of metrics.
 
     Returns:
       A `ModelFnOps` object. If model_fn returns a tuple, wraps them up in a
@@ -1136,7 +1148,7 @@ class Estimator(BaseEstimator):
       ValueError: if model_fn returns invalid objects.
     """
     features, labels = self._feature_engineering_fn(features, labels)
-    model_fn_args = _get_arguments(self._model_fn)
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -1149,22 +1161,29 @@ class Estimator(BaseEstimator):
     model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
-      return model_fn_results
+      model_fn_ops = model_fn_results
+    else:
+      # Here model_fn_results should be a tuple with 3 elements.
+      if len(model_fn_results) != 3:
+        raise ValueError('Unrecognized value returned by model_fn, '
+                         'please return ModelFnOps.')
+      model_fn_ops = model_fn_lib.ModelFnOps(
+          mode=mode,
+          predictions=model_fn_results[0],
+          loss=model_fn_results[1],
+          train_op=model_fn_results[2])
 
-    # Here model_fn_ops should be a tuple with 3 elements.
-    if len(model_fn_results) != 3:
-      raise ValueError('Unrecognized value returned by model_fn, '
-                       'please return ModelFnOps.')
-    return model_fn_lib.ModelFnOps(
-        mode=mode,
-        predictions=model_fn_results[0],
-        loss=model_fn_results[1],
-        train_op=model_fn_results[2])
+    # Custom metrics should overwrite defaults.
+    if metrics:
+      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
+        metrics, features, labels, model_fn_ops.predictions))
+
+    return model_fn_ops
 
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1177,21 +1196,10 @@ class Estimator(BaseEstimator):
     """
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
 
-  # TODO(ispir): delete this function after converting all legacy usages.
-  def _call_legacy_get_train_ops(self, features, labels):
-    train_ops = self._get_train_ops(features, labels)
-    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return train_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.TRAIN,
-        predictions=None,
-        loss=train_ops[1],
-        train_op=train_ops[0])
-
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1214,12 +1222,7 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `labels`.
     """
     model_fn_ops = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL)
-
-    # Custom metrics should overwrite defaults.
-    if metrics:
-      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
-          metrics, features, labels, model_fn_ops.predictions))
+        features, labels, model_fn_lib.ModeKeys.EVAL, metrics)
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
@@ -1229,7 +1232,7 @@ class Estimator(BaseEstimator):
   def _get_predict_ops(self, features):
     """Method that builds model graph and returns prediction ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1243,22 +1246,22 @@ class Estimator(BaseEstimator):
         self._labels_info)
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
-  @experimental
   def export_savedmodel(
-      self, export_dir_base, input_fn,
+      self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
       as_text=False,
-      exports_to_keep=None):
+      checkpoint_path=None,
+      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),)):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
       export_dir_base: A string containing a directory to write the exported
         graph and checkpoints.
-      input_fn: A function that takes no argument and
+      serving_input_fn: A function that takes no argument and
         returns an `InputFnOps`.
       default_output_alternative_key: the name of the head to serve when none is
-        specified.
+        specified.  Not needed for single-headed models.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel.  Each key should give the destination
         path (including the filename) relative to the assets.extra directory.
@@ -1267,7 +1270,12 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
-      exports_to_keep: Number of exports to keep.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
+      graph_rewrite_specs: an iterable of `GraphRewriteSpec`.  Each element will
+        produce a separate MetaGraphDef within the exported SavedModel, tagged
+        and rewritten as specified.  Defaults to a single entry using the
+        default serving tag ("serve") and no rewriting.
 
     Returns:
       The string path to the exported directory.
@@ -1275,16 +1283,40 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if an unrecognized export_type is requested.
     """
-    if input_fn is None:
-      raise ValueError('input_fn must be defined.')
+    if serving_input_fn is None:
+      raise ValueError('serving_input_fn must be defined.')
 
+    if not checkpoint_path:
+      # Locate the latest checkpoint
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % self._model_dir)
+
+    export_dir = saved_model_export_utils.get_timestamped_export_dir(
+        export_dir_base)
+    # We'll write the SavedModel to a temporary directory and then atomically
+    # rename it at the end.  This helps to avoid corrupt / incomplete outputs,
+    # which could otherwise occur if the job is preempted or otherwise fails
+    # in the middle of SavedModel creation.
+    temp_export_dir = saved_model_export_utils.get_temp_export_dir(export_dir)
+    builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
+
+    # Build the base graph
     with ops.Graph().as_default() as g:
-      contrib_variables.create_global_step(g)
+      training_util.create_global_step(g)
 
-      # Call the input_fn and collect the input alternatives.
-      input_ops = input_fn()
+      # Call the serving_input_fn and collect the input alternatives.
+      input_ops = serving_input_fn()
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
+
+      # TODO(b/34388557) This is a stopgap, pending recording model provenance.
+      # Record which features are expected at serving time.  It is assumed that
+      # these are the features that were used in training.
+      for feature_key in input_ops.features.keys():
+        ops.add_to_collection(
+            constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS, feature_key)
 
       # Call the model_fn and collect the output alternatives.
       model_fn_ops = self._call_model_fn(features, None,
@@ -1293,174 +1325,88 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
-      # Build the SignatureDefs from all pairs of input and output signatures
+      init_op = control_flow_ops.group(
+          variables.local_variables_initializer(),
+          resources.initialize_resources(resources.shared_resources()),
+          lookup_ops.tables_initializer())
+
+      # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
 
-      # Locate the latest checkpoint
-      # TODO(soergel): does it help that we know we have one from this step?
-      checkpoint_path = saver.latest_checkpoint(self._model_dir)
-      if not checkpoint_path:
-        raise NotFittedError("Couldn't find trained model at %s."
-                             % self._model_dir)
-
-      export_dir = saved_model_export_utils.get_timestamped_export_dir(
-          export_dir_base)
-
+      # Export the first MetaGraphDef with variables, assets etc.
       with tf_session.Session('') as session:
-        variables.initialize_local_variables()
-        data_flow_ops.initialize_all_tables()
-        saver_for_restore = saver.Saver(
-            variables.global_variables(),
-            sharded=True)
+
+        # pylint: disable=protected-access
+        saveables = variables._all_saveable_objects()
+        # pylint: enable=protected-access
+
+        if (model_fn_ops.scaffold is not None and
+            model_fn_ops.scaffold.saver is not None):
+          saver_for_restore = model_fn_ops.scaffold.saver
+        elif saveables:
+          saver_for_restore = saver.Saver(saveables, sharded=True)
+
         saver_for_restore.restore(session, checkpoint_path)
 
-        init_op = control_flow_ops.group(
-            variables.local_variables_initializer(),
-            data_flow_ops.initialize_all_tables())
-
         # Perform the export
-        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        if not graph_rewrite_specs or graph_rewrite_specs[0].transforms:
+          raise ValueError('The first element of graph_rewrite_specs '
+                           'must specify no transforms.')
+        untransformed_tags = graph_rewrite_specs[0].tags
+
+        # TODO(soergel): switch to main_op or otherwise update when dust settles
         builder.add_meta_graph_and_variables(
-            session, [tag_constants.SERVING],
+            session, untransformed_tags,
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             legacy_init_op=init_op)
-        builder.save(as_text)
 
-      # Add the extra assets
-      if assets_extra:
-        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
-                                         compat.as_bytes('assets.extra'))
-        for dest_relative, source in assets_extra.items():
-          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
-                                       compat.as_bytes(dest_relative))
-          dest_path = os.path.dirname(dest_absolute)
-          gfile.MakeDirs(dest_path)
-          gfile.Copy(source, dest_absolute)
+    # pylint: disable=protected-access
+    base_meta_graph_def = builder._saved_model.meta_graphs[0]
+    # pylint: enable=protected-access
 
-      return export_dir
+    if graph_rewrite_specs[1:]:
+      # Prepare the input_names and output_names needed for the
+      # meta_graph_transform call below.
+      input_names = [tensor.name
+                     for input_dict in input_alternatives.values()
+                     for tensor in input_dict.values()]
+      output_names = [tensor.name
+                      for output_alternative in output_alternatives.values()
+                      for tensor in output_alternative[1].values()]
 
-  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y',
-                   'batch_size')
-  def fit(self,
-          x=None,
-          y=None,
-          input_fn=None,
-          steps=None,
-          batch_size=None,
-          monitors=None,
-          max_steps=None):
-    # pylint: disable=g-doc-args,g-doc-return-or-yield
-    """See `Trainable`.
+    # Write the additional MetaGraphDefs
+    for graph_rewrite_spec in graph_rewrite_specs[1:]:
 
-    Raises:
-      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
-      ValueError: If both `steps` and `max_steps` are not `None`.
-    """
-    if (steps is not None) and (max_steps is not None):
-      raise ValueError('Can not provide both steps and max_steps.')
-    if max_steps is not None:
-      try:
-        start_step = load_variable(self._model_dir, ops.GraphKeys.GLOBAL_STEP)
-        if max_steps <= start_step:
-          logging.info('Skipping training since max_steps has already saved.')
-          return None
-      except:  # pylint: disable=bare-except
-        pass
+      # TODO(soergel) consider moving most of this to saved_model.builder_impl
+      # as e.g. builder.add_rewritten_meta_graph(rewritten_graph_def, tags)
 
-    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
-    if steps is not None or max_steps is not None:
-      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+      transformed_meta_graph_def = meta_graph_transform.meta_graph_transform(
+          base_meta_graph_def, input_names, output_names,
+          graph_rewrite_spec.transforms, graph_rewrite_spec.tags)
 
-    input_fn, feed_fn = _get_input_fn(
-        x,
-        y,
-        input_fn,
-        feed_fn=None,
-        batch_size=batch_size,
-        shuffle=True,
-        epochs=None)
-    if feed_fn:
-      hooks.append(_FeedFnHook(feed_fn))
-    loss = self._train_model_v2(input_fn=input_fn, hooks=hooks)
-    logging.info('Loss for final step: %s.', loss)
-    return self
+      # pylint: disable=protected-access
+      meta_graph_def = builder._saved_model.meta_graphs.add()
+      # pylint: enable=protected-access
+      meta_graph_def.CopyFrom(transformed_meta_graph_def)
 
-  def _train_model_v2(self, input_fn, hooks):
-    all_hooks = []
-    self._graph = ops.Graph()
-    with self._graph.as_default() as g, g.device(self._device_fn):
-      random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
-      features, labels = input_fn()
-      self._check_inputs(features, labels)
-      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
-      ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
-      all_hooks.extend([
-          basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
-          basic_session_run_hooks.LoggingTensorHook(
-              {
-                  'loss': model_fn_ops.loss,
-                  'step': global_step
-              },
-              every_n_iter=100)
-      ])
-      all_hooks.extend(hooks)
+    # Add the extra assets
+    if assets_extra:
+      assets_extra_path = os.path.join(compat.as_bytes(temp_export_dir),
+                                       compat.as_bytes('assets.extra'))
+      for dest_relative, source in assets_extra.items():
+        dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                     compat.as_bytes(dest_relative))
+        dest_path = os.path.dirname(dest_absolute)
+        gfile.MakeDirs(dest_path)
+        gfile.Copy(source, dest_absolute)
 
-      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
-      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
-        ops.add_to_collection(
-            ops.GraphKeys.SAVERS,
-            saver.Saver(
-                sharded=True,
-                max_to_keep=self._config.keep_checkpoint_max,
-                defer_build=True))
-
-      chief_hooks = []
-      if (self._config.save_checkpoints_secs or
-          self._config.save_checkpoints_steps):
-        saver_hook_exists = any([
-            isinstance(h, basic_session_run_hooks.CheckpointSaverHook)
-            for h in (all_hooks + model_fn_ops.training_hooks + chief_hooks +
-                      model_fn_ops.training_chief_hooks)
-        ])
-        if not saver_hook_exists:
-          chief_hooks = [
-              basic_session_run_hooks.CheckpointSaverHook(
-                  self._model_dir,
-                  save_secs=self._config.save_checkpoints_secs,
-                  save_steps=self._config.save_checkpoints_steps,
-                  scaffold=scaffold)
-          ]
-      with monitored_session.MonitoredTrainingSession(
-          master=self._config.master,
-          is_chief=self._config.is_chief,
-          checkpoint_dir=self._model_dir,
-          scaffold=scaffold,
-          hooks=all_hooks + model_fn_ops.training_hooks,
-          chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
-          save_checkpoint_secs=0,  # Saving is handled by a hook.
-          save_summaries_steps=self._config.save_summary_steps,
-          config=None) as mon_sess:
-        loss = None
-        while not mon_sess.should_stop():
-          _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      summary_io.SummaryWriterCache.clear()
-      return loss
-
-
-class _FeedFnHook(session_run_hook.SessionRunHook):
-  """Runs feed_fn and sets the feed_dict accordingly."""
-
-  def __init__(self, feed_fn):
-    self.feed_fn = feed_fn
-
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn())
+    builder.save(as_text)
+    gfile.Rename(temp_export_dir, export_dir)
+    return export_dir
 
 
 # For time of deprecation x,y from Estimator allow direct access.
@@ -1478,7 +1424,7 @@ class SKCompat(sklearn.BaseEstimator):
                                       epochs=None)
     all_monitors = []
     if feed_fn:
-      all_monitors = [_FeedFnHook(feed_fn)]
+      all_monitors = [basic_session_run_hooks.FeedFnHook(feed_fn)]
     if monitors:
       all_monitors.extend(monitors)
 
@@ -1488,7 +1434,7 @@ class SKCompat(sklearn.BaseEstimator):
                         monitors=all_monitors)
     return self
 
-  def score(self, x, y, batch_size=128, steps=None, metrics=None):
+  def score(self, x, y, batch_size=128, steps=None, metrics=None, name=None):
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None,
                                       feed_fn=None, batch_size=batch_size,
                                       shuffle=False, epochs=1)
@@ -1500,7 +1446,7 @@ class SKCompat(sklearn.BaseEstimator):
         feed_fn=feed_fn,
         steps=steps,
         metrics=metrics,
-        name='score')
+        name=name)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results
@@ -1509,6 +1455,17 @@ class SKCompat(sklearn.BaseEstimator):
     input_fn, feed_fn = _get_input_fn(
         x, None, input_fn=None, feed_fn=None, batch_size=batch_size,
         shuffle=False, epochs=1)
-    return self._estimator._infer_model(
-        input_fn=input_fn, feed_fn=feed_fn, outputs=outputs,
-        as_iterable=False)
+    results = list(
+        self._estimator._infer_model(
+            input_fn=input_fn,
+            feed_fn=feed_fn,
+            outputs=outputs,
+            as_iterable=True,
+            iterate_batches=True))
+    if not isinstance(results[0], dict):
+      return np.concatenate([output for output in results], axis=0)
+    return {
+        key: np.concatenate(
+            [output[key] for output in results], axis=0)
+        for key in results[0]
+    }

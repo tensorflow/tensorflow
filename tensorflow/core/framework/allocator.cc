@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -47,6 +48,14 @@ constexpr size_t Allocator::kAllocatorAlignment;
 
 Allocator::~Allocator() {}
 
+void RunResourceCtor(ResourceHandle* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
+}
+
+void RunResourceDtor(ResourceHandle* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+}
+
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
 // If true, cpu allocator collects full stats.
@@ -68,7 +77,7 @@ class CPUAllocator : public Allocator {
   string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    void* p = port::aligned_malloc(num_bytes, alignment);
+    void* p = port::AlignedMalloc(num_bytes, alignment);
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
       mutex_lock l(mu_);
@@ -89,7 +98,7 @@ class CPUAllocator : public Allocator {
       mutex_lock l(mu_);
       stats_.bytes_in_use -= alloc_size;
     }
-    port::aligned_free(ptr);
+    port::AlignedFree(ptr);
   }
 
   void GetStats(AllocatorStats* stats) override {
@@ -108,19 +117,14 @@ class CPUAllocator : public Allocator {
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };
 
-namespace {
-Allocator* MakeCpuAllocator() {
-  Allocator* allocator = new CPUAllocator;
-  if (cpu_allocator_collect_full_stats || LogMemory::IsEnabled()) {
-    allocator = new TrackingAllocator(allocator, true);
-  }
-  return allocator;
-}
-}  // namespace
-
 Allocator* cpu_allocator() {
-  static Allocator* cpu_alloc = MakeCpuAllocator();
+  static Allocator* cpu_alloc = AllocatorRegistry::Global()->GetAllocator();
+  if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
+    cpu_alloc = new TrackingAllocator(cpu_alloc, true);
+  }
   return cpu_alloc;
 }
+
+REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocator);
 
 }  // namespace tensorflow

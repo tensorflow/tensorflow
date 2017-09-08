@@ -47,13 +47,13 @@ class DimComparator {
   typedef typename gtl::ArraySlice<int64> VarDimArray;
 
   DimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
-                const TensorShape& shape)
-      : ix_(ix), order_(order), dims_(shape.dims()) {
+                const VarDimArray& shape)
+      : ix_(ix), order_(order), dims_(shape.size()) {
     CHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
-    CHECK_LE(order.size(), shape.dims()) << "Can only sort up to dims";
+    CHECK_LE(order.size(), shape.size()) << "Can only sort up to dims";
     for (size_t d = 0; d < order.size(); ++d) {
       CHECK_GE(order[d], 0);
-      CHECK_LT(order[d], shape.dims());
+      CHECK_LT(order[d], shape.size());
     }
   }
 
@@ -95,7 +95,7 @@ template <int ORDER_DIM>
 class FixedDimComparator : DimComparator {
  public:
   FixedDimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
-                     const TensorShape& shape)
+                     const VarDimArray& shape)
       : DimComparator(ix, order, shape) {
     CHECK_EQ(order.size(), ORDER_DIM);
   }

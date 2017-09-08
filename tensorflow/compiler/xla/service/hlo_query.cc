@@ -25,16 +25,35 @@ namespace hlo_query {
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
       ShapeUtil::IsScalarF32(instruction->shape())) {
-    *out = LiteralUtil::Get<float>(instruction->literal(), {});
+    *out = instruction->literal().Get<float>({});
     return true;
   }
 
   return false;
 }
 
+bool AllOperandsAreParametersOrConstants(const HloInstruction& instruction) {
+  for (const auto& operand : instruction.operands()) {
+    if (operand->opcode() != HloOpcode::kParameter &&
+        operand->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool AllOperandsAreParameters(const HloInstruction& instruction) {
   for (const auto& operand : instruction.operands()) {
     if (operand->opcode() != HloOpcode::kParameter) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool AllOperandsAreConstants(const HloInstruction& instruction) {
+  for (const auto& operand : instruction.operands()) {
+    if (operand->opcode() != HloOpcode::kConstant) {
       return false;
     }
   }

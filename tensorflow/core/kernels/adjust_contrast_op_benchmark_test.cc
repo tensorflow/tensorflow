@@ -29,10 +29,10 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
   factor.flat<float>().setConstant(1.2);
 
   Node* ret;
-  NodeBuilder(g->NewName("n"), "AdjustContrastv2")
-      .Input(test::graph::Constant(g, in))
-      .Input(test::graph::Constant(g, factor))
-      .Finalize(g, &ret);
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "AdjustContrastv2")
+                  .Input(test::graph::Constant(g, in))
+                  .Input(test::graph::Constant(g, factor))
+                  .Finalize(g, &ret));
   return g;
 }
 
@@ -56,6 +56,11 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
 // BM_AdjustContrast_cpu_1_299_299     179084     340186  2181  751.9M items/s
 // BM_AdjustContrast_gpu_32_299_299     85276     123665  4189  2.9G items/s
 BM_AdjustContrastDev(cpu, 1, 299, 299);
+#if GOOGLE_CUDA
 BM_AdjustContrastDev(gpu, 32, 299, 299);
+#endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+BM_AdjustContrastDev(sycl, 32, 299, 299);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

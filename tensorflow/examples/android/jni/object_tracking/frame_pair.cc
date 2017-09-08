@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tf_tracking {
 
-void FramePair::Init(const int64 start_time, const int64 end_time) {
+void FramePair::Init(const int64_t start_time, const int64_t end_time) {
   start_time_ = start_time;
   end_time_ = end_time;
   memset(optical_flow_found_keypoint_, false,

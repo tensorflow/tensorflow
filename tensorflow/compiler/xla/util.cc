@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+#include <numeric>
 #include <stdarg.h>
+#include <numeric>
 
-#include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -30,18 +31,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Adds a backtrace to the provided status iff the xla_status_add_backtrace flag
-// is set. This is useful for quickly tracing status errors observed coming out
-// of the service.
-Status MaybeAddBacktrace(Status prior) {
-  DCHECK(!prior.ok());
-  if (legacy_flags::GetUtilFlags()->xla_status_add_backtrace) {
-    return Status{prior.code(),
-                  tensorflow::strings::StrCat(prior.error_message(), " :: ",
-                                              tensorflow::CurrentStackTrace())};
-  } else {
-    return prior;
-  }
+// Logs the provided status message with a backtrace.
+Status WithLogBacktrace(const Status& status) {
+  CHECK(!status.ok());
+  VLOG(1) << status.ToString();
+  VLOG(1) << tensorflow::CurrentStackTrace();
+  return status;
 }
 
 }  // namespace
@@ -84,7 +79,7 @@ Status InvalidArgument(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::InvalidArgument(message));
+  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
 }
 
 Status Unimplemented(const char* format, ...) {
@@ -93,7 +88,7 @@ Status Unimplemented(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::Unimplemented(message));
+  return WithLogBacktrace(tensorflow::errors::Unimplemented(message));
 }
 
 Status InternalError(const char* format, ...) {
@@ -102,7 +97,7 @@ Status InternalError(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::Internal(message));
+  return WithLogBacktrace(tensorflow::errors::Internal(message));
 }
 
 Status FailedPrecondition(const char* format, ...) {
@@ -111,7 +106,16 @@ Status FailedPrecondition(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::FailedPrecondition(message));
+  return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
+}
+
+Status Cancelled(const char* format, ...) {
+  string message;
+  va_list args;
+  va_start(args, format);
+  tensorflow::strings::Appendv(&message, format, args);
+  va_end(args);
+  return WithLogBacktrace(tensorflow::errors::Cancelled(message));
 }
 
 Status ResourceExhausted(const char* format, ...) {
@@ -120,7 +124,7 @@ Status ResourceExhausted(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::ResourceExhausted(message));
+  return WithLogBacktrace(tensorflow::errors::ResourceExhausted(message));
 }
 
 Status NotFound(const char* format, ...) {
@@ -129,7 +133,7 @@ Status NotFound(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::NotFound(message));
+  return WithLogBacktrace(tensorflow::errors::NotFound(message));
 }
 
 Status Unavailable(const char* format, ...) {
@@ -138,7 +142,7 @@ Status Unavailable(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::Unavailable(message));
+  return WithLogBacktrace(tensorflow::errors::Unavailable(message));
 }
 
 string Reindent(tensorflow::StringPiece original,
@@ -153,16 +157,26 @@ string Reindent(tensorflow::StringPiece original,
       });
 }
 
+bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank) {
+  if (rank != permutation.size()) {
+    return false;
+  }
+  std::vector<int64> output(permutation.size(), -1);
+  for (auto index : permutation) {
+    CHECK_GE(index, 0);
+    CHECK_LT(index, rank);
+    output[index] = 0;
+  }
+  return std::find(output.begin(), output.end(), -1) == output.end();
+}
+
 std::vector<int64> InversePermutation(
     tensorflow::gtl::ArraySlice<int64> input_permutation) {
+  DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
     output_permutation[input_permutation[i]] = i;
   }
-  DCHECK_EQ(
-      0, std::count(output_permutation.begin(), output_permutation.end(), -1));
-  DCHECK(std::is_permutation(input_permutation.begin(), input_permutation.end(),
-                             output_permutation.begin()));
   return output_permutation;
 }
 
@@ -176,10 +190,13 @@ std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
   return output;
 }
 
-int64 PositionInContainer(tensorflow::gtl::ArraySlice<int64> container,
-                          int64 value) {
-  return std::find(container.begin(), container.end(), value) -
-         container.begin();
+bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> p) {
+  for (int64 i = 0; i < p.size(); ++i) {
+    if (p[i] != i) {
+      return false;
+    }
+  }
+  return true;
 }
 
 PaddingConfig MakeNoPaddingConfig(int64 rank) {
@@ -193,9 +210,20 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
   return padding_config;
 }
 
-string HumanReadableNumFlops(double flops, double nanoseconds) {
+bool HasInteriorPadding(const PaddingConfig& config) {
+  for (const auto& dim : config.dimensions()) {
+    if (dim.interior_padding() != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+namespace {
+string HumanReadableNumOps(double flops, double nanoseconds,
+                           tensorflow::StringPiece op_prefix) {
   if (nanoseconds == 0) {
-    return "NaN FLOP/s";
+    return tensorflow::strings::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
@@ -206,8 +234,17 @@ string HumanReadableNumFlops(double flops, double nanoseconds) {
       sp.ends_with("b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += "FLOP/s";
+  throughput += tensorflow::strings::StrCat(op_prefix, "OP/s");
   return throughput;
+}
+}  // namespace
+
+string HumanReadableNumFlops(double flops, double nanoseconds) {
+  return HumanReadableNumOps(flops, nanoseconds, "FL");
+}
+
+string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
+  return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
 void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
@@ -233,6 +270,52 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
     tensorflow::internal::LogString(fname, lineno, orig_sev,
                                     "Aborting due to errors.");
   }
+}
+
+int64 Product(tensorflow::gtl::ArraySlice<int64> xs) {
+  return std::accumulate(xs.begin(), xs.end(), 1, std::multiplies<int64>());
+}
+
+std::vector<std::pair<int64, int64>> CommonFactors(
+    tensorflow::gtl::ArraySlice<int64> a,
+    tensorflow::gtl::ArraySlice<int64> b) {
+  CHECK_EQ(Product(a), Product(b));
+  if (0 == Product(a)) {
+    return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
+  }
+
+  std::vector<std::pair<int64, int64>> bounds;
+  for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
+             partial_size_b = 1;
+       ;) {
+    if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
+      std::tie(prior_i, prior_j) = std::make_pair(i, j);
+      bounds.emplace_back(i, j);
+      continue;
+    }
+    bool in_bounds_i = i < a.size();
+    bool in_bounds_j = j < b.size();
+    if (!(in_bounds_i || in_bounds_j)) {
+      break;
+    }
+    bool next_a =
+        partial_size_a < partial_size_b ||
+        (in_bounds_i &&
+         (!in_bounds_j || (partial_size_a == partial_size_b && a[i] <= b[j])));
+    bool next_b =
+        partial_size_b < partial_size_a ||
+        (in_bounds_j &&
+         (!in_bounds_i || (partial_size_b == partial_size_a && b[j] <= a[i])));
+    if (next_a) {
+      partial_size_a *= a[i];
+      ++i;
+    }
+    if (next_b) {
+      partial_size_b *= b[j];
+      ++j;
+    }
+  }
+  return bounds;
 }
 
 }  // namespace xla

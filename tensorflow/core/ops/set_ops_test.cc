@@ -34,16 +34,16 @@ TEST(SetOpsTest, DenseToDenseShape) {
   INFER_OK(op, "?;?", "[?,?];[?];[?]");
 
   // Invalid rank.
-  INFER_ERROR("expected rank >= 2", op, "[?];?");
-  INFER_ERROR("expected rank >= 2", op, "?;[?]");
-  INFER_ERROR("expected rank >= 2", op, "[2];?");
-  INFER_ERROR("expected rank >= 2", op, "?;[2]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?];?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[?]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[2];?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[2]");
 
   // Mismatched ranks.
-  INFER_ERROR("Ranks do not match", op, "[?,?];[?,?,?]");
-  INFER_ERROR("Ranks do not match", op, "[?,?,?];[?,?]");
-  INFER_ERROR("Ranks do not match", op, "[2,1];[2,1,2]");
-  INFER_ERROR("Ranks do not match", op, "[2,1,2];[2,1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[?,?];[?,?,?]");
+  INFER_ERROR("Shape must be rank 3 but is rank 2", op, "[?,?,?];[?,?]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[2,1];[2,1,2]");
+  INFER_ERROR("Shape must be rank 3 but is rank 2", op, "[2,1,2];[2,1]");
 
   // Rank 2, unknown dims.
   INFER_OK(op, "[?,?];?", "[?,2];[?];[2]");
@@ -55,26 +55,26 @@ TEST(SetOpsTest, DenseToDenseShape) {
   INFER_OK(op, "?;[?,?,?,?]", "[?,4];[?];[4]");
   INFER_OK(op, "[?,?,?,?];[?,?,?,?]", "[?,4];[?];[4]");
 
-  // Known dimension 0.
-  INFER_OK(op, "[4,?,?,?];?", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "?;[4,?,?,?]", "[d1_0,4];[d1_0];[4]");
-  INFER_OK(op, "[4,?,?,?];[?,?,?,?]", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[?,?,?,?];[4,?,?,?]", "[d1_0,4];[d1_0];[4]");
-  INFER_OK(op, "[4,?,?,?];[4,?,?,?]", "[d0_0,4];[d0_0];[4]");
+  // Known rank for 1 input.
+  INFER_OK(op, "[5,3,2,1];?", "[?,4];[?];[4]");
+  INFER_OK(op, "?;[5,3,2,1]", "[?,4];[?];[4]");
+  INFER_OK(op, "[5,3,2,1];[?,?,?,?]", "[?,4];[?];[4]");
+  INFER_OK(op, "[?,?,?,?];[5,3,2,1]", "[?,4];[?];[4]");
+  INFER_OK(op, "[5,3,2,1];[?,?,?,?]", "[?,4];[?];[4]");
 
-  // Mismatched known n-1 dims.
+  // Mismatched n-1 dims.
   INFER_ERROR("Dimension 0 in both shapes must be equal", op,
               "[4,?,2,?];[3,1,?,5]");
   INFER_ERROR("Dimension 2 in both shapes must be equal", op,
               "[4,3,2,1];[4,3,3,1]");
 
-  // Matched known n-1 dims.
-  INFER_OK(op, "[4,5,6,7];[?,?,?,?]", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[4,5,6,7];[?,?,?,4]", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[?,?,?,?];[4,5,6,7]", "[d1_0,4];[d1_0];[4]");
-  INFER_OK(op, "[4,?,2,?];[?,1,?,5]", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[4,5,6,7];[4,?,6,?]", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[4,5,6,7];[4,5,6,4]", "[d0_0,4];[d0_0];[4]");
+  // Matched n-1 dims.
+  INFER_OK(op, "[4,5,6,7];[?,?,?,?]", "[?,4];[?];[4]");
+  INFER_OK(op, "[4,5,6,7];[?,?,?,4]", "[?,4];[?];[4]");
+  INFER_OK(op, "[?,?,?,?];[4,5,6,7]", "[?,4];[?];[4]");
+  INFER_OK(op, "[4,?,2,?];[?,1,?,5]", "[?,4];[?];[4]");
+  INFER_OK(op, "[4,5,6,7];[4,?,6,?]", "[?,4];[?];[4]");
+  INFER_OK(op, "[4,5,6,7];[4,5,6,4]", "[?,4];[?];[4]");
 }
 
 TEST(SetOpsTest, DenseToSparseShape_InvalidNumberOfInputs) {
@@ -89,35 +89,37 @@ TEST(SetOpsTest, DenseToSparseShape) {
 
   // Unknown shapes.
   INFER_OK(op, "?;?;?;?", "[?,?];[?];[?]");
+  INFER_OK(op, "?;[?,?];[?];[?]", "[?,?];[?];[?]");
 
   // Invalid rank.
-  INFER_ERROR("expected rank >= 2", op, "[?];?;?;?");
-  INFER_ERROR("expected rank >= 2", op, "[?];[?,?];[?];[?]");
-  INFER_ERROR("expected rank >= 2", op, "[?];[5,3];[5];[3]");
-  INFER_ERROR("expected rank >= 2", op, "[2];?;?;?");
-  INFER_ERROR("expected rank >= 2", op, "[2];[?,?];[?];[?]");
-  INFER_ERROR("expected rank >= 2", op, "[2];[5,3];[5];[3]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?];?;?;?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[?];[?,?];[?];[?]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[?];[5,3];[5];[3]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[2];?;?;?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[2];[?,?];[?];[?]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[2];[5,3];[5];[3]");
 
-  // Rank 2, unknown dims.
+  // Unknown sparse rank.
   INFER_OK(op, "[?,?];?;?;?", "[?,2];[?];[2]");
   INFER_OK(op, "[?,?];[?,?];[?];[?]", "[?,2];[?];[2]");
-  INFER_OK(op, "[?,?];[5,3];[5];[3]", "[?,2];[?];[2]");
 
-  // Rank 4, unknown dims.
-  INFER_OK(op, "[?,?,?,?];?;?;?", "[?,4];[?];[4]");
-  INFER_OK(op, "[?,?,?,?];[?,?];[?];[?]", "[?,4];[?];[4]");
-  INFER_OK(op, "[?,?,?,?];[5,3];[5];[3]", "[?,4];[?];[4]");
+  // Unknown dense rank.
+  INFER_OK(op, "?;[?,2];[?];[2]", "[?,d3_0];[?];[d3_0]");
+  INFER_OK(op, "?;[5,2];[5];[2]", "[?,d3_0];[?];[d3_0]");
 
-  // Known dimension 0.
-  INFER_OK(op, "[4,?,?,?];?;?;?", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[4,?,?,?];[?,?];[?];[?]", "[d0_0,4];[d0_0];[4]");
-  INFER_OK(op, "[4,?,?,?];[5,3];[5];[3]", "[d0_0,4];[d0_0];[4]");
+  // Known both ranks.
+  INFER_OK(op, "[?,?];[5,2];[5];[2]", "[?,2];[?];[2]");
+  INFER_OK(op, "[4,3];[5,2];[5];[2]", "[?,2];[?];[2]");
 
   // Invalid input sparse tensor.
   INFER_ERROR("elements in index (5) and values (6) do not match", op,
-              "[?,?];[5,3];[6];[3]");
+              "?;[5,3];[6];[3]");
   INFER_ERROR("rank (3) and shape rank (4) do not match", op,
-              "[?,?];[5,3];[5];[4]");
+              "?;[5,3];[5];[4]");
 }
 
 TEST(SetOpsTest, SparseToSparseShape_InvalidNumberOfInputs) {
@@ -128,7 +130,21 @@ TEST(SetOpsTest, SparseToSparseShape_InvalidNumberOfInputs) {
 
 TEST(SetOpsTest, SparseToSparseShape) {
   ShapeInferenceTestOp op("SparseToSparseSetOperation");
+
+  // Unknown.
   INFER_OK(op, "?;?;?;?;?;?", "[?,?];[?];[?]");
+  INFER_OK(op, "[?,?];[?];[?];[?,?];[?];[?]", "[?,?];[?];[?]");
+  INFER_OK(op, "?;?;?;[?,?];[?];[?]", "[?,?];[?];[?]");
+  INFER_OK(op, "[?,?];[?];[?];?;?;?", "[?,?];[?];[?]");
+
+  // Known rank for 1 input.
+  INFER_OK(op, "[?,2];[?];[2];?;?;?", "[?,d2_0];[?];[d2_0]");
+  INFER_OK(op, "?;?;?;[?,2];[?];[2]", "[?,d5_0];[?];[d5_0]");
+  INFER_OK(op, "[?,2];[?];[2];[?,?];[?];[?]", "[?,d2_0];[?];[d2_0]");
+  INFER_OK(op, "[?,?];[?];[?];[?,2];[?];[2]", "[?,d5_0];[?];[d5_0]");
+
+  // Known rank for both inputs.
+  INFER_OK(op, "[?,2];[?];[2];[?,2];[?];[2]", "[?,d2_0];[?];[d2_0]");
 }
 
 }  // end namespace tensorflow

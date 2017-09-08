@@ -25,19 +25,18 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 struct SessionOptions;
-class StepStats;
-class Timeline;
+
+namespace subgraph {
+struct RewriteGraphMetadata;
+}
 
 struct SimpleGraphExecutionStateOptions {
   const DeviceSet* device_set = nullptr;
@@ -50,13 +49,19 @@ struct SimpleGraphExecutionStateOptions {
 // A SimpleClientGraph is simply a sub-graph of the full graph as induced by
 // BuildGraphOptions.
 struct SimpleClientGraph {
-  explicit SimpleClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib)
-      : flib_def(std::move(flib)), graph(flib_def.get()) {}
+  explicit SimpleClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib,
+                             DataTypeVector feed_types,
+                             DataTypeVector fetch_types)
+      : flib_def(std::move(flib)),
+        graph(flib_def.get()),
+        feed_types(std::move(feed_types)),
+        fetch_types(std::move(fetch_types)) {}
   // Each client-graph gets its own function library since optimization passes
   // post rewrite for execution might want to introduce new functions.
   std::unique_ptr<FunctionLibraryDefinition> flib_def;
   Graph graph;
-  int32 placement_version;
+  DataTypeVector feed_types;
+  DataTypeVector fetch_types;
 };
 
 // SimpleGraphExecutionState is responsible for generating an
@@ -157,7 +162,6 @@ class SimpleGraphExecutionState {
   // Returns the map of stateful placements as a map of
   // node name to placement string.
   std::unordered_map<string, string> GetStatefulPlacements() const {
-    mutex_lock l(mu_);
     return stateful_placements_;
   }
 
@@ -176,12 +180,12 @@ class SimpleGraphExecutionState {
   void SaveStatefulNodes(Graph* graph);
   void RestoreStatefulNodes(Graph* graph);
 
+  Status OptimizeGraph(const BuildGraphOptions& options,
+                       std::unique_ptr<Graph>* optimized_graph);
+
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
-
-  mutable mutex mu_;
-  CostModel costs_ GUARDED_BY(mu_);
 
   // Map from name to Node for the full graph in placed_.
   NodeNameToCostIdMap node_name_to_cost_id_map_;
@@ -189,6 +193,10 @@ class SimpleGraphExecutionState {
   // 'flib_def_' is initialized from the initial graph def's library,
   // and may be updated by a graph optimization pass.
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+
+  // `rewrite_metadata_` is only set for SimpleGraphExecutionState
+  // objects created by `MakeForPrunedGraph()`.
+  std::unique_ptr<subgraph::RewriteGraphMetadata> rewrite_metadata_;
 
   // The dataflow graph owned by this object.
   Graph* graph_;

@@ -125,7 +125,7 @@ TEST(Coding, Varint32) {
     uint32 expected = (i / 32) << (i % 32);
     uint32 actual;
     p = GetVarint32Ptr(p, limit, &actual);
-    ASSERT_TRUE(p != NULL);
+    ASSERT_TRUE(p != nullptr);
     ASSERT_EQ(expected, actual);
   }
   ASSERT_EQ(p, s.data() + s.size());
@@ -158,7 +158,7 @@ TEST(Coding, Varint64) {
     ASSERT_TRUE(p < limit);
     uint64 actual;
     p = GetVarint64Ptr(p, limit, &actual);
-    ASSERT_TRUE(p != NULL);
+    ASSERT_TRUE(p != nullptr);
     ASSERT_EQ(values[i], actual);
   }
   ASSERT_EQ(p, limit);
@@ -168,7 +168,7 @@ TEST(Coding, Varint32Overflow) {
   uint32 result;
   string input("\x81\x82\x83\x84\x85\x11");
   ASSERT_TRUE(GetVarint32Ptr(input.data(), input.data() + input.size(),
-                             &result) == NULL);
+                             &result) == nullptr);
 }
 
 TEST(Coding, Varint32Truncation) {
@@ -177,9 +177,10 @@ TEST(Coding, Varint32Truncation) {
   PutVarint32(&s, large_value);
   uint32 result;
   for (size_t len = 0; len < s.size() - 1; len++) {
-    ASSERT_TRUE(GetVarint32Ptr(s.data(), s.data() + len, &result) == NULL);
+    ASSERT_TRUE(GetVarint32Ptr(s.data(), s.data() + len, &result) == nullptr);
   }
-  ASSERT_TRUE(GetVarint32Ptr(s.data(), s.data() + s.size(), &result) != NULL);
+  ASSERT_TRUE(GetVarint32Ptr(s.data(), s.data() + s.size(), &result) !=
+              nullptr);
   ASSERT_EQ(large_value, result);
 }
 
@@ -187,7 +188,7 @@ TEST(Coding, Varint64Overflow) {
   uint64 result;
   string input("\x81\x82\x83\x84\x85\x81\x82\x83\x84\x85\x11");
   ASSERT_TRUE(GetVarint64Ptr(input.data(), input.data() + input.size(),
-                             &result) == NULL);
+                             &result) == nullptr);
 }
 
 TEST(Coding, Varint64Truncation) {
@@ -196,9 +197,10 @@ TEST(Coding, Varint64Truncation) {
   PutVarint64(&s, large_value);
   uint64 result;
   for (size_t len = 0; len < s.size() - 1; len++) {
-    ASSERT_TRUE(GetVarint64Ptr(s.data(), s.data() + len, &result) == NULL);
+    ASSERT_TRUE(GetVarint64Ptr(s.data(), s.data() + len, &result) == nullptr);
   }
-  ASSERT_TRUE(GetVarint64Ptr(s.data(), s.data() + s.size(), &result) != NULL);
+  ASSERT_TRUE(GetVarint64Ptr(s.data(), s.data() + s.size(), &result) !=
+              nullptr);
   ASSERT_EQ(large_value, result);
 }
 

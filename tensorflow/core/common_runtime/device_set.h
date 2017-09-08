@@ -39,7 +39,10 @@ class DeviceSet {
 
   // Set the device designated as the "client".  This device
   // must also be registered via AddDevice().
-  void set_client_device(Device* device) { client_device_ = device; }
+  void set_client_device(Device* device) {
+    DCHECK(client_device_ == nullptr);
+    client_device_ = device;
+  }
 
   // Returns a pointer to the device designated as the "client".
   Device* client_device() const { return client_device_; }

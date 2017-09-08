@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -75,6 +76,15 @@ class OneHotOp : public OpKernel {
 
     // The one-hot dimension.
     const int32 depth_v = depth.scalar<int32>()();
+    OP_REQUIRES(
+        ctx, depth_v >= 0,
+        errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
+    OP_REQUIRES(
+        ctx,
+        MultiplyWithoutOverflow(indices_shape.num_elements(), depth_v) >= 0,
+        errors::InvalidArgument("OneHot result would have shape ",
+                                indices_shape.DebugString(), " + [", depth_v,
+                                "], which exceeds 2**63 - 1 elements"));
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);

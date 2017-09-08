@@ -19,8 +19,8 @@ limitations under the License.
 #include <map>
 #include <unordered_map>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -54,6 +54,11 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
 
   Status HandleParameter(HloInstruction* parameter) override;
 
+  // Emits the ir value for each element in the tuple.
+  Status HandleTuple(
+      HloInstruction* tuple,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
   Status FinishVisit(HloInstruction* root) override;
 
   // Returns the generator function for the root of the fused computation.
@@ -61,6 +66,13 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
 
   // Returns the generator function for the given instruction.
   Generator GetGenerator(const HloInstruction* instruction) const;
+
+  // Returns the ir value for instruction 'hlo'.
+  llvm::Value* GetIrValueForGTE(const HloInstruction* hlo) const {
+    auto it = gte_values_.find(hlo);
+    CHECK(it != gte_values_.end());
+    return it->second;
+  }
 
  private:
   // Arrays of parameters of fusion instruction

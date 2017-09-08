@@ -35,7 +35,10 @@ class VariableClippingOptimizerTest(test.TestCase):
   def _setupCluster(self):
 
     def get_open_port():
-      s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      except IOError:
+        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
       s.bind(("", 0))
       port = s.getsockname()[1]
       s.close()

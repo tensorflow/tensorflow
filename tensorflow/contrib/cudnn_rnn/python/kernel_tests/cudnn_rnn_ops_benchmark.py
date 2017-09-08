@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import core_rnn
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
@@ -30,12 +30,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
-
-flags.DEFINE_integer("batch_size", 64, "batch size.")
-FLAGS = flags.FLAGS
 
 
 class CudnnRNNBenchmark(test.Benchmark):
@@ -96,7 +93,7 @@ class CudnnRNNBenchmark(test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with ops.Graph().as_default(), ops.device("/gpu:0"):
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
         model = cudnn_rnn_ops.CudnnLSTM(num_layers, num_units, num_units)
         params_size_t = model.params_size()
         input_data = variables.Variable(
@@ -128,15 +125,16 @@ class CudnnRNNBenchmark(test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with ops.Graph().as_default(), ops.device("/gpu:0"):
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
         inputs = seq_length * [
             array_ops.zeros([batch_size, num_units], dtypes.float32)
         ]
         initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
 
-        cell = core_rnn_cell_impl.LSTMCell(
+        cell = rnn_cell.LSTMCell(
             num_units=num_units, initializer=initializer, state_is_tuple=True)
-        multi_cell = core_rnn_cell_impl.MultiRNNCell([cell] * num_layers)
+        multi_cell = rnn_cell.MultiRNNCell(
+            [cell() for _ in range(num_layers)])
         outputs, final_state = core_rnn.static_rnn(
             multi_cell, inputs, dtype=dtypes.float32)
         trainable_variables = ops.get_collection(
@@ -155,12 +153,14 @@ class CudnnRNNBenchmark(test.Benchmark):
       batch_size = config["batch_size"]
       seq_length = config["seq_length"]
 
-      with ops.Graph().as_default(), ops.device("/gpu:0"):
+      with ops.Graph().as_default(), ops.device("/device:GPU:0"):
         inputs = seq_length * [
             array_ops.zeros([batch_size, num_units], dtypes.float32)
         ]
-        cell = lstm_ops.LSTMBlockCell(num_units=num_units)
-        multi_cell = core_rnn_cell_impl.MultiRNNCell([cell] * num_layers)
+        cell = lambda: lstm_ops.LSTMBlockCell(num_units=num_units)  # pylint: disable=cell-var-from-loop
+
+        multi_cell = rnn_cell.MultiRNNCell(
+            [cell() for _ in range(num_layers)])
         outputs, final_state = core_rnn.static_rnn(
             multi_cell, inputs, dtype=dtypes.float32)
         trainable_variables = ops.get_collection(

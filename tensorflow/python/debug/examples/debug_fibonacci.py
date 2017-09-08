@@ -33,11 +33,10 @@ def main(_):
   sess = tf.Session()
 
   # Construct the TensorFlow network.
-  n0 = tf.Variable(np.ones([FLAGS.tensor_size] * 2), name="node_00")
-  n1 = tf.Variable(np.ones([FLAGS.tensor_size] * 2), name="node_01")
-
-  if FLAGS.length > 100:
-    raise ValueError("n is too big.")
+  n0 = tf.Variable(
+      np.ones([FLAGS.tensor_size] * 2), dtype=tf.int32, name="node_00")
+  n1 = tf.Variable(
+      np.ones([FLAGS.tensor_size] * 2), dtype=tf.int32, name="node_01")
 
   for i in xrange(2, FLAGS.length):
     n0, n1 = n1, tf.add(n0, n1, name="node_%.2d" % i)
@@ -45,9 +44,17 @@ def main(_):
   sess.run(tf.global_variables_initializer())
 
   # Wrap the TensorFlow Session object for debugging.
-  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+  if FLAGS.debug:
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
-  sess.run(n1)
+    def has_negative(_, tensor):
+      return np.any(tensor < 0)
+
+    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+    sess.add_tensor_filter("has_negative", has_negative)
+
+  print("Fibonacci number at position %d:\n%s" %
+        (FLAGS.length, sess.run(n1)))
 
 
 if __name__ == "__main__":
@@ -56,7 +63,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--tensor_size",
       type=int,
-      default=30,
+      default=1,
       help="""\
       Size of tensor. E.g., if the value is 30, the tensors will have shape
       [30, 30].\
@@ -66,5 +73,16 @@ if __name__ == "__main__":
       type=int,
       default=20,
       help="Length of the fibonacci sequence to compute.")
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--debug",
+      dest="debug",
+      action="store_true",
+      help="Use TensorFlow Debugger (tfdbg).")
+
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

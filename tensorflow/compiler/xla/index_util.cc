@@ -28,13 +28,13 @@ namespace xla {
 
 /* static */ int64 IndexUtil::MultidimensionalIndexToLinearIndex(
     const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index) {
-  CHECK_EQ(shape.dimensions_size(), multi_index.size());
+  DCHECK_EQ(shape.dimensions_size(), multi_index.size());
   // Padding and nested layouts not supported yet.
-  CHECK_EQ(0, shape.layout().padded_dimensions_size());
+  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
-  for (int i = 0; i < multi_index.size(); ++i) {
-    CHECK_GE(multi_index[i], 0);
-    CHECK_LT(multi_index[i], shape.dimensions(i))
+  for (size_t i = 0; i < multi_index.size(); ++i) {
+    DCHECK_GE(multi_index[i], 0);
+    DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
         << "\n\tindex: " << tensorflow::str_util::Join(multi_index, ",")
         << "\n\tshape: " << ShapeUtil::HumanString(shape);
@@ -77,9 +77,17 @@ namespace xla {
   // Scale factor holding the growing product of D{L(i)} terms.
   int64 scale = 1;
   int64 linear_index = 0;
+  bool first = true;
   for (auto dimension : shape.layout().minor_to_major()) {
-    linear_index += scale * multi_index[dimension];
-    scale *= shape.dimensions(dimension);
+    if (first) {
+      // Avoid two multiplies on the first loop iteration
+      linear_index = multi_index[dimension];
+      scale = shape.dimensions(dimension);
+      first = false;
+    } else {
+      linear_index += scale * multi_index[dimension];
+      scale *= shape.dimensions(dimension);
+    }
   }
   return linear_index;
 }
@@ -87,9 +95,9 @@ namespace xla {
 /* static */ std::vector<int64> IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64 linear_index) {
   // Padding and nested layouts not supported yet.
-  CHECK_EQ(0, shape.layout().padded_dimensions_size());
-  CHECK_GE(linear_index, 0);
-  CHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
+  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
+  DCHECK_GE(linear_index, 0);
+  DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
 
   // The following formula computes each element of the multidimensional index
   // (See comments in MultidimensionalIndexToLinearIndex for notation):
@@ -110,17 +118,36 @@ namespace xla {
   return multi_index;
 }
 
-/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
-                                         std::vector<int64>* indices) {
-  for (int64 dimno = indices->size() - 1; dimno >= 0; --dimno) {
+/* static */ bool IndexUtil::BumpIndices(
+    const Shape& shape, tensorflow::gtl::MutableArraySlice<int64> indices) {
+  for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64 limit = shape.dimensions(dimno);
-    if ((*indices)[dimno] + 1 < limit) {
-      (*indices)[dimno]++;
-      std::fill(indices->begin() + dimno + 1, indices->end(), 0);
+    if (indices[dimno] + 1 < limit) {
+      indices[dimno]++;
+      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
       return true;
     }
   }
   return false;
+}
+
+/* static */ int64 IndexUtil::GetDimensionStride(const Shape& shape,
+                                                 int64 dimension) {
+  const Layout& layout = shape.layout();
+  int64 pdim_size = layout.padded_dimensions_size();
+  int64 stride = 1;
+  DCHECK(pdim_size == 0 || pdim_size == shape.dimensions_size());
+  for (auto dim : layout.minor_to_major()) {
+    if (dim == dimension) {
+      break;
+    }
+    if (pdim_size == 0) {
+      stride *= shape.dimensions(dim);
+    } else {
+      stride *= layout.padded_dimensions(dim);
+    }
+  }
+  return stride;
 }
 
 }  // namespace xla

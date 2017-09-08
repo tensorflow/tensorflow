@@ -19,8 +19,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util.all_util import remove_undocumented
+
+
 # Tag for the `serving` graph.
 SERVING = "serve"
 
 # Tag for the `training` graph.
 TRAINING = "train"
+
+# Tag for the `gpu` graph.
+GPU = "gpu"
+
+_allowed_symbols = [
+    "SERVING",
+    "TRAINING",
+    "GPU"
+]
+remove_undocumented(__name__, _allowed_symbols)

@@ -27,6 +27,39 @@ class OpKernelContext;
 
 namespace functor {
 
+#ifdef GOOGLE_CUDA
+typedef Eigen::GpuDevice GPUDevice;
+// Functor for SegmentSumGPUOp.
+// 'output_rows': the number of output segments (unique segment ids in
+//                'segment_ids').
+// 'segment_ids_shape': shape of 'segment_ids' tensor.
+// 'segment_ids': unsorted map from input to output segment ids at which to
+//                perform segment sum operation.
+// 'data_size': size of input data tensor.
+// 'data': input data tensor.
+// 'output': output reshaped to {output_rows, output.size/output_rows}
+template <typename T, typename Index>
+struct SegmentSumFunctor {
+  void operator()(OpKernelContext* ctx, const GPUDevice& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output);
+};
+#endif
+
+// BaseFunctor for definition of UnsorteSegmentReductionOp
+// for usage without templates.
+template <typename Device, typename T, typename Index>
+struct UnsortedSegmentBaseFunctor{
+  virtual ~UnsortedSegmentBaseFunctor(){}
+  virtual void operator()(OpKernelContext* ctx, const Device& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output){};
+};
+
 // Functor for UnsortedSegmentSumOp.
 // 'output_rows': the number of output segments (unique segment ids in
 //                'segment_ids').
@@ -37,7 +70,7 @@ namespace functor {
 // 'data': input data tensor.
 // 'output': output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumFunctor {
+struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
@@ -45,6 +78,23 @@ struct UnsortedSegmentSumFunctor {
                   typename TTypes<T, 2>::Tensor output);
 };
 
+// Functor for UnsortedSegmentMaxOp.
+// 'output_rows': the number of output segments (unique segment ids in
+//                'segment_ids').
+// 'segment_ids_shape': shape of 'segment_ids' tensor.
+// 'segment_ids': unsorted map from input to output segment ids at which to
+//                perform segment sum operation.
+// 'data_size': size of input data tensor.
+// 'data': input data tensor.
+// 'output': output reshaped to {output_rows, output.size/output_rows}
+template <typename Device, typename T, typename Index>
+struct UnsortedSegmentMaxFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
+  void operator()(OpKernelContext* ctx, const Device& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output);
+};
 }  // namespace functor
 }  // namespace tensorflow
 

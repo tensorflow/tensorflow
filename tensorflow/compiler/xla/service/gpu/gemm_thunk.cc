@@ -27,8 +27,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
-using Index = BufferAllocation::Index;
-
 namespace {
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -47,63 +45,171 @@ struct MatrixDescriptor {
   int64 num_cols;
 };
 
-// Performs a gemm call on lhs_matrix and rhs_matrix and stores the result to
-// output_matrix.
+// Performs a gemm call without an explicit algorithm on lhs_matrix and
+// rhs_matrix, and stores the result to output_matrix.
 template <typename Element>
-tensorflow::Status DoGemm(MatrixDescriptor lhs_matrix,
-                          MatrixDescriptor rhs_matrix,
-                          MatrixDescriptor output_matrix, se::Stream* stream) {
+bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+            MatrixDescriptor output_matrix, se::Stream* stream) {
   DCHECK(!output_matrix.transpose);
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
 
-  bool launch_ok =
-      stream
-          ->ThenBlasGemm(
-              lhs_matrix.transpose ? se::blas::Transpose::kTranspose
-                                   : se::blas::Transpose::kNoTranspose,
-              rhs_matrix.transpose ? se::blas::Transpose::kTranspose
-                                   : se::blas::Transpose::kNoTranspose,
-              output_matrix.num_rows, output_matrix.num_cols,
-              lhs_matrix.transpose
-                  ? lhs_matrix.num_rows
-                  : lhs_matrix.num_cols,  // Size of the reduce dimension.
-              /*alpha=*/1.0,
-              lhs_data,
-              lhs_matrix.num_rows,  // The leading dimension of LHS.
-              rhs_data,
-              rhs_matrix.num_rows,  // The leading dimension of RHS.
-              /*beta=*/0.0, &output_data,
-              output_matrix
-                  .num_rows)  // The leading dimension of the output matrix.
-          .ok();
-  if (!launch_ok) {
-    return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);
-  }
-  return tensorflow::Status::OK();
+  auto lhs_transpose = lhs_matrix.transpose ? se::blas::Transpose::kTranspose
+                                            : se::blas::Transpose::kNoTranspose;
+  auto rhs_transpose = rhs_matrix.transpose ? se::blas::Transpose::kTranspose
+                                            : se::blas::Transpose::kNoTranspose;
+  auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
+
+  return stream
+      ->ThenBlasGemm(
+          lhs_transpose, rhs_transpose, output_matrix.num_rows,
+          output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/1.0,
+          lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
+          &output_data, /*leading dim of output=*/output_matrix.num_rows)
+      .ok();
 }
 
-// Return, if the given type is a valid Gemm elemental type, the executor for
-// that type, else null.
-// TODO(b/27202055): consider more element types.
-std::function<tensorflow::Status(MatrixDescriptor, MatrixDescriptor,
-                                 MatrixDescriptor, se::Stream*)>
-FindGemmExecutor(PrimitiveType type) {
+// Like DoGemm, but takes an explicit computation type and algorithm.
+// computation_type specifies the type of intermediate values generated during
+// the matmul (e.g. your input/output matricies could be f16s but you could do
+// computations with f32s).  algorithm is an opaque identifier which functions
+// as a hint to cublas.
+//
+// Not all algorithms are valid for all matrix sizes, and not all CUDA versions
+// and GPUs even support gemm-with-algorithm.  So expect that this may fail
+// unless you've already checked that it works for this particular GPU + input
+// size.
+//
+// If you pass a non-null ProfileResult, this will always return true (assuming
+// the Stream was valid to begin with); check the is_valid property of the
+// ProfileResult to see whether the call actually succeeded.
+template <typename Element>
+bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
+                         MatrixDescriptor rhs_matrix,
+                         MatrixDescriptor output_matrix,
+                         se::blas::ComputationType computation_type,
+                         se::blas::AlgorithmType algorithm, se::Stream* stream,
+                         se::blas::ProfileResult* output_profile_result) {
+  DCHECK(!output_matrix.transpose);
+
+  se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
+  se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
+  se::DeviceMemory<Element> output_data(output_matrix.data);
+
+  auto lhs_transpose = lhs_matrix.transpose ? se::blas::Transpose::kTranspose
+                                            : se::blas::Transpose::kNoTranspose;
+  auto rhs_transpose = rhs_matrix.transpose ? se::blas::Transpose::kTranspose
+                                            : se::blas::Transpose::kNoTranspose;
+  auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
+
+  return stream
+      ->ThenBlasGemmWithAlgorithm(
+          lhs_transpose, rhs_transpose, output_matrix.num_rows,
+          output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/1.0,
+          lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
+          &output_data, /*leading dim of output=*/output_matrix.num_rows,
+          computation_type, algorithm, output_profile_result)
+      .ok();
+}
+
+// Experimentally tries to pick the best algorithm for the given gemm.
+//
+// This may fail under perfectly normal circumstances.  In particular, it will
+// fail if the program was built with < CUDA 8 or if we're using a gpu older
+// than sm_50 -- in both cases, cublas doesn't support gemm-with-algorithm at
+// all.
+template <typename Element>
+StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
+    MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+    MatrixDescriptor output_matrix, se::blas::ComputationType computation_type,
+    se::Stream* stream) {
+  std::vector<se::blas::AlgorithmType> algorithms;
+  CHECK(stream->parent()->GetBlasGemmAlgorithms(&algorithms));
+
+  se::blas::ProfileResult best_result;
+  for (auto algorithm : algorithms) {
+    se::blas::ProfileResult profile_result;
+    // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will fail
+    // for all algorithms if we're targeting < sm_50.  But because we pass a
+    // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
+    // and the actual success-ness is returned in ProfileResult::is_valid.
+    DCHECK(DoGemmWithAlgorithm<Element>(lhs_matrix, rhs_matrix, output_matrix,
+                                        computation_type, algorithm, stream,
+                                        &profile_result));
+
+    if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
+                                         best_result.elapsed_time_in_ms()) {
+      best_result = profile_result;
+    }
+  }
+
+  if (best_result.is_valid()) {
+    return best_result.algorithm();
+  }
+
+  return InternalError(
+      "Unable to autotune cuBLAS gemm on stream %p; none of the %zu algorithms "
+      "ran successfully",
+      stream, algorithms.size());
+}
+
+// Helper functions to go from a PrimitiveType to a templated version of
+// DoGemm/DoGemmWithAlgorithm/DoGemmAutotune.
+auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
   switch (type) {
     case F32:
       return &DoGemm<float>;
     case F64:
       return &DoGemm<double>;
     default:
-      return nullptr;
+      LOG(FATAL) << "Unsupported type.";
+  }
+}
+auto GetGemmWithAlgorithmFn(PrimitiveType type)
+    -> decltype(&DoGemmWithAlgorithm<float>) {
+  switch (type) {
+    case F32:
+      return &DoGemmWithAlgorithm<float>;
+    case F64:
+      return &DoGemmWithAlgorithm<double>;
+    default:
+      LOG(FATAL) << "Unsupported type.";
+  }
+}
+auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
+  switch (type) {
+    case F32:
+      return &DoGemmAutotune<float>;
+    case F64:
+      return &DoGemmAutotune<double>;
+    default:
+      LOG(FATAL) << "Unsupported type.";
+  }
+}
+
+// Converts from an XLA PrimitiveType to a blas::ComputationType, which is used
+// to specify the precision with which matmul computations should be performed,
+// separately from the precision of the inputs and result.
+se::blas::ComputationType GetBlasComputationType(PrimitiveType type) {
+  switch (type) {
+    case F32:
+      return se::blas::ComputationType::kF32;
+    case F64:
+      return se::blas::ComputationType::kF64;
+    default:
+      LOG(FATAL) << "Unsupported type.";
   }
 }
 
 }  // namespace
 
-GemmThunk::GemmThunk(Index lhs_buffer, Index rhs_buffer, Index output_buffer,
+GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
+                     const BufferAllocation::Slice& rhs_buffer,
+                     const BufferAllocation::Slice& output_buffer,
                      const Shape& lhs_shape, const Shape& rhs_shape,
                      const Shape& output_shape, bool transpose_lhs,
                      bool transpose_rhs, const HloInstruction* hlo_instruction)
@@ -120,8 +226,6 @@ GemmThunk::GemmThunk(Index lhs_buffer, Index rhs_buffer, Index output_buffer,
 tensorflow::Status GemmThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   VLOG(2) << "Executing a GemmThunk";
-  auto executor = FindGemmExecutor(output_shape_.element_type());
-  DCHECK(executor != nullptr);
 
   se::DeviceMemoryBase lhs_data =
       buffer_allocations.GetDeviceAddress(lhs_buffer_);
@@ -141,7 +245,7 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
   // Therefore, we need to convert dot between row-major matrices to that
   // between column-major matrices. The key insight for the conversion is that,
   // in linear storage, matrix M in column-major order is identical to the
-  // tranpose of M in row-major order. In other words,
+  // transpose of M in row-major order. In other words,
   //
   //   column-major(M) = row-major(M^T).
   //
@@ -172,17 +276,66 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
       make_descriptor(lhs_data, lhs_shape_, transpose_lhs_);
   const MatrixDescriptor rhs_descriptor =
       make_descriptor(rhs_data, rhs_shape_, transpose_rhs_);
+
+  // Dispatches to a regular cublas gemm, a gemm-with-algorithm, or attempts to
+  // autotune this gemm to figure out the best algorithm.
+  auto launch = [this](MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+                       MatrixDescriptor output_matrix, se::Stream* stream) {
+    PrimitiveType element_type = output_shape_.element_type();
+    se::blas::ComputationType computation_type =
+        GetBlasComputationType(element_type);
+
+    const string& device_name = stream->parent()->GetDeviceDescription().name();
+    auto autotune_it = autotune_results_.find(device_name);
+    if (autotune_it == autotune_results_.end()) {
+      StatusOr<se::blas::AlgorithmType> best_algorithm =
+          GetGemmAutotuneFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
+                                          computation_type, stream);
+      autotune_it =
+          autotune_results_.insert({device_name, best_algorithm}).first;
+
+      if (autotune_it->second.ok()) {
+        VLOG(2) << "Autotune on GemmThunk " << this
+                << " successful; best algorithm is "
+                << best_algorithm.ValueOrDie();
+      } else {
+        VLOG(2) << "Autotune on GemmThunk " << this
+                << " unsuccessful.  Will use generic gemm.";
+      }
+    }
+
+    const StatusOr<se::blas::AlgorithmType>& best_algorithm =
+        autotune_it->second;
+    if (best_algorithm.ok()) {
+      auto algorithm = best_algorithm.ValueOrDie();
+      VLOG(2) << "Using algorithm " << algorithm
+              << " chosen by autotuning on GemmThunk " << this;
+      return GetGemmWithAlgorithmFn(element_type)(
+          lhs_matrix, rhs_matrix, output_matrix, computation_type, algorithm,
+          stream,
+          /*output_profile_result=*/nullptr);
+    }
+    return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
+                                   stream);
+  };
+
+  bool launch_ok;
   if (output_shape_.layout().minor_to_major(0) == 0) {
-    return executor(
+    launch_ok = launch(
         lhs_descriptor, rhs_descriptor,
         MatrixDescriptor(output_data, false, output_num_rows, output_num_cols),
         stream);
   } else {
-    return executor(
+    launch_ok = launch(
         rhs_descriptor, lhs_descriptor,
         MatrixDescriptor(output_data, false, output_num_cols, output_num_rows),
         stream);
   }
+
+  if (!launch_ok) {
+    return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);
+  }
+  return tensorflow::Status::OK();
 }
 
 }  // namespace gpu

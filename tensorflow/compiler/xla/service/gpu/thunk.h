@@ -44,6 +44,7 @@ class Thunk {
     kConvolution,
     kCopy,
     kGemm,
+    kInfeed,
     kKernel,
     kSequential,
     kTuple,

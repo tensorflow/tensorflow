@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.ndlstm.python import lstm2d as lstm2d_lib
@@ -75,6 +68,14 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
       variables.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 7, 11, 8))
+
+  def testSeparableLstmDimsBlocks(self):
+    with self.test_session():
+      inputs = constant_op.constant(_rand(2, 7, 11, 5))
+      outputs = lstm2d.separable_lstm(inputs, 8, kernel_size=[2, 2])
+      variables.global_variables_initializer().run()
+      result = outputs.eval()
+      self.assertEqual(tuple(result.shape), (2, 4, 6, 8))
 
   def testReduceToSequenceDims(self):
     with self.test_session():

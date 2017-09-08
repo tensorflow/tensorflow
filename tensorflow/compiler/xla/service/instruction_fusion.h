@@ -19,34 +19,33 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
-
-// Returns true if the computation of the given instruction is significantly
-// more expensive than just writing all the values of the instructions' result
-// array. Expensive operations should not be duplicated.
-bool IsExpensive(const HloInstruction& instruction);
-
-// Returns true if fusing producer into consumer would cause producer to be
-// duplicated. This is the case if producer has uses other than consumer.
-bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer);
 
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers
 // with the intent that the loops which compute their values will be fused in
 // code generation. Derived classes define ShouldFuse method to select which
 // instructions to fuse.
-class InstructionFusion : public HloPass {
+class InstructionFusion : public HloPassInterface {
  public:
-  explicit InstructionFusion(bool may_duplicate = true)
-      : HloPass("fusion"), may_duplicate_(may_duplicate) {}
-  ~InstructionFusion() override {}
+  explicit InstructionFusion(
+      std::function<bool(const HloInstruction& instruction)> is_expensive,
+      bool may_duplicate = true)
+      : is_expensive_(is_expensive), may_duplicate_(may_duplicate) {}
+  ~InstructionFusion() override = default;
+  tensorflow::StringPiece name() const override { return "fusion"; }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
   StatusOr<bool> Run(HloModule* module) override;
+
+  // Returns true if the computation of the given instruction is significantly
+  // more expensive than just writing all the values of the instructions' result
+  // array. Expensive operations will not be duplicated.
+  static bool IsExpensive(const HloInstruction& instruction);
 
  protected:
   // Returns whether the given producer instruction should be fused into the
@@ -67,11 +66,40 @@ class InstructionFusion : public HloPass {
   virtual HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
                                                 const HloInstruction* consumer);
 
+  // Fuses producer into consumer.
+  virtual HloInstruction* Fuse(HloInstruction* producer,
+                               HloInstruction* consumer);
+
+  // An "effectively unary" operation is one that has one "large"
+  // input with the others being negligible in terms of memory usage.
+  // We use "has a smaller true rank than the output" as a heuristic
+  // for "negligible" memory usage.
+  bool EffectivelyUnary(HloInstruction* hlo);
+
+  // Returns true if fusing producer into consumer would cause producer to be
+  // duplicated. This is the case if producer has uses other than consumer.
+  bool FusionWouldDuplicate(const HloInstruction& producer,
+                            const HloInstruction& consumer) {
+    return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
+  }
+
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
+  HloModule* module_;
 
  private:
-  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
+  // The set of producers whose consumers we cannot fuse into.
+  using DoNotFuseSet = std::unordered_set<HloInstruction*>;
+
+  // Whether or not we can fuse consumer into original_producer on all paths
+  // from the producer to the consumer where nodes are HLOs and edges are uses.
+  bool CanFuseOnAllPaths(const HloReachabilityMap& reachability_map,
+                         HloInstruction* producer, HloInstruction* consumer,
+                         DoNotFuseSet* do_not_fuse);
+
+  // Used to determine if an HLO is expensive. Expensive operations will not be
+  // duplicated.
+  std::function<bool(const HloInstruction& instruction)> is_expensive_;
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;

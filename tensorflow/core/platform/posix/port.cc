@@ -13,8 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_JEMALLOC
+#include "jemalloc/jemalloc.h"
+#endif
+
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
@@ -24,16 +30,16 @@ limitations under the License.
 #include <string.h>
 #include <unistd.h>
 #ifdef SNAPPY
-#include <snappy.h>
+#include "snappy.h"
 #endif
-#if defined(__APPLE__) && defined(__MACH__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
 #include <thread>
 #endif
 
 namespace tensorflow {
 namespace port {
 
-void InitMain(const char *usage, int *argc, char ***argv) {}
+void InitMain(const char* usage, int* argc, char*** argv) {}
 
 string Hostname() {
   char hostname[1024];
@@ -50,7 +56,7 @@ int NumSchedulableCPUs() {
   }
   perror("sched_getaffinity");
 #endif
-#if defined(__APPLE__) && defined(__MACH__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
   unsigned int count = std::thread::hardware_concurrency();
   if (count > 0) return static_cast<int>(count);
 #endif
@@ -60,36 +66,66 @@ int NumSchedulableCPUs() {
   return kDefaultCores;
 }
 
-void *aligned_malloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)
   return memalign(minimum_alignment, size);
 #else  // !defined(__ANDROID__)
-  void *ptr = NULL;
+  void* ptr = nullptr;
   // posix_memalign requires that the requested alignment be at least
   // sizeof(void*). In this case, fall back on malloc which should return
   // memory aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void *);
-  if (minimum_alignment < required_alignment) return malloc(size);
-  if (posix_memalign(&ptr, minimum_alignment, size) != 0)
-    return NULL;
-  else
+  const int required_alignment = sizeof(void*);
+  if (minimum_alignment < required_alignment) return Malloc(size);
+#ifdef TENSORFLOW_USE_JEMALLOC
+  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
+#else
+  int err = posix_memalign(&ptr, minimum_alignment, size);
+#endif
+  if (err != 0) {
+    return nullptr;
+  } else {
     return ptr;
+  }
 #endif
 }
 
-void aligned_free(void *aligned_memory) { free(aligned_memory); }
+void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
+
+void* Malloc(size_t size) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_malloc(size);
+#else
+  return malloc(size);
+#endif
+}
+
+void* Realloc(void* ptr, size_t size) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_realloc(ptr, size);
+#else
+  return realloc(ptr, size);
+#endif
+}
+
+void Free(void* ptr) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  jemalloc_free(ptr);
+#else
+  free(ptr);
+#endif
+}
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
 }
 
-std::size_t MallocExtension_GetAllocatedSize(const void *p) { return 0; }
+std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 
-void AdjustFilenameForLogging(string *filename) {
+void AdjustFilenameForLogging(string* filename) {
   // Nothing to do
 }
 
-bool Snappy_Compress(const char *input, size_t length, string *output) {
+bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
@@ -101,8 +137,8 @@ bool Snappy_Compress(const char *input, size_t length, string *output) {
 #endif
 }
 
-bool Snappy_GetUncompressedLength(const char *input, size_t length,
-                                  size_t *result) {
+bool Snappy_GetUncompressedLength(const char* input, size_t length,
+                                  size_t* result) {
 #ifdef SNAPPY
   return snappy::GetUncompressedLength(input, length, result);
 #else
@@ -110,7 +146,7 @@ bool Snappy_GetUncompressedLength(const char *input, size_t length,
 #endif
 }
 
-bool Snappy_Uncompress(const char *input, size_t length, char *output) {
+bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 #ifdef SNAPPY
   return snappy::RawUncompress(input, length, output);
 #else
@@ -118,7 +154,12 @@ bool Snappy_Uncompress(const char *input, size_t length, char *output) {
 #endif
 }
 
-string Demangle(const char *mangled) { return mangled; }
+string Demangle(const char* mangled) { return mangled; }
+
+double NominalCPUFrequency() {
+  // TODO(yuefengz): implement it for this platform.
+  return 1.0;
+}
 
 }  // namespace port
 }  // namespace tensorflow

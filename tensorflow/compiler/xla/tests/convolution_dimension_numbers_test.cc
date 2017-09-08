@@ -21,16 +21,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -43,8 +41,8 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
   auto dimension_numbers_status =
       ComputationBuilder::CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_MATCH(dimension_numbers_status.status().error_message(),
-               testing::ContainsRegex("input are not unique"));
+  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+              ::testing::HasSubstr("input are not unique"));
 }
 
 // Tests the convolution operation with invalid weight dimension numbers.
@@ -52,8 +50,8 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
   auto dimension_numbers_status =
       ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 2, 3, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_MATCH(dimension_numbers_status.status().error_message(),
-               testing::ContainsRegex("weight are not unique"));
+  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+              ::testing::HasSubstr("weight are not unique"));
 }
 
 XLA_TEST_F(ConvolutionDimensionNumbersTest,
@@ -63,8 +61,7 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   auto weight_array = MakeUnique<Array4D<float>>(4, 3, 1, 1);
   weight_array->FillWithMultiples(0.2);
   auto weight_data =
-      client_
-          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D(*weight_array))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(*weight_array))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -98,20 +95,3 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

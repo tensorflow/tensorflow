@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python import learn
@@ -51,7 +45,7 @@ class IOTest(test.TestCase):
           feature_columns=learn.infer_real_valued_columns_from_input(data),
           n_classes=3)
       classifier.fit(data, labels, steps=100)
-      score = accuracy_score(labels[0], list(classifier.predict(data)))
+      score = accuracy_score(labels[0], list(classifier.predict_classes(data)))
       self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
     else:
       print("No pandas installed. pandas-related tests are skipped.")
@@ -67,7 +61,7 @@ class IOTest(test.TestCase):
           feature_columns=learn.infer_real_valued_columns_from_input(data),
           n_classes=3)
       classifier.fit(data, labels, steps=100)
-      score = accuracy_score(labels, list(classifier.predict(data)))
+      score = accuracy_score(labels, list(classifier.predict_classes(data)))
       self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
   def test_string_data_formats(self):

@@ -77,7 +77,7 @@ def main(unused_args):
     return -1
 
   input_graph_def = graph_pb2.GraphDef()
-  with gfile.Open(FLAGS.input, "r") as f:
+  with gfile.Open(FLAGS.input, "rb") as f:
     data = f.read()
     if FLAGS.frozen_graph:
       input_graph_def.ParseFromString(data)
@@ -99,7 +99,8 @@ def main(unused_args):
   return 0
 
 
-if __name__ == "__main__":
+def parse_args():
+  """Parses command line arguments."""
   parser = argparse.ArgumentParser()
   parser.register("type", "bool", lambda v: v.lower() == "true")
   parser.add_argument(
@@ -137,5 +138,9 @@ if __name__ == "__main__":
       type=int,
       default=dtypes.float32.as_datatype_enum,
       help="The AttrValue enum to use for placeholders.")
-  FLAGS, unparsed = parser.parse_known_args()
+  return parser.parse_known_args()
+
+
+if __name__ == "__main__":
+  FLAGS, unparsed = parse_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -109,7 +109,7 @@ struct ApplyAdam<GPUDevice, T> {
                   typename TTypes<T>::ConstScalar beta1,
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstFlat grad) {
+                  typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
     Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
@@ -122,11 +122,25 @@ struct ApplyAdam<GPUDevice, T> {
         v +
         (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
             (grad.square() - v);
-    var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
-                      (beta1_power.constant(one) - beta1_power))
-                         .reshape(single)
-                         .broadcast(bcast) *
-                     m / (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
+
+    if (use_nesterov) {
+      var.device(d) -=
+          (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+           (beta1_power.constant(one) - beta1_power))
+              .reshape(single)
+              .broadcast(bcast) *
+          (m * beta1.reshape(single).broadcast(bcast) +
+           (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+               grad) /
+          (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
+    } else {
+      var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+                        (beta1_power.constant(one) - beta1_power))
+                           .reshape(single)
+                           .broadcast(bcast) *
+                       m /
+                       (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
+    }
   }
 };
 

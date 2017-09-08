@@ -57,7 +57,7 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
                         })) {
           TF_ASSIGN_OR_RETURN(HloInstruction * copy,
                               CopyInsertion::FindOrInsertCopy(operand));
-          hlo->ReplaceOperandWith(i, copy);
+          TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(i, copy));
           changed = true;
         }
       }

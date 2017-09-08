@@ -16,9 +16,9 @@ limitations under the License.
 // XLA-specific Ops for broadcasting used in gradient
 // code.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -55,7 +55,7 @@ class BCastGradArgsOp : public XlaOpKernel {
 
       BCast::Vec vec;
       for (int64 i = 0; i < in_shape.num_elements(); ++i) {
-        vec.push_back(xla::LiteralUtil::Get<int>(literal, {i}));
+        vec.push_back(literal.Get<int>({i}));
       }
       shapes.push_back(vec);
     }
@@ -81,7 +81,7 @@ class BCastGradArgsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);
 };
 
-REGISTER_XLA_OP("BroadcastGradientArgs", BCastGradArgsOp);
+REGISTER_XLA_OP(Name("BroadcastGradientArgs"), BCastGradArgsOp);
 
 }  // namespace
 }  // namespace tensorflow

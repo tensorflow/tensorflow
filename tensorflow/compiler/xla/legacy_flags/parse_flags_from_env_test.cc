@@ -86,14 +86,14 @@ static const char kTestFlagString[] =
     "--single_quoted='single quoted \\\\ \n \"' "
     "--double_quoted=\"double quoted \\\\ \n '\\\"\" ";
 
-// Test that the environent variable is parserd correctly.
+// Test that the environent variable is parsed correctly.
 TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
   setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
 }
 
-// Test that a file named by the environent variable is parserd correctly.
+// Test that a file named by the environent variable is parsed correctly.
 TEST(ParseFlagsFromEnv, File) {
   // environment variables where  tmp dir may be specified.
   static const char* kTempVars[] = {"TEST_TMPDIR", "TMP"};
@@ -127,7 +127,6 @@ static const char* binary_name;
 // Test that when we use both the environment variable and actual
 // commend line flags (when the latter is possible), the latter win.
 TEST(ParseFlagsFromEnv, EnvAndFlag) {
-  // TODO(m3b):  convert to Subprocess when CL 137771604 is finished.
   static struct {
     const char* env;
     const char* arg;

@@ -23,7 +23,7 @@ limitations under the License.
 // actually used.  E.g. some ahead-of-time compiled computations don't need a
 // thread pool.
 namespace Eigen {
-class ThreadPoolDevice;
+struct ThreadPoolDevice;
 }
 
 namespace tensorflow {

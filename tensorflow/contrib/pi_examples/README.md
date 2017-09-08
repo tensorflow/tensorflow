@@ -69,5 +69,5 @@ Flite package and then pipe the output of the binary you've built, like this:
 
 ```
 sudo apt-get install flite
-tensorflow/contrib/pi_examples/camera/gen/bin/camera | xargs -n1 flite -t
+tensorflow/contrib/pi_examples/camera/gen/bin/camera | xargs -n 1 flite -t
 ```

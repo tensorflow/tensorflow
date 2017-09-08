@@ -29,12 +29,15 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -331,7 +334,82 @@ class ScopedMetaGraphTest(test.TestCase):
     del orig_meta_graphs[0].collection_def["unbound_inputs"]
     del new_meta_graphs[0].collection_def["unbound_inputs"]
     for a, b in zip(orig_meta_graphs, new_meta_graphs):
-      self.assertProtoEquals(a, b)
+      test_util.assert_meta_graph_protos_equal(self, a, b)
+
+  def testScopedImportUnderNameScope(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      variables.Variable(initial_value=1.0, trainable=True, name="myvar")
+    meta_graph_def, _ = meta_graph.export_scoped_meta_graph(graph=graph)
+
+    graph = ops.Graph()
+    with graph.as_default():
+      with ops.name_scope("foo"):
+        imported_variables = meta_graph.import_scoped_meta_graph(
+            meta_graph_def, import_scope="bar")
+        self.assertEqual(len(imported_variables), 1)
+        self.assertEqual(list(imported_variables.values())[0].name,
+                         "foo/bar/myvar:0")
+
+  def testScopedImportWithSelectedCollections(self):
+    meta_graph_filename = os.path.join(
+        _TestDir("selected_collections_import"), "meta_graph.pb")
+
+    graph = ops.Graph()
+    # Add a variable to populate two collections. The functionality tested is
+    # not specific to variables, but using variables in the test is convenient.
+    with graph.as_default():
+      variables.Variable(initial_value=1.0, trainable=True)
+    self.assertTrue(
+        all([
+            graph.get_collection(key)
+            for key in
+            [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.TRAINABLE_VARIABLES]
+        ]))
+    meta_graph.export_scoped_meta_graph(
+        filename=meta_graph_filename, graph=graph)
+
+    def _test_import(include_collection_keys, omit_collection_keys):
+      assert set(include_collection_keys).isdisjoint(omit_collection_keys)
+      newgraph = ops.Graph()
+      import_scope = "some_scope_name"
+
+      def _restore_collections_predicate(collection_key):
+        return (collection_key in include_collection_keys and
+                collection_key not in omit_collection_keys)
+
+      meta_graph.import_scoped_meta_graph(
+          meta_graph_filename,
+          graph=newgraph,
+          import_scope=import_scope,
+          restore_collections_predicate=_restore_collections_predicate)
+      collection_values = [
+          newgraph.get_collection(name=key, scope=import_scope)
+          for key in include_collection_keys
+      ]
+      self.assertTrue(all(collection_values))
+      collection_values = [
+          newgraph.get_collection(name=key, scope=import_scope)
+          for key in omit_collection_keys
+      ]
+      self.assertFalse(any(collection_values))
+
+    _test_import(
+        include_collection_keys=[
+            ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.TRAINABLE_VARIABLES
+        ],
+        omit_collection_keys=[])
+    _test_import(
+        include_collection_keys=[ops.GraphKeys.GLOBAL_VARIABLES],
+        omit_collection_keys=[ops.GraphKeys.TRAINABLE_VARIABLES])
+    _test_import(
+        include_collection_keys=[ops.GraphKeys.TRAINABLE_VARIABLES],
+        omit_collection_keys=[ops.GraphKeys.GLOBAL_VARIABLES])
+    _test_import(
+        include_collection_keys=[],
+        omit_collection_keys=[
+            ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.TRAINABLE_VARIABLES
+        ])
 
   def _testScopedExportWithQueue(self, test_dir, exported_filename):
     graph = ops.Graph()
@@ -381,15 +459,21 @@ class ScopedMetaGraphTest(test.TestCase):
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
   # graph.
-  def testExportNestedNames(self):
+  def doTestExportNestedNames(self, use_resource=False):
     graph1 = ops.Graph()
     with graph1.as_default():
       with ops.name_scope("hidden1/hidden2/hidden3"):
         images = constant_op.constant(
             1.0, dtypes.float32, shape=[3, 2], name="images")
-        weights1 = variables.Variable(
-            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], name="weights")
-        biases1 = variables.Variable([0.1] * 3, name="biases")
+        if use_resource:
+          weights1 = variables.Variable(
+              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], name="weights")
+          biases1 = resource_variable_ops.ResourceVariable(
+              [0.1] * 3, name="biases")
+        else:
+          biases1 = variables.Variable([0.1] * 3, name="biases")
+          weights1 = variables.Variable(
+              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], name="weights")
         nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
 
     orig_meta_graph, var_list = meta_graph.export_scoped_meta_graph(
@@ -424,6 +508,12 @@ class ScopedMetaGraphTest(test.TestCase):
     ]
     for n, e in zip(nodes, expected):
       self.assertEqual([e], graph2.get_operation_by_name(n).get_attr("_class"))
+
+  def testExportNestedNames(self):
+    self.doTestExportNestedNames(use_resource=False)
+
+  def testExportNestedNamesResource(self):
+    self.doTestExportNestedNames(use_resource=True)
 
   def testPotentialCycle(self):
     graph1 = ops.Graph()
@@ -460,7 +550,7 @@ class ScopedMetaGraphTest(test.TestCase):
         a = variables.Variable(
             constant_op.constant(
                 1.0, shape=[2, 2]), name="a")
-      with ops.device("/job:ps/replica:0/task:0/gpu:0"):
+      with ops.device("/job:ps/replica:0/task:0/device:GPU:0"):
         b = variables.Variable(
             constant_op.constant(
                 2.0, shape=[2, 2]), name="b")
@@ -508,6 +598,63 @@ class ScopedMetaGraphTest(test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("a").device))
     self.assertEqual("", str(graph2.as_graph_element("b").device))
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
+
+
+class MetaGraphWithVariableScopeTest(test.TestCase):
+
+  def testMetricsCollection(self):
+
+    def _enqueue_vector(sess, queue, values, shape=None):
+      if not shape:
+        shape = (1, len(values))
+      dtype = queue.dtypes[0]
+      sess.run(
+          queue.enqueue(constant_op.constant(
+              values, dtype=dtype, shape=shape)))
+
+    meta_graph_filename = os.path.join(
+        _TestDir("metrics_export"), "meta_graph.pb")
+
+    graph = ops.Graph()
+    with self.test_session(graph=graph) as sess:
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      _, update_op = metrics.mean(values)
+
+      initializer = variables.local_variables_initializer()
+      sess.run(initializer)
+      sess.run(update_op)
+
+    meta_graph.export_scoped_meta_graph(
+        filename=meta_graph_filename, graph=graph)
+
+    # Verifies that importing a meta_graph with LOCAL_VARIABLES collection
+    # works correctly.
+    graph = ops.Graph()
+    with self.test_session(graph=graph) as sess:
+      meta_graph.import_scoped_meta_graph(meta_graph_filename)
+      initializer = variables.local_variables_initializer()
+      sess.run(initializer)
+
+    # Verifies that importing an old meta_graph where "local_variables"
+    # collection is of node_list type works, but cannot build initializer
+    # with the collection.
+    graph = ops.Graph()
+    with self.test_session(graph=graph) as sess:
+      meta_graph.import_scoped_meta_graph(
+          test.test_src_dir_path(
+              "python/framework/testdata/metrics_export_meta_graph.pb"))
+      self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
+                       2)
+      with self.assertRaisesRegexp(
+          AttributeError, "'Tensor' object has no attribute 'initializer'"):
+        initializer = variables.local_variables_initializer()
 
 
 if __name__ == "__main__":

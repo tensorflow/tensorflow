@@ -26,72 +26,43 @@ namespace functor {
 
 typedef Eigen::GpuDevice Device;
 
-template <typename T, InplaceOpType op>
-__global__ void DoInplaceOpKernel(int nthreads, const int64 rows,
-                                  const int64 cols, const int64 n, const T* src,
-                                  const int64* rowids, T* dst) {
+template <typename T>
+__global__ void DoParallelConcatOpKernel(int nthreads, const int64 rows,
+                                         const int64 cols, int32 loc,
+                                         const T* src, T* dst) {
   CUDA_1D_KERNEL_LOOP(idx, nthreads) {
-    int64 r = idx / cols;
     int64 c = idx % cols;
-    r = (rowids[r] % rows + rows) % rows;  // Guard index range.
+    int64 r = (loc % rows + rows) % rows;  // Guard index range.
     T* p = dst + r * cols + c;
     const T* q = src + idx;
-    switch (op) {
-      case I_UPDATE:
-        *p = ldg(q);
-        break;
-      case I_ADD:
-        *p += ldg(q);
-        break;
-      case I_SUB:
-        *p -= ldg(q);
-        break;
-    }
+    *p = ldg(q);
   }
 }
 
 template <typename T>
-Status DoInplaceUpdate(const Device& d, InplaceOpType op, const Tensor& value,
-                       const Tensor& loc, Tensor* output) {
+Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
+                              Tensor* output) {
   const int64 nelem = value.NumElements();
   CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
   auto Toutput = output->flat_outer_dims<T>();
   const int64 nrows = Toutput.dimension(0);
   const int64 ncols = Toutput.dimension(1);
-  const int64 n = loc.NumElements();
   const T* src = value.flat<T>().data();
-  const int64* rowids = loc.flat<int64>().data();
   T* dst = output->flat<T>().data();
-  switch (op) {
-    case I_UPDATE:
-      DoInplaceOpKernel<T, I_UPDATE>
-          <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
-              cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
-      break;
-    case I_ADD:
-      DoInplaceOpKernel<T, I_ADD>
-          <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
-              cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
-      break;
-    case I_SUB:
-      DoInplaceOpKernel<T, I_SUB>
-          <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
-              cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
-      break;
-    default:
-      return errors::InvalidArgument("Unsupported operation type", op);
-  }
+  DoParallelConcatOpKernel<T>
+      <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
+          cfg.virtual_thread_count, nrows, ncols, loc, src, dst);
   return Status::OK();
 }
 
 template <>
-Status DoInplace(const Device& d, InplaceOpType op, const Tensor& value,
-                 const Tensor& loc, Tensor* output) {
+Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
+                        Tensor* output) {
   CHECK_EQ(value.dtype(), output->dtype());
   switch (value.dtype()) {
-#define CASE(type)                                           \
-  case DataTypeToEnum<type>::value:                          \
-    return DoInplaceUpdate<type>(d, op, value, loc, output); \
+#define CASE(type)                                              \
+  case DataTypeToEnum<type>::value:                             \
+    return DoParallelConcatUpdate<type>(d, value, loc, output); \
     break;
 
     CASE(float)

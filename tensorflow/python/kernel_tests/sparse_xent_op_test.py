@@ -35,7 +35,9 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import app
 from tensorflow.python.platform import test
@@ -197,6 +199,23 @@ class SparseXentTest(test.TestCase):
       err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
+
+  def testSecondGradient(self):
+    images_placeholder = array_ops.placeholder(dtypes.float32, shape=(3, 2))
+    labels_placeholder = array_ops.placeholder(dtypes.int32, shape=(3))
+    weights = variables.Variable(random_ops.truncated_normal([2], stddev=1.0))
+    weights_with_zeros = array_ops.stack([array_ops.zeros([2]), weights],
+                                         axis=1)
+    logits = math_ops.matmul(images_placeholder, weights_with_zeros)
+    cross_entropy = nn_ops.sparse_softmax_cross_entropy_with_logits(
+        labels=labels_placeholder, logits=logits)
+    loss = math_ops.reduce_mean(cross_entropy)
+
+    # Taking ths second gradient should fail, since it is not
+    # yet supported.
+    with self.assertRaisesRegexp(LookupError,
+                                 "explicitly disabled"):
+      _ = gradients_impl.hessians(loss, [weights])
 
   def _testHighDim(self, features, labels):
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))

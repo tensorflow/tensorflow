@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {
@@ -31,9 +31,12 @@ class IdentityOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(IdentityOp);
 };
 
-REGISTER_XLA_OP("Identity", IdentityOp);
-REGISTER_XLA_OP("PreventGradient", IdentityOp);
-REGISTER_XLA_OP("StopGradient", IdentityOp);
+// XLA_* devices also register a "real" Identity operator so we suppress the
+// dummy operator using CompilationOnly().
+REGISTER_XLA_OP(Name("Identity").CompilationOnly(), IdentityOp);
+
+REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
+REGISTER_XLA_OP(Name("StopGradient"), IdentityOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -32,7 +32,7 @@ application that will let you check your application.
 First, clone this TensorFlow repository.
 
 You will need to download all dependencies as well.  We have provided a script
-that does so, to be run (as with all commands) at the root of the repository:
+that does so, to be run (as with all commands) **at the root of the repository**:
 
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
@@ -75,7 +75,7 @@ To run the executable, use:
 
 ```bash
 tensorflow/contrib/makefile/gen/bin/benchmark \
- --graph=~/graphs/inception/tensorflow_inception_graph.pb
+ --graph=$HOME/graphs/inception/tensorflow_inception_graph.pb
 ```
 
 ## Android
@@ -104,6 +104,9 @@ Then, execute the following:
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
 tensorflow/contrib/makefile/compile_android_protobuf.sh -c
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB=`CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
+	tensorflow/contrib/makefile/compile_nsync.sh -t android -a armeabi-v7a`
 make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID
 ```
 
@@ -130,7 +133,7 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 ## iOS
 
 _Note: To use this library in an iOS application, see related instructions in
-the [iOS examples](../ios_examples/) directory._
+the [iOS examples](../../examples/ios/) directory._
 
 Install XCode 7.3 or more recent. If you have not already, you will need to
 install the command-line tools using `xcode-select`:
@@ -141,6 +144,8 @@ xcode-select --install
 
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
+
+(You will also need to have [Homebrew](http://brew.sh/) installed.)
 
 Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
 
@@ -174,7 +179,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
+[tensorflow/examples/ios](../../examples/ios/) shows how to use the static
 library in a simple app.
 
 ### Building by hand
@@ -192,6 +197,13 @@ Next, you will need to compile protobufs for iOS:
 
 ```bash
 tensorflow/contrib/makefile/compile_ios_protobuf.sh 
+```
+
+Then, you will need to compile the nsync library for iOS:
+
+```bash
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
 ```
 
 Then, you can run the makefile specifying iOS as the target, along with the
@@ -212,13 +224,14 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app. 
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
+[tensorflow/examples/ios](../../examples/ios/) shows how to use the static
 library in a simple app.
 
 #### Universal binaries
 
 In some situations, you will need a universal library.  In that case, you will
-still need to run `compile_ios_protobuf.sh`, but this time follow it with:
+still need to run `compile_ios_protobuf.sh` and `compile_nsync.sh`, but this
+time follow it with:
 
 ```bash
 compile_ios_tensorflow.sh
@@ -256,6 +269,8 @@ make
 sudo make install
 sudo ldconfig  # refresh shared library cache
 cd ../../../../..
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB="$HOST_NSYNC_LIB"
 ```
 
 Once that's done, you can use make to build the library and example:
@@ -293,7 +308,7 @@ itself, you'll see it's broken up into host and target sections. If you are
 cross-compiling, you should look at customizing the target settings to match
 what you need for your desired system.
 
-## Dependency Managment
+## Dependency Management
 
 The Makefile loads in a list of dependencies stored in text files. These files
 are generated from the main Bazel build by running 

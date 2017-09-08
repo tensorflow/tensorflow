@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
+from tensorflow.python.util import tf_inspect
 
 
 def assert_estimator_contract(tester, estimator_class):
@@ -31,7 +31,7 @@ def assert_estimator_contract(tester, estimator_class):
     tester: A tf.test.TestCase.
     estimator_class: 'type' object of pre-canned estimator.
   """
-  attributes = inspect.getmembers(estimator_class)
+  attributes = tf_inspect.getmembers(estimator_class)
   attribute_names = [a[0] for a in attributes]
 
   tester.assertTrue('config' in attribute_names)

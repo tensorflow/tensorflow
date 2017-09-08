@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -308,7 +309,13 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // an optimized case where the queue 'knows' what attributes to
       // use, and plumbs them through here.
       Tensor element;
-      ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0), &element);
+      Status s = ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0),
+                                    &element);
+      if (!s.ok()) {
+        ctx->SetStatus(s);
+        callback(Tuple());
+        return;
+      }
       tuple.emplace_back(element);
     }
     callback(tuple);
@@ -352,7 +359,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       }
                     }
                   }
-                  if (allow_small_batch && queues_[0].size() > 0) {
+                  if (allow_small_batch && !queues_[0].empty()) {
                     // Request all remaining elements in the queue.
                     queue_size = queues_[0].size();
                     attempt->tuple.clear();
@@ -387,8 +394,10 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       const TensorShape shape =
                           ManyOutShape(i, attempt->elements_requested);
                       Tensor element;
-                      attempt->context->allocate_temp(component_dtypes_[i],
-                                                      shape, &element);
+                      attempt->context->SetStatus(
+                          attempt->context->allocate_temp(component_dtypes_[i],
+                                                          shape, &element));
+                      if (!attempt->context->status().ok()) return kComplete;
                       attempt->tuple.emplace_back(element);
                     }
                   }

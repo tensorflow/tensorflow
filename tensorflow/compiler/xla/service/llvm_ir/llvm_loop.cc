@@ -18,10 +18,11 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/Constants.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -143,12 +144,19 @@ llvm::BasicBlock* ForLoop::CreateBasicBlockWithSuffix(
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
                                               llvm::Value* start_index,
                                               llvm::Value* end_index) {
+  return AddLoop(suffix, start_index, end_index, ir_builder_->getInt64(1));
+}
+
+std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
+                                              llvm::Value* start_index,
+                                              llvm::Value* end_index,
+                                              llvm::Value* stride) {
   if (inner_loop_body_bb_ != nullptr) {
     // Create this loop inside the previous one.
     ir_builder_->SetInsertPoint(&*inner_loop_body_bb_->getFirstInsertionPt());
   }
-  std::unique_ptr<ForLoop> loop = ForLoop::EmitForLoop(
-      suffix, start_index, end_index, ir_builder_->getInt64(1), ir_builder_);
+  std::unique_ptr<ForLoop> loop =
+      ForLoop::EmitForLoop(suffix, start_index, end_index, stride, ir_builder_);
 
   if (outer_loop_preheader_bb_ == nullptr) {
     outer_loop_preheader_bb_ = loop->GetPreheaderBasicBlock();
@@ -169,6 +177,15 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
   CHECK_LE(start_index, end_index);
   return AddLoop(suffix, ir_builder_->getInt64(start_index),
                  ir_builder_->getInt64(end_index));
+}
+
+std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
+                                              int64 end_index, int64 stride,
+                                              tensorflow::StringPiece suffix) {
+  CHECK_LE(start_index, end_index);
+  return AddLoop(suffix, ir_builder_->getInt64(start_index),
+                 ir_builder_->getInt64(end_index),
+                 ir_builder_->getInt64(stride));
 }
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,

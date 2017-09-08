@@ -20,9 +20,11 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -374,6 +376,49 @@ TEST(TFCompileTest, MatMulAndAdd1) {
     EXPECT_EQ(muladd_const.result_x_y_prod_data(), muladd.results()[0]);
     EXPECT_EQ(muladd_const.result_x_y_sum_data(), muladd.results()[1]);
   }
+}
+
+TEST(TFCompileTest, Function) {
+  // The function is equivalent to an addition
+  FunctionComp add_fn;
+  EXPECT_EQ(add_fn.arg0_data(), add_fn.args()[0]);
+  EXPECT_EQ(add_fn.arg1_data(), add_fn.args()[1]);
+
+  add_fn.arg0() = 1;
+  add_fn.arg1() = 2;
+  EXPECT_TRUE(add_fn.Run());
+  EXPECT_EQ(add_fn.error_msg(), "");
+  EXPECT_EQ(add_fn.result0(), 3);
+  EXPECT_EQ(add_fn.result0_data()[0], 3);
+  EXPECT_EQ(add_fn.result0_data(), add_fn.results()[0]);
+}
+
+TEST(TFCompileTest, Splits) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  SplitsComp fn;
+
+  fn.set_thread_pool(&device);
+  // x = [[1, 2], [3, 4]]
+  fn.arg0(0, 0) = 1;
+  fn.arg0(0, 1) = 2;
+  fn.arg0(1, 0) = 3;
+  fn.arg0(1, 1) = 4;
+
+  // y = [[10, 20], [30, 40]]
+  fn.arg1(0, 0) = 10;
+  fn.arg1(0, 1) = 20;
+  fn.arg1(1, 0) = 30;
+  fn.arg1(1, 1) = 40;
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
+  const float expected[] = {7.86375557e+10, 1.34274679e+11, 1.92741717e+12,
+                            3.29964742e+12};
+  EXPECT_NEAR(expected[0], fn.result0(0, 0), 1e4);
+  EXPECT_NEAR(expected[1], fn.result0(0, 1), 1e4);
+  EXPECT_NEAR(expected[2], fn.result0(1, 0), 1e4);
+  EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
 }
 
 }  // namespace

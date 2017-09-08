@@ -18,23 +18,14 @@ limitations under the License.
 
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
 
-const int64 kWarpSize = 32;
-
-// Precondition: "hlo" is an operand of a Dot instruction.
-//
-// Returns whether "hlo" is foldable to its user.
-bool IsOperandFoldableToDot(const HloInstruction& hlo);
-
-// Returns true if GpuCompiler can fold any operands of "dot" into "dot" for
-// better performance.
-bool CanFoldOperandsIntoDot(const HloInstruction& dot);
+constexpr int64 kWarpSize = 32;
 
 // Returns true if `hlo` will be implemented as a call to BLAS gemm.
 bool ImplementedAsGemm(const HloInstruction& hlo);

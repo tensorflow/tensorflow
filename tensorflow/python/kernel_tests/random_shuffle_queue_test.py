@@ -967,6 +967,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertNotEqual(60.0, results[0])
       # Similarly for 60.0 and the second element.
       self.assertNotEqual(60.0, results[1])
+      thread.join()
 
   def testBlockingEnqueueToClosedQueue(self):
     with self.test_session() as sess:

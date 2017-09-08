@@ -15,10 +15,7 @@
 
 """Functional operations.
 
-## Higher Order Operators
-
-TensorFlow provides several higher order operators to simplify the common
-map-reduce programming patterns.
+See the @{$python/functional_ops} guide.
 
 @@map_fn
 @@foldl
@@ -213,7 +210,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
            swap_memory=False, infer_shape=True, name=None):
   """map on the list of tensors unpacked from `elems` on dimension 0.
 
-  The simplest version of `map` repeatedly applies the callable `fn` to a
+  The simplest version of `map_fn` repeatedly applies the callable `fn` to a
   sequence of elements from first to last. The elements are made of the
   tensors unpacked from `elems`. `dtype` is the data type of the return
   value of `fn`. Users must provide `dtype` if it is different from

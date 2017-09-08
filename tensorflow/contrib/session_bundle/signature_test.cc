@@ -261,6 +261,10 @@ struct MockSession : public tensorflow::Session {
     return errors::Unimplemented("Not implemented for mock.");
   }
 
+  Status ListDevices(std::vector<DeviceAttributes>* response) override {
+    return errors::Unimplemented("Not implemented for mock.");
+  }
+
   // Arguments stored on a Run call.
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<string> output_tensor_names;

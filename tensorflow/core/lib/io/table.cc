@@ -40,7 +40,7 @@ struct Table::Rep {
 
 Status Table::Open(const Options& options, RandomAccessFile* file, uint64 size,
                    Table** table) {
-  *table = NULL;
+  *table = nullptr;
   if (size < Footer::kEncodedLength) {
     return errors::DataLoss("file is too short to be an sstable");
   }
@@ -57,7 +57,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file, uint64 size,
 
   // Read the index block
   BlockContents contents;
-  Block* index_block = NULL;
+  Block* index_block = nullptr;
   if (s.ok()) {
     s = ReadBlock(file, footer.index_handle(), &contents);
     if (s.ok()) {
@@ -94,7 +94,7 @@ static void DeleteBlock(void* arg, void* ignored) {
 Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
   Table* table = reinterpret_cast<Table*>(arg);
   //  Cache* block_cache = table->rep_->options.block_cache;
-  Block* block = NULL;
+  Block* block = nullptr;
   //  Cache::Handle* cache_handle = NULL;
 
   BlockHandle handle;
@@ -112,9 +112,9 @@ Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
   }
 
   Iterator* iter;
-  if (block != NULL) {
+  if (block != nullptr) {
     iter = block->NewIterator();
-    iter->RegisterCleanup(&DeleteBlock, block, NULL);
+    iter->RegisterCleanup(&DeleteBlock, block, nullptr);
   } else {
     iter = NewErrorIterator(s);
   }

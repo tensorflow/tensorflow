@@ -37,11 +37,11 @@ class GemmThunk : public Thunk {
   // Constructs a thunk that computes "output = lhs <dot> rhs" using BLAS gemm.
   // transpose_lhs and transpose_rhs indicate whether gemm should transpose the
   // lhs and rhs operand. hlo_instruction is as in Thunk.
-  GemmThunk(BufferAllocation::Index lhs_buffer,
-            BufferAllocation::Index rhs_buffer,
-            BufferAllocation::Index output_buffer, const Shape& lhs_shape,
-            const Shape& rhs_shape, const Shape& output_shape,
-            bool transpose_lhs, bool transpose_rhs,
+  GemmThunk(const BufferAllocation::Slice& lhs_buffer,
+            const BufferAllocation::Slice& rhs_buffer,
+            const BufferAllocation::Slice& output_buffer,
+            const Shape& lhs_shape, const Shape& rhs_shape,
+            const Shape& output_shape, bool transpose_lhs, bool transpose_rhs,
             const HloInstruction* hlo_instruction);
 
   GemmThunk(const GemmThunk&) = delete;
@@ -53,16 +53,24 @@ class GemmThunk : public Thunk {
       perftools::gputools::Stream* stream) override;
 
  private:
-  BufferAllocation::Index lhs_buffer_;
-  BufferAllocation::Index rhs_buffer_;
-  BufferAllocation::Index output_buffer_;
+  const BufferAllocation::Slice lhs_buffer_;
+  const BufferAllocation::Slice rhs_buffer_;
+  const BufferAllocation::Slice output_buffer_;
 
-  Shape lhs_shape_;
-  Shape rhs_shape_;
-  Shape output_shape_;
+  const Shape lhs_shape_;
+  const Shape rhs_shape_;
+  const Shape output_shape_;
 
-  bool transpose_lhs_;
-  bool transpose_rhs_;
+  const bool transpose_lhs_;
+  const bool transpose_rhs_;
+
+  // Maps device names (StreamExecutor::DeviceDescription::name()) to autotune
+  // results.  The map's value is the best algorithm we've found for this thunk
+  // on this device, or an error if none of the algorithms worked and we should
+  // use the regular gemm without an algorithm.
+  std::unordered_map<string,
+                     StatusOr<::perftools::gputools::blas::AlgorithmType>>
+      autotune_results_;
 };
 
 }  // namespace gpu

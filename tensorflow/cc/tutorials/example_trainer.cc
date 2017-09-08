@@ -101,7 +101,7 @@ void ConcurrentSteps(const Options* opts, int session_index) {
   std::unique_ptr<Session> session(NewSession(options));
   GraphDef def = CreateGraphDef();
   if (options.target.empty()) {
-    graph::SetDefaultDevice(opts->use_gpu ? "/gpu:0" : "/cpu:0", &def);
+    graph::SetDefaultDevice(opts->use_gpu ? "/device:GPU:0" : "/cpu:0", &def);
   }
 
   TF_CHECK_OK(session->Create(def));
@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
     argv[dst++] = f;
   }
   argv[dst++] = nullptr;
-  argc = unknown_flags.size() + 1;
+  argc = static_cast<int>(unknown_flags.size() + 1);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   tensorflow::example::ConcurrentSessions(opts);
 }

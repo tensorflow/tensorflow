@@ -25,7 +25,7 @@ namespace gpu {
 tensorflow::Status TupleThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   std::vector<void*> tuple_element_buffer_addresses;
-  for (BufferAllocation::Index tuple_element_buffer : tuple_element_buffers_) {
+  for (BufferAllocation::Slice tuple_element_buffer : tuple_element_buffers_) {
     tuple_element_buffer_addresses.push_back(
         buffer_allocations.GetDeviceAddress(tuple_element_buffer).opaque());
   }

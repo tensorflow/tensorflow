@@ -30,7 +30,7 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
-string CEscape(const string& src);
+string CEscape(StringPiece src);
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
 // '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
@@ -81,9 +81,25 @@ string Lowercase(StringPiece s);
 // Return upper-cased version of s.
 string Uppercase(StringPiece s);
 
+// Converts "^2ILoveYou!" to "i_love_you_". More specifically:
+// - converts all non-alphanumeric characters to underscores
+// - replaces each occurence of a capital letter (except the very
+//   first character and if there is already an '_' before it) with '_'
+//   followed by this letter in lower case
+// - Skips leading non-alpha characters
+// This method is useful for producing strings matching "[a-z][a-z0-9_]*"
+// as required by OpDef.ArgDef.name. The resulting string is either empty or
+// matches this regex.
+string ArgDefCase(StringPiece s);
+
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
+
+// Replaces the first occurrence (if replace_all is false) or all occurrences
+// (if replace_all is true) of oldsub in s with newsub.
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all);
 
 // Join functionality
 template <typename T>

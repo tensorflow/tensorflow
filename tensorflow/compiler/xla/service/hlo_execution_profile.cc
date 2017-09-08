@@ -20,17 +20,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
 void HloExecutionProfile::AddProfileResult(const HloInstruction* hlo,
                                            uint64 cycles_taken) {
   hlo_to_cycles_taken_[hlo] = cycles_taken;
+  profiled_computations_.insert(hlo->parent());
 }
 
 uint64 HloExecutionProfile::GetProfileResult(const HloInstruction& hlo) const {
@@ -42,46 +42,30 @@ uint64 HloExecutionProfile::GetProfileResult(const HloInstruction& hlo) const {
 }
 
 string HloExecutionProfile::ToString(
+    const HloComputation& computation,
     const DeviceDescription& device_description,
-    const HloCostAnalysis& cost_analysis) const {
-  using Item = std::pair<const HloInstruction*, uint64>;
-  std::vector<Item> items(hlo_to_cycles_taken_.begin(),
-                          hlo_to_cycles_taken_.end());
-  auto custom_less = [](const Item& lhs, const Item& rhs) {
-    return lhs.second > rhs.second;
-  };
-  std::sort(items.begin(), items.end(), custom_less);
-  string result;
-  const int64 total_cycles = total_cycles_executed();
-  double clock_rate_ghz = device_description.clock_rate_ghz();
-  auto append_item = [&result, total_cycles, clock_rate_ghz](
-      int64 cycles, int64 flops, const string& name) {
-    double nsecs = cycles / clock_rate_ghz;
-    tensorflow::strings::StrAppend(
-        &result,
-        tensorflow::strings::Printf(
-            "%15lld cycles (%6.2f%%) :: %12.1f usec @ f_nom :: %18s :: %s",
-            cycles, cycles / static_cast<double>(total_cycles) * 100,
-            nsecs / 1e3,
-            flops <= 0 ? "<none>" : HumanReadableNumFlops(flops, nsecs).c_str(),
-            name.c_str()));
-  };
-  tensorflow::strings::StrAppend(
-      &result,
-      tensorflow::strings::Printf("HLO execution profile: (%s @ f_nom)\n\t",
-                                  tensorflow::strings::HumanReadableElapsedTime(
-                                      total_cycles / clock_rate_ghz / 1e9)
-                                      .c_str()));
-  append_item(total_cycles, -1, "[total]");
-  for (const auto& item : items) {
-    tensorflow::strings::StrAppend(&result, "\n\t");
-    auto flops = item.first == nullptr
-                     ? -1
-                     : cost_analysis.hlo_to_flop_count(*item.first);
-    string display = item.first == nullptr ? "<none>" : item.first->ToString();
-    append_item(item.second, flops, display);
+    HloCostAnalysis* cost_analysis) const {
+  tensorflow::Status analysis_status =
+      computation.root_instruction()->Accept(cost_analysis);
+  if (!analysis_status.ok()) {
+    return "";
   }
-  return result;
+
+  HumanReadableProfileBuilder builder(computation.name(),
+                                      total_cycles_executed(computation),
+                                      device_description.clock_rate_ghz());
+  for (const auto& item : hlo_to_cycles_taken_) {
+    const HloInstruction* hlo = item.first;
+    int64 cycles = item.second;
+
+    builder.AddOp(/*op_name=*/hlo->ToString(),
+                  /*short_name=*/hlo->ToString(/*compact_operands=*/true),
+                  hlo->ToCategory(), cycles, cost_analysis->flop_count(*hlo),
+                  cost_analysis->transcendental_count(*hlo),
+                  cost_analysis->bytes_accessed(*hlo),
+                  cost_analysis->seconds(*hlo));
+  }
+  return builder.ToString();
 }
 
 }  // namespace xla

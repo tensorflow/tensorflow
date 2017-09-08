@@ -76,7 +76,7 @@ struct GraphCycles::Rep {
 GraphCycles::GraphCycles() : rep_(new Rep) {}
 
 GraphCycles::~GraphCycles() {
-  for (int i = 0; i < rep_->nodes_.size(); i++) {
+  for (Vec<Node*>::size_type i = 0; i < rep_->nodes_.size(); i++) {
     delete rep_->nodes_[i];
   }
   delete rep_;
@@ -85,7 +85,7 @@ GraphCycles::~GraphCycles() {
 bool GraphCycles::CheckInvariants() const {
   Rep* r = rep_;
   NodeSet ranks;  // Set of ranks seen so far.
-  for (int32 x = 0; x < r->nodes_.size(); x++) {
+  for (Vec<Node*>::size_type x = 0; x < r->nodes_.size(); x++) {
     Node* nx = r->nodes_[x];
     if (nx->visited) {
       LOG(FATAL) << "Did not clear visited marker on node " << x;
@@ -108,7 +108,7 @@ int32 GraphCycles::NewNode() {
   if (rep_->free_nodes_.empty()) {
     Node* n = new Node;
     n->visited = false;
-    n->data = NULL;
+    n->data = nullptr;
     n->rank = rep_->nodes_.size();
     rep_->nodes_.push_back(n);
     return n->rank;
@@ -116,7 +116,7 @@ int32 GraphCycles::NewNode() {
     // Preserve preceding rank since the set of ranks in use must be
     // a permutation of [0,rep_->nodes_.size()-1].
     int32 r = rep_->free_nodes_.back();
-    rep_->nodes_[r]->data = NULL;
+    rep_->nodes_[r]->data = nullptr;
     rep_->free_nodes_.pop_back();
     return r;
   }
@@ -259,7 +259,7 @@ static void Reorder(GraphCycles::Rep* r) {
              r->deltaf_.end(), r->merged_.begin());
 
   // Assign the ranks in order to the collected list.
-  for (int32 i = 0; i < r->list_.size(); i++) {
+  for (Vec<int32>::size_type i = 0; i < r->list_.size(); i++) {
     r->nodes_[r->list_[i]]->rank = r->merged_[i];
   }
 }
@@ -277,7 +277,7 @@ static void Sort(const Vec<Node*>& nodes, Vec<int32>* delta) {
 }
 
 static void MoveToList(GraphCycles::Rep* r, Vec<int32>* src, Vec<int32>* dst) {
-  for (int32 i = 0; i < src->size(); i++) {
+  for (Vec<int32>::size_type i = 0; i < src->size(); i++) {
     int32 w = (*src)[i];
     (*src)[i] = r->nodes_[w]->rank;  // Replace src entry with its rank
     r->nodes_[w]->visited = false;   // Prepare for future DFS calls
@@ -286,7 +286,7 @@ static void MoveToList(GraphCycles::Rep* r, Vec<int32>* src, Vec<int32>* dst) {
 }
 
 static void ClearVisitedBits(GraphCycles::Rep* r, const Vec<int32>& nodes) {
-  for (int32 i = 0; i < nodes.size(); i++) {
+  for (Vec<int32>::size_type i = 0; i < nodes.size(); i++) {
     r->nodes_[nodes[i]]->visited = false;
   }
 }
@@ -332,7 +332,7 @@ int GraphCycles::FindPath(int32 x, int32 y, int max_path_len,
 }
 
 bool GraphCycles::IsReachable(int32 x, int32 y) const {
-  return FindPath(x, y, 0, NULL) > 0;
+  return FindPath(x, y, 0, nullptr) > 0;
 }
 
 bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {

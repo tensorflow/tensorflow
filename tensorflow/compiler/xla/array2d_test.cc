@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <initializer_list>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/compiler/xla/test.h"
 
 namespace xla {
 namespace {
@@ -82,6 +82,17 @@ TEST(Array2dTest, IndexingReadWrite) {
   arr(1, 2) = 61;
   EXPECT_EQ(arr(1, 1), 51);
   EXPECT_EQ(arr(1, 2), 61);
+}
+
+TEST(Array2dTest, IndexingReadWriteBool) {
+  Array2D<bool> arr = {{false, true, false}, {true, true, false}};
+
+  EXPECT_EQ(arr(1, 1), true);
+  EXPECT_EQ(arr(1, 2), false);
+  arr(1, 1) = false;
+  arr(1, 2) = true;
+  EXPECT_EQ(arr(1, 1), false);
+  EXPECT_EQ(arr(1, 2), true);
 }
 
 TEST(Array2dTest, Fill) {

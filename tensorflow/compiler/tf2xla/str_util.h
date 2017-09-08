@@ -29,10 +29,6 @@ limitations under the License.
 namespace tensorflow {
 namespace str_util {
 
-// Replace all non-overlapping occurrences of from with to in-place in text.  If
-// from is empty, it matches at the beginning of the text and after every byte.
-void ReplaceAll(string* text, StringPiece from, StringPiece to);
-
 // Replace all non-overlapping occurrences of the given (from,to) pairs in-place
 // in text.  If from is empty, it matches at the beginning of the text and after
 // every byte.  Each (from,to) replacement pair is processed in the order it is

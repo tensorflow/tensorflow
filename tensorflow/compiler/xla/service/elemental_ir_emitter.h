@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -83,6 +83,9 @@ class ElementalIrEmitter {
 
   virtual StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                              llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
+                                                     llvm::Value* x) const;
 
   // A helper method for MakeElementGenerator. Given an elementwise op `hlo` and
   // the target array index, computes the source array index of its

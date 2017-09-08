@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_RESHAPE_MOVER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_RESHAPE_MOVER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -24,9 +24,9 @@ namespace xla {
 // This now only moves them outputward across elementwise ops all whose operands
 // are equivalent Reshapes or Transposes, but in future could potentially move
 // them inputward also.
-class ReshapeMover : public HloPass {
+class ReshapeMover : public HloPassInterface {
  public:
-  ReshapeMover() : HloPass("reshape motion") {}
+  tensorflow::StringPiece name() const override { return "reshape-motion"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

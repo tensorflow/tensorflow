@@ -42,7 +42,7 @@ namespace swig {
 // This is temporary code to be used during the migration
 // from python shape inference functions to C++ shape inference functions.
 std::vector<string> RunCppShapeInference(
-    const string& serialized_node_def,
+    int graph_def_version, const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
     PyObject* input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,

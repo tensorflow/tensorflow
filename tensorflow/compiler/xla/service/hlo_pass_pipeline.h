@@ -22,9 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -32,11 +31,10 @@ limitations under the License.
 namespace xla {
 
 // Pipeline of HLO passes.
-class HloPassPipeline : public HloPass {
+class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const string& name,
-                           const Compiler::HloDumper& dumper)
-      : HloPass(name), dumper_(dumper) {}
+  explicit HloPassPipeline(const string& name) : name_(name) {}
+  tensorflow::StringPiece name() const override { return name_; }
 
   // Add a pass to the pipeline. It should be called with the arguments for the
   // pass constructor:
@@ -46,8 +44,20 @@ class HloPassPipeline : public HloPass {
   // Returns a reference to the added pass.
   template <typename T, typename... Args>
   T& AddPass(Args&&... args) {
+    CHECK(!run_called_) << "AddPass cannot be called after Run";
     auto pass = new T(std::forward<Args>(args)...);
     passes_.push_back(std::unique_ptr<T>(pass));
+    return *pass;
+  }
+
+  // Add an invariant-checking pass to the pipeline. It will be run before and
+  // after each HLO pass. The invariant checking pass must not mutate the graph
+  // (it is required to always return "false" from its Run() method).
+  template <typename T, typename... Args>
+  T& AddInvariantChecker(Args&&... args) {
+    CHECK(!run_called_) << "AddInvariantChecker cannot be called after Run";
+    auto pass = new T(std::forward<Args>(args)...);
+    invariant_checkers_.push_back(std::unique_ptr<T>(pass));
     return *pass;
   }
 
@@ -55,8 +65,10 @@ class HloPassPipeline : public HloPass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  Compiler::HloDumper dumper_;
-  std::vector<std::unique_ptr<HloPass>> passes_;
+  const string name_;
+  std::vector<std::unique_ptr<HloPassInterface>> passes_;
+  std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
+  bool run_called_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloPassPipeline);
 };

@@ -27,23 +27,26 @@ namespace tensorflow {
 
 class AsyncServiceInterface;
 struct WorkerEnv;
+struct WorkerSession;
 
 class GrpcWorker : public Worker {
  public:
   GrpcWorker(WorkerEnv* env);
 
   // Specialized version of RecvTensor for gRPC, which avoids a copy.
-  void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
-                       ::grpc::ByteBuffer* response, StatusCallback done);
+  virtual void GrpcRecvTensorAsync(CallOptions* opts,
+                                   const RecvTensorRequest* request,
+                                   ::grpc::ByteBuffer* response,
+                                   StatusCallback done);
 
   WorkerEnv* env();
 };
 
-GrpcWorker* NewGrpcWorker(WorkerEnv* worker_env);
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);
 
 // Returns an implementation of WorkerService rpc service.
-AsyncServiceInterface* NewGrpcWorkerService(GrpcWorker* worker,
-                                            ::grpc::ServerBuilder* builder);
+std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow
 

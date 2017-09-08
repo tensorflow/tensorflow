@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -182,8 +181,8 @@ TEST_F(PadTest, Pad4DFloatArrayMinorFirstSmall) {
 
   const float pad_value = -5.123f;
   Array4D<float> input_array(1, 1, 2, 3, {1, 2, 3, 4, 5, 6});
-  auto input = LiteralUtil::CreateR4FromArray4D<float>(input_array);
-  input = LiteralUtil::Relayout(*input, layout);
+  auto input = Literal::CreateR4FromArray4D<float>(input_array);
+  input = input->Relayout(layout);
 
   b.Pad(b.ConstantLiteral(*input), b.ConstantR0(pad_value), padding_config);
 
@@ -227,8 +226,8 @@ XLA_TEST_F(PadTest, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
   input_array(0, 0, 0, 0) = 1.0f;
   input_array(0, 24, 6, 6) = 2.0f;
   input_array(0, 17, 2, 5) = 3.0f;
-  auto input = LiteralUtil::CreateR4FromArray4D<float>(input_array);
-  input = LiteralUtil::Relayout(*input, layout);
+  auto input = Literal::CreateR4FromArray4D<float>(input_array);
+  input = input->Relayout(layout);
 
   b.Pad(b.ConstantLiteral(*input), b.ConstantR0(pad_value), padding_config);
 
@@ -307,7 +306,7 @@ XLA_TEST_F(PadTest, Large2DPad) {
 
   auto ones = MakeUnique<Array2D<float>>(4, 4);
   ones->Fill(1.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*ones);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*ones);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -333,7 +332,7 @@ XLA_TEST_F(PadTest, AllTypes2DPad) {
 
   auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(0.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*operand);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -364,7 +363,71 @@ XLA_TEST_F(PadTest, High2DPad) {
 
   auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*operand);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
+  auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
+  std::unique_ptr<GlobalData> input_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  ComputeAndCompareR2<float>(&b, *expected, {input_data.get()},
+                             ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(PadTest, NegativePadding2D) {
+  ComputationBuilder b(client_, TestName());
+
+  constexpr int64 in_rows = 129;
+  constexpr int64 in_cols = 129;
+  int64 low_padding[2] = {-1, -2};
+  int64 high_padding[2] = {-3, 4};
+  constexpr int64 interior_padding = 0;
+  auto input =
+      b.Parameter(0, ShapeUtil::MakeShape(F32, {in_rows, in_cols}), "input");
+  PaddingConfig padding_config = MakeNoPaddingConfig(2);
+  for (int dim : {0, 1}) {
+    padding_config.mutable_dimensions(dim)->set_edge_padding_low(
+        low_padding[dim]);
+    padding_config.mutable_dimensions(dim)->set_edge_padding_high(
+        high_padding[dim]);
+    padding_config.mutable_dimensions(dim)->set_interior_padding(
+        interior_padding);
+  }
+  auto padded = b.Pad(input, b.ConstantR0<float>(2.718f), padding_config);
+
+  auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
+  operand->FillUnique(1.0f);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
+  auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
+  std::unique_ptr<GlobalData> input_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  ComputeAndCompareR2<float>(&b, *expected, {input_data.get()},
+                             ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(PadTest, NegativeAndInteriorPadding2D) {
+  ComputationBuilder b(client_, TestName());
+
+  constexpr int64 in_rows = 8;
+  constexpr int64 in_cols = 11;
+  int64 low_padding[2] = {4, -1};
+  int64 high_padding[2] = {-2, -4};
+  int64 interior_padding[2] = {1, 2};
+  auto input =
+      b.Parameter(0, ShapeUtil::MakeShape(F32, {in_rows, in_cols}), "input");
+  PaddingConfig padding_config = MakeNoPaddingConfig(2);
+  for (int dim : {0, 1}) {
+    padding_config.mutable_dimensions(dim)->set_edge_padding_low(
+        low_padding[dim]);
+    padding_config.mutable_dimensions(dim)->set_edge_padding_high(
+        high_padding[dim]);
+    padding_config.mutable_dimensions(dim)->set_interior_padding(
+        interior_padding[dim]);
+  }
+  auto padded = b.Pad(input, b.ConstantR0<float>(2.718f), padding_config);
+
+  auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
+  operand->FillUnique(1.0f);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -388,7 +451,7 @@ XLA_TEST_F(PadTest, ReducePad) {
 
   auto ones = MakeUnique<Array4D<float>>(2, 2, 2, 2);
   ones->Fill(1.0);
-  auto input_literal = LiteralUtil::CreateR4FromArray4D<float>(*ones);
+  auto input_literal = Literal::CreateR4FromArray4D<float>(*ones);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -401,20 +464,3 @@ XLA_TEST_F(PadTest, ReducePad) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

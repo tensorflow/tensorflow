@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -26,38 +26,79 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
+using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
+
 namespace xla {
 
-StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
-  legacy_flags::HloPassPipelineFlags* flags =
-      legacy_flags::GetHloPassPipelineFlags();
-  std::vector<string> tmp =
-      tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
-  tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
+namespace {
+void DumpModule(const HloModule& module,
 
-  string prefix = name() + ": pipeline start";
+                const string& message) {
+  hlo_graph_dumper::MaybeDumpHloModule(module, message);
+  VLOG(2) << "HLO " << message << ":";
+  XLA_VLOG_LINES(2, module.ToString());
+}
+}  // namespace
+
+StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
+  run_called_ = true;
+
+  VLOG(1) << "Running HLO pass pipeline " << name();
+
+  auto repeated_field =
+      module->config().debug_options().xla_disable_hlo_passes();
+  tensorflow::gtl::FlatSet<string> disabled_passes(repeated_field.begin(),
+                                                   repeated_field.end());
+  if (!disabled_passes.empty()) {
+    VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
+            << tensorflow::str_util::Join(disabled_passes, ", ");
+  }
+
+  auto run_invariant_checkers = [this,
+                                 module](const string& message) -> Status {
+    for (auto& invariant_checker : invariant_checkers_) {
+      VLOG(1) << "    Invariant checker " << invariant_checker->name();
+      StatusOr<bool> changed_status = invariant_checker->Run(module);
+      if (!changed_status.ok()) {
+        return Status(changed_status.status().code(),
+                      StrCat(changed_status.status().error_message(),
+                             "\n\nFailed ", message));
+      }
+      TF_RET_CHECK(!changed_status.ValueOrDie())
+          << "invariant checkers must not change the graph";
+    }
+    return Status::OK();
+  };
+
+  string prefix = name().ToString() + ": pipeline start";
   bool changed = false;
   string message;
+  TF_RETURN_IF_ERROR(
+      run_invariant_checkers(StrCat("before running pipeline: ", name())));
   for (auto& pass : passes_) {
-    if (!disabled_passes.empty() && disabled_passes.count(pass->name()) > 0) {
+    if (disabled_passes.count(pass->name().ToString()) > 0) {
+      VLOG(1) << "  Skipping HLO pass " << pass->name()
+              << ", disabled by --xla_disable_hlo_passes";
       continue;
     }
 
+    VLOG(1) << "  HLO pass " << pass->name();
+
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();
-    tensorflow::strings::StrAppend(&message, prefix, ", before ", pass->name());
-    dumper_(*module, message);
-
-    VLOG(2) << "HLO " << message << ":";
-    XLA_VLOG_LINES(2, module->ToString());
+    StrAppend(&message, prefix, ", before ", pass->name());
+    DumpModule(*module, message);
 
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
+    TF_RETURN_IF_ERROR(
+        run_invariant_checkers(StrCat("after running pass: ", pass->name())));
 
     changed |= changed_this_pass;
     prefix.clear();
-    tensorflow::strings::StrAppend(&prefix, name(), ": after ", pass->name());
+    StrAppend(&prefix, name(), ": after ", pass->name());
   }
-  dumper_(*module, prefix + ", pipeline end");
+  DumpModule(*module, prefix + ", pipeline end");
   return changed;
 }
 

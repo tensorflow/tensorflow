@@ -13,12 +13,15 @@
     *   [Eight-bit Calculations](#eight-bit-calculations)
 *   [Transform Reference](#transform-reference)
     *   [add_default_attributes](#add_default_attributes)
+    *   [backport_concatv2](#backport_concatv2)
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
+    *   [freeze_requantization_ranges](#freeze_requantization_ranges)
     *   [fuse_convolutions](#fuse_convolutions)
+    *   [insert_logging](#insert_logging)
     *   [merge_duplicate_nodes](#merge_duplicate_nodes)
-    *   [obsfucate_names](#obsfucate_names)
+    *   [obfuscate_names](#obfuscate_names)
     *   [quantize_nodes](#quantize_nodes)
     *   [quantize_weights](#quantize_weights)
     *   [remove_attribute](#remove_attribute)
@@ -27,6 +30,7 @@
     *   [rename_attribute](#rename_attribute)
     *   [rename_op](#rename_op)
     *   [round_weights](#round_weights)
+    *   [sparsify_gather](#sparsify_gather)
     *   [set_device](#set_device)
     *   [sort_by_execution_order](#sort_by_execution_order)
     *   [strip_unused_nodes](#strip_unused_nodes)
@@ -77,10 +81,10 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
+--transforms='
+strip_unused_nodes(type=float, shape="1,299,299,3")
+remove_nodes(op=Identity, op=CheckNumerics)
+fold_old_batch_norms
 '
 ```
 
@@ -90,7 +94,10 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first.
+within the list lets you specify which happen first. 
+Note that the optimization 
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
 
@@ -99,8 +106,8 @@ output layers of the model are. The best source for these is the model training
 process, where for a classifier the inputs will be the nodes that receive the
 data from the training set, and the output will be the predictions. If you're
 unsure, the
-[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph.cc)
-can inspect the model and provide guesses about likely input and output nodes,
+[`summarize_graph`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph_main.cc)
+tool can inspect the model and provide guesses about likely input and output nodes,
 as well as other information that's useful for debugging. Here's an example of
 how to use it on the [Inception V3
 graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
@@ -132,15 +139,14 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_constants(ignore_errors=true) \
-fold_batch_norms \
-fold_old_batch_norms\
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  remove_nodes(op=Identity, op=CheckNumerics)
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms'
 ```
 
 The batch norm folding is included twice because there are two different flavors
@@ -166,21 +172,20 @@ then you'll need to make local modifications to the build files to include the
 right .cc file that defines it. In a lot of cases the op is just a vestigial
 remnant from the training process though, and if that's true then you can run
 the [strip_unused_nodes](#strip_unused_nodes), specifying the inputs and outputs
-of your inference usage, to remove those unneccessary nodes:
+of your inference usage, to remove those unnecessary nodes:
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-fold_constants \
-fold_batch_norms \
-fold_old_batch_norms\
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms'
 ```
 
 ### Shrinking File Size
@@ -208,11 +213,14 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-round_weights(num_steps=256) \
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms
+  round_weights(num_steps=256)'
 ```
 
 You should see that the `optimized_inception_graph.pb` output file is the same
@@ -232,11 +240,14 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-quantize_weights \
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms
+  quantize_weights'
 ```
 
 You should see that the size of the output graph is about a quarter of the
@@ -248,7 +259,7 @@ results are cached and so you shouldn't see the graph run any more slowly.
 So far we've been concentrating on weights because those generally take up the
 most space. If you have a graph with a lot of small nodes in it, the names of
 those nodes can start to take up a noticeable amount of space too. To shrink
-those down, you can run the [obsfucate_names](#obsfucate_names) transform, which
+those down, you can run the [obfuscate_names](#obfuscate_names) transform, which
 replaces all the names (except for inputs and outputs) with short, cryptic but
 unique ids:
 
@@ -259,9 +270,8 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-obsfucate_names \
-'
+--transforms='
+  obfuscate_names'
 ```
 
 ### Eight-bit Calculations
@@ -276,16 +286,19 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
-quantize_weights \
-quantize_nodes \
-strip_unused_nodes \
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  add_default_attributes
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  remove_nodes(op=Identity, op=CheckNumerics)
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms
+  quantize_weights
+  quantize_nodes
+  strip_unused_nodes
+  sort_by_execution_order'
 ```
 
 This process converts all the operations in the graph that have eight-bit
@@ -310,7 +323,7 @@ themselves contain commas (for example shape definitions).
 The --inputs and --outputs are shared across all transforms, since it's common
 to need to know what the ingoing and outgoing nodes in the graph are. You should
 make sure you set these correctly before calling the graph transform tool, and
-if you're in doubt check with the model's author, or use the `check_graph` tool
+if you're in doubt check with the model's author, or use the [`summarize_graph`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms#inspecting-graphs) tool
 to examine likely inputs and outputs.
 
 All transforms can be passed the `ignore_errors` flag, with the value set to
@@ -332,22 +345,32 @@ can be useful to run this update process as a transform. This process finds any
 op attributes that are defined in the current TensorFlow list of ops but not
 within the saved model, and sets them to the defined default for that attribute.
 
-### fold_batch_norms
+### backport_concatv2
 
 Args: None
+
+If you have a GraphDef file that has been produced by a newer version of the
+TensorFlow framework and includes ConcatV2, and you want to run it on an older
+version that only supports Concat, this transform will take care of converting
+those newer ops to the equivalent older form.
+
+### fold_batch_norms
+
+Args: None \
 Prerequisites: [fold_constants](#fold_constants)
 
 This transform tries to optimize away the Mul that's introduced after a Conv2D
-when batch normalization has been used during training. It scans the graph for
-any channel-wise multiplies immediately after convolutions, and multiplies the
-convolution's weights with the Mul instead so this can be omitted at inference
-time. You'll need to make sure you run [fold_constants](#fold_constants) first,
-since the pattern can only be spotted if the normal complex expression that's
-produced by training for the Mul input is collapsed down into a simple constant.
+(or a MatMul) when batch normalization has been used during training. It scans
+the graph for any channel-wise multiplies immediately after convolutions, and
+multiplies the convolution's (or matrix multiplication's) weights with the Mul
+instead so this can be omitted at inference time. You'll need to make sure you
+run [fold_constants](#fold_constants) first, since the pattern can only be
+spotted if the normal complex expression that's produced by training for the Mul
+input is collapsed down into a simple constant.
 
 ### fold_constants
 
-Args: None\
+Args: None \
 Prerequisites: None
 
 Looks for any sub-graphs within the model that always evaluate to constant
@@ -359,7 +382,7 @@ to continue on past transient errors, since this is just an optimization phase.
 
 ### fold_old_batch_norms
 
-Args: None\
+Args: None \
 Prerequisites: None
 
 In the early days of TensorFlow, batch normalization was implemented using a
@@ -370,21 +393,140 @@ have a graph that uses the older-style, this transform will recognize and
 optimize those ops for inference, in the same way that the
 [fold_batch_norms](#fold_batch_norms) transform does for the new approach.
 
+### freeze_requantization_ranges
+
+Args:
+
+*   min_max_log_file: Path to a log file containing ranges for ops.
+*   min_percentile: Percentage cutoff to use to calculate an overall min.
+    Defaults to 5.
+*   max_percentile: Percentage cutoff to use to calculate an overall max.
+    Defaults to 5.
+
+Quantized operations like convolution or matrix multiplies take their inputs as
+8-bit, but produce 32-bit results. To do further operations on these, they need
+to be converted back down to the lower depth. To make the most of those eight
+bits, you need to scale the thirty-two bits of original data down using a scale
+that matches the range that's actually being used.
+
+Because that range information isn't stored in the original graph, the
+[quantization process](#eight-bit-calculations) inserts RequantizationRange ops
+before each conversion from 32 to 8 bits. This op looks at the 32-bit output and
+calculates the current min and max every time it's run.
+
+This isn't incredibly time-consuming, but it is extra work that's nice to avoid
+if possible. One way of optimizing that away is replacing those
+RequantizationRange ops with a pair of Const nodes holding known min/max values,
+so the scaling down can be done without having to inspect the output every time.
+
+That's what this transform does. It's usually used in conjunction with a copy of
+the graph that's had [insert_logging](#insert_logging) run on it to instrument
+it to record the min/max values to stderr. Why is logging used rather than
+writing to a normal file? As you'll see later, to get best results you want to
+collect data from a lot of runs on real data, and for mobile apps especially
+it's a lot easier to do this by copying log files. As an example, here's how
+you'd add the logging operations for a quantized version of the Inception v3
+graph:
+
+```bash
+bazel build tensorflow/tools/graph_transforms:transform_graph
+bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
+--in_graph=/tmp/quantized_inception.pb \
+--out_graph=/tmp/logged_quantized_inception.pb \
+--inputs=Mul \
+--outputs=softmax \
+--transforms='
+insert_logging(op=RequantizationRange, show_name=true, message="__requant_min_max:")\
+'
+```
+
+Now, when you run the `/tmp/logged_quantized_inception.pb` graph, it will write
+out log statements that show the value of the min and max calculated by each
+RequantizationRange op. Here's an example of running label_image and saving the
+log:
+
+```bash
+bazel build tensorflow/examples/label_image:label_image
+bazel-bin/tensorflow/examples/label_image/label_image \
+--image=${HOME}/Downloads/grace_hopper.jpg \
+--input_layer=Mul \
+--output_layer=softmax \
+--graph=/tmp/logged_quantized_inception.pb \
+--labels=${HOME}/Downloads/imagenet_comp_graph_label_strings.txt \
+2>/tmp/min_max_log_small.txt
+```
+
+If you look in `/tmp/min_max_log_small.txt`, you'll see a lot of lines like
+this:
+
+```
+I0108 21:45:42.261883    1972 logging_ops.cc:79] ;conv/Conv2D/eightbit/requant_range__print__;__requant_min_max:[-20.887871][22.274715]
+```
+
+This is a simple way of serializing the name of the RequantizationRange op and
+its min/max values every time it's run. It's a file like this that you pass into
+the transform as the `min_max_log_file` argument. The transform will attempt to
+extract all of the min/max values associated with ops, ignoring any irrelevant
+lines in the log, and replace the RequantizationRange ops with two Const nodes
+containing the found values.
+
+This isn't the whole story though. The min/max values can vary a lot depending
+on what the particular inputs to the graph are on any given run, which means
+picking ranges based on just one run can lead to clipping of values and a loss
+of accuracy. To get better results, you need to run your network against a range
+of different inputs. In Inception's case, I often use a thousand different
+images from the training set. You can then pass the whole concatenated log from
+all of the runs into the transform, and it will pick ranges based on the
+aggregate of the values found for each RequantizationRange op.
+
+To ensure that outliers don't increase the range too much, and so decrease the
+accuracy by putting too many bits into rare extreme values, the `min_percentile`
+and `max_percentile` arguments control how the overall min and max are chosen.
+At their default values of 5, this means that the lowest 5% of the minimum
+values will be discarded, taking the minimum of the remainder, and the
+equivalent for the maximum.
+
 ### fuse_convolutions
 
-Args: None\
+Args: None \
 Prerequisites: None
 
-For graphs that use ResizeBilinear or MirrorPad ops before convolutions (e.g.
-to scale up in the later stages of an image style transfer model),
-it can improve memory usage and latency to combine the spatial
-transformations with the convolution's im2col patch generation. This transform
-looks out for that particular pattern of ops and replaces them with a fused
-version that combines the resizing and padding with the convolution.
+For graphs that use ResizeBilinear or MirrorPad ops before convolutions (e.g. to
+scale up in the later stages of an image style transfer model), it can improve
+memory usage and latency to combine the spatial transformations with the
+convolution's im2col patch generation. This transform looks out for that
+particular pattern of ops and replaces them with a fused version that combines
+the resizing and padding with the convolution.
+
+### insert_logging
+
+Args:
+
+*   op: Insert a Print after every occurrence of this op type. Can be repeated
+    to cover multiple types. If not present, all op types will be instrumented.
+*   prefix: Insert a Print after every node whose name starts with this value.
+    Can be repeated to cover multiple nodes. If not present, all node names will
+    be matched.
+*   show_op: If true, the op type will be prepended to all log messages.
+*   show_name: If true, the node's name will be prepended to all log messages.
+*   message: Arbitrary text to log before the values.
+*   first_n: How many times to print before suppressing. Defaults to -1, which
+    means never stop.
+*   summarize: How long numerical results can be before they're truncated.
+    Defaults to 1024.
+
+The Print operator writes strings to stderr when it's run inside a graph, and
+prints out the numerical results of the node that it's reading from. This can be
+very useful when you're debugging and want to follow particular internal values
+while a graph is running. This transform allows you to insert those ops at
+particular points in the graph, and customize the message that's displayed. It's
+also used in conjunction with the
+[freeze_requantization_ranges](#freeze_requantization_ranges) transform to
+output information that it needs.
 
 ### merge_duplicate_nodes
 
-Args: None\
+Args: None \
 Prerequisites: None
 
 If there are Const nodes with the same types and contents, or nodes with the
@@ -394,9 +536,9 @@ of redundancy (e.g. this transform is always run as part of
 [quantize_nodes](#quantize_nodes) since the processing there can introduce
 duplicates of constants that are used in the quantize/dequantize process).
 
-### obsfucate_names
+### obfuscate_names
 
-Args: None\
+Args: None \
 Prerequisites: None
 
 Replaces all nodes' names with short generated ids, other than the inputs and
@@ -429,21 +571,28 @@ Prerequisites: [quantize_weights](#quantize_weights)
 Replaces any calculation nodes with their eight-bit equivalents (if available),
 and adds in conversion layers to allow remaining float operations to
 interoperate. This is one of the most complex transforms, and involves multiple
-passes and a lot of rewriting. It's also still an active area of research,
-so results may vary depending on the platform and operations you're using in
-your model. You should run quantize_weights first to ensure your Const ops are
-in eight-bit form.
+passes and a lot of rewriting. It's also still an active area of research, so
+results may vary depending on the platform and operations you're using in your
+model. You should run quantize_weights first to ensure your Const ops are in
+eight-bit form.
 
 ### quantize_weights
 
-Args: None\
+Args:
+
+*   minimum_size: Tensors with fewer elements than this won't be quantized
+(defaults to 1024)
+
 Prerequisites: None
 
-Converts any large (more than 15 element) float Const op into an eight-bit
+Converts any large (more than minimum_size) float Const op into an eight-bit
 equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced
-[quantize_nodes](#quantize_nodes) transform.
+[quantize_nodes](#quantize_nodes) transform. Even though there are no
+prerequisites, it is advisable to run [fold_batch_norms](#fold_batch_norms) or
+[fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
+to zero may cause significant loss of precision.
 
 ### remove_attribute
 
@@ -461,7 +610,7 @@ special circumstances though.
 
 ### remove_device
 
-Args: None
+Args: None \
 Prerequisites: None
 
 All ops can have a hardware device specified. This can be a problem when you're
@@ -528,7 +677,21 @@ Rounds all float values in large Const ops (more than 15 elements) to the given
 number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
 deploying on mobile, and you want a model that will compress effectively. See
-[shrinking file size](#shrinking-file-size) for more details.
+[shrinking file size](#shrinking-file-size) for more details. Even though there
+are no prerequisites, it is advisable to run
+[fold_batch_norms](#fold_batch_norms) or
+[fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
+to zero may cause significant loss of precision.
+
+### sparsify_gather
+
+Args: None \
+Prerequisites: None
+
+Transform 'Gather' op to a sparsified version where 'params' input of 'Gather'
+is replaced from a dense 'Const' to a 'HashTable'. 'Gather' op itself is
+replaced by a hashtable lookup. This is mostly useful for reducing sparse
+TF.learn linear model memory footprint.
 
 ### set_device
 
@@ -548,7 +711,7 @@ device assigned.
 
 ### sort_by_execution_order
 
-Args: None\
+Args: None \
 Prerequisites: None
 
 Arranges the nodes in the GraphDef in topological order, so that the inputs of
@@ -589,7 +752,7 @@ shape arguments let you control the attributes of any new Placeholders that are
 created. Plain `type` and `shape` set global defaults, but if you have different
 inputs with varying characteristics, you'll need to pass in a list of arguments
 where the preceding name specifies what layer each applies to. For example, if
-you had two inputs in1 and in2, you could call `strip_unused_node(name=in1,
+you had two inputs in1 and in2, you could call `strip_unused_nodes(name=in1,
 type_for_name=int32, shape_for_name="2,3", name=in2, type_for_name=float,
 shape_for_name="1,10,10,3")`.
 
@@ -601,7 +764,7 @@ heart, all of the transforms take in a valid GraphDef, make some changes, and
 output a new GraphDef. Each GraphDef is just a list of NodeDefs, each defining
 one node in the graph and its connections. You can find more information on the
 format at [this guide to TensorFlow model
-files](https://www.tensorflow.org/versions/master/how_tos/tool_developers/index.html),
+files](https://www.tensorflow.org/versions/master/extend/tool_developers/index.html),
 but for a simple example take a look at
 [tensorflow/tools/graph_transforms/rename_op.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms/rename_op.cc),
 which implements the [rename_op](#rename_op) transform:
@@ -741,8 +904,8 @@ transform:
 This is looking for QuantizeV2 nodes, with three inputs, the first of which is a
 Dequantize, the second is a Min that ultimately pulls from a Dequantize, and the
 third is a Max which does the same. Assuming we know the Dequantize ops are
-pulling from the same eight-bit buffer, the end result of this sub-graph is
-a no-op, since it's just turning the eight-bit buffer into float, and then
+pulling from the same eight-bit buffer, the end result of this sub-graph is a
+no-op, since it's just turning the eight-bit buffer into float, and then
 immediately converting it back to eight-bits, so if we look for this pattern and
 remove it we can optimize the graph without changing the result.
 
@@ -839,7 +1002,7 @@ There are a few things to know about the `ReplaceMatchingOpTypes` function:
     important nodes are listed in the `output_nodes` argument that's passed into
     each replacement function call. You can disable this checking by setting
     `allow_inconsistencies` to true in the options, but otherwise any
-    replacements that break the graph constraints will be cancelled. If you do
+    replacements that break the graph constraints will be canceled. If you do
     allow inconsistencies, it's your transform's responsibility to fix them up
     before you return your final result. Functions like `RenameNodeInputs` can
     be useful if you are doing wholesale node renaming for example.
@@ -874,7 +1037,7 @@ Here's an example of how [round_weights](#round_weights) reads its `num_steps`
 parameter:
 
 ```C++
-TF_RETURN_IF_ERROR(context.GetOneIntParameter("num_steps", 256, &num_steps));
+TF_RETURN_IF_ERROR(context.GetOneInt32Parameter("num_steps", 256, &num_steps));
 ```
 
 If the conversion fails or the parameter occurs more than once the helper

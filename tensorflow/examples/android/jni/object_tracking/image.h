@@ -16,15 +16,12 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_H_
 #define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_H_
 
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
-using namespace tensorflow;
-
-// TODO(andrewharp): Make this a cast to uint32 if/when we go unsigned for
+// TODO(andrewharp): Make this a cast to uint32_t if/when we go unsigned for
 // operations.
 #define ZERO 0
 
@@ -141,7 +138,7 @@ class Image {
   // 16:16 fixed point format.
   //
   // Important: This function only makes sense for integer-valued images, such
-  // as Image<uint8> or Image<int> etc.
+  // as Image<uint8_t> or Image<int> etc.
   inline T GetPixelInterpFixed1616(const int fp_x_whole,
                                    const int fp_y_whole) const;
 
@@ -200,15 +197,13 @@ class Image {
   }
 
 #ifdef __ARM_NEON
-  void Downsample2x32ColumnsNeon(const uint8* const original,
-                                 const int stride,
-                                 const int orig_x);
+  void Downsample2x32ColumnsNeon(const uint8_t* const original,
+                                 const int stride, const int orig_x);
 
-  void Downsample4x32ColumnsNeon(const uint8* const original,
-                               const int stride,
-                               const int orig_x);
+  void Downsample4x32ColumnsNeon(const uint8_t* const original,
+                                 const int stride, const int orig_x);
 
-  void DownsampleAveragedNeon(const uint8* const original, const int stride,
+  void DownsampleAveragedNeon(const uint8_t* const original, const int stride,
                               const int factor);
 #endif
 
@@ -264,7 +259,7 @@ class Image {
   template <typename U>
   inline void ScharrY(const Image<U>& original);
 
-  static inline T HalfDiff(int32 first, int32 second) {
+  static inline T HalfDiff(int32_t first, int32_t second) {
     return (second - first) / 2;
   }
 
@@ -286,7 +281,7 @@ class Image {
   // TODO(andrewharp): Generalize this for any size filter.
   template <typename U>
   inline void Convolve3x3(const Image<U>& original,
-                          const int32* const filter);
+                          const int32_t* const filter);
 
   // Load this image's data from a data array. The data at pixels is assumed to
   // have dimensions equivalent to this image's dimensions * factor.

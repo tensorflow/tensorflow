@@ -25,7 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -38,7 +37,7 @@ class ConcatTest(XLATestCase):
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       with self.test_scope():
-        c = array_ops.concat_v2([p1, p2], 0)
+        c = array_ops.concat([p1, p2], 0)
       params = {
           p1: np.random.rand(4, 4).astype("f"),
           p2: np.random.rand(4, 4).astype("f")
@@ -54,7 +53,7 @@ class ConcatTest(XLATestCase):
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       with self.test_scope():
-        c = array_ops.concat_v2([p1, p2], 1)
+        c = array_ops.concat([p1, p2], 1)
       params = {
           p1: np.random.rand(4, 4).astype("f"),
           p2: np.random.rand(4, 4).astype("f")
@@ -72,7 +71,7 @@ class ConcatTest(XLATestCase):
       x1 = constant_op.constant(p1)
       x2 = constant_op.constant(p2)
       with self.test_scope():
-        c = array_ops.concat_v2([x1, x2], 0)
+        c = array_ops.concat([x1, x2], 0)
       result = c.eval()
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
@@ -105,7 +104,7 @@ class ConcatTest(XLATestCase):
       else:
         concat_inputs = p
       with self.test_scope():
-        c = array_ops.concat_v2(concat_inputs, concat_dim)
+        c = array_ops.concat(concat_inputs, concat_dim)
         if dtype != dtype_feed:
           c = math_ops.cast(c, dtype_feed)
       result = c.eval(feed_dict=params)
@@ -144,13 +143,13 @@ class ConcatTest(XLATestCase):
                   [float(y) for y in t.flatten()],
                   shape=shape,
                   dtype=dtypes.float32))
-        c = array_ops.concat_v2(inp_tensors, 1)
+        c = array_ops.concat(inp_tensors, 1)
         output_shape = [10, 9, 2]
         grad_inp = np.random.rand(*output_shape).astype("f")
         grad_tensor = constant_op.constant(
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-        concated_grad = array_ops.concat_v2(grad, 1)
+        concated_grad = array_ops.concat(grad, 1)
       result = concated_grad.eval()
     self.assertAllEqual(result, grad_inp)
 
@@ -171,13 +170,13 @@ class ConcatTest(XLATestCase):
                   [float(y) for y in t.flatten()],
                   shape=shape,
                   dtype=dtypes.float32))
-        c = array_ops.concat_v2(inp_tensors, 0)
+        c = array_ops.concat(inp_tensors, 0)
         output_shape = [9, 10, 2]
         grad_inp = np.random.rand(*output_shape).astype("f")
         grad_tensor = constant_op.constant(
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-        concated_grad = array_ops.concat_v2(grad, 0)
+        concated_grad = array_ops.concat(grad, 0)
         result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
@@ -199,13 +198,13 @@ class ConcatTest(XLATestCase):
                   [float(y) for y in t.flatten()],
                   shape=shape,
                   dtype=dtypes.float32))
-        c = array_ops.concat_v2(inp_tensors, 2)
+        c = array_ops.concat(inp_tensors, 2)
         output_shape = [10, 2, 9]
         grad_inp = np.random.rand(*output_shape).astype("f")
         grad_tensor = constant_op.constant(
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-        concated_grad = array_ops.concat_v2(grad, 2)
+        concated_grad = array_ops.concat(grad, 2)
         result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
@@ -235,14 +234,14 @@ class ConcatTest(XLATestCase):
                   [float(y) for y in t.flatten()],
                   shape=shape,
                   dtype=dtypes.float32))
-        c = array_ops.concat_v2(inp_tensors, concat_dim)
+        c = array_ops.concat(inp_tensors, concat_dim)
         output_shape = input_shape
         output_shape[concat_dim] = concat_dim_sizes.sum()
         grad_inp = np.random.rand(*output_shape).astype("f")
         grad_tensor = constant_op.constant(
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-        concated_grad = array_ops.concat_v2(grad, concat_dim)
+        concated_grad = array_ops.concat(grad, concat_dim)
         result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
@@ -267,50 +266,20 @@ class ConcatTest(XLATestCase):
                 correct = np.concatenate([x0, x1], axis=axis)
                 # TODO(irving): Make tf.concat handle map, then drop list().
                 xs = list(map(constant_op.constant, [x0, x1]))
-                c = array_ops.concat_v2(xs, axis)
+                c = array_ops.concat(xs, axis)
                 self.assertAllEqual(c.eval(), correct)
                 # Check gradients
                 dc = np.random.randn(*c.get_shape().as_list())
                 dxs = sess.run(gradients_impl.gradients(c, xs, dc))
                 self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
 
-  def testTensorConcatDim0Grad(self):
-    x_shapes = [[20, 7, 3], [10, 7, 3], [14, 7, 3]]
-    output_shape = [44, 7, 3]
-    x_vals = [
-        np.random.random_sample(x_shape).astype(np.float32)
-        for x_shape in x_shapes
-    ]
-    with self.test_session():
-      with self.test_scope():
-        xs = [constant_op.constant(x_val) for x_val in x_vals]
-        output = array_ops.concat_v2(xs, 0)
-        err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
-                                                      output_shape)
-    self.assertLess(err, 1e-4)
-
-  def testTensorConcatDim1Grad(self):
-    x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
-    output_shape = [20, 11, 3]
-    x_vals = [
-        np.random.random_sample(x_shape).astype(np.float32)
-        for x_shape in x_shapes
-    ]
-    with self.test_session():
-      with self.test_scope():
-        xs = [constant_op.constant(x_val) for x_val in x_vals]
-        output = array_ops.concat_v2(xs, 1)
-        err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
-                                                      output_shape)
-    self.assertLess(err, 1e-4)
-
   def testConcatTuple(self):
     c1 = np.random.rand(4, 4).astype(np.float32)
     c2 = np.random.rand(4, 4).astype(np.float32)
     with self.test_session():
       with self.test_scope():
-        concat_list_t = array_ops.concat_v2([c1, c2], 0)
-        concat_tuple_t = array_ops.concat_v2((c1, c2), 0)
+        concat_list_t = array_ops.concat([c1, c2], 0)
+        concat_tuple_t = array_ops.concat((c1, c2), 0)
       self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
 
   def testConcatNoScalars(self):
@@ -319,8 +288,8 @@ class ConcatTest(XLATestCase):
         scalar = constant_op.constant(7)
         dim = array_ops.placeholder(dtypes.int32)
         with self.assertRaisesRegexp(
-            ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
-          array_ops.concat_v2([scalar, scalar, scalar], dim)
+            ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
+          array_ops.concat([scalar, scalar, scalar], dim)
 
 
 class ConcatOffsetTest(XLATestCase):

@@ -24,8 +24,9 @@ namespace cpu {
 
 class CpuInstructionFusion : public InstructionFusion {
  public:
-  CpuInstructionFusion() {}
-  ~CpuInstructionFusion() override {}
+  CpuInstructionFusion()
+      : InstructionFusion(CpuInstructionFusion::IsExpensive) {}
+  ~CpuInstructionFusion() override = default;
 
  protected:
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;

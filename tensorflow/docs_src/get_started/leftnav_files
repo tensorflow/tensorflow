@@ -1,0 +1,10 @@
+index.md
+get_started.md
+mnist/beginners.md
+mnist/pros.md
+mnist/mechanics.md
+estimator.md
+input_fn.md
+summaries_and_tensorboard.md
+graph_viz.md
+tensorboard_histograms.md

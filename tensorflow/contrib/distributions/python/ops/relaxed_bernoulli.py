@@ -18,24 +18,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import bijector
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
+# Bijectors must be directly imported because `remove_undocumented` prevents
+# individual file imports.
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
-class _RelaxedBernoulli(transformed_distribution.TransformedDistribution):
+class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   """RelaxedBernoulli distribution with temperature and logits parameters.
 
   The RelaxedBernoulli is a distribution over the unit interval (0,1), which
   continuously approximates a Bernoulli. The degree of approximation is
   controlled by a temperature: as the temperaturegoes to 0 the RelaxedBernoulli
-  becomes discrete with a distribution described by the `logits` or `p`
+  becomes discrete with a distribution described by the `logits` or `probs`
   parameters, as the temperature goes to infinity the RelaxedBernoulli
   becomes the constant distribution that is identically 0.5.
 
@@ -51,13 +52,19 @@ class _RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   the RelaxedBernoulli can suffer from underflow issues. In many case loss
   functions such as these are invariant under invertible transformations of
   the random variables. The KL divergence, found in the variational autoencoder
-  loss, is an example. Because RelaxedBernoullis are sampled by by a Logistic
+  loss, is an example. Because RelaxedBernoullis are sampled by a Logistic
   random variable followed by a `tf.sigmoid` op, one solution is to treat
   the Logistic as the random variable and `tf.sigmoid` as downstream. The
   KL divergences of two Logistics, which are always followed by a `tf.sigmoid`
   op, is equivalent to evaluating KL divergences of RelaxedBernoulli samples.
   See Maddison et al., 2016 for more details where this distribution is called
   the BinConcrete.
+
+  An alternative approach is to evaluate Bernoulli log probability or KL
+  directly on relaxed samples, as done in Jang et al., 2016. In this case,
+  guarantees on the loss are usually violated. For instance, using a Bernoulli
+  KL in a relaxed ELBO is no longer a lower bound on the log marginal
+  probability of the observation. Thus care and early stopping are important.
 
   #### Examples
 
@@ -68,7 +75,7 @@ class _RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   ```python
   temperature = 0.5
   p = [0.1, 0.5, 0.4]
-  dist = RelaxedBernoulli(temperature, p=p)
+  dist = RelaxedBernoulli(temperature, probs=p)
   ```
 
   Creates three continuous distributions, which approximate 3 Bernoullis with
@@ -127,7 +134,7 @@ class _RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   def __init__(self,
                temperature,
                logits=None,
-               p=None,
+               probs=None,
                validate_args=False,
                allow_nan_stats=True,
                name="RelaxedBernoulli"):
@@ -140,53 +147,42 @@ class _RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       logits: An N-D `Tensor` representing the log-odds
         of a positive event. Each entry in the `Tensor` parametrizes
         an independent RelaxedBernoulli distribution where the probability of an
-        event is sigmoid(logits). Only one of `logits` or `p` should be passed
-        in.
-      p: An N-D `Tensor` representing the probability of a positive
-        event. Each entry in the `Tensor` parameterizes an independent
-        Bernoulli distribution. Only one of `logits` or `p` should be passed
-        in.
-      validate_args: `Boolean`, default `False`.  Whether to validate that
-        `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
-        invalid, methods like `log_pmf` may return `NaN` values.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: A name for this distribution.
+        event is sigmoid(logits). Only one of `logits` or `probs` should be
+        passed in.
+      probs: An N-D `Tensor` representing the probability of a positive event.
+        Each entry in the `Tensor` parameterizes an independent Bernoulli
+        distribution. Only one of `logits` or `probs` should be passed in.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
-      ValueError: If p and logits are passed, or if neither are passed.
+      ValueError: If both `probs` and `logits` are passed, or if neither.
     """
     parameters = locals()
-    parameters.pop("self")
-    with ops.name_scope(name, values=[logits, p, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
-
-      self._logits, self._p = distribution_util.get_logits_and_prob(
-          logits=logits, p=p, validate_args=validate_args)
-      with ops.name_scope("q"):
-        self._q = 1. - self._p
-      dist = logistic._Logistic(self._logits / self._temperature,
-                                1./self._temperature,
-                                validate_args=validate_args,
-                                allow_nan_stats=allow_nan_stats,
-                                name=ns)
-
-    def inverse_log_det_jacobian_fn(y):
-      return -math_ops.reduce_sum(math_ops.log(y) + math_ops.log(1-y),
-                                  reduction_indices=-1)
-
-    sigmoidbijector = bijector.Inline(
-        forward_fn=math_ops.sigmoid,
-        inverse_fn=(lambda y: math_ops.log(y) - math_ops.log(1-y)),
-        inverse_log_det_jacobian_fn=inverse_log_det_jacobian_fn,
-        name="sigmoid")
-    super(_RelaxedBernoulli, self).__init__(dist,
-                                            sigmoidbijector,
-                                            name=name)
+      self._logits, self._probs = distribution_util.get_logits_and_probs(
+          logits=logits, probs=probs, validate_args=validate_args)
+      super(RelaxedBernoulli, self).__init__(
+          distribution=logistic.Logistic(
+              self._logits / self._temperature,
+              1. / self._temperature,
+              validate_args=validate_args,
+              allow_nan_stats=allow_nan_stats,
+              name=name + "/Logistic"),
+          bijector=Sigmoid(validate_args=validate_args),
+          validate_args=validate_args,
+          name=name)
+    self._parameters = parameters
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -199,15 +195,10 @@ class _RelaxedBernoulli(transformed_distribution.TransformedDistribution):
 
   @property
   def logits(self):
-    """Log-odds of success."""
+    """Log-odds of `1`."""
     return self._logits
 
   @property
-  def p(self):
-    """Probability of success."""
-    return self._p
-
-  @property
-  def q(self):
-    """Probability of failure."""
-    return self._q
+  def probs(self):
+    """Probability of `1`."""
+    return self._probs

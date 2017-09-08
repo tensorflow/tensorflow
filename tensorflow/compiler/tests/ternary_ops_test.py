@@ -77,6 +77,20 @@ class TernaryOpsTest(XLATestCase):
 
     self._testTernary(
         array_ops.where,
+        np.array(1, dtype=np.bool),
+        np.array([1, 2, 3, 4], dtype=np.float32),
+        np.array([5, 6, 7, 8], dtype=np.float32),
+        expected=np.array([1, 2, 3, 4], dtype=np.float32))
+
+    self._testTernary(
+        array_ops.where,
+        np.array(0, dtype=np.bool),
+        np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32),
+        np.array([[7, 8], [9, 10], [11, 12]], dtype=np.float32),
+        expected=np.array([[7, 8], [9, 10], [11, 12]], dtype=np.float32))
+
+    self._testTernary(
+        array_ops.where,
         np.array([0, 1, 1, 0], dtype=np.bool),
         np.array([1, 2, 3, 4], dtype=np.float32),
         np.array([5, 6, 7, 8], dtype=np.float32),

@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 
 namespace tensorflow {
 

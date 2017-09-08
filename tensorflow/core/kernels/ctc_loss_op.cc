@@ -42,6 +42,8 @@ class CTCLossOp : public OpKernel {
                                      &preprocess_collapse_repeated_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("ctc_merge_repeated", &ctc_merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("ignore_longer_outputs_than_inputs",
+                                     &ignore_longer_outputs_than_inputs_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -86,7 +88,17 @@ class CTCLossOp : public OpKernel {
                     labels_indices->shape().DebugString(), " vs. ",
                     labels_values->shape().DebugString()));
 
-    TensorShape labels_shape({batch_size, max_time});
+    OP_REQUIRES(ctx, batch_size != 0,
+                errors::InvalidArgument("batch_size must not be 0"));
+
+    // Figure out the maximum label length to use as sparse tensor dimension.
+    auto labels_indices_t = labels_indices->matrix<int64>();
+    int64 max_label_len = 0;
+    for (int i = 0; i < labels_indices->dim_size(0); i++) {
+      max_label_len = std::max(max_label_len, labels_indices_t(i, 1) + 1);
+    }
+
+    TensorShape labels_shape({batch_size, max_label_len});
     std::vector<int64> order{0, 1};
     sparse::SparseTensor labels_sp(*labels_indices, *labels_values,
                                    labels_shape, order);
@@ -150,12 +162,15 @@ class CTCLossOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctc_loss_calculator.CalculateLoss(
                             seq_len_t, labels_t, input_list_t,
                             preprocess_collapse_repeated_, ctc_merge_repeated_,
-                            &loss_t, &gradient_list_t, &workers));
+                            ignore_longer_outputs_than_inputs_, &loss_t,
+                            &gradient_list_t, &workers));
   }
 
  private:
   bool preprocess_collapse_repeated_;
   bool ctc_merge_repeated_;
+  bool ignore_longer_outputs_than_inputs_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOp);
 };
 

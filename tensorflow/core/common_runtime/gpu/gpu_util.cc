@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -55,7 +56,6 @@ const tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
 extern bool FLAGS_brain_gpu_record_mem_types;
 
 using perftools::gputools::DeviceMemoryBase;
-using perftools::gputools::DeviceMemory;
 using perftools::gputools::Stream;
 
 namespace tensorflow {
@@ -227,7 +227,7 @@ void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
     }
     // Since we want to use the memory from recv_stream in the
     // send_device_to_device_stream, add a dependency to make sure the memory is
-    // truely free.
+    // truly free.
     // TODO(zhengxq): remove this dependency when we switch to a better way
     // to make sure the memory is free.
     send_device_to_device_stream->ThenWaitFor(recv_stream);
@@ -322,7 +322,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     done(errors::Internal("No send gpu copy-out-stream is available."));
     return;
   }
-  // Wait for the recv-stream to make sure the buffer is truely available.
+  // Wait for the recv-stream to make sure the buffer is truly available.
   recv_host_to_device_stream->ThenWaitFor(recv_stream);
 
   const int64 total_bytes = cpu_tensor->TotalBytes();
@@ -354,7 +354,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
   }
   dev_info->stream->BlockHostUntilDone();
   if (!dev_info->stream->ok()) {
-    LOG(FATAL) << "GPU sync failed";
+    return errors::Internal("GPU sync failed");
   }
   return Status::OK();
 }
@@ -367,7 +367,7 @@ Status GPUUtil::SyncAll(Device* gpu_device) {
   }
   if (!dev_info->stream->parent()->SynchronizeAllActivity() ||
       !dev_info->stream->ok()) {
-    LOG(FATAL) << "GPU sync failed";
+    return errors::Internal("GPU sync failed");
   }
   return Status::OK();
 }

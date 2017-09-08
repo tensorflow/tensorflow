@@ -402,7 +402,7 @@ class BarrierTest(test.TestCase):
       with self.assertRaisesOpError("is closed"):
         fail_insert_op.run()
 
-      # This op should succeed because the barrier has not cancelled
+      # This op should succeed because the barrier has not canceled
       # pending enqueues
       insert_1_op.run()
       self.assertEquals(size_t.eval(), [3])
@@ -461,7 +461,7 @@ class BarrierTest(test.TestCase):
       with self.assertRaisesOpError("is closed"):
         fail_insert_op.run()
 
-      # This op should fail because the queue is cancelled.
+      # This op should fail because the queue is canceled.
       with self.assertRaisesOpError("is closed"):
         insert_2_op.run()
 

@@ -17,8 +17,13 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -58,8 +63,8 @@ class RunStepRequestWrapper {
   virtual const string& feed_name(size_t i) const = 0;
 
   // Stores the content of the feed value at index `i` in `tensor`.
-  virtual Status FeedValue(size_t i, Tensor* tensor) const = 0;
-  virtual Status FeedValue(size_t i, TensorProto* tensor) const = 0;
+  virtual Status FeedValue(size_t i, Tensor* out_tensor) const = 0;
+  virtual Status FeedValue(size_t i, TensorProto* out_tensor) const = 0;
 
   // Fetches. A list of tensor names. The caller expects a tensor to
   // be returned for each fetch[i] (see RunStepResponse.tensor). The
@@ -104,8 +109,8 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
   const string& partial_run_handle() const override;
   size_t num_feeds() const override;
   const string& feed_name(size_t i) const override;
-  Status FeedValue(size_t i, Tensor* tensor) const override;
-  Status FeedValue(size_t i, TensorProto* tensor) const override;
+  Status FeedValue(size_t i, Tensor* out_tensor) const override;
+  Status FeedValue(size_t i, TensorProto* out_tensor) const override;
   size_t num_fetches() const override;
   const string& fetch_name(size_t i) const override;
   size_t num_targets() const override;
@@ -151,8 +156,8 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
   const string& partial_run_handle() const override;
   size_t num_feeds() const override;
   const string& feed_name(size_t i) const override;
-  Status FeedValue(size_t i, Tensor* tensor) const override;
-  Status FeedValue(size_t i, TensorProto* tensor) const override;
+  Status FeedValue(size_t i, Tensor* out_tensor) const override;
+  Status FeedValue(size_t i, TensorProto* out_tensor) const override;
   size_t num_fetches() const override;
   const string& fetch_name(size_t i) const override;
   size_t num_targets() const override;
@@ -188,8 +193,8 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
   const string& partial_run_handle() const override;
   size_t num_feeds() const override;
   const string& feed_name(size_t i) const override;
-  Status FeedValue(size_t i, Tensor* tensor) const override;
-  Status FeedValue(size_t i, TensorProto* tensor) const override;
+  Status FeedValue(size_t i, Tensor* out_tensor) const override;
+  Status FeedValue(size_t i, TensorProto* out_tensor) const override;
   size_t num_fetches() const override;
   const string& fetch_name(size_t i) const override;
   size_t num_targets() const override;
@@ -222,6 +227,10 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
 class RunGraphRequestWrapper {
  public:
   virtual ~RunGraphRequestWrapper() {}
+
+  // The session handle used to register the graph. If empty, a single global
+  // namespace is used.
+  virtual const string& session_handle() const = 0;
 
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
@@ -262,6 +271,7 @@ class RunGraphRequestWrapper {
 // See `RunGraphRequestWrapper` above for a description of the fields.
 class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
  public:
+  virtual void set_session_handle(const string& handle) = 0;
   virtual void set_graph_handle(const string& handle) = 0;
   virtual void set_step_id(int64 step_id) = 0;
   virtual ExecutorOpts* mutable_exec_opts() = 0;
@@ -280,6 +290,7 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
 class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -293,6 +304,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
+  void set_session_handle(const string& handle) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
@@ -304,6 +316,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_is_last_partial_run(bool is_last_partial_run) override;
 
  private:
+  string session_handle_;
   string graph_handle_;
   int64 step_id_;
   ExecutorOpts exec_opts_;
@@ -325,6 +338,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
 class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -338,6 +352,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
+  void set_session_handle(const string& handle) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
@@ -357,6 +372,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
   ProtoRunGraphRequest(const RunGraphRequest* request);
 
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -371,6 +387,255 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
 
  private:
   const RunGraphRequest* const request_;  // Not owned.
+};
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Wrapper classes for the `WorkerService.RunGraph` response message.
+//
+// The `RunGraphResponse` message can contain potentially large tensor
+// data as part of its `recv` submessages. Here we provide specialized
+// wrappers that avoid copying the tensor data wherever possible.
+//
+// See `RunGraphResponse` in tensorflow/core/protobuf/worker.proto for the
+// protocol buffer definition.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Abstract interface for a mutable RunGraphResponse message.
+//
+// Note that there is no corresponding (immutable)
+// RunGraphResponseWrapper class, because the RunGraphResponse object
+// is always used as a mutable pointer.
+class MutableRunGraphResponseWrapper {
+ public:
+  virtual ~MutableRunGraphResponseWrapper() {}
+
+  // A list of tensors corresponding to those requested by
+  // `RunGraphRequest.recv_key`.
+  virtual size_t num_recvs() const = 0;
+  virtual const string& recv_key(size_t i) const = 0;
+  // NOTE: The following methods may perform a destructive read, for
+  // efficiency.
+  virtual Status RecvValue(size_t i, TensorProto* out_tensor) = 0;
+  virtual Status RecvValue(size_t i, Tensor* out_tensor) = 0;
+  virtual void AddRecv(const string& key, const Tensor& value) = 0;
+
+  // Submessages that store performance statistics about the subgraph
+  // execution, if necessary.
+  virtual StepStats* mutable_step_stats() = 0;
+  virtual CostGraphDef* mutable_cost_graph() = 0;
+  virtual size_t num_partition_graphs() const = 0;
+  virtual GraphDef* mutable_partition_graph(size_t i) = 0;
+  virtual void AddPartitionGraph(const GraphDef& partition_graph) = 0;
+
+ protected:
+  // Returns a mutable protobuf message that represents the contents of
+  // this wrapper, for passing to an RPC subsystem that will populate
+  // the message.
+  //
+  // NOTE: Only `WorkerInterface` subclasses may call this method. The
+  // `InMemoryRunGraphResponse` subclass does not implement this
+  // method, and attempts to call it will fail with a fatal
+  // error. However, as long as callers always call
+  // `WorkerInterface::RunGraphAsync()` with a wrapper object returned
+  // from `WorkerInterface::CreateRunGraphResponse()` called on the
+  // *same* WorkerInterface object, this error will never trigger.
+  virtual RunGraphResponse* get_proto() = 0;
+  friend class WorkerInterface;
+};
+
+class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
+ public:
+  // MutableRunGraphResponseWrapper methods.
+  size_t num_recvs() const override;
+  const string& recv_key(size_t i) const override;
+  Status RecvValue(size_t i, TensorProto* out_tensor) override;
+  Status RecvValue(size_t i, Tensor* out_tensor) override;
+  void AddRecv(const string& key, const Tensor& value) override;
+  StepStats* mutable_step_stats() override;
+  CostGraphDef* mutable_cost_graph() override;
+  size_t num_partition_graphs() const override;
+  GraphDef* mutable_partition_graph(size_t i) override;
+  void AddPartitionGraph(const GraphDef& partition_graph) override;
+
+ protected:
+  // NOTE: This method is not implemented. See
+  // MutableRunGraphResponseWrapper for an explanation.
+  RunGraphResponse* get_proto() override;
+
+ private:
+  gtl::InlinedVector<std::pair<string, Tensor>, 4> recvs_;
+  StepStats step_stats_;
+  CostGraphDef cost_graph_;
+  std::vector<GraphDef> partition_graphs_;
+};
+
+// Proto-based message wrapper for use on the client side of the RunGraph RPC.
+class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
+ public:
+  // MutableRunGraphResponseWrapper methods.
+  size_t num_recvs() const override;
+  const string& recv_key(size_t i) const override;
+  Status RecvValue(size_t i, TensorProto* out_tensor) override;
+  Status RecvValue(size_t i, Tensor* out_tensor) override;
+  void AddRecv(const string& key, const Tensor& value) override;
+  StepStats* mutable_step_stats() override;
+  CostGraphDef* mutable_cost_graph() override;
+  size_t num_partition_graphs() const override;
+  GraphDef* mutable_partition_graph(size_t i) override;
+  void AddPartitionGraph(const GraphDef& partition_graph) override;
+
+ protected:
+  RunGraphResponse* get_proto() override;
+
+ private:
+  RunGraphResponse response_;
+};
+
+// Proto-based message wrapper for use on the server side of the RunGraph RPC.
+class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
+ public:
+  NonOwnedProtoRunGraphResponse(RunGraphResponse* response);
+
+  // MutableRunGraphResponseWrapper methods.
+  size_t num_recvs() const override;
+  const string& recv_key(size_t i) const override;
+  Status RecvValue(size_t i, TensorProto* out_tensor) override;
+  Status RecvValue(size_t i, Tensor* out_tensor) override;
+  void AddRecv(const string& key, const Tensor& value) override;
+  StepStats* mutable_step_stats() override;
+  CostGraphDef* mutable_cost_graph() override;
+  size_t num_partition_graphs() const override;
+  GraphDef* mutable_partition_graph(size_t i) override;
+  void AddPartitionGraph(const GraphDef& partition_graph) override;
+
+ protected:
+  RunGraphResponse* get_proto() override;
+
+ private:
+  RunGraphResponse* const response_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Wrapper classes for the `MasterService.RunStep` response message.
+//
+// The `RunStepResponse` message can contain potentially large tensor
+// data as part of its `tensor` submessages. Here we provide specialized
+// wrappers that avoid copying the tensor data wherever possible.
+//
+// See `RunStepResponse` in tensorflow/core/protobuf/master.proto for the
+// protocol buffer definition.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Abstract interface for a mutable RunStepResponse message.
+//
+// Note that there is no corresponding (immutable)
+// RunStepResponseWrapper class, because the RunStepResponse object is
+// always used as a mutable pointer.
+class MutableRunStepResponseWrapper {
+ public:
+  virtual ~MutableRunStepResponseWrapper();
+
+  // The values of the tensors whose fetching was requested in the
+  // RunStep call.
+  //
+  // NOTE: The order of the returned tensors may or may not match
+  // the fetch order specified in RunStepRequest.
+  virtual size_t num_tensors() const = 0;
+  virtual const string& tensor_name(size_t i) const = 0;
+  virtual Status TensorValue(size_t i, Tensor* out_tensor) const = 0;
+
+  // Stores the i^{th} recv value in `run_graph_response` in this
+  // response with the given `name`.
+  virtual Status AddTensorFromRunGraphResponse(
+      const string& name, MutableRunGraphResponseWrapper* run_graph_response,
+      size_t i) = 0;
+
+  // Returned metadata if requested in the options.
+  virtual const RunMetadata& metadata() const = 0;
+  virtual RunMetadata* mutable_metadata() = 0;
+
+ protected:
+  // Returns a mutable protobuf message that represents the contents of
+  // this wrapper, for passing to an RPC subsystem that will populate
+  // the message.
+  //
+  // NOTE: Only `MasterInterface` subclasses may call this method. The
+  // `InMemoryRunStepResponse` subclass does not implement this
+  // method, and attempts to call it will fail with a fatal
+  // error. However, as long as callers always call
+  // `MasterInterface::RunStep()` with a wrapper object returned
+  // from `MasterInterface::CreateRunStepResponse()` called on the
+  // *same* MasterInterface object, this error will never trigger.
+  virtual RunStepResponse* get_proto() = 0;
+  friend class MasterInterface;
+};
+
+class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
+ public:
+  // MutableRunStepResponseWrapper methods.
+  size_t num_tensors() const override;
+  const string& tensor_name(size_t i) const override;
+  Status TensorValue(size_t i, Tensor* out_tensor) const override;
+  Status AddTensorFromRunGraphResponse(
+      const string& name, MutableRunGraphResponseWrapper* run_graph_response,
+      size_t i) override;
+  const RunMetadata& metadata() const override;
+  RunMetadata* mutable_metadata() override;
+
+ protected:
+  // NOTE: This method is not implemented. See
+  // MutableRunGraphResponseWrapper for an explanation.
+  RunStepResponse* get_proto() override;
+
+ private:
+  gtl::InlinedVector<std::pair<string, Tensor>, 4> tensors_;
+  RunMetadata metadata_;
+};
+
+// Proto-based message wrapper for use on the client side of the RunStep RPC.
+class OwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
+ public:
+  // MutableRunStepResponseWrapper methods.
+  size_t num_tensors() const override;
+  const string& tensor_name(size_t i) const override;
+  Status TensorValue(size_t i, Tensor* out_tensor) const override;
+  Status AddTensorFromRunGraphResponse(
+      const string& name, MutableRunGraphResponseWrapper* run_graph_response,
+      size_t i) override;
+  const RunMetadata& metadata() const override;
+  RunMetadata* mutable_metadata() override;
+
+ protected:
+  RunStepResponse* get_proto() override;
+
+ private:
+  RunStepResponse response_;
+};
+
+// Proto-based message wrapper for use on the server side of the RunStep RPC.
+class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
+ public:
+  NonOwnedProtoRunStepResponse(RunStepResponse* response);
+
+  // MutableRunStepResponseWrapper methods.
+  size_t num_tensors() const override;
+  const string& tensor_name(size_t i) const override;
+  Status TensorValue(size_t i, Tensor* out_tensor) const override;
+  Status AddTensorFromRunGraphResponse(
+      const string& name, MutableRunGraphResponseWrapper* run_graph_response,
+      size_t i) override;
+  const RunMetadata& metadata() const override;
+  RunMetadata* mutable_metadata() override;
+
+ protected:
+  RunStepResponse* get_proto() override;
+
+ private:
+  RunStepResponse* response_;  // Not owned.
 };
 
 }  // namespace tensorflow

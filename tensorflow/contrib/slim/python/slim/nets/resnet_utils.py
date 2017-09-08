@@ -41,6 +41,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.contrib import layers as layers_lib
+from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import arg_scope
 from tensorflow.contrib.layers.python.layers import initializers
@@ -204,28 +205,16 @@ def stack_blocks_dense(net,
           raise ValueError('The target output_stride cannot be reached.')
 
         with variable_scope.variable_scope('unit_%d' % (i + 1), values=[net]):
-          unit_depth, unit_depth_bottleneck, unit_stride = unit
-
           # If we have reached the target output_stride, then we need to employ
           # atrous convolution with stride=1 and multiply the atrous rate by the
           # current unit's stride for use in subsequent layers.
           if output_stride is not None and current_stride == output_stride:
-            net = block.unit_fn(
-                net,
-                depth=unit_depth,
-                depth_bottleneck=unit_depth_bottleneck,
-                stride=1,
-                rate=rate)
-            rate *= unit_stride
+            net = block.unit_fn(net, rate=rate, **dict(unit, stride=1))
+            rate *= unit.get('stride', 1)
 
           else:
-            net = block.unit_fn(
-                net,
-                depth=unit_depth,
-                depth_bottleneck=unit_depth_bottleneck,
-                stride=unit_stride,
-                rate=1)
-            current_stride *= unit_stride
+            net = block.unit_fn(net, rate=1, **unit)
+            current_stride *= unit.get('stride', 1)
       net = utils.collect_named_outputs(outputs_collections, sc.name, net)
 
   if output_stride is not None and current_stride != output_stride:
@@ -234,6 +223,10 @@ def stack_blocks_dense(net,
   return net
 
 
+@deprecated_args(
+    '2017-08-01',
+    'Pass is_training directly to the network instead of the arg_scope.',
+    'is_training')
 def resnet_arg_scope(is_training=True,
                      weight_decay=0.0001,
                      batch_norm_decay=0.997,
@@ -248,7 +241,7 @@ def resnet_arg_scope(is_training=True,
 
   Args:
     is_training: Whether or not we are training the parameters in the batch
-      normalization layers of the model.
+      normalization layers of the model. (deprecated)
     weight_decay: The weight decay to use for regularizing the model.
     batch_norm_decay: The moving average decay when estimating layer activation
       statistics in batch normalization.
@@ -273,8 +266,7 @@ def resnet_arg_scope(is_training=True,
       weights_regularizer=regularizers.l2_regularizer(weight_decay),
       weights_initializer=initializers.variance_scaling_initializer(),
       activation_fn=nn_ops.relu,
-      normalizer_fn=layers.batch_norm,
-      normalizer_params=batch_norm_params):
+      normalizer_fn=layers.batch_norm):
     with arg_scope([layers.batch_norm], **batch_norm_params):
       # The following implies padding='SAME' for pool1, which makes feature
       # alignment easier for dense prediction tasks. This is also used in

@@ -26,7 +26,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.training import input as input_ops
 
 __all__ = [
@@ -151,7 +150,7 @@ def stratified_sample(tensors,
     tensors: List of tensors for data. All tensors are either one item or a
         batch, according to enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
-        depending on enqueue_many. It is not a one-hot vector.
+        depending on `enqueue_many`. It is not a one-hot vector.
     target_probs: Target class proportions in batch. An object whose type has a
         registered Tensor conversion function.
     batch_size: Size of batch to be returned.
@@ -165,9 +164,10 @@ def stratified_sample(tensors,
         examples and for the final queue with the proper class proportions.
     name: Optional prefix for ops created by this function.
   Raises:
-    ValueError: enqueue_many is True and labels doesn't have a batch
-        dimension, or if enqueue_many is False and labels isn't a scalar.
-    ValueError: enqueue_many is True, and batch dimension on data and labels
+    ValueError: If `tensors` isn't iterable.
+    ValueError: `enqueue_many` is True and labels doesn't have a batch
+        dimension, or if `enqueue_many` is False and labels isn't a scalar.
+    ValueError: `enqueue_many` is True, and batch dimension on data and labels
         don't match.
     ValueError: if probs don't sum to one.
     ValueError: if a zero initial probability class has a nonzero target
@@ -189,7 +189,7 @@ def stratified_sample(tensors,
     # Run batch through network.
     ...
   """
-  with ops.name_scope(name, 'stratified_sample', tensors + [labels]):
+  with ops.name_scope(name, 'stratified_sample', list(tensors) + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
@@ -264,7 +264,7 @@ def _estimate_data_distribution(labels, num_classes, smoothing_constant=10):
   # slower convergence.
   if smoothing_constant <= 0:
     raise ValueError('smoothing_constant must be nonzero.')
-  num_examples_per_class_seen = variables.Variable(
+  num_examples_per_class_seen = variable_scope.variable(
       initial_value=[smoothing_constant] * num_classes,
       trainable=False,
       name='class_count',

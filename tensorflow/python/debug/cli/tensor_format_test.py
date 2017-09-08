@@ -20,7 +20,11 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import tensor_pb2
+from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.debug.cli import tensor_format
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -363,10 +367,28 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
       if i < 1:
         self.assertNotIn(p + i * 6 + 5, out.annotations)
 
-  def testFormatNone(self):
-    out = tensor_format.format_tensor(None, "a")
+  def testFormatUninitializedTensor(self):
+    tensor_proto = tensor_pb2.TensorProto(
+        dtype=types_pb2.DataType.Value("DT_FLOAT"),
+        tensor_shape=tensor_shape_pb2.TensorShapeProto(
+            dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)]))
+    out = tensor_format.format_tensor(
+        debug_data.InconvertibleTensorProto(tensor_proto, False), "a")
 
-    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor"], out.lines)
+    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor:"],
+                     out.lines[:3])
+    self.assertEqual(str(tensor_proto).split("\n"), out.lines[3:])
+
+  def testFormatResourceTypeTensor(self):
+    tensor_proto = tensor_pb2.TensorProto(
+        dtype=types_pb2.DataType.Value("DT_RESOURCE"),
+        tensor_shape=tensor_shape_pb2.TensorShapeProto(
+            dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)]))
+    out = tensor_format.format_tensor(
+        debug_data.InconvertibleTensorProto(tensor_proto), "a")
+
+    self.assertEqual(["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(str(tensor_proto).split("\n"), out.lines[2:])
 
   def testLocateTensorElement1DNoEllipsis(self):
     a = np.zeros(20)
@@ -643,6 +665,73 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         ValueError, "Dimensions mismatch"):
       tensor_format.locate_tensor_element(out, [0])
 
+  def testLocateTensorElement2DNoEllipsisWithNumericSummary(self):
+    a = np.linspace(0.0, 1.0 - 1.0 / 16.0, 16).reshape([4, 4])
+
+    out = tensor_format.format_tensor(a, "a", include_numeric_summary=True)
+
+    self.assertEqual([
+        "Tensor \"a\":",
+        "",
+        "Numeric summary:",
+        "|  0  + | total |",
+        "|  1 15 |    16 |",
+        "|           min           max          mean           std |",
+        "|           0.0        0.9375       0.46875 0.28811076429 |",
+        "",
+        "array([[ 0.    ,  0.0625,  0.125 ,  0.1875],",
+        "       [ 0.25  ,  0.3125,  0.375 ,  0.4375],",
+        "       [ 0.5   ,  0.5625,  0.625 ,  0.6875],",
+        "       [ 0.75  ,  0.8125,  0.875 ,  0.9375]])",
+    ], out.lines)
+
+    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
+        out, [0, 0])
+    self.assertFalse(is_omitted)
+    self.assertEqual(8, row)
+    self.assertEqual(9, start_col)
+    self.assertEqual(11, end_col)
+
+    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
+        out, [0, 3])
+    self.assertFalse(is_omitted)
+    self.assertEqual(8, row)
+    self.assertEqual(36, start_col)
+    self.assertEqual(42, end_col)
+
+    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
+        out, [1, 0])
+    self.assertFalse(is_omitted)
+    self.assertEqual(9, row)
+    self.assertEqual(9, start_col)
+    self.assertEqual(13, end_col)
+
+    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
+        out, [1, 3])
+    self.assertFalse(is_omitted)
+    self.assertEqual(9, row)
+    self.assertEqual(36, start_col)
+    self.assertEqual(42, end_col)
+
+    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
+        out, [3, 3])
+    self.assertFalse(is_omitted)
+    self.assertEqual(11, row)
+    self.assertEqual(36, start_col)
+    self.assertEqual(42, end_col)
+
+    with self.assertRaisesRegexp(
+        ValueError, "Indices exceed tensor dimensions"):
+      tensor_format.locate_tensor_element(out, [1, 4])
+
+    with self.assertRaisesRegexp(
+        ValueError, "Indices contain negative"):
+      tensor_format.locate_tensor_element(out, [-1, 2])
+
+    with self.assertRaisesRegexp(
+        ValueError, "Dimensions mismatch"):
+      tensor_format.locate_tensor_element(out, [0])
+
   def testLocateTensorElement3DWithEllipses(self):
     a = np.zeros([11, 11, 11])
 
@@ -821,13 +910,111 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual([12, None], end_cols)
 
   def testLocateTensorElementAnnotationsUnavailable(self):
-    out = tensor_format.format_tensor(None, "a")
+    tensor_proto = tensor_pb2.TensorProto(
+        dtype=types_pb2.DataType.Value("DT_FLOAT"),
+        tensor_shape=tensor_shape_pb2.TensorShapeProto(
+            dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)]))
+    out = tensor_format.format_tensor(
+        debug_data.InconvertibleTensorProto(tensor_proto, False), "a")
 
-    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor"], out.lines)
+    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor:"],
+                     out.lines[:3])
 
     with self.assertRaisesRegexp(
         AttributeError, "tensor_metadata is not available in annotations"):
       tensor_format.locate_tensor_element(out, [0])
+
+
+class NumericSummaryTest(test_util.TensorFlowTestCase):
+
+  def testNumericSummaryOnFloatFullHouse(self):
+    x = np.array([np.nan, np.nan, -np.inf, np.inf, np.inf, np.inf, -2, -3, -4,
+                  0, 1, 2, 2, 2, 2, 0, 0, 0, np.inf, np.inf, np.inf])
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(
+        "|  nan -inf    -    0    + +inf | total |", out.lines[0])
+    self.assertEqual(
+        "|    2    1    3    4    5    6 |    21 |", out.lines[1])
+    self.assertEqual(
+        "|           min           max          mean           std |",
+        out.lines[2])
+    self.assertEqual(
+        "|          -4.0           2.0           0.0 1.95789002075 |",
+        out.lines[3])
+
+  def testNumericSummaryOnFloatMissingCategories(self):
+    x = np.array([np.nan, np.nan])
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(2, len(out.lines))
+    self.assertEqual("| nan | total |", out.lines[0])
+    self.assertEqual("|   2 |     2 |", out.lines[1])
+
+    x = np.array([-np.inf, np.inf, 0, 0, np.inf, np.inf])
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual("| -inf    0 +inf | total |", out.lines[0])
+    self.assertEqual("|    1    2    3 |     6 |", out.lines[1])
+    self.assertEqual("|  min  max mean  std |", out.lines[2])
+    self.assertEqual("|  0.0  0.0  0.0  0.0 |", out.lines[3])
+
+    x = np.array([-120, 120, 130])
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual("| - + | total |", out.lines[0])
+    self.assertEqual("| 1 2 |     3 |", out.lines[1])
+    self.assertEqual(
+        "|           min           max          mean           std |",
+        out.lines[2])
+    self.assertEqual(
+        "|          -120           130 43.3333333333 115.566238822 |",
+        out.lines[3])
+
+  def testNumericSummaryOnEmptyFloat(self):
+    x = np.array([], dtype=np.float32)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(["No numeric summary available due to empty tensor."],
+                     out.lines)
+
+  def testNumericSummaryOnInt(self):
+    x = np.array([-3] * 50 + [3] * 200 + [0], dtype=np.int32)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual("|   -   0   + | total |", out.lines[0])
+    self.assertEqual("|  50   1 200 |   251 |", out.lines[1])
+    self.assertEqual(
+        "|           min           max          mean           std |",
+        out.lines[2])
+    self.assertEqual(
+        "|            -3             3 1.79282868526 2.39789673081 |",
+        out.lines[3])
+
+  def testNumericSummaryOnBool(self):
+    x = np.array([False, True, True, False], dtype=np.bool)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(2, len(out.lines))
+    self.assertEqual("| False  True | total |", out.lines[0])
+    self.assertEqual("|     2     2 |     4 |", out.lines[1])
+
+    x = np.array([True] * 10, dtype=np.bool)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(2, len(out.lines))
+    self.assertEqual("| True | total |", out.lines[0])
+    self.assertEqual("|   10 |    10 |", out.lines[1])
+
+    x = np.array([False] * 10, dtype=np.bool)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(2, len(out.lines))
+    self.assertEqual("| False | total |", out.lines[0])
+    self.assertEqual("|    10 |    10 |", out.lines[1])
+
+    x = np.array([], dtype=np.bool)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(["No numeric summary available due to empty tensor."],
+                     out.lines)
+
+  def testNumericSummaryOnStrTensor(self):
+    x = np.array(["spam", "egg"], dtype=np.object)
+    out = tensor_format.numeric_summary(x)
+    self.assertEqual(
+        ["No numeric summary available due to tensor dtype: object."],
+        out.lines)
 
 
 if __name__ == "__main__":

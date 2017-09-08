@@ -16,10 +16,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -86,6 +86,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       function->addDereferenceableAttr(arg_no + 1, arg_size);
     }
   }
+
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
 
   llvm::BasicBlock* entry_bb =
       llvm::BasicBlock::Create(function->getContext(), "entry", function);

@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
 
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/file_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -47,11 +49,16 @@ Status ParseTransformParameters(const string& transforms_string,
       // Reset the list of parameters.
       func_parameters.clear();
       // Eat up any leading spaces.
-      Scanner(remaining).Any(Scanner::SPACE).GetResult(&remaining, &match);
+      Scanner(remaining).AnySpace().GetResult(&remaining, &match);
+      if (remaining.empty()) {
+        // Nothing remains after consuming trailing spaces.
+        // Consumed all transform parameter string without errors.
+        return Status::OK();
+      }
       // See if we have a valid transform name.
       const bool found_transform_name =
           Scanner(remaining)
-              .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+              .Many(Scanner::LETTER_DIGIT_UNDERSCORE)
               .GetResult(&remaining, &transform_name);
       if (!found_transform_name) {
         return errors::InvalidArgument("Looking for transform name, but found ",
@@ -73,11 +80,11 @@ Status ParseTransformParameters(const string& transforms_string,
       } else {
         // Eat up any leading spaces or commas.
         Scanner(remaining).ZeroOrOneLiteral(",").GetResult(&remaining, &match);
-        Scanner(remaining).Any(Scanner::SPACE).GetResult(&remaining, &match);
+        Scanner(remaining).AnySpace().GetResult(&remaining, &match);
         // See if we have a valid parameter name.
         const bool found_parameter_name =
             Scanner(remaining)
-                .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+                .Many(Scanner::LETTER_DIGIT_UNDERSCORE)
                 .GetResult(&remaining, &parameter_name);
         if (!found_parameter_name) {
           return errors::InvalidArgument(
@@ -105,7 +112,7 @@ Status ParseTransformParameters(const string& transforms_string,
         // See if we have a valid parameter name.
         found_parameter_value =
             Scanner(remaining)
-                .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
+                .Many(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
                 .GetResult(&remaining, &parameter_value);
       }
       if (!found_parameter_value) {
@@ -247,7 +254,7 @@ Status TransformGraph(const std::vector<string>& inputs,
   TransformRegistry* transform_registry = GetTransformRegistry();
   for (const auto& transform_info : transform_params) {
     const string& transform_name = transform_info.first;
-    if (transform_name == "") {
+    if (transform_name.empty()) {
       continue;
     }
     if (!transform_registry->count(transform_name)) {
@@ -277,7 +284,7 @@ Status TransformGraph(const std::vector<string>& inputs,
       }
     }
     // Copy over the library from the original input graph.
-    transformed_graph_def.mutable_library()->CopyFrom(graph_def->library());
+    *transformed_graph_def.mutable_library() = graph_def->library();
     TF_RETURN_IF_ERROR(IsGraphValid(transformed_graph_def));
 
     *graph_def = transformed_graph_def;

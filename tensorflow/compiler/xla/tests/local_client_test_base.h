@@ -74,8 +74,10 @@ class TestAllocator : public StreamExecutorMemoryAllocator {
 // A base class for tests which exercise the LocalClient interface.
 class LocalClientTestBase : public ::testing::Test {
  protected:
+  struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(
       perftools::gputools::Platform* platform = nullptr);
+  virtual ~LocalClientTestBase();
 
   static TestAllocator* GetOrCreateAllocator(
       perftools::gputools::Platform* platform);
@@ -99,27 +101,30 @@ class LocalClientTestBase : public ::testing::Test {
 
   // Execute the given computation on the local client. With and without
   // options.
-  std::unique_ptr<ScopedShapedBuffer> ExecuteLocally(
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
-  std::unique_ptr<ScopedShapedBuffer> ExecuteLocally(
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options);
+      const ExecutableBuildOptions& build_options,
+      const ExecutableRunOptions& run_options);
+
+  std::unique_ptr<ScopedShapedBuffer> ExecuteLocallyOrDie(
+      const Computation& computation,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+  std::unique_ptr<ScopedShapedBuffer> ExecuteLocallyOrDie(
+      const Computation& computation,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      const ExecutableBuildOptions& build_options,
+      const ExecutableRunOptions& run_options);
+
+  // Returns a default set of execute options.
+  ExecutableBuildOptions DefaultExecutableBuildOptions() const;
 
   // Returns a default set of execute options, configured to use allocator_
   // as the allocator.
-  LocalExecuteOptions DefaultLocalExecuteOptions() const;
-
-  // Overloads which write result into the given buffer.
-  void ExecuteLocally(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result);
-  void ExecuteLocally(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options, ShapedBuffer* result);
+  ExecutableRunOptions DefaultExecutableRunOptions() const;
 
   // Convert a ShapedBuffer into a ScopedShaped buffer so that all buffers are
   // deallocated when the object is destructed.
@@ -139,6 +144,8 @@ class LocalClientTestBase : public ::testing::Test {
   TransferManager* transfer_manager_;
 
   LocalClient* local_client_;
+
+  std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 };
 
 }  // namespace xla

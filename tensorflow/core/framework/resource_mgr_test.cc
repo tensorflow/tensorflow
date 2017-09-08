@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -200,7 +202,9 @@ TEST(ContainerInfo, Error) {
 // handles.
 class StubDevice : public DeviceBase {
  public:
-  StubDevice(const string& name) : DeviceBase(nullptr) { attr_.set_name(name); }
+  explicit StubDevice(const string& name) : DeviceBase(nullptr) {
+    attr_.set_name(name);
+  }
 
   Allocator* GetAllocator(AllocatorAttributes) override {
     return cpu_allocator();
@@ -291,6 +295,29 @@ TEST(ResourceHandleTest, DifferentType) {
 
   auto* r = new OtherStubResource;
   ASSERT_FALSE(CreateResource(&ctx, p, r).ok());
+  r->Unref();
+}
+
+TEST(ResourceHandleTest, DeleteUsingResourceHandle) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 0);
+
+  ResourceHandle p =
+      MakeResourceHandle<StubResource>(&ctx, "container", "name");
+
+  StubResource* r = new StubResource;
+  TF_EXPECT_OK(CreateResource(&ctx, p, r));
+
+  StubResource* lookup_r = nullptr;
+  TF_EXPECT_OK(LookupResource<StubResource>(&ctx, p, &lookup_r));
+  EXPECT_EQ(lookup_r, r);
+
+  TF_EXPECT_OK(DeleteResource(&ctx, p));
+  EXPECT_NE(LookupResource<StubResource>(&ctx, p, &lookup_r).ok(), true);
   r->Unref();
 }
 

@@ -25,36 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace str_util {
 
-class ReplaceAllTest : public ::testing::Test {
- protected:
-  void ExpectReplaceAll(string text, StringPiece from, StringPiece to,
-                        StringPiece want) {
-    ReplaceAll(&text, from, to);
-    EXPECT_EQ(text, want);
-  }
-};
-
-TEST_F(ReplaceAllTest, Simple) {
-  ExpectReplaceAll("", "", "", "");
-  ExpectReplaceAll("", "", "X", "X");
-  ExpectReplaceAll("", "", "XYZ", "XYZ");
-  ExpectReplaceAll("banana", "", "", "banana");
-  ExpectReplaceAll("banana", "", "_", "_b_a_n_a_n_a_");
-  ExpectReplaceAll("banana", "", "__", "__b__a__n__a__n__a__");
-  ExpectReplaceAll("banana", "a", "a", "banana");
-  ExpectReplaceAll("banana", "a", "", "bnn");
-  ExpectReplaceAll("banana", "a", "X", "bXnXnX");
-  ExpectReplaceAll("banana", "a", "XX", "bXXnXXnXX");
-  ExpectReplaceAll("banana", "an", "an", "banana");
-  ExpectReplaceAll("banana", "an", "", "ba");
-  ExpectReplaceAll("banana", "an", "X", "bXXa");
-  ExpectReplaceAll("banana", "an", "XY", "bXYXYa");
-  ExpectReplaceAll("banana", "an", "XYZ", "bXYZXYZa");
-  ExpectReplaceAll("foo {{bar}} baz {{bar}}", "{{bar}}", "X", "foo X baz X");
-  ExpectReplaceAll("foo {{bar}} baz {{bar}}", "{{bar}}", "ABCDEFGHIJKLMNOP",
-                   "foo ABCDEFGHIJKLMNOP baz ABCDEFGHIJKLMNOP");
-}
-
 class ReplaceAllPairsTest : public ::testing::Test {
  protected:
   void ExpectReplaceAllPairs(

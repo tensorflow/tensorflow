@@ -19,18 +19,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-void XlaDeviceAssignOp::Copy(OpKernelContext* context, Tensor* lhs,
-                             const Tensor& rhs) {
-  std::shared_ptr<xla::GlobalData> gd =
-      XlaTransferManager::GetTensorGlobalData(rhs);
-  XlaTransferManager::SetTensorGlobalData(std::move(gd), lhs);
-}
-
 XlaDeviceDummyOp::XlaDeviceDummyOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
 void XlaDeviceDummyOp::Compute(OpKernelContext* ctx) {
-  LOG(FATAL) << "Attempted to execute Op " << name() << "type " << type_string()
-             << " on an XLA device. This should never happen.";
+  LOG(FATAL) << "Attempted to execute Op " << name() << " type "
+             << type_string() << " on an XLA device. This should never happen.";
 }
 
 }  // namespace tensorflow

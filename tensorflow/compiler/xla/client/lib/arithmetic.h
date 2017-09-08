@@ -28,6 +28,10 @@ namespace xla {
 Computation CreateScalarAddComputation(PrimitiveType type,
                                        ComputationBuilder* builder);
 
+// Creates a scalar multiply computation and returns it.
+Computation CreateScalarMultiplyComputation(PrimitiveType type,
+                                            ComputationBuilder* builder);
+
 // Creates a scalar ge computation and returns it.
 Computation CreateScalarGeComputation(PrimitiveType type,
                                       ComputationBuilder* builder);
@@ -39,6 +43,18 @@ Computation CreateScalarMaxComputation(PrimitiveType type,
 // Creates a scalar min computation and returns it.
 Computation CreateScalarMinComputation(PrimitiveType type,
                                        ComputationBuilder* builder);
+
+// Creates a scalar logical AND computation and returns it.
+Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder);
+
+// Creates a scalar logical OR computation and returns it.
+Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder);
+
+// Returns whether any predicate in "predicates" is set.
+//
+// Note: if predicates is zero-sized, Any() vacuously returns false.
+StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
+                                    ComputationBuilder* builder);
 
 }  // namespace xla
 

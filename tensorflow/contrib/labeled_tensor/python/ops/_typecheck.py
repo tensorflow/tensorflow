@@ -24,9 +24,9 @@ from __future__ import print_function
 
 import collections
 import functools
-import inspect
 import re
 
+from tensorflow.python.util import tf_inspect
 
 # used for register_type_abbreviation and _type_repr below.
 _TYPE_ABBREVIATIONS = {}
@@ -230,7 +230,7 @@ def accepts(*types):
 
   def check_accepts(f):
     """Check the types."""
-    spec = inspect.getargspec(f)
+    spec = tf_inspect.getargspec(f)
 
     num_function_arguments = len(spec.args)
     if len(types) != num_function_arguments:

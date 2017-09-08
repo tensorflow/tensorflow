@@ -75,7 +75,7 @@ class Diagnostician {
 
   // Given the DSO version number and the driver version file contents, extracts
   // the driver version and compares, warning the user in the case of
-  // incompatability.
+  // incompatibility.
   //
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.

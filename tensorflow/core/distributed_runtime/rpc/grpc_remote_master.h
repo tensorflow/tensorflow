@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 // Returns a MasterInterface wrapped around the gRPC channel `channel`.
-MasterInterface* NewGrpcMaster(SharedGrpcChannelPtr channel);
+MasterInterface* NewGrpcMaster(const SharedGrpcChannelPtr& channel);
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_MASTER_H_

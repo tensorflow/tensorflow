@@ -13,30 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Hashing
+"""Operations for working with string Tensors.
 
-String hashing ops take a string input tensor and map each element to an
-integer.
+See the @{$python/string_ops} guide.
 
 @@string_to_hash_bucket_fast
 @@string_to_hash_bucket_strong
 @@string_to_hash_bucket
-
-## Joining
-
-String joining ops concatenate elements of input string tensors to produce a new
-string tensor.
-
 @@reduce_join
 @@string_join
-
-## Splitting
-
 @@string_split
 @@substr
-
-## Conversion
-
 @@as_string
 @@encode_base64
 @@decode_base64
@@ -63,12 +50,12 @@ from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
-def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
+def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
-  containing the splitted tokens. Empty tokens are ignored.
+  containing the split tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
@@ -91,6 +78,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     source: `1-D` string `Tensor`, the strings to split.
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
+    skip_empty: A `bool`. If `True`, skip the empty strings from the result.
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -105,7 +93,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   # pylint: disable=protected-access
   indices, values, shape = gen_string_ops._string_split(
-      source, delimiter=delimiter)
+      source, delimiter=delimiter, skip_empty=skip_empty)
   # pylint: enable=protected-access
   indices.set_shape([None, 2])
   values.set_shape([None])

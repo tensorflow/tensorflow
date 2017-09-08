@@ -39,9 +39,9 @@ static inline uint32_t YUV2RGB(int nY, int nU, int nV) {
   // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
   // nB = (int)(1.164 * nY + 1.596 * nV);
 
-  int nR = (int)(1192 * nY + 1634 * nV);
-  int nG = (int)(1192 * nY - 833 * nV - 400 * nU);
-  int nB = (int)(1192 * nY + 2066 * nU);
+  int nR = 1192 * nY + 1634 * nV;
+  int nG = 1192 * nY - 833 * nV - 400 * nU;
+  int nB = 1192 * nY + 2066 * nU;
 
   nR = MIN(kMaxChannelValue, MAX(0, nR));
   nG = MIN(kMaxChannelValue, MAX(0, nG));
@@ -171,9 +171,9 @@ void ConvertYUV420SPToRGB565(const uint8_t* const input, uint16_t* const output,
       // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
       // nB = (int)(1.164 * nY + 1.596 * nV);
 
-      int nR = (int)(1192 * nY + 1634 * nV);
-      int nG = (int)(1192 * nY - 833 * nV - 400 * nU);
-      int nB = (int)(1192 * nY + 2066 * nU);
+      int nR = 1192 * nY + 1634 * nV;
+      int nG = 1192 * nY - 833 * nV - 400 * nU;
+      int nB = 1192 * nY + 2066 * nU;
 
       nR = MIN(kMaxChannelValue, MAX(0, nR));
       nG = MIN(kMaxChannelValue, MAX(0, nG));

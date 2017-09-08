@@ -18,8 +18,8 @@ limitations under the License.
 #include <initializer_list>
 #include <numeric>
 
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {

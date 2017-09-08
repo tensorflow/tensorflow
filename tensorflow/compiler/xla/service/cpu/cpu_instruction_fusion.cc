@@ -14,30 +14,93 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
-
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 namespace cpu {
 
+namespace {
+
+int64 BytesInDimension(const Shape& shape, int64 dimension) {
+  return ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) *
+         shape.dimensions(dimension);
+}
+
+bool IsFusile(const HloInstruction& hlo) {
+  // These are the only ones we fuse since we rely on effective elemental IR
+  // generation.
+  return (hlo.opcode() == HloOpcode::kBroadcast ||
+          hlo.opcode() == HloOpcode::kReshape ||
+          hlo.opcode() == HloOpcode::kBitcast ||
+          hlo.opcode() == HloOpcode::kReverse ||
+          hlo.opcode() == HloOpcode::kSlice ||
+          hlo.opcode() == HloOpcode::kDynamicSlice ||
+          hlo.opcode() == HloOpcode::kTranspose || hlo.IsElementwise());
+}
+
+}  // namespace
+
 bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
-  // Condition for consumer: must be elementwise or a fusion op
-  // (which necessarily only contains elementwise operations)
-  if (!(consumer->opcode() == HloOpcode::kFusion ||
-        consumer->IsElementwise())) {
+  constexpr int kFusionThresholdBytes = 16 * 1024;
+
+  if (!IsFusile(*producer)) {
     return false;
   }
 
   // Producer or consumer cannot be Map. Maps are technically elementwise but
   // of a slightly different form (call instead of a computation). These are not
   // yet supported in the CPU backend.
-  return producer->IsElementwise() && producer->operand_count() > 0 &&
-         producer->opcode() != HloOpcode::kMap &&
-         consumer->opcode() != HloOpcode::kMap &&
-         InstructionFusion::ShouldFuse(consumer, operand_index);
+  if (producer->opcode() == HloOpcode::kMap ||
+      consumer->opcode() == HloOpcode::kMap) {
+    return false;
+  }
+
+  // TODO(b/28644064): see if the "producer->operand_count() == 0" check is
+  // necessary.
+  if (producer->operand_count() == 0 ||
+      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    return false;
+  }
+
+  // Output fusion is not currently supported on CPUs.
+  if (producer->opcode() == HloOpcode::kFusion) {
+    return false;
+  }
+
+  if (consumer->opcode() == HloOpcode::kDot) {
+    // In the general case we call out to optimized "black box" GEMM routines
+    // for Dot, which precludes fusion.  However, in very specific cases, we try
+    // to fuse Dot operations by generating an elemental dot implementation.
+    //
+    // We need to be careful and conservative here since any benefit we get from
+    // fusion can easily be overshadowed by the overhead of a naive GEMM
+    // algorithm in the IR.
+    const Shape& output_shape = consumer->shape();
+    if (output_shape.dimensions_size() == 2) {
+      // We fuse in cases where we have dot([A,B],[B,1]) or dot([1,A],[A,B]) and
+      // fusion can get rid of the larger tensor.  We assume that a naive
+      // traversal of a small enough (to fit in L1) column or row tensor is
+      // "good enough" from the perspective of cache management; and calling out
+      // to an optimized GEMM kernel is not a huge win.
+      if (output_shape.dimensions(0) == 1 && operand_index == 1 &&
+          BytesInDimension(output_shape, 1) < kFusionThresholdBytes) {
+        return true;
+      } else if (output_shape.dimensions(1) == 1 && operand_index == 0 &&
+                 BytesInDimension(output_shape, 0) < kFusionThresholdBytes) {
+        return true;
+      }
+    }
+  }
+
+  // InstructionFusion::ShouldFuse above only allows kLoop and kInput fusions.
+  // The CPU backend does not create kInput fusions, so we only expect to see
+  // kLoop here.
+  CHECK(consumer->opcode() != HloOpcode::kFusion ||
+        consumer->fusion_kind() == HloInstruction::FusionKind::kLoop);
+  return consumer->opcode() == HloOpcode::kFusion || consumer->IsElementwise();
 }
 
 }  // namespace cpu

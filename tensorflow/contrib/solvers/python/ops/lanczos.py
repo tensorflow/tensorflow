@@ -206,7 +206,7 @@ def bidiag_matmul(matrix, alpha, beta, adjoint_b=False, name="bidiag_matmul"):
 
     A * B =  A[:, :-1] * diag(alpha) + A[:, 1:] * diag(beta)
 
-  If  adjoint_b is True, computes A * B[:-1, :]' as follows
+  If adjoint_b is True, computes A * B[:-1, :]' as follows
 
     A * B[:-1, :]' =
       A * diag(alpha) + [zeros(m,1), A[:, :-1] * diag(beta[:-1])]
@@ -233,5 +233,5 @@ def bidiag_matmul(matrix, alpha, beta, adjoint_b=False, name="bidiag_matmul"):
       zero_column = array_ops.expand_dims(
           array_ops.zeros(
               shape[:1], dtype=matrix.dtype), 1)
-      return matrix * alpha + array_ops.concat_v2(
+      return matrix * alpha + array_ops.concat(
           [zero_column, matrix[:, :-1] * beta], 1)

@@ -41,11 +41,14 @@ RAND_SEED = 42
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+  mnist = input_data.read_data_sets(FLAGS.data_dir,
+                                    one_hot=True,
+                                    fake_data=FLAGS.fake_data)
 
   def feed_dict(train):
-    if train:
-      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size, fake_data=False)
+    if train or FLAGS.fake_data:
+      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size,
+                                      fake_data=FLAGS.fake_data)
     else:
       xs, ys = mnist.test.images, mnist.test.labels
 
@@ -87,7 +90,8 @@ def main(_):
       return activations
 
   hidden = nn_layer(x, IMAGE_SIZE**2, HIDDEN_SIZE, "hidden")
-  y = nn_layer(hidden, HIDDEN_SIZE, NUM_LABELS, "softmax", act=tf.nn.softmax)
+  logits = nn_layer(hidden, HIDDEN_SIZE, NUM_LABELS, "output", tf.identity)
+  y = tf.nn.softmax(logits)
 
   with tf.name_scope("cross_entropy"):
     # The following line is the culprit of the bad numerical values that appear
@@ -96,12 +100,13 @@ def main(_):
     # call. A multiplication of the inf values with zeros leads to nans,
     # which is first in "cross_entropy/mul:0".
     #
-    # You can use clipping to fix this issue, e.g.,
-    #   diff = y_ * tf.log(tf.clip_by_value(y, 1e-8, 1.0))
+    # You can use the built-in, numerically-stable implementation to fix this
+    # issue:
+    #   diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
 
-    diff = y_ * tf.log(y)
+    diff = -(y_ * tf.log(y))
     with tf.name_scope("total"):
-      cross_entropy = -tf.reduce_mean(diff)
+      cross_entropy = tf.reduce_mean(diff)
 
   with tf.name_scope("train"):
     train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
@@ -156,6 +161,13 @@ if __name__ == "__main__":
       type=str,
       default="curses",
       help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--fake_data",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use fake MNIST data for unit testing")
   parser.add_argument(
       "--debug",
       type="bool",

@@ -1,10 +1,12 @@
 # Prepare training and testing data.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "data_csv",
@@ -27,6 +29,7 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//third_party/py/numpy",
     ],
 )
@@ -37,7 +40,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
     ],
 )
@@ -61,9 +63,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -74,9 +74,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -87,10 +85,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

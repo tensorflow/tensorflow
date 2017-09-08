@@ -16,9 +16,9 @@ limitations under the License.
 // XLA-specific Slice Op.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -50,10 +50,13 @@ class SliceOp : public XlaOpKernel {
     // slice will be an empty handle if the output has no elements.
     CHECK_EQ(begin.size(), size.size());
     std::vector<int64> limits;
+    limits.reserve(begin.size());
     for (int i = 0; i < begin.size(); ++i) {
       limits.push_back(begin[i] + size[i]);
     }
-    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits));
+    std::vector<int64> strides(begin.size(), 1);
+    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits,
+                                            strides));
   }
 
  private:
@@ -115,7 +118,7 @@ void SliceOp::SharedValidation(XlaOpKernelContext* ctx, bool* is_identity,
   }
 }
 
-REGISTER_XLA_OP("Slice", SliceOp);
+REGISTER_XLA_OP(Name("Slice"), SliceOp);
 
 }  // namespace
 }  // namespace tensorflow

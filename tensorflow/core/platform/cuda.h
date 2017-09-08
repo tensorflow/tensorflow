@@ -17,11 +17,6 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_CUDA_H_
 
 #include "tensorflow/core/platform/platform.h"
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/build_config/cuda.h"
-#else
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
-#endif
 
 #endif  // TENSORFLOW_PLATFORM_CUDA_H_

@@ -18,6 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* SessionState::kTensorHandleResourceTypeName = "TensorHandle";
+
 Status SessionState::GetTensor(const string& handle, Tensor* tensor) {
   mutex_lock l(state_lock_);
   auto it = tensors_.find(handle);
@@ -64,7 +66,7 @@ Status TensorStore::AddTensor(const string& name, const TensorAndKey& tk) {
 Status TensorStore::SaveTensors(const std::vector<string>& output_names,
                                 SessionState* session_state) {
   mutex_lock l(lock_);
-  if (tensors_.size() != 0) {
+  if (!tensors_.empty()) {
     // Save only the tensors in output_names in the session.
     for (const string& name : output_names) {
       TensorId id(ParseTensorName(name));

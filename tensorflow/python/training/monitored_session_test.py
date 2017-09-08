@@ -22,8 +22,10 @@ from __future__ import print_function
 import collections
 import glob
 import os
+import sys
 import threading
 import time
+import traceback
 
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.testing.python.framework import util_test
@@ -34,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -147,6 +150,68 @@ class ScaffoldTest(test.TestCase):
                                    'Graph is finalized and cannot be modified'):
         constant_op.constant([0])
 
+  def test_new_scaffold_from_default_scaffold(self):
+    scaffold1 = monitored_session.Scaffold()
+    with ops.Graph().as_default():
+      variables.Variable([1])
+      saver = saver_lib.Saver()
+      scaffold2 = monitored_session.Scaffold(
+          init_op=2,
+          init_feed_dict=3,
+          init_fn=lambda scaffold, sess: 4,
+          ready_op=5,
+          ready_for_local_init_op=6,
+          local_init_op=7,
+          saver=saver,
+          copy_from_scaffold=scaffold1)
+
+      scaffold2.finalize()
+      self.assertEqual(2, scaffold2.init_op)
+      self.assertEqual(3, scaffold2.init_feed_dict)
+      self.assertTrue(callable(scaffold2.init_fn))
+      self.assertEqual(5, scaffold2.ready_op)
+      self.assertEqual(6, scaffold2.ready_for_local_init_op)
+      self.assertEqual(7, scaffold2.local_init_op)
+      self.assertEqual(saver, scaffold2.saver)
+
+  def test_new_scaffold_from_existing_scaffold(self):
+    with ops.Graph().as_default():
+      variables.Variable([1])
+      saver = saver_lib.Saver()
+      scaffold1 = monitored_session.Scaffold(
+          init_op=2,
+          init_feed_dict=3,
+          init_fn=lambda scaffold, sess: 4,
+          ready_op=5,
+          ready_for_local_init_op=6,
+          local_init_op=7,
+          saver=saver)
+
+      scaffold2 = monitored_session.Scaffold(
+          init_op=4,
+          init_feed_dict=6,
+          init_fn=lambda scaffold, sess: 8,
+          ready_op=10,
+          ready_for_local_init_op=12,
+          local_init_op=14,
+          saver=saver,
+          copy_from_scaffold=scaffold1)
+
+      scaffold2.finalize()
+      self.assertEqual(4, scaffold2.init_op)
+      self.assertEqual(6, scaffold2.init_feed_dict)
+      self.assertTrue(callable(scaffold2.init_fn))
+      self.assertEqual(10, scaffold2.ready_op)
+      self.assertEqual(12, scaffold2.ready_for_local_init_op)
+      self.assertEqual(14, scaffold2.local_init_op)
+      self.assertEqual(saver, scaffold2.saver)
+
+  def test_copy_from_scaffold_is_scaffold(self):
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          TypeError, 'copy_from_scaffold is not a Scaffold instance'):
+        monitored_session.Scaffold(copy_from_scaffold=1)
+
 
 def _test_dir(temp_dir, test_name):
   """Create an empty dir to use for tests.
@@ -179,7 +244,7 @@ class FakeHook(session_run_hook.SessionRunHook):
   def begin(self):
     self.call_counter['begin'] += 1
 
-  def after_create_session(self, session):  # pylint: disable=unused-argument
+  def after_create_session(self, session, coord):  # pylint: disable=unused-argument
     self.call_counter['after_create_session'] += 1
 
   def before_run(self, run_context):
@@ -215,15 +280,39 @@ class MonitoredTrainingSessionTest(test.TestCase):
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(2, session.run(gstep))
 
-  def test_summaries(self):
-    logdir = _test_dir(self.get_temp_dir(), 'test_summaries')
+  def test_summaries_steps(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_steps')
     with ops.Graph().as_default():
       gstep = variables_lib.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       summary.scalar('my_summary_tag', new_gstep * 2)
       with monitored_session.MonitoredTrainingSession(
-          is_chief=True, checkpoint_dir=logdir) as session:
-        for _ in range(101):  # 100 is default summary writing steps
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(101):
+          session.run(new_gstep)
+    summaries = util_test.latest_summaries(logdir)
+    tags = [s.summary.value[0].tag for s in summaries]
+    self.assertIn('my_summary_tag', tags)
+    self.assertIn('global_step/sec', tags)
+
+  def test_summaries_secs(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_secs')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      summary.scalar('my_summary_tag', new_gstep * 2)
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_summaries_steps=None,
+          save_summaries_secs=0.1,
+          log_step_count_steps=10) as session:
+        session.run(new_gstep)
+        time.sleep(0.2)
+        for _ in range(101):
           session.run(new_gstep)
     summaries = util_test.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
@@ -420,9 +509,34 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertTrue(coord.should_stop())
       self.assertTrue(coord_sess.should_stop())
 
+  def test_propagates_exception_trace(self):
+    assertion = control_flow_ops.Assert(False, ['This should fail.'])
+    with self.test_session() as sess:
+      coord = coordinator.Coordinator(clean_stop_exception_types=())
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
+      try:
+        coord_sess.run([assertion])
+        self.fail('No exception was raised by assertion.')
+      except errors_impl.InvalidArgumentError:
+        # Extract the name of the file where the exception was first raised.
+        _, _, exc_traceback = sys.exc_info()
+        tb = traceback.extract_tb(exc_traceback)
+        exc_source_file = tb[-1][0]
+        exc_source_basename = os.path.basename(exc_source_file)
+        # If it's monitored_session.py then the original stack trace was not
+        # correctly propagated.
+        self.assertIn(
+            exc_source_basename, ['session.py', 'monitored_session.py'],
+            'The exception was raised from an unrecognized file. This unit '
+            'test probably needs to be updated. Traceback:\n%s\n' % tb)
+        self.assertEqual(
+            exc_source_basename, 'session.py',
+            'Original stack trace was not propagated by MonitoredSession. '
+            'Traceback:\n%s' % tb)
+
 
 class AbortAtNSession(object):
-  """A mock sessionthat aborts at the N-th run call."""
+  """A mock session that aborts at the N-th run call."""
 
   def __init__(self, sess, n):
     self._sess = sess
@@ -436,6 +550,99 @@ class AbortAtNSession(object):
       raise errors_impl.AbortedError('Aborted at N', None, None)
     self._count -= 1
     return self._sess.run(*args, **kwargs)
+
+
+class StopCoordinatorWithException(session_run_hook.SessionRunHook):
+  """With this hook Coordinator throws an exception after N-runs."""
+
+  def __init__(self, calls_before_stopping, exception_to_raise=None):
+    self._started_the_side_thread_already = False
+    self._lock = threading.Lock()
+    self._stored_exception_event = threading.Event()
+    self._calls_before_stopping = calls_before_stopping
+    self._exception_to_raise = (exception_to_raise or errors_impl.AbortedError(
+        None, None, 'Aborted at N'))
+
+  def _maybe_stop_with_exception(self, coord):
+    while True:
+      with self._lock:
+        if self._calls_before_stopping == 0:
+          try:
+            raise self._exception_to_raise
+          except Exception as e:  # pylint: disable=broad-except
+            coord.request_stop(e)
+            self._stored_exception_event.set()
+            break
+
+  def after_create_session(self, session, coord):
+    if self._started_the_side_thread_already:
+      return
+
+    separate_thread = threading.Thread(
+        target=self._maybe_stop_with_exception, args=(coord,))
+
+    coord.register_thread(separate_thread)
+    separate_thread.start()
+    self._started_the_side_thread_already = True
+    # Coordinator will take care of joining `separate_thread`.
+
+  def after_run(self, run_context, run_values):
+    stopping_now = False
+    with self._lock:
+      self._calls_before_stopping -= 1
+      if self._calls_before_stopping == 0:
+        stopping_now = True
+
+    if stopping_now:
+      self._stored_exception_event.wait()
+
+
+class FailTrainingAfterCoordinatorStopped(StopCoordinatorWithException):
+  """With this hook training encounters an exception after N-runs."""
+
+  def __init__(self, calls_before_stopping):
+    StopCoordinatorWithException.__init__(self, calls_before_stopping)
+    self._coord = None
+
+  def after_create_session(self, session, coord):
+    self._coord = coord
+    return StopCoordinatorWithException.after_create_session(
+        self, session, coord)
+
+  def after_run(self, run_context, run_values):
+    StopCoordinatorWithException.after_run(self, run_context, run_values)
+    try:
+      # After a `run`, an exception could have been stored inside the
+      # coordinator.
+      self._coord.raise_requested_exception()
+    except errors_impl.AbortedError:
+      # In real world, the main thread may or may not know about the exception
+      # that stopped the coordinator. Because the coordinator has stopped, the
+      # main thread could have gotten stuck as well (for example, the
+      # coordinator was supposed to execute `FIFOQueue.enqueue` while the main
+      # thread is executing a blocking `FIFOQueue.dequeue`). After it got stuck,
+      # the session is going to get garbage collected after some time with:
+      raise errors_impl.CancelledError(None, None,
+                                       'Session got garbage-collected.')
+
+
+class CountingSessionCreator(object):
+  """A creator that counts the number of created sessions."""
+
+  def __init__(self, session):
+    self._initial_session = session
+    # We only have one session per test case. We can't re-create it, thus
+    # it shouldn't be closed.
+    self._initial_session.close = lambda *args: None
+    self._create_session_calls = 0
+
+  @property
+  def number_of_sessions_created(self):
+    return self._create_session_calls
+
+  def create_session(self):
+    self._create_session_calls += 1
+    return self._initial_session
 
 
 class RecoverableSessionTest(test.TestCase):
@@ -510,6 +717,84 @@ class RecoverableSessionTest(test.TestCase):
       # This will fail and throw a real error as the pop() will fail.
       with self.assertRaisesRegexp(IndexError, 'pop from empty list'):
         recoverable_sess.run(v, feed_dict={c: -12})
+
+  def test_recovery_from_coordinator_exception(self):
+    with self.test_session() as test_session:
+      session_creator = CountingSessionCreator(test_session)
+      session = monitored_session.MonitoredSession(
+          session_creator,
+          [StopCoordinatorWithException(calls_before_stopping=2)])
+
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      self.assertFalse(session.should_stop())
+
+      c = constant_op.constant(0)
+      v = array_ops.identity(c)
+
+      # The coordinator will not abort during this call, since it's the call
+      # number 0.
+      self.assertEqual(51, session.run(v, feed_dict={c: 51}))
+      self.assertFalse(session.should_stop())
+      # The coordinator will abort during the next call, since it's the call
+      # number 1.
+      self.assertEqual(42, session.run(v, feed_dict={c: 42}))
+      # Even though the coordinator was asked to stop, the underlying session is
+      # recreated and is to be continued.
+      self.assertFalse(session.should_stop())
+      self.assertEqual(2, session_creator.number_of_sessions_created)
+
+  def test_recovery_from_non_preemption_in_coordinator(self):
+    with self.test_session() as test_session:
+      session_creator = CountingSessionCreator(test_session)
+      hook = StopCoordinatorWithException(
+          calls_before_stopping=2,
+          exception_to_raise=errors_impl.UnknownError(
+              None, None, 'Some fatal exception inside the coordinator.'))
+      session = monitored_session.MonitoredSession(session_creator, [hook])
+
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      self.assertFalse(session.should_stop())
+
+      c = constant_op.constant(0)
+      v = array_ops.identity(c)
+
+      # The coordinator will not abort during this call, since it's the call
+      # number 0.
+      self.assertEqual(51, session.run(v, feed_dict={c: 51}))
+      self.assertFalse(session.should_stop())
+      # The coordinator will abort during the next call, since it's the call
+      # number 1.
+      self.assertEqual(42, session.run(v, feed_dict={c: 42}))
+      # The coordinator was asked to stop due to non-redeemable error. Training
+      # should stop and the session should not be recreated.
+      self.assertTrue(session.should_stop())
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      with self.assertRaises(errors_impl.UnknownError):
+        session.close()
+
+  def test_recovery_from_session_getting_stuck(self):
+    with self.test_session() as test_session:
+      session_creator = CountingSessionCreator(test_session)
+      session = monitored_session.MonitoredSession(
+          session_creator,
+          [FailTrainingAfterCoordinatorStopped(calls_before_stopping=2)])
+
+      self.assertEqual(1, session_creator.number_of_sessions_created)
+      self.assertFalse(session.should_stop())
+
+      c = constant_op.constant(0)
+      v = array_ops.identity(c)
+
+      # Training will not fail, since it's the call number 0.
+      self.assertEqual(51, session.run(v, feed_dict={c: 51}))
+      self.assertFalse(session.should_stop())
+      # Training will fail during the next call, since it's the call
+      # number 1.
+      self.assertEqual(42, session.run(v, feed_dict={c: 42}))
+      # Even though the coordinator stopped which and training failed, the
+      # underlying session is recreated and training is to be continued.
+      self.assertFalse(session.should_stop())
+      self.assertEqual(2, session_creator.number_of_sessions_created)
 
 
 class FakeSession(monitored_session._WrappedSession):
@@ -857,13 +1142,13 @@ class MonitoredSessionTest(test.TestCase):
         self.assertEqual(0, session.run(gstep))
       self.assertTrue(self.init_raised_aborted_error)
 
-  def test_retry_on_aborted_error(self):
-    # Tests that we silently retry on abort.  Note that this does not test
+  def _retry_test(self, ex):
+    # Tests that we silently retry on error.  Note that this does not test
     # recovery as we do not use a CheckpointSaver in this test.
     with ops.Graph().as_default():
       gstep = variables_lib.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
-      hook = RaiseOnceAtCountN(4, errors_impl.AbortedError(None, None, 'Abort'))
+      hook = RaiseOnceAtCountN(4, ex)
       with monitored_session.MonitoredSession(hooks=[hook]) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
@@ -878,6 +1163,12 @@ class MonitoredSessionTest(test.TestCase):
         self.assertTrue(hook.raised)
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
+
+  def test_retry_on_aborted_error(self):
+    self._retry_test(errors_impl.AbortedError(None, None, 'Abort'))
+
+  def test_retry_on_unavailable_error(self):
+    self._retry_test(errors_impl.UnavailableError(None, None, 'Unavailable'))
 
   def test_recover_and_retry_on_aborted_error(self):
     # Tests that we silently retry and recover on abort.  This test uses
@@ -1150,6 +1441,13 @@ class MonitoredSessionTest(test.TestCase):
         self.assertTrue(
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
         self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
+
+  def test_with_statement_and_close(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/12224
+    # where close() inside the with should have a better error message.
+    with self.assertRaisesRegexp(RuntimeError, 'Session is already closed'):
+      with monitored_session.MonitoredSession() as session:
+        session.close()
 
 
 class SingularMonitoredSessionTest(test.TestCase):

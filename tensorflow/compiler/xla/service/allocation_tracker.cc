@@ -64,8 +64,9 @@ GlobalDataHandle AllocationTracker::RegisterInternal(
     auto& allocation = FindOrDie(handle_to_allocation_, handle);
     int ref_count = allocation->ref_count();
     CHECK_GT(ref_count, 0);
-    VLOG(2) << "ref_count: " << ref_count << " -> " << ref_count + 1;
-    allocation->increment_ref_count();
+    VLOG(2) << "ref_count: " << ref_count << " -> " <<
+            (ref_count + initial_ref_count);
+    allocation->increment_ref_count(initial_ref_count);
   } else {
     handle = next_handle_++;
     VLOG(2) << "ref_count: " << initial_ref_count;
@@ -136,7 +137,7 @@ tensorflow::Status AllocationTracker::DeallocateShape(
     TF_RET_CHECK(ShapeUtil::TupleElementCount(shape) == elements.size())
         << "tuple has unexpected number of elements: " << elements.size()
         << " != " << ShapeUtil::TupleElementCount(shape);
-    for (int i = 0; i < elements.size(); ++i) {
+    for (size_t i = 0; i < elements.size(); ++i) {
       VLOG(2) << "recursing onto the tuple elements";
       TF_RETURN_IF_ERROR(DeallocateShape(backend, device_ordinal, &elements[i],
                                          shape.tuple_shapes(i),
@@ -170,6 +171,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
           executor, allocation->device_memory(), allocation->shape()));
 
   std::vector<GlobalDataHandle> element_handles;
+  element_handles.reserve(element_bases.size());
   for (int i = 0; i < element_bases.size(); ++i) {
     element_handles.push_back(RegisterInternal(
         allocation->backend(), allocation->device_ordinal(), element_bases[i],

@@ -82,13 +82,12 @@ Status GenericTransferManager::TransferLiteralFromDevice(
   }
 
   *literal->mutable_shape() = device_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
+  literal->Reserve(ShapeUtil::ElementsIn(device_shape));
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(
       executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
-      /*destination=*/LiteralUtil::MutableInternalData(literal)));
+      /*destination=*/literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(
-        LiteralUtil::Relayout(*literal, literal_shape.layout()).get());
+    literal->Swap(literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -105,7 +104,8 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
   // a vector of void* pointers.
   std::vector<void*> element_pointers(ShapeUtil::TupleElementCount(shape),
                                       nullptr);
-  int64 tuple_size = ShapeUtil::ByteSizeOf(shape);
+  int64 tuple_size =
+      ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
   auto copy_status = executor->SynchronousMemcpyD2H(source, tuple_size,
                                                     element_pointers.data());
   if (!copy_status.ok()) {
@@ -117,12 +117,13 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
 
   // Create a DeviceMemoryBase from each void* pointer.
   std::vector<se::DeviceMemoryBase> destination;
-  for (int i = 0; i < element_pointers.size(); ++i) {
+  for (size_t i = 0; i < element_pointers.size(); ++i) {
     if (element_pointers[i] == nullptr &&
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
-      return FailedPrecondition("tuple contains nullptr at element %d", i);
+      return FailedPrecondition("tuple contains nullptr at element %lu", i);
     }
-    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i));
+    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i),
+                                              /*pointer_size=*/sizeof(void*));
     destination.emplace_back(element_pointers[i], buffer_size);
   }
   return std::move(destination);
@@ -150,34 +151,38 @@ Status GenericTransferManager::TransferLiteralToDevice(
         tuple_elements_on_device.data(), destination);
   }
 
-  return TransferBufferToDevice(
-      executor, /*size=*/GetByteSizeRequirement(shape),
-      /*source=*/LiteralUtil::InternalData(literal), destination);
+  return TransferBufferToDevice(executor,
+                                /*size=*/GetByteSizeRequirement(shape),
+                                /*source=*/literal.InternalData(), destination);
 }
 
 Status GenericTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const Literal& literal) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+  return Unimplemented("Generic transfer to Infeed");
 }
 
-Status GenericTransferManager::ResetDevice(se::StreamExecutor* executor) {
+Status GenericTransferManager::TransferBufferToInfeed(
+    perftools::gputools::StreamExecutor* executor, int64 size,
+    const void* source) {
+  return Unimplemented("Generic transfer to Infeed");
+}
+
+Status GenericTransferManager::TransferLiteralFromOutfeed(
+    perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+    Literal* literal) {
   return Unimplemented(
-      "Device reset is not yet supported on CPU and GPU (b/30481585)");
+      "Outfeed is not supported on this platform (b/30467474)");
+}
+
+Status GenericTransferManager::ResetDevices(
+    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+    /*executors*/) {
+  return Unimplemented(
+      "Device reset is not yet supported on this platform (b/30481585)");
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape);
+  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 }  // namespace xla
-
-static xla::TransferManager* CreateGenericTransferManager() {
-  return new xla::GenericTransferManager(se::cuda::kCudaPlatformId);
-}
-
-static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
-                                                CreateGenericTransferManager);
-  return true;
-}
-static bool module_initialized = InitModule();

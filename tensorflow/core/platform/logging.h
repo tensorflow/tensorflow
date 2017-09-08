@@ -26,16 +26,6 @@ limitations under the License.
 #endif
 
 namespace tensorflow {
-namespace port {
-
-// Some platforms require that filenames be of a certain form when
-// used for logging.  This function is invoked to allow platforms to
-// adjust the filename used for logging appropriately, if necessary
-// (most ports can just do nothing).  If any changes are necessary, the
-// implementation should mutate "*filename" appropriately.
-void AdjustFilenameForLogging(string* filename);
-
-}  // namespace port
 
 namespace internal {
 // Emit "message" as a log message to the log for the specified

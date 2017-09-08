@@ -33,7 +33,7 @@ cc_library(
         sycl_library_path("ComputeCpp")
     ],
     includes = ["include/"],
-    linkstatic = 1,
+    linkstatic = 0,
 )
 
 cc_library(

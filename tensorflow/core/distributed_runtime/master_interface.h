@@ -24,10 +24,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Pure virtual interface for communicating with the TensorFlow Master service.
+// Abstract interface for communicating with the TensorFlow Master service.
 //
-// This interface is intended to support in-process master
-// implementations that do not require an RPC roundtrip.
+// This interface supports both RPC-based master implementations, and
+// in-process master implementations that do not require an RPC
+// roundtrip.
 class MasterInterface {
  public:
   virtual ~MasterInterface() {}
@@ -47,18 +48,34 @@ class MasterInterface {
 
   virtual Status RunStep(CallOptions* call_options,
                          RunStepRequestWrapper* request,
-                         RunStepResponse* response) = 0;
+                         MutableRunStepResponseWrapper* response) = 0;
 
   virtual Status RunStep(CallOptions* call_options,
                          const RunStepRequest* request,
                          RunStepResponse* response) {
     std::unique_ptr<RunStepRequestWrapper> wrapped_request(
         new ProtoRunStepRequest(request));
-    return RunStep(call_options, wrapped_request.get(), response);
+    std::unique_ptr<MutableRunStepResponseWrapper> wrapped_response(
+        new NonOwnedProtoRunStepResponse(response));
+    return RunStep(call_options, wrapped_request.get(), wrapped_response.get());
   }
 
+  // Returns a request object for use in calls to
+  // `RunStep()`. Ownership is transferred to the caller.
+  //
+  // The message returned from this method must only be used in a
+  // `RunStep()` call on the same `MasterInterface` instance.
   virtual MutableRunStepRequestWrapper* CreateRunStepRequest() {
     return new MutableProtoRunStepRequest;
+  }
+
+  // Returns a response object for use in calls to
+  // `RunStep()`. Ownership is transferred to the caller.
+  //
+  // The message returned from this method must only be used in a
+  // `RunStep()` call on the same `MasterInterface` instance.
+  virtual MutableRunStepResponseWrapper* CreateRunStepResponse() {
+    return new OwnedProtoRunStepResponse;
   }
 
   virtual Status CloseSession(CallOptions* call_options,
@@ -71,6 +88,15 @@ class MasterInterface {
 
   virtual Status Reset(CallOptions* call_options, const ResetRequest* request,
                        ResetResponse* response) = 0;
+
+ protected:
+  // NOTE: This should only be called by implementations of this
+  // interface whose CreateRunStepResponse() method returns a
+  // proto-based wrappers for the RunStepResponse message.
+  RunStepResponse* get_proto_from_wrapper(
+      MutableRunStepResponseWrapper* wrapper) {
+    return wrapper->get_proto();
+  }
 };
 
 }  // namespace tensorflow

@@ -73,6 +73,24 @@ TEST_F(ScannerTest, AnySpace) {
   EXPECT_EQ("b ", remaining.ToString());
 }
 
+TEST_F(ScannerTest, AnyEscapedNewline) {
+  StringPiece remaining, match;
+  EXPECT_TRUE(Scanner("\\\n")
+                  .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+                  .GetResult(&remaining, &match));
+  EXPECT_EQ("\\\n", remaining);
+  EXPECT_EQ("", match);
+}
+
+TEST_F(ScannerTest, AnyEmptyString) {
+  StringPiece remaining, match;
+  EXPECT_TRUE(Scanner("")
+                  .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+                  .GetResult(&remaining, &match));
+  EXPECT_EQ("", remaining);
+  EXPECT_EQ("", match);
+}
+
 TEST_F(ScannerTest, Eos) {
   EXPECT_FALSE(Scanner("a").Eos().GetResult());
   EXPECT_TRUE(Scanner("").Eos().GetResult());

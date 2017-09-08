@@ -25,8 +25,8 @@
 #include <utility>
 #include <vector>
 
-#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
+#include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -35,16 +35,10 @@
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-
-using tensorforest::CHILDREN_INDEX;
-using tensorforest::FEATURE_INDEX;
-using tensorforest::LEAF_NODE;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::LeftProbability;

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -26,11 +25,6 @@ namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution) {
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (!flags->xla_cpu_use_eigen) {
-    return false;
-  }
-
   // The following conditions are necessary (but not sufficient) for
   // implementing `convolution` with Eigen convolution:
   // - the input and kernel have a non-zero number of elements.
@@ -40,25 +34,33 @@ bool PotentiallyImplementedAsEigenConvolution(
   //   kernel and output.
   //
   // To be sufficient, certain layout constraints need to be satisfied as well.
-  if (ShapeUtil::HasZeroElements(convolution.operand(0)->shape()) ||
-      ShapeUtil::HasZeroElements(convolution.operand(1)->shape())) {
+  const Shape& input_shape = convolution.operand(0)->shape();
+  const Shape& kernel_shape = convolution.operand(0)->shape();
+  if (ShapeUtil::HasZeroElements(input_shape) ||
+      ShapeUtil::HasZeroElements(kernel_shape)) {
     return false;
   }
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
-  // Only 2D convolutions are supported at the moment.
+  // Only 1D and 2D convolutions are supported at the moment.
   // TODO(b/32897908): add an optimized implementation for 3D convolution.
-  if (dnums.spatial_dimensions_size() != 2) {
+  if (dnums.spatial_dimensions_size() > 2) {
     return false;
   }
-  bool input_spatial_dims_ascending =
-      dnums.spatial_dimensions(0) < dnums.spatial_dimensions(1);
+
+  bool input_spatial_dims_ascending = std::is_sorted(
+      dnums.spatial_dimensions().begin(), dnums.spatial_dimensions().end());
   bool kernel_spatial_dims_ascending =
-      dnums.kernel_spatial_dimensions(0) < dnums.kernel_spatial_dimensions(1);
-  return dnums.batch_dimension() == 0 && dnums.feature_dimension() == 3 &&
+      std::is_sorted(dnums.kernel_spatial_dimensions().begin(),
+                     dnums.kernel_spatial_dimensions().end());
+
+  return dnums.batch_dimension() == 0 &&
+         dnums.feature_dimension() == input_shape.dimensions_size() - 1 &&
          input_spatial_dims_ascending == kernel_spatial_dims_ascending &&
-         dnums.kernel_input_feature_dimension() == 2 &&
-         dnums.kernel_output_feature_dimension() == 3;
+         dnums.kernel_input_feature_dimension() ==
+             kernel_shape.dimensions_size() - 2 &&
+         dnums.kernel_output_feature_dimension() ==
+             kernel_shape.dimensions_size() - 1;
 }
 
 namespace {
@@ -82,11 +84,6 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
 }  // namespace
 
 bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (!flags->xla_cpu_use_eigen) {
-    return false;
-  }
-
   // For certain types of Dot, we can call Eigen
   if (hlo.opcode() == HloOpcode::kDot) {
     const Shape& lhs_shape = hlo.operand(0)->shape();

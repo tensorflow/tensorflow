@@ -33,7 +33,7 @@ def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
 
   def Test(self):
     mat = np.ones(shape_).astype(dtype_)
-    batch_mat = np.tile(mat, batch_shape + (1, 1))
+    batch_mat = np.tile(mat, batch_shape_ + (1, 1))
     with self.test_session(use_gpu=True):
       for lower in -1, 0, 1, shape_[-2] - 1:
         for upper in -1, 0, 1, shape_[-1] - 1:
@@ -42,7 +42,7 @@ def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
             band_np = np.triu(band_np, -lower)
           if upper >= 0:
             band_np = np.tril(band_np, upper)
-          if batch_shape is not ():
+          if batch_shape_ is not ():
             band_np = np.tile(band_np, batch_shape + (1, 1))
           band = array_ops.matrix_band_part(batch_mat, lower, upper)
           self.assertAllEqual(band_np, band.eval())
@@ -71,7 +71,8 @@ def _GetMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
 
 
 if __name__ == '__main__':
-  for dtype in np.int32, np.int64, np.float32, np.float64:
+  for dtype in (
+      np.int32, np.int64, np.float32, np.float64, np.complex64, np.complex128):
     for batch_shape in ((), (2,), (1, 3, 2)):
       for rows in 1, 2, 7:
         for cols in 1, 2, 7:

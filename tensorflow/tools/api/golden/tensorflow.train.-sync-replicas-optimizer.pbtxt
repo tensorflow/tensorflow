@@ -1,0 +1,58 @@
+path: "tensorflow.train.SyncReplicasOptimizer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.sync_replicas_optimizer.SyncReplicasOptimizer\'>"
+  is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "GATE_GRAPH"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "GATE_NONE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "GATE_OP"
+    mtype: "<type \'int\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'opt\', \'replicas_to_aggregate\', \'total_num_replicas\', \'variable_averages\', \'variables_to_average\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'sync_replicas\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'grads_and_vars\', \'global_step\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "compute_gradients"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "get_chief_queue_runner"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_init_tokens_op"
+    argspec: "args=[\'self\', \'num_tokens\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "get_name"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_slot"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "get_slot_names"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "make_session_run_hook"
+    argspec: "args=[\'self\', \'is_chief\', \'num_tokens\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "minimize"
+    argspec: "args=[\'self\', \'loss\', \'global_step\', \'var_list\', \'gate_gradients\', \'aggregation_method\', \'colocate_gradients_with_ops\', \'name\', \'grad_loss\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'None\', \'False\', \'None\', \'None\'], "
+  }
+}

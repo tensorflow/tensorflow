@@ -20,33 +20,37 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
 EIGEN_STRONG_INLINE void gather_float_int64_xla_impl(float* out, void** data) {
   // data is managed by the JIT code so msan can't tell it's initialized.
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(data, 6 * sizeof(void*));
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(data, 7 * sizeof(void*));
 
   int64 indices_size = *static_cast<int64*>(data[1]);
   int64 params_x = *static_cast<int64*>(data[2]);
   int64 params_y = *static_cast<int64*>(data[3]);
+  int64 params_z = *static_cast<int64*>(data[4]);
 
-  float* in = static_cast<float*>(data[4]);
+  float* in = static_cast<float*>(data[5]);
 
-  int64* indices = static_cast<int64*>(data[5]);
-  Eigen::DSizes<Eigen::DenseIndex, 2> in_eig_sizes;
+  int64* indices = static_cast<int64*>(data[6]);
+  Eigen::DSizes<Eigen::DenseIndex, 3> in_eig_sizes;
   in_eig_sizes[0] = params_x;
   in_eig_sizes[1] = params_y;
-  tensorflow::TTypes<float, 2>::ConstMatrix in_eig(in, in_eig_sizes);
+  in_eig_sizes[2] = params_z;
+  tensorflow::TTypes<float, 3>::ConstTensor in_eig(in, in_eig_sizes);
 
   Eigen::DSizes<Eigen::DenseIndex, 1> indices_eig_sizes;
   indices_eig_sizes[0] = indices_size;
   tensorflow::TTypes<int64>::ConstFlat indices_eig(indices, indices_eig_sizes);
 
-  Eigen::DSizes<Eigen::DenseIndex, 2> out_eig_sizes;
-  out_eig_sizes[0] = indices_size;
-  out_eig_sizes[1] = params_y;
-  tensorflow::TTypes<float>::Matrix out_eig(out, out_eig_sizes);
+  Eigen::DSizes<Eigen::DenseIndex, 3> out_eig_sizes;
+  out_eig_sizes[0] = params_x;
+  out_eig_sizes[1] = indices_size;
+  out_eig_sizes[2] = params_z;
+  tensorflow::TTypes<float, 3>::Tensor out_eig(out, out_eig_sizes);
 
   tensorflow::functor::GatherFunctorCPU<float, int64> f;
   const int64 bad_i = f(in_eig, indices_eig, out_eig);
@@ -63,7 +67,6 @@ EIGEN_STRONG_INLINE void gather_float_int64_xla_impl(float* out, void** data) {
 
 // Implements gather on CPU. This is called by an XLA custom call, set up by
 // gather_op.cc.
-extern "C" void __attribute__((visibility("default")))
-gather_float_int64_xla_impl(float* out, void** data) {
+extern "C" void TF_EXPORT gather_float_int64_xla_impl(float* out, void** data) {
   tensorflow::gather_float_int64_xla_impl(out, data);
 }

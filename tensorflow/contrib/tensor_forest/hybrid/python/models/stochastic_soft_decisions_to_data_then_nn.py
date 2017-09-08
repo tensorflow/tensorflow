@@ -20,7 +20,7 @@ from __future__ import print_function
 from tensorflow.contrib.tensor_forest.hybrid.python.layers import decisions_to_data
 from tensorflow.contrib.tensor_forest.hybrid.python.layers import fully_connected
 from tensorflow.contrib.tensor_forest.hybrid.python.models import hard_decisions_to_data_then_nn
-from tensorflow.python.training  import adagrad
+from tensorflow.python.training import adagrad
 
 
 class StochasticSoftDecisionsToDataThenNN(

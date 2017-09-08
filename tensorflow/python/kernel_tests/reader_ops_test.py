@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import gzip
 import os
+import shutil
 import threading
 import zlib
 
@@ -35,6 +36,8 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
+
+prefix_path = "tensorflow/core/lib"
 
 # pylint: disable=invalid-name
 TFRecordCompressionType = tf_record.TFRecordCompressionType
@@ -347,33 +350,146 @@ class FixedLengthRecordReaderTest(test.TestCase):
   def setUp(self):
     super(FixedLengthRecordReaderTest, self).setUp()
     self._num_files = 2
-    self._num_records = 7
     self._header_bytes = 5
     self._record_bytes = 3
     self._footer_bytes = 2
 
+    self._hop_bytes = 2
+
   def _Record(self, f, r):
     return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
 
-  def _CreateFiles(self):
+  def _OverlappedRecord(self, f, r):
+    record_str = "".join([
+        str(i)[0]
+        for i in range(r * self._hop_bytes,
+                       r * self._hop_bytes + self._record_bytes)
+    ])
+    return compat.as_bytes(record_str)
+
+  # gap_bytes=hop_bytes-record_bytes
+  def _CreateFiles(self, num_records, gap_bytes):
     filenames = []
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
       filenames.append(fn)
       with open(fn, "wb") as f:
         f.write(b"H" * self._header_bytes)
-        for j in range(self._num_records):
+        if num_records > 0:
+          f.write(self._Record(i, 0))
+        for j in range(1, num_records):
+          if gap_bytes > 0:
+            f.write(b"G" * gap_bytes)
           f.write(self._Record(i, j))
         f.write(b"F" * self._footer_bytes)
     return filenames
 
-  def testOneEpoch(self):
-    files = self._CreateFiles()
+  def _CreateOverlappedRecordFiles(self, num_overlapped_records):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(),
+                        "fixed_length_overlapped_record.%d.txt" % i)
+      filenames.append(fn)
+      with open(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        if num_overlapped_records > 0:
+          all_records_str = "".join([
+              str(i)[0]
+              for i in range(self._record_bytes + self._hop_bytes *
+                             (num_overlapped_records - 1))
+          ])
+          f.write(compat.as_bytes(all_records_str))
+        f.write(b"F" * self._footer_bytes)
+    return filenames
+
+  # gap_bytes=hop_bytes-record_bytes
+  def _CreateGzipFiles(self, num_records, gap_bytes):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
+      filenames.append(fn)
+      with gzip.GzipFile(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        if num_records > 0:
+          f.write(self._Record(i, 0))
+        for j in range(1, num_records):
+          if gap_bytes > 0:
+            f.write(b"G" * gap_bytes)
+          f.write(self._Record(i, j))
+        f.write(b"F" * self._footer_bytes)
+    return filenames
+
+  # gap_bytes=hop_bytes-record_bytes
+  def _CreateZlibFiles(self, num_records, gap_bytes):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
+      filenames.append(fn)
+      with open(fn+".tmp", "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        if num_records > 0:
+          f.write(self._Record(i, 0))
+        for j in range(1, num_records):
+          if gap_bytes > 0:
+            f.write(b"G" * gap_bytes)
+          f.write(self._Record(i, j))
+        f.write(b"F" * self._footer_bytes)
+      with open(fn+".tmp", "rb") as f:
+        cdata = zlib.compress(f.read())
+        with open(fn, "wb") as zf:
+          zf.write(cdata)
+    return filenames
+
+  def _CreateGzipOverlappedRecordFiles(self, num_overlapped_records):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(),
+                        "fixed_length_overlapped_record.%d.txt" % i)
+      filenames.append(fn)
+      with gzip.GzipFile(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        if num_overlapped_records > 0:
+          all_records_str = "".join([
+              str(i)[0]
+              for i in range(self._record_bytes + self._hop_bytes *
+                           (num_overlapped_records - 1))
+          ])
+          f.write(compat.as_bytes(all_records_str))
+        f.write(b"F" * self._footer_bytes)
+    return filenames
+
+  def _CreateZlibOverlappedRecordFiles(self, num_overlapped_records):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(),
+                        "fixed_length_overlapped_record.%d.txt" % i)
+      filenames.append(fn)
+      with open(fn+".tmp", "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        if num_overlapped_records > 0:
+          all_records_str = "".join([
+              str(i)[0]
+              for i in range(self._record_bytes + self._hop_bytes *
+                             (num_overlapped_records - 1))
+          ])
+          f.write(compat.as_bytes(all_records_str))
+        f.write(b"F" * self._footer_bytes)
+      with open(fn+".tmp", "rb") as f:
+        cdata = zlib.compress(f.read())
+        with open(fn, "wb") as zf:
+          zf.write(cdata)
+    return filenames
+
+  # gap_bytes=hop_bytes-record_bytes
+  def _TestOneEpoch(self, files, num_records, gap_bytes, encoding=None):
+    hop_bytes = 0 if gap_bytes == 0 else self._record_bytes + gap_bytes
     with self.test_session() as sess:
       reader = io_ops.FixedLengthRecordReader(
           header_bytes=self._header_bytes,
           record_bytes=self._record_bytes,
           footer_bytes=self._footer_bytes,
+          hop_bytes=hop_bytes,
+          encoding=encoding,
           name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -381,7 +497,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
       queue.enqueue_many([files]).run()
       queue.close().run()
       for i in range(self._num_files):
-        for j in range(self._num_records):
+        for j in range(num_records):
           k, v = sess.run([key, value])
           self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
           self.assertAllEqual(self._Record(i, j), v)
@@ -389,6 +505,70 @@ class FixedLengthRecordReaderTest(test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+  def _TestOneEpochWithHopBytes(self, files, num_overlapped_records, encoding=None):
+    with self.test_session() as sess:
+      reader = io_ops.FixedLengthRecordReader(
+          header_bytes=self._header_bytes,
+          record_bytes=self._record_bytes,
+          footer_bytes=self._footer_bytes,
+          hop_bytes=self._hop_bytes,
+          encoding=encoding,
+          name="test_reader")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue_many([files]).run()
+      queue.close().run()
+      for i in range(self._num_files):
+        for j in range(num_overlapped_records):
+          k, v = sess.run([key, value])
+          print(v)
+          self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
+          self.assertAllEqual(self._OverlappedRecord(i, j), v)
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
+
+  def testOneEpoch(self):
+    for num_records in [0, 7]:
+      # gap_bytes=0: hop_bytes=0
+      # gap_bytes=1: hop_bytes=record_bytes+1
+      for gap_bytes in [0, 1]:
+        files = self._CreateFiles(num_records, gap_bytes)
+        self._TestOneEpoch(files, num_records, gap_bytes)
+
+  def testGzipOneEpoch(self):
+    for num_records in [0, 7]:
+      # gap_bytes=0: hop_bytes=0
+      # gap_bytes=1: hop_bytes=record_bytes+1
+      for gap_bytes in [0, 1]:
+        files = self._CreateGzipFiles(num_records, gap_bytes)
+        self._TestOneEpoch(files, num_records, gap_bytes, encoding="GZIP")
+
+  def testZlibOneEpoch(self):
+    for num_records in [0, 7]:
+      # gap_bytes=0: hop_bytes=0
+      # gap_bytes=1: hop_bytes=record_bytes+1
+      for gap_bytes in [0, 1]:
+        files = self._CreateZlibFiles(num_records, gap_bytes)
+        self._TestOneEpoch(files, num_records, gap_bytes, encoding="ZLIB")
+
+  def testOneEpochWithHopBytes(self):
+    for num_overlapped_records in [0, 2]:
+      files = self._CreateOverlappedRecordFiles(num_overlapped_records)
+      self._TestOneEpochWithHopBytes(files, num_overlapped_records)
+
+  def testGzipOneEpochWithHopBytes(self):
+    for num_overlapped_records in [0, 2]:
+      files = self._CreateGzipOverlappedRecordFiles(num_overlapped_records, )
+      self._TestOneEpochWithHopBytes(files, num_overlapped_records, encoding="GZIP")
+
+  def testZlibOneEpochWithHopBytes(self):
+    for num_overlapped_records in [0, 2]:
+      files = self._CreateZlibOverlappedRecordFiles(num_overlapped_records)
+      self._TestOneEpochWithHopBytes(files, num_overlapped_records, encoding="ZLIB")
 
 
 class TFRecordReaderTest(test.TestCase):
@@ -802,6 +982,52 @@ class AsyncReaderTest(test.TestCase):
   @staticmethod
   def _RunSessionAndSave(sess, args, output):
     output.append(sess.run(args))
+
+
+class LMDBReaderTest(test.TestCase):
+
+  def setUp(self):
+    super(LMDBReaderTest, self).setUp()
+    # Copy database out because we need the path to be writable to use locks.
+    path = os.path.join(prefix_path, "lmdb", "testdata", "data.mdb")
+    self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
+    shutil.copy(path, self.db_path)
+
+  def testReadFromFile(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_read_from_file")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue([self.db_path]).run()
+      queue.close().run()
+      for i in range(10):
+        k, v = sess.run([key, value])
+        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+        self.assertAllEqual(
+            compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
+
+  def testReadFromFolder(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_read_from_folder")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue([self.db_path]).run()
+      queue.close().run()
+      for i in range(10):
+        k, v = sess.run([key, value])
+        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+        self.assertAllEqual(
+            compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
 
 
 if __name__ == "__main__":

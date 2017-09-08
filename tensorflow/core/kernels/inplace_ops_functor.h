@@ -22,19 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-// Inplace update/add/sub values in 'y'. It computes
-//   y[i, :] = v if op is I_UPDATE
-//   y[i, :] += v if op is I_ADD
-//   y[i, :] -= v if op is I_SUB
-enum InplaceOpType {
-  I_UPDATE,  // x = y
-  I_ADD,     // x += y
-  I_SUB,     // x -= y
-};
-
 template <typename Device>
-Status DoInplace(const Device& device, InplaceOpType op, const Tensor& value,
-                 const Tensor& loc, Tensor* output);
+Status DoParallelConcat(const Device& device, const Tensor& value, int32 loc,
+                        Tensor* output);
 
 }  // end namespace functor
 }  // end namespace tensorflow

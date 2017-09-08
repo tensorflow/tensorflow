@@ -166,7 +166,7 @@ char* DoubleToBuffer(double value, char* buffer) {
     DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
     full_precision_needed =
-        locale_independent_strtonum<double>(buffer, NULL) != value;
+        locale_independent_strtonum<double>(buffer, nullptr) != value;
   }
 
   if (full_precision_needed) {
@@ -234,7 +234,7 @@ bool safe_strtou64(StringPiece str, uint64* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
-  int64 result = 0;
+  uint64 result = 0;
   do {
     int digit = SafeFirstChar(str) - '0';
     if ((kuint64max - digit) / 10 < result) {

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
+import atexit
 import itertools
 import os
 import sys
@@ -29,12 +29,22 @@ import tempfile
 from unittest import *
 # pylint: enable=wildcard-import
 
+from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import app
-from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
+from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
+
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
 
 unittest_main = main
+
+# We keep a global variable in this module to make sure we create the temporary
+# directory only once per test binary invocation.
+_googletest_temp_dir = ''
 
 
 # pylint: disable=invalid-name
@@ -80,20 +90,34 @@ def g_main(argv):
 
 
 # Redefine main to allow running benchmarks
-def main():  # pylint: disable=function-redefined
+def main(argv=None):  # pylint: disable=function-redefined
   def main_wrapper():
-    return app.run(main=g_main, argv=sys.argv)
+    args = argv
+    if args is None:
+      args = sys.argv
+    return app.run(main=g_main, argv=args)
   benchmark.benchmarks_main(true_main=main_wrapper)
 
 
 def GetTempDir():
-  first_frame = inspect.stack()[-1][0]
-  temp_dir = os.path.join(
-      tempfile.gettempdir(), os.path.basename(inspect.getfile(first_frame)))
-  temp_dir = temp_dir.rstrip('.py')
-  if not os.path.isdir(temp_dir):
-    os.mkdir(temp_dir, 0o755)
-  return temp_dir
+  """Return a temporary directory for tests to use."""
+  global _googletest_temp_dir
+  if not _googletest_temp_dir:
+    first_frame = tf_inspect.stack()[-1][0]
+    temp_dir = os.path.join(tempfile.gettempdir(),
+                            os.path.basename(tf_inspect.getfile(first_frame)))
+    temp_dir = tempfile.mkdtemp(prefix=temp_dir.rstrip('.py'))
+
+    def delete_temp_dir(dirname=temp_dir):
+      try:
+        file_io.delete_recursively(dirname)
+      except errors.OpError as e:
+        logging.error('Error removing %s: %s', dirname, e)
+
+    atexit.register(delete_temp_dir)
+    _googletest_temp_dir = temp_dir
+
+  return _googletest_temp_dir
 
 
 def test_src_dir_path(relative_path):
@@ -107,7 +131,7 @@ def test_src_dir_path(relative_path):
     An absolute path to the linked in runfiles.
   """
   return os.path.join(os.environ['TEST_SRCDIR'],
-                      "org_tensorflow/tensorflow", relative_path)
+                      'org_tensorflow/tensorflow', relative_path)
 
 
 def StatefulSessionAvailable():
@@ -182,15 +206,16 @@ class StubOutForTesting(object):
     Raises:
       AttributeError: If the attribute cannot be found.
     """
-    if (inspect.ismodule(obj) or
-        (not inspect.isclass(obj) and attr_name in obj.__dict__)):
+    _, obj = tf_decorator.unwrap(obj)
+    if (tf_inspect.ismodule(obj) or
+        (not tf_inspect.isclass(obj) and attr_name in obj.__dict__)):
       orig_obj = obj
       orig_attr = getattr(obj, attr_name)
     else:
-      if not inspect.isclass(obj):
-        mro = list(inspect.getmro(obj.__class__))
+      if not tf_inspect.isclass(obj):
+        mro = list(tf_inspect.getmro(obj.__class__))
       else:
-        mro = list(inspect.getmro(obj))
+        mro = list(tf_inspect.getmro(obj))
 
       mro.reverse()
 

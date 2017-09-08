@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CSE_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -25,13 +25,14 @@ namespace xla {
 // and identical instructions with the same operands are commoned. The pass
 // iterates over the instructions in topological order which enables the pass to
 // find arbitrarily large common expressions.
-class HloCSE : public HloPass {
+class HloCSE : public HloPassInterface {
  public:
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
   explicit HloCSE(bool is_layout_sensitive)
-      : HloPass("cse"), is_layout_sensitive_(is_layout_sensitive) {}
+      : is_layout_sensitive_(is_layout_sensitive) {}
   ~HloCSE() override {}
+  tensorflow::StringPiece name() const override { return "cse"; }
 
   // Run CSE on the given module. Returns whether the module was changed (common
   // subexpressions were found and eliminated).

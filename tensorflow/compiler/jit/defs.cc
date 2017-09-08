@@ -18,5 +18,6 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const kXlaCompileAttr = "_XlaCompile";
+const char* const kXlaScopeAttr = "_XlaScope";
 
 }  // namespace tensorflow

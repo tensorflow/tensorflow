@@ -120,7 +120,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the [`get_variable`](#get_variable) `custom_getter` documentation for
+      the @{tf.get_variable} `custom_getter` documentation for
       more information.
     **kwargs: Keyword arguments to apply to `func_`.
 
@@ -197,8 +197,9 @@ class Template(object):
     if name is None:
       raise ValueError("name cannot be None.")
     if create_scope_now:
-      with variable_scope.variable_scope(
-          self._unique_name, self._name,
+      with variable_scope._pure_variable_scope(  # pylint:disable=protected-access
+          (self._unique_name or
+           variable_scope._get_unique_variable_scope(self._name)),  # pylint:disable=protected-access
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
     else:
@@ -260,20 +261,23 @@ class Template(object):
           return self._call_func(args, kwargs, check_for_new_variables=True)
       else:
         # This is the first visit to __call__, but the scope has already been
-        # created in the constructor. Set _variables_created so that subsequent
-        # calls take the if branch above.
-        self._variables_created = True
+        # created in the constructor. Set _variables_created after the inner
+        # function is successfully called so that subsequent calls take the if
+        # branch above.
         with variable_scope.variable_scope(self._variable_scope):
-          return self._call_func(args, kwargs, check_for_new_variables=False)
+          result = self._call_func(args, kwargs, check_for_new_variables=False)
+          self._variables_created = True
+          return result
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
-      self._variables_created = True
       with variable_scope.variable_scope(
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
-        return self._call_func(args, kwargs, check_for_new_variables=False)
+        result = self._call_func(args, kwargs, check_for_new_variables=False)
+        self._variables_created = True
+        return result
 
   @property
   def variable_scope(self):

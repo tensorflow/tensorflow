@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#ifdef TENSORFLOW_USE_LIBXSMM
+#include "tensorflow/core/kernels/xsmm_conv2d.h"
+#endif
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -88,6 +91,89 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+template <typename T>
+struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& out_backprop, const Tensor& input,
+                  int row_stride, int col_stride, const Padding& padding,
+                  Tensor* filter_backprop, TensorFormat data_format) {
+    const CPUDevice& d = ctx->eigen_device<CPUDevice>();
+    functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
+        d, filter_backprop->tensor<T, 4>(), input.tensor<T, 4>(),
+        out_backprop.tensor<T, 4>(), filter_backprop->dim_size(0),
+        filter_backprop->dim_size(1), row_stride, col_stride);
+  }
+};
+
+#ifdef TENSORFLOW_USE_LIBXSMM
+template <typename Device, class T>
+struct LaunchXsmmBackwardFilter {
+  bool operator()(OpKernelContext* context, const Device& d,
+                  typename TTypes<T, 4>::ConstTensor input_backward,
+                  typename TTypes<T, 4>::Tensor kernel,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride, int pad_h, int pad_w,
+                  TensorFormat data_format) const {
+    return false;
+  }
+};
+
+template <>
+struct LaunchXsmmBackwardFilter<CPUDevice, float> {
+  bool operator()(OpKernelContext* context, const CPUDevice& d,
+                  typename TTypes<float, 4>::ConstTensor input,
+                  typename TTypes<float, 4>::Tensor filter,
+                  typename TTypes<float, 4>::ConstTensor output, int input_rows,
+                  int input_cols, int row_stride, int col_stride, int pad_h,
+                  int pad_w, TensorFormat data_format) const {
+    auto batch = input.dimension(0);
+    auto in_depth = input.dimension(3);
+    auto out_depth = output.dimension(3);
+    auto filter_rows = filter.dimension(0);
+    auto filter_cols = filter.dimension(1);
+
+    auto num_threads =
+        context->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // See libxsmm_dnn.h for this struct definition.
+    libxsmm_dnn_conv_desc desc;
+    desc.N = batch;
+    desc.C = in_depth;
+    desc.H = input_rows;
+    desc.W = input_cols;
+    desc.K = out_depth;
+    desc.R = filter_rows;
+    desc.S = filter_cols;
+    desc.u = row_stride;
+    desc.v = col_stride;
+    desc.pad_h = pad_h;
+    desc.pad_w = pad_w;
+    desc.pad_h_in = 0;  // pad_rows;  // ignored by libxsmm for now.
+    desc.pad_w_in = 0;  // pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h_out = 0;
+    desc.pad_w_out = 0;
+    desc.threads = num_threads;
+    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
+    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
+    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
+    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
+
+    auto input_ptr = input.data();
+    auto filter_ptr = filter.data();
+    auto output_ptr = output.data();
+    bool success = functor::XsmmBkwFilterConv2D<CPUDevice, float>()(
+        context, desc, input_ptr, filter_ptr, output_ptr);
+    return success;
+  }
+};
+#endif
+
 template <typename Device, class T>
 class Conv2DFastBackpropFilterOp : public OpKernel {
  public:
@@ -124,21 +210,50 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
 
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DFastBackpropFilter", input.shape(),
-                                filter_shape, out_backprop.shape(), strides_,
-                                padding_, data_format_, &dims));
+    ConvBackpropDimensions dims;
+    OP_REQUIRES_OK(
+        context,
+        ConvBackpropComputeDimensions(
+            type_string(), /*num_spatial_dims=*/2, input.shape(), filter_shape,
+            out_backprop.shape(), strides_, padding_, data_format_, &dims));
 
     Tensor* filter_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    functor::SpatialConvolutionBackwardKernel<Device, T>()(
-        context->eigen_device<Device>(), filter_backprop->tensor<T, 4>(),
-        input.tensor<T, 4>(), out_backprop.tensor<T, 4>(),
-        dims.rows.filter_size, dims.cols.filter_size, dims.rows.stride,
-        dims.cols.stride);
+#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+    int64 pad_top, pad_bottom;
+    int64 pad_left, pad_right;
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
+
+    if (pad_left == pad_right && pad_top == pad_bottom) {
+      if (LaunchXsmmBackwardFilter<Device, T>()(
+              context, context->eigen_device<Device>(), input.tensor<T, 4>(),
+              filter_backprop->tensor<T, 4>(), out_backprop.tensor<T, 4>(),
+              dims.spatial_dims[0].input_size, dims.spatial_dims[1].input_size,
+              static_cast<int>(dims.spatial_dims[0].stride),
+              static_cast<int>(dims.spatial_dims[1].stride),
+              static_cast<int>(pad_top), static_cast<int>(pad_left),
+              data_format_)) {
+        return;
+      }
+    }
+#endif
+
+    LaunchConv2DBackpropInputOp<Device, T>()(
+        context, false, false, out_backprop, input, dims.spatial_dims[0].stride,
+        dims.spatial_dims[1].stride, padding_, filter_backprop, data_format_);
   }
 
  private:
@@ -187,11 +302,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
 
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DCustomBackpropFilter", input.shape(),
-                                filter_shape, out_backprop.shape(), strides_,
-                                padding_, data_format_, &dims));
+    ConvBackpropDimensions dims;
+    OP_REQUIRES_OK(context,
+                   ConvBackpropComputeDimensions(
+                       "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2,
+                       input.shape(), filter_shape, out_backprop.shape(),
+                       strides_, padding_, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,
@@ -199,20 +315,40 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.rows.input_size, dims.rows.filter_size,
-                                dims.rows.stride, padding_,
-                                &dims.rows.output_size, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.cols.input_size, dims.cols.filter_size,
-                                dims.cols.stride, padding_,
-                                &dims.cols.output_size, &pad_left, &pad_right));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
+#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+    if (pad_left == pad_right && pad_top == pad_bottom) {
+      if (LaunchXsmmBackwardFilter<Device, T>()(
+              context, context->eigen_device<Device>(), input.tensor<T, 4>(),
+              filter_backprop->tensor<T, 4>(), out_backprop.tensor<T, 4>(),
+              dims.spatial_dims[0].input_size, dims.spatial_dims[1].input_size,
+              static_cast<int>(dims.spatial_dims[0].stride),
+              static_cast<int>(dims.spatial_dims[1].stride),
+              static_cast<int>(pad_top), static_cast<int>(pad_left),
+              data_format_)) {
+        return;
+      }
+    }
+#endif
 
     // The total dimension size of each kernel.
-    const int filter_total_size =
-        dims.rows.filter_size * dims.cols.filter_size * dims.in_depth;
+    const int filter_total_size = dims.spatial_dims[0].filter_size *
+                                  dims.spatial_dims[1].filter_size *
+                                  dims.in_depth;
     // The output image size is the spatial size of the output.
-    const int output_image_size = dims.rows.output_size * dims.cols.output_size;
+    const int output_image_size =
+        dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size;
 
     // Shard 'batch' images into 'shard_size' groups of images to be fed
     // into the parallel matmul. Calculate 'shard_size' by dividing the L3 cache
@@ -246,11 +382,11 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                        &col_buffer));
 
     // The input offset corresponding to a single input image.
-    const int input_offset =
-        dims.rows.input_size * dims.cols.input_size * dims.in_depth;
+    const int input_offset = dims.spatial_dims[0].input_size *
+                             dims.spatial_dims[1].input_size * dims.in_depth;
     // The output offset corresponding to a single output image.
-    const int output_offset =
-        dims.rows.output_size * dims.cols.output_size * dims.out_depth;
+    const int output_offset = dims.spatial_dims[0].output_size *
+                              dims.spatial_dims[1].output_size * dims.out_depth;
 
     const T* input_data = input.template flat<T>().data();
     T* col_buffer_data = col_buffer.template flat<T>().data();
@@ -288,11 +424,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
           // When we compute the gradient with respect to the filters, we need
           // to do im2col to allow gemm-type computation.
-          Im2col<T>(input_data_shard, dims.in_depth, dims.rows.input_size,
-                    dims.cols.input_size, dims.rows.filter_size,
-                    dims.cols.filter_size, pad_top, pad_left, pad_bottom,
-                    pad_right, dims.rows.stride, dims.cols.stride,
-                    col_data_shard);
+          Im2col<T>(
+              input_data_shard, dims.in_depth, dims.spatial_dims[0].input_size,
+              dims.spatial_dims[1].input_size, dims.spatial_dims[0].filter_size,
+              dims.spatial_dims[1].filter_size, pad_top, pad_left, pad_bottom,
+              pad_right, dims.spatial_dims[0].stride,
+              dims.spatial_dims[1].stride, col_data_shard);
         }
       };
       Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
@@ -343,7 +480,9 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 // The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward filter autotune results together.
-struct ConvBackwardFilterAutoTuneGroup {};
+struct ConvBackwardFilterAutoTuneGroup {
+  static string name() { return "ConvBwdFilter"; }
+};
 typedef AutoTuneSingleton<ConvBackwardFilterAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConvBwdFilter;
@@ -372,10 +511,6 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
-    using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
     const Tensor& input = context->input(0);
     const Tensor& filter_sizes = context->input(1);
     const Tensor& out_backprop = context->input(2);
@@ -384,302 +519,22 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         errors::InvalidArgument(
             "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
             filter_sizes.dims()));
-    const TensorShape& input_shape = input.shape();
     TensorShape filter_shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
-
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DSlowBackpropFilter", input.shape(),
-                                filter_shape, out_backprop.shape(), strides_,
-                                padding_, data_format_, &dims));
 
     Tensor* filter_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    const int padding_rows =
-        (padding_ == VALID)
-            ? 0
-            : std::max<int>(0, (dims.rows.output_size - 1) * dims.rows.stride +
-                                   dims.rows.filter_size -
-                                   dims.rows.input_size);
-    const int padding_cols =
-        (padding_ == VALID)
-            ? 0
-            : std::max<int>(0, (dims.cols.output_size - 1) * dims.cols.stride +
-                                   dims.cols.filter_size -
-                                   dims.cols.input_size);
+    // For now we take the stride from the second and third dimensions only (we
+    // do not support striding on the batch or depth dimension).
+    const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
+    const int stride_cols = GetTensorDim(strides_, data_format_, 'W');
 
-    // TODO(zhengxq): cuDNN only supports equal padding on both sides, so only
-    // calling it when that is true. Remove this check when (if?) cuDNN starts
-    // supporting different padding.
-    bool rows_odd = (padding_rows % 2 != 0);
-    bool cols_odd = (padding_cols % 2 != 0);
-
-    auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
-
-    if (!use_cudnn_) {
-      context->SetStatus(errors::Unimplemented(
-          "Conv2DBackprop for GPU is not currently supported "
-          "without cudnn"));
-      return;
-    }
-
-    if (dims.rows.filter_size == 1 && dims.cols.filter_size == 1 &&
-        dims.rows.stride == 1 && dims.cols.stride == 1 &&
-        data_format_ == FORMAT_NHWC) {
-      const uint64 m = dims.in_depth;
-      const uint64 k =
-          dims.batch_size * dims.rows.input_size * dims.cols.input_size;
-      const uint64 n = dims.out_depth;
-
-      // The shape of output backprop is
-      //   [batch, out_rows, out_cols, out_depth]
-      //   From cublas's perspective, it is: n x k
-      auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
-                                  out_backprop.template flat<T>().size());
-
-      // The shape of input is
-      //   [batch, in_rows, in_cols, in_depth],
-      //   From cublas's perspective, it is: m x k
-      auto b_ptr = AsDeviceMemory(input.template flat<T>().data(),
-                                  input.template flat<T>().size());
-
-      // the shape of the filter backprop from the conv_2d should be
-      //   [1, 1, in_depth, out_depth]
-      //   From cublas's perspective, it is: n x m
-      auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
-                                  filter_backprop->template flat<T>().size());
-
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
-                             perftools::gputools::blas::Transpose::kTranspose,
-                             n, m, k, 1.0f, a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                            ", n=", n, ", k=", k));
-      }
-      return;
-    }
-
-    Tensor compatible_input;
-    if (rows_odd || cols_odd) {
-      // If a padding dimension is odd, we have one more element on the right
-      // side or the bottom side. This is unsupported in cudnn. Therefore,
-      // we pad that extra element and make it compatible.
-      OP_REQUIRES_OK(
-          context,
-          context->allocate_temp(
-              DataTypeToEnum<T>::value,
-              ShapeFromFormat(data_format_, dims.batch_size,
-                              dims.rows.input_size + rows_odd,
-                              dims.cols.input_size + cols_odd, dims.in_depth),
-              &compatible_input));
-
-      functor::PadInput<GPUDevice, T, int, 4>()(
-          context->template eigen_device<GPUDevice>(),
-          To32Bit(input.tensor<T, 4>()), {{0, 0}}, {{rows_odd, cols_odd}},
-          To32Bit(compatible_input.tensor<T, 4>()), data_format_);
-    } else {
-      compatible_input = input;
-    }
-
-    CHECK(padding_rows >= 0 && padding_cols >= 0)
-        << "Negative row or col paddings: (" << padding_rows << ", "
-        << padding_cols << ")";
-    perftools::gputools::dnn::BatchDescriptor input_desc;
-    input_desc.set_count(dims.batch_size)
-        .set_height(GetTensorDim(compatible_input, data_format_, 'H'))
-        .set_width(GetTensorDim(compatible_input, data_format_, 'W'))
-        .set_feature_map_count(dims.in_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::BatchDescriptor output_desc;
-    output_desc.set_count(dims.batch_size)
-        .set_height(dims.rows.output_size)
-        .set_width(dims.cols.output_size)
-        .set_feature_map_count(dims.out_depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::FilterDescriptor filter_desc;
-    filter_desc.set_input_filter_height(dims.rows.filter_size)
-        .set_input_filter_width(dims.cols.filter_size)
-        .set_input_feature_map_count(dims.in_depth)
-        .set_output_feature_map_count(dims.out_depth);
-    perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-    conv_desc.set_vertical_filter_stride(dims.rows.stride)
-        .set_horizontal_filter_stride(dims.cols.stride)
-        .set_zero_padding_height(padding_rows / 2)
-        .set_zero_padding_width(padding_cols / 2);
-
-    // NOTE(zhengxq):
-    // cuDNN only supports the following layouts :
-    // Input  : B x D x R x C
-    // Filter : OD x ID x R x C
-    // Whereas, we have
-    // Input  : B x R x C x D
-    // Filter : R x C x ID x OD
-    // TransformFilter performs (R x C x ID x OD) => (OD x ID x R x C)
-    // The first TransformDepth performs
-    // (B x R x C x D) => (B x D x R x C).
-    // Since the tensor returned from cuDNN is B x D x R x C also,
-    // the second TransformDepth performs
-    // (B x D x R x C) => (B x R x C x D).
-
-    Tensor pre_transformed_filter_backprop;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                TensorShape({dims.out_depth, dims.in_depth,
-                                             dims.rows.filter_size,
-                                             dims.cols.filter_size}),
-                                &pre_transformed_filter_backprop));
-
-    Tensor transformed_out_backprop;
-    if (data_format_ == FORMAT_NHWC) {
-      TensorShape nchw_shape =
-          ShapeFromFormat(FORMAT_NCHW, dims.batch_size, dims.rows.output_size,
-                          dims.cols.output_size, dims.out_depth);
-      if (dims.out_depth > 1) {
-        OP_REQUIRES_OK(context, context->allocate_temp(
-                                    DataTypeToEnum<T>::value, nchw_shape,
-                                    &transformed_out_backprop));
-        functor::NHWCToNCHW<Device, T, 4>()(
-            context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
-            transformed_out_backprop.tensor<T, 4>());
-      } else {
-        // If depth <= 1, just reshape.
-        CHECK(transformed_out_backprop.CopyFrom(out_backprop, nchw_shape));
-      }
-    } else {
-      transformed_out_backprop = out_backprop;
-    }
-
-    Tensor transformed_input;
-    if (data_format_ == FORMAT_NHWC) {
-      TensorShape nchw_shape = ShapeFromFormat(
-          FORMAT_NCHW, GetTensorDim(compatible_input, data_format_, 'N'),
-          GetTensorDim(compatible_input, data_format_, 'H'),
-          GetTensorDim(compatible_input, data_format_, 'W'),
-          GetTensorDim(compatible_input, data_format_, 'C'));
-      if (nchw_shape.dim_size(1) > 1) {
-        OP_REQUIRES_OK(context,
-                       context->allocate_temp(DataTypeToEnum<T>::value,
-                                              nchw_shape, &transformed_input));
-        functor::NHWCToNCHW<Device, T, 4>()(
-            context->eigen_device<Device>(),
-            const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
-            transformed_input.tensor<T, 4>());
-      } else {
-        // If depth <= 1, just reshape.
-        CHECK(transformed_input.CopyFrom(compatible_input, nchw_shape));
-      }
-    } else {
-      transformed_input = compatible_input;
-    }
-
-    auto out_backprop_ptr =
-        AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
-                       transformed_out_backprop.template flat<T>().size());
-    auto filter_backprop_ptr = AsDeviceMemory(
-        pre_transformed_filter_backprop.template flat<T>().data(),
-        pre_transformed_filter_backprop.template flat<T>().size());
-    auto input_ptr =
-        AsDeviceMemory(transformed_input.template flat<T>().data(),
-                       transformed_input.template flat<T>().size());
-
-    static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
-        );
-    int device_id = stream->parent()->device_ordinal();
-    ConvParameters conv_parameters = {
-        dims.batch_size,        // batch
-        dims.in_depth,          // in_depths
-        input_desc.height(),    // in_rows
-        input_desc.width(),     // in_cols
-        dims.out_depth,         // out_depths
-        dims.rows.filter_size,  // filter_rows
-        dims.cols.filter_size,  // filter_cols
-        dims.rows.stride,       // stride_rows
-        dims.cols.stride,       // stride_cols
-        padding_rows,           // padding_rows
-        padding_cols,           // padding_cols
-        device_id,              // device_id
-    };
-    AlgorithmConfig algorithm_config;
-    if (cudnn_use_autotune_ &&
-        !AutoTuneConvBwdFilter::GetInstance()->Find(conv_parameters,
-                                                    &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
-      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
-      ProfileResult best_result;
-      ProfileResult best_result_no_scratch;
-      for (auto profile_algorithm : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        CudnnScratchAllocator scratch_allocator(
-            ConvolveBackwardFilterScratchSize, context);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
-          }
-        }
-      }
-      OP_REQUIRES(context, best_result.is_valid() &&
-                               best_result.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm worked!"));
-      OP_REQUIRES(context,
-                  best_result_no_scratch.is_valid() &&
-                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm without scratch worked!"));
-      algorithm_config.set_algorithm(best_result.algorithm());
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
-      AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
-                                                   algorithm_config);
-    }
-    CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                            context);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveBackwardFilterWithAlgorithm(
-                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator,
-                algorithm_config, nullptr)
-            .ok();
-
-    if (!cudnn_launch_status) {
-      context->SetStatus(errors::Internal(
-          "cuDNN Backward Filter function launch failure : input shape(",
-          input_shape.DebugString(), ") filter shape(",
-          filter_shape.DebugString(), ")"));
-      return;
-    }
-
-    auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-    functor::ReverseTransformFilter<Device, T, 4>()(
-        context->eigen_device<Device>(),
-        toConstTensor(pre_transformed_filter_backprop).template tensor<T, 4>(),
-        filter_backprop->tensor<T, 4>());
+    launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop, input,
+              stride_rows, stride_cols, padding_, filter_backprop,
+              data_format_);
   }
 
  private:
@@ -687,10 +542,350 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
+  LaunchConv2DBackpropFilterOp<Device, T> launcher_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);
 };
+
+template <typename T>
+void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
+    OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+    const Tensor& out_backprop, const Tensor& input, int row_stride,
+    int col_stride, const Padding& padding, Tensor* filter_backprop,
+    TensorFormat data_format) {
+  using perftools::gputools::dnn::AlgorithmConfig;
+  using perftools::gputools::dnn::AlgorithmType;
+  using perftools::gputools::dnn::ProfileResult;
+
+  std::vector<int32> strides(4, 1);
+  strides[GetTensorDimIndex(data_format, 'H')] = row_stride;
+  strides[GetTensorDimIndex(data_format, 'W')] = col_stride;
+  TensorShape filter_shape = filter_backprop->shape();
+
+  ConvBackpropDimensions dims;
+  OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensions(
+                          "Conv2DSlowBackpropFilter", /*num_spatial_dims=*/2,
+                          input.shape(), filter_shape, out_backprop.shape(),
+                          strides, padding, data_format, &dims));
+
+  const int padding_rows =
+      (padding == VALID)
+          ? 0
+          : std::max<int>(0, (dims.spatial_dims[0].output_size - 1) *
+                                     dims.spatial_dims[0].stride +
+                                 dims.spatial_dims[0].filter_size -
+                                 dims.spatial_dims[0].input_size);
+  const int padding_cols =
+      (padding == VALID)
+          ? 0
+          : std::max<int>(0, (dims.spatial_dims[1].output_size - 1) *
+                                     dims.spatial_dims[1].stride +
+                                 dims.spatial_dims[1].filter_size -
+                                 dims.spatial_dims[1].input_size);
+
+  // TODO(zhengxq): cuDNN only supports equal padding on both sides, so only
+  // calling it when that is true. Remove this check when (if?) cuDNN starts
+  // supporting different padding.
+  bool rows_odd = (padding_rows % 2 != 0);
+  bool cols_odd = (padding_cols % 2 != 0);
+
+  auto* stream = ctx->op_device_context()->stream();
+  OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+
+  if (!use_cudnn) {
+    ctx->SetStatus(errors::Unimplemented(
+        "Conv2DBackprop for GPU is not currently supported "
+        "without cudnn"));
+    return;
+  }
+
+  bool cudnn_disable_conv_1x1_optimization_ = CudnnDisableConv1x1Optimization();
+  if (!cudnn_disable_conv_1x1_optimization_ &&
+      dims.spatial_dims[0].filter_size == 1 &&
+      dims.spatial_dims[1].filter_size == 1 &&
+      dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
+      data_format == FORMAT_NHWC) {
+    const uint64 m = dims.in_depth;
+    const uint64 k = dims.batch_size * dims.spatial_dims[0].input_size *
+                     dims.spatial_dims[1].input_size;
+    const uint64 n = dims.out_depth;
+
+    // The shape of output backprop is
+    //   [batch, out_rows, out_cols, out_depth]
+    //   From cublas's perspective, it is: n x k
+    auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                out_backprop.template flat<T>().size());
+
+    // The shape of input is
+    //   [batch, in_rows, in_cols, in_depth],
+    //   From cublas's perspective, it is: m x k
+    auto b_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                input.template flat<T>().size());
+
+    // the shape of the filter backprop from the conv_2d should be
+    //   [1, 1, in_depth, out_depth]
+    //   From cublas's perspective, it is: n x m
+    auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
+                                filter_backprop->template flat<T>().size());
+
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
+                           perftools::gputools::blas::Transpose::kTranspose, n,
+                           m, k, 1.0f, a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
+    }
+    return;
+  } else if (dims.spatial_dims[0].filter_size ==
+                 dims.spatial_dims[0].input_size &&
+             dims.spatial_dims[1].filter_size ==
+                 dims.spatial_dims[1].input_size &&
+             padding == VALID && data_format == FORMAT_NHWC) {
+    // The input data and filter have the same height/width, so call cublas
+    // directly.
+    const uint64 m = dims.spatial_dims[0].input_size *
+                     dims.spatial_dims[1].input_size * dims.in_depth;
+    const uint64 k = dims.batch_size;
+    const uint64 n = dims.out_depth;
+
+    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                input.template flat<T>().size());
+    auto b_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                out_backprop.template flat<T>().size());
+    auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
+                                filter_backprop->template flat<T>().size());
+
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
+                           perftools::gputools::blas::Transpose::kTranspose, n,
+                           m, k, 1.0f, b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
+    }
+    return;
+  }
+
+  Tensor compatible_input;
+  if (rows_odd || cols_odd) {
+    // If a padding dimension is odd, we have one more element on the right
+    // side or the bottom side. This is unsupported in cudnn. Therefore,
+    // we pad that extra element and make it compatible.
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(
+                 DataTypeToEnum<T>::value,
+                 ShapeFromFormat(data_format, dims.batch_size,
+                                 dims.spatial_dims[0].input_size + rows_odd,
+                                 dims.spatial_dims[1].input_size + cols_odd,
+                                 dims.in_depth),
+                 &compatible_input));
+
+    functor::PadInput<GPUDevice, T, int, 4>()(
+        ctx->template eigen_device<GPUDevice>(), To32Bit(input.tensor<T, 4>()),
+        {{0, 0}}, {{rows_odd, cols_odd}},
+        To32Bit(compatible_input.tensor<T, 4>()), data_format);
+  } else {
+    compatible_input = input;
+  }
+
+  CHECK(padding_rows >= 0 && padding_cols >= 0)
+      << "Negative row or col paddings: (" << padding_rows << ", "
+      << padding_cols << ")";
+  perftools::gputools::dnn::BatchDescriptor input_desc;
+  input_desc.set_count(dims.batch_size)
+      .set_height(GetTensorDim(compatible_input, data_format, 'H'))
+      .set_width(GetTensorDim(compatible_input, data_format, 'W'))
+      .set_feature_map_count(dims.in_depth)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+  perftools::gputools::dnn::BatchDescriptor output_desc;
+  output_desc.set_count(dims.batch_size)
+      .set_height(dims.spatial_dims[0].output_size)
+      .set_width(dims.spatial_dims[1].output_size)
+      .set_feature_map_count(dims.out_depth)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+  perftools::gputools::dnn::FilterDescriptor filter_desc;
+  filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
+      .set_input_filter_width(dims.spatial_dims[1].filter_size)
+      .set_input_feature_map_count(dims.in_depth)
+      .set_output_feature_map_count(dims.out_depth);
+  perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
+  conv_desc.set_vertical_filter_stride(dims.spatial_dims[0].stride)
+      .set_horizontal_filter_stride(dims.spatial_dims[1].stride)
+      .set_zero_padding_height(padding_rows / 2)
+      .set_zero_padding_width(padding_cols / 2);
+
+  // NOTE(zhengxq):
+  // cuDNN only supports the following layouts :
+  // Input  : B x D x R x C
+  // Filter : OD x ID x R x C
+  // Whereas, we have
+  // Input  : B x R x C x D
+  // Filter : R x C x ID x OD
+  // TransformFilter performs (R x C x ID x OD) => (OD x ID x R x C)
+  // The first TransformDepth performs
+  // (B x R x C x D) => (B x D x R x C).
+  // Since the tensor returned from cuDNN is B x D x R x C also,
+  // the second TransformDepth performs
+  // (B x D x R x C) => (B x R x C x D).
+
+  Tensor pre_transformed_filter_backprop;
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                              TensorShape({dims.out_depth, dims.in_depth,
+                                           dims.spatial_dims[0].filter_size,
+                                           dims.spatial_dims[1].filter_size}),
+                              &pre_transformed_filter_backprop));
+
+  Tensor transformed_out_backprop;
+  if (data_format == FORMAT_NHWC) {
+    TensorShape nchw_shape = ShapeFromFormat(
+        FORMAT_NCHW, dims.batch_size, dims.spatial_dims[0].output_size,
+        dims.spatial_dims[1].output_size, dims.out_depth);
+    if (dims.out_depth > 1) {
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DataTypeToEnum<T>::value, nchw_shape,
+                                        &transformed_out_backprop));
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(), out_backprop.tensor<T, 4>(),
+          transformed_out_backprop.tensor<T, 4>());
+    } else {
+      // If depth <= 1, just reshape.
+      CHECK(transformed_out_backprop.CopyFrom(out_backprop, nchw_shape));
+    }
+  } else {
+    transformed_out_backprop = out_backprop;
+  }
+
+  Tensor transformed_input;
+  if (data_format == FORMAT_NHWC) {
+    TensorShape nchw_shape = ShapeFromFormat(
+        FORMAT_NCHW, GetTensorDim(compatible_input, data_format, 'N'),
+        GetTensorDim(compatible_input, data_format, 'H'),
+        GetTensorDim(compatible_input, data_format, 'W'),
+        GetTensorDim(compatible_input, data_format, 'C'));
+    if (nchw_shape.dim_size(1) > 1) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                             nchw_shape, &transformed_input));
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
+          transformed_input.tensor<T, 4>());
+    } else {
+      // If depth <= 1, just reshape.
+      CHECK(transformed_input.CopyFrom(compatible_input, nchw_shape));
+    }
+  } else {
+    transformed_input = compatible_input;
+  }
+
+  auto out_backprop_ptr =
+      AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
+                     transformed_out_backprop.template flat<T>().size());
+  auto filter_backprop_ptr =
+      AsDeviceMemory(pre_transformed_filter_backprop.template flat<T>().data(),
+                     pre_transformed_filter_backprop.template flat<T>().size());
+  auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
+                                  transformed_input.template flat<T>().size());
+
+  static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
+      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
+  );
+  int device_id = stream->parent()->device_ordinal();
+  DataType dtype = input.dtype();
+  ConvParameters conv_parameters = {
+      dims.batch_size,                       // batch
+      dims.in_depth,                         // in_depths
+      {{input_desc.height(),                 // in_rows
+        input_desc.width()}},                // in_cols
+      dims.out_depth,                        // out_depths
+      {{dims.spatial_dims[0].filter_size,    // filter_rows
+        dims.spatial_dims[1].filter_size}},  // filter_cols
+      {{dims.spatial_dims[0].stride,         // stride_rows
+        dims.spatial_dims[1].stride}},       // stride_cols
+      {{padding_rows,                        // padding_rows
+        padding_cols}},                      // padding_cols
+      dtype,                                 // tensor datatype
+      device_id,                             // device_id
+  };
+  AlgorithmConfig algorithm_config;
+  if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
+                                conv_parameters, &algorithm_config)) {
+    std::vector<AlgorithmType> algorithms;
+    CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+    ProfileResult best_result;
+    ProfileResult best_result_no_scratch;
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                              ctx);
+      ProfileResult profile_result;
+      bool cudnn_launch_status =
+          stream
+              ->ThenConvolveBackwardFilterWithAlgorithm(
+                  input_desc, input_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, filter_desc, &filter_backprop_ptr,
+                  &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                  &profile_result)
+              .ok();
+      if (cudnn_launch_status) {
+        if (profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalByteSize() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_no_scratch.elapsed_time_in_ms()) {
+            best_result_no_scratch = profile_result;
+          }
+        }
+      }
+    }
+    OP_REQUIRES(ctx,
+                best_result.is_valid() || best_result_no_scratch.is_valid(),
+                errors::NotFound("No algorithm worked!"));
+    if (best_result.is_valid()) {
+      algorithm_config.set_algorithm(best_result.algorithm());
+    }
+    if (best_result_no_scratch.is_valid()) {
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+    }
+    AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
+                                                 algorithm_config);
+  }
+  CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                          ctx);
+  bool cudnn_launch_status =
+      stream
+          ->ThenConvolveBackwardFilterWithAlgorithm(
+              input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+              filter_desc, &filter_backprop_ptr, &scratch_allocator,
+              algorithm_config, nullptr)
+          .ok();
+
+  if (!cudnn_launch_status) {
+    ctx->SetStatus(errors::Internal(
+        "cuDNN Backward Filter function launch failure : input shape(",
+        input.shape().DebugString(), ") filter shape(",
+        filter_shape.DebugString(), ")"));
+    return;
+  }
+
+  auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
+  functor::ReverseTransformFilter<GPUDevice, T, 4>()(
+      ctx->eigen_device<GPUDevice>(),
+      toConstTensor(pre_transformed_filter_backprop).template tensor<T, 4>(),
+      filter_backprop->tensor<T, 4>());
+}
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {

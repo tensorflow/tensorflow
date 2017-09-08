@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.tensor_forest.hybrid.ops import gen_training_ops
 from tensorflow.contrib.tensor_forest.hybrid.python import hybrid_layer
 from tensorflow.contrib.tensor_forest.hybrid.python.ops import training_ops
 from tensorflow.python.framework import ops
@@ -34,7 +35,7 @@ class DecisionsToDataLayer(hybrid_layer.HybridLayer):
   """A layer that treats soft decisions as data."""
 
   def _define_vars(self, params, **kwargs):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
 
       self.tree_parameters = variable_scope.get_variable(
           name='tree_parameters_%d' % self.layer_num,
@@ -53,11 +54,11 @@ class DecisionsToDataLayer(hybrid_layer.HybridLayer):
     super(DecisionsToDataLayer, self).__init__(
         params, layer_num, device_assigner, *args, **kwargs)
 
-    self.training_ops = training_ops.Load()
+    self._training_ops = training_ops.Load()
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
-      routing_probabilities = self.training_ops.routing_function(
+    with ops.device(self.device_assigner):
+      routing_probabilities = gen_training_ops.routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -75,7 +76,7 @@ class KFeatureDecisionsToDataLayer(hybrid_layer.HybridLayer):
   """A layer that treats soft decisions made on single features as data."""
 
   def _define_vars(self, params, **kwargs):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
 
       self.tree_parameters = variable_scope.get_variable(
           name='tree_parameters_%d' % self.layer_num,
@@ -94,12 +95,12 @@ class KFeatureDecisionsToDataLayer(hybrid_layer.HybridLayer):
     super(KFeatureDecisionsToDataLayer, self).__init__(
         params, layer_num, device_assigner, *args, **kwargs)
 
-    self.training_ops = training_ops.Load()
+    self._training_ops = training_ops.Load()
 
   # pylint: disable=unused-argument
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
-      routing_probabilities = self.training_ops.k_feature_routing_function(
+    with ops.device(self.device_assigner):
+      routing_probabilities = gen_training_ops.k_feature_routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -120,7 +121,7 @@ class HardDecisionsToDataLayer(DecisionsToDataLayer):
   """A layer that learns a soft decision tree but treats it as hard at test."""
 
   def _define_vars(self, params, **kwargs):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
 
       self.tree_parameters = variable_scope.get_variable(
           name='hard_tree_parameters_%d' % self.layer_num,
@@ -138,8 +139,8 @@ class HardDecisionsToDataLayer(DecisionsToDataLayer):
     return super(HardDecisionsToDataLayer, self).inference_graph(data)
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
-      path_probability, path = self.training_ops.hard_routing_function(
+    with ops.device(self.device_assigner):
+      path_probability, path = gen_training_ops.hard_routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -147,7 +148,7 @@ class HardDecisionsToDataLayer(DecisionsToDataLayer):
           tree_depth=self.params.hybrid_tree_depth)
 
       output = array_ops.slice(
-          self.training_ops.unpack_path(path, path_probability),
+          gen_training_ops.unpack_path(path, path_probability),
           [0, self.params.num_nodes - self.params.num_leaves - 1],
           [-1, self.params.num_leaves])
 
@@ -158,7 +159,7 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
   """A layer that learns a soft decision tree by sampling paths."""
 
   def _define_vars(self, params, **kwargs):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
 
       self.tree_parameters = variable_scope.get_variable(
           name='stochastic_hard_tree_parameters_%d' % self.layer_num,
@@ -173,9 +174,9 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
               mean=params.weight_init_mean, stddev=params.weight_init_std))
 
   def soft_inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       path_probability, path = (
-          self.training_ops.stochastic_hard_routing_function(
+          gen_training_ops.stochastic_hard_routing_function(
               data,
               self.tree_parameters,
               self.tree_thresholds,
@@ -183,15 +184,15 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
               random_seed=self.params.base_random_seed))
 
       output = array_ops.slice(
-          self.training_ops.unpack_path(path, path_probability),
+          gen_training_ops.unpack_path(path, path_probability),
           [0, self.params.num_nodes - self.params.num_leaves - 1],
           [-1, self.params.num_leaves])
 
       return output
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
-      path_probability, path = self.training_ops.hard_routing_function(
+    with ops.device(self.device_assigner):
+      path_probability, path = gen_training_ops.hard_routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -199,7 +200,7 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
           tree_depth=self.params.hybrid_tree_depth)
 
       output = array_ops.slice(
-          self.training_ops.unpack_path(path, path_probability),
+          gen_training_ops.unpack_path(path, path_probability),
           [0, self.params.num_nodes - self.params.num_leaves - 1],
           [-1, self.params.num_leaves])
 
@@ -210,7 +211,7 @@ class StochasticSoftDecisionsToDataLayer(StochasticHardDecisionsToDataLayer):
   """A layer that learns a soft decision tree by sampling paths."""
 
   def _define_vars(self, params, **kwargs):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
 
       self.tree_parameters = variable_scope.get_variable(
           name='stochastic_soft_tree_parameters_%d' % self.layer_num,
@@ -225,8 +226,8 @@ class StochasticSoftDecisionsToDataLayer(StochasticHardDecisionsToDataLayer):
               mean=params.weight_init_mean, stddev=params.weight_init_std))
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
-      routes = self.training_ops.routing_function(
+    with ops.device(self.device_assigner):
+      routes = gen_training_ops.routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,

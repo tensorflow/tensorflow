@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -28,10 +28,10 @@ namespace xla {
 // module. An instruction is dead if it is not reachable from the root. This
 // pass does not remove dead parameter instructions as parameter instructions
 // cannot be deleted, nor does the pass remove dead computations.
-class HloDCE : public HloPass {
+class HloDCE : public HloPassInterface {
  public:
-  HloDCE() : HloPass("dce") {}
   ~HloDCE() override {}
+  tensorflow::StringPiece name() const override { return "dce"; }
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).

@@ -65,18 +65,21 @@ class SquareLinearOperatorCompositionTest(
       # feed_dict.
       matrices = sess.run(matrices)
       operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorMatrix(m_ph) for m_ph in matrices_ph])
+          [linalg.LinearOperatorFullMatrix(m_ph) for m_ph in matrices_ph],
+          is_square=True)
       feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
     else:
       operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorMatrix(m) for m in matrices])
+          [linalg.LinearOperatorFullMatrix(m) for m in matrices])
       feed_dict = None
+      # Should be auto-set.
+      self.assertTrue(operator.is_square)
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.
-    apply_order_list = list(reversed(matrices))
-    mat = ops.convert_to_tensor(apply_order_list[0])
-    for other_mat in apply_order_list[1:]:
+    matmul_order_list = list(reversed(matrices))
+    mat = ops.convert_to_tensor(matmul_order_list[0])
+    for other_mat in matmul_order_list[1:]:
       mat = math_ops.matmul(other_mat, mat)
 
     return operator, mat, feed_dict
@@ -86,7 +89,7 @@ class SquareLinearOperatorCompositionTest(
     # The matrix values do not effect auto-setting of the flags.
     matrix = [[1., 0.], [1., 1.]]
     operator = linalg.LinearOperatorComposition(
-        [linalg.LinearOperatorMatrix(matrix)],
+        [linalg.LinearOperatorFullMatrix(matrix)],
         is_positive_definite=True,
         is_non_singular=True,
         is_self_adjoint=False)
@@ -98,8 +101,8 @@ class SquareLinearOperatorCompositionTest(
     # Matrix with two positive eigenvalues, 11 and 8.
     # The matrix values do not effect auto-setting of the flags.
     matrix = [[11., 0.], [1., 8.]]
-    operator_1 = linalg.LinearOperatorMatrix(matrix, is_non_singular=True)
-    operator_2 = linalg.LinearOperatorMatrix(matrix, is_non_singular=True)
+    operator_1 = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)
+    operator_2 = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)
 
     operator = linalg.LinearOperatorComposition(
         [operator_1, operator_2],
@@ -114,8 +117,8 @@ class SquareLinearOperatorCompositionTest(
 
   def test_name(self):
     matrix = [[11., 0.], [1., 8.]]
-    operator_1 = linalg.LinearOperatorMatrix(matrix, name="left")
-    operator_2 = linalg.LinearOperatorMatrix(matrix, name="right")
+    operator_1 = linalg.LinearOperatorFullMatrix(matrix, name="left")
+    operator_2 = linalg.LinearOperatorFullMatrix(matrix, name="right")
 
     operator = linalg.LinearOperatorComposition([operator_1, operator_2])
 
@@ -123,8 +126,8 @@ class SquareLinearOperatorCompositionTest(
 
   def test_different_dtypes_raises(self):
     operators = [
-        linalg.LinearOperatorMatrix(rng.rand(2, 3, 3)),
-        linalg.LinearOperatorMatrix(rng.rand(2, 3, 3).astype(np.float32))
+        linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3)),
+        linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3).astype(np.float32))
     ]
     with self.assertRaisesRegexp(TypeError, "same dtype"):
       linalg.LinearOperatorComposition(operators)
@@ -176,40 +179,40 @@ class NonSquareLinearOperatorCompositionTest(
       # feed_dict.
       matrices = sess.run(matrices)
       operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorMatrix(m_ph) for m_ph in matrices_ph])
+          [linalg.LinearOperatorFullMatrix(m_ph) for m_ph in matrices_ph])
       feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
     else:
       operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorMatrix(m) for m in matrices])
+          [linalg.LinearOperatorFullMatrix(m) for m in matrices])
       feed_dict = None
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.
-    apply_order_list = list(reversed(matrices))
-    mat = ops.convert_to_tensor(apply_order_list[0])
-    for other_mat in apply_order_list[1:]:
+    matmul_order_list = list(reversed(matrices))
+    mat = ops.convert_to_tensor(matmul_order_list[0])
+    for other_mat in matmul_order_list[1:]:
       mat = math_ops.matmul(other_mat, mat)
 
     return operator, mat, feed_dict
 
   def test_static_shapes(self):
     operators = [
-        linalg.LinearOperatorMatrix(rng.rand(2, 3, 4)),
-        linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))
+        linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 4)),
+        linalg.LinearOperatorFullMatrix(rng.rand(2, 4, 5))
     ]
     operator = linalg.LinearOperatorComposition(operators)
     self.assertAllEqual((2, 3, 5), operator.shape)
 
-  def test_dynamic_shapes_when_statically_available(self):
+  def test_shape_tensors_when_statically_available(self):
     operators = [
-        linalg.LinearOperatorMatrix(rng.rand(2, 3, 4)),
-        linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))
+        linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 4)),
+        linalg.LinearOperatorFullMatrix(rng.rand(2, 4, 5))
     ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.test_session():
-      self.assertAllEqual((2, 3, 5), operator.shape_dynamic().eval())
+      self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
 
-  def test_dynamic_shapes_when_only_dynamically_available(self):
+  def test_shape_tensors_when_only_dynamically_available(self):
     mat_1 = rng.rand(1, 2, 3, 4)
     mat_2 = rng.rand(1, 2, 4, 5)
     mat_ph_1 = array_ops.placeholder(dtypes.float64)
@@ -217,13 +220,13 @@ class NonSquareLinearOperatorCompositionTest(
     feed_dict = {mat_ph_1: mat_1, mat_ph_2: mat_2}
 
     operators = [
-        linalg.LinearOperatorMatrix(mat_ph_1),
-        linalg.LinearOperatorMatrix(mat_ph_2)
+        linalg.LinearOperatorFullMatrix(mat_ph_1),
+        linalg.LinearOperatorFullMatrix(mat_ph_2)
     ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.test_session():
       self.assertAllEqual(
-          (1, 2, 3, 5), operator.shape_dynamic().eval(feed_dict=feed_dict))
+          (1, 2, 3, 5), operator.shape_tensor().eval(feed_dict=feed_dict))
 
 
 if __name__ == "__main__":

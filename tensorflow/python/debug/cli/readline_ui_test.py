@@ -159,7 +159,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["bar"] * 2, screen_outputs[0].lines)
 
     with gfile.Open(output_path, "r") as f:
-      self.assertEqual(b"bar\nbar\n", f.read())
+      self.assertEqual("bar\nbar\n", f.read())
 
 
 if __name__ == "__main__":

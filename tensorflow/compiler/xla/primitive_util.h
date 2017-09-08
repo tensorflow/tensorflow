@@ -75,6 +75,8 @@ template <>
 PrimitiveType NativeToPrimitiveType<float>();
 template <>
 PrimitiveType NativeToPrimitiveType<double>();
+template <>
+PrimitiveType NativeToPrimitiveType<half>();
 
 bool IsFloatingPointType(PrimitiveType type);
 
@@ -149,6 +151,10 @@ struct PrimitiveTypeToNative<F32> {
 template <>
 struct PrimitiveTypeToNative<F64> {
   using type = double;
+};
+template <>
+struct PrimitiveTypeToNative<F16> {
+  using type = half;
 };
 
 }  // namespace primitive_util

@@ -20,9 +20,11 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -63,8 +65,27 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor,
       const Literal& literal) = 0;
 
-  // Resets the device that the given executor runs on.
-  virtual Status ResetDevice(perftools::gputools::StreamExecutor* executor) = 0;
+  // Transfer a memory block of the given size from 'source' buffer to the
+  // Infeed interface of the device using the given executor.
+  //
+  // size is the size to transfer from source in bytes.
+  //
+  // source is the source data that must be in the target-dependent layout that
+  // the Infeed HLO used in the computation expects.
+  virtual Status TransferBufferToInfeed(
+      perftools::gputools::StreamExecutor* executor, int64 size,
+      const void* source) = 0;
+
+  // Transfers the given literal from the Outfeed interface of the device,
+  // using the given executor.
+  virtual Status TransferLiteralFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+      Literal* literal) = 0;
+
+  // Resets the devices associated with this transfer manager.
+  virtual Status ResetDevices(
+      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+          executor) = 0;
 
   // Shallow copy a tuple from the device and create a DeviceMemoryBase object
   // for each element in the tuple. A DeviceMemoryBase object refers to the
@@ -107,7 +128,7 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor, int64 size,
       const void* source, perftools::gputools::DeviceMemoryBase* destination);
 
-  typedef TransferManager* (*TransferManagerCreationFunction)();
+  typedef std::unique_ptr<TransferManager> (*TransferManagerCreationFunction)();
 
   /////
   // The TransferManager class also serves as a point to register objects for
@@ -137,7 +158,7 @@ class TransferManager {
   // set up creation_function, and then we use that to lazily create
   // "manager" the first time GetForPlatform is invoked for a particular id.
   struct State {
-    TransferManager* manager = nullptr;
+    std::unique_ptr<TransferManager> manager;
     TransferManagerCreationFunction creation_function = nullptr;
   };
 

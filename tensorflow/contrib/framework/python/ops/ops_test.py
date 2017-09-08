@@ -57,6 +57,15 @@ class OpsTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "not from the passed-in graph"):
       ops_lib.get_graph_from_inputs(values, g1)
 
+  def testGetNameScope(self):
+    with ops.name_scope("scope1"):
+      with ops.name_scope("scope2"):
+        with ops.name_scope("scope3"):
+          self.assertEqual("scope1/scope2/scope3", ops_lib.get_name_scope())
+        self.assertEqual("scope1/scope2", ops_lib.get_name_scope())
+      self.assertEqual("scope1", ops_lib.get_name_scope())
+    self.assertEqual("", ops_lib.get_name_scope())
+
 
 if __name__ == "__main__":
   test.main()

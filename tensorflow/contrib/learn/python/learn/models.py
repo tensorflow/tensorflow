@@ -63,7 +63,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     x: tensor or placeholder for input features.
     y: tensor or placeholder for labels.
     init_mean: the mean value to use for initialization.
-    init_stddev: the standard devation to use for initialization.
+    init_stddev: the standard deviation to use for initialization.
 
   Returns:
     Predictions and loss tensors.
@@ -124,7 +124,7 @@ def logistic_regression(x,
                   will check if graph contains tensor `class_weight:0`.
                   If that is not provided either all ones are used.
     init_mean: the mean value to use for initialization.
-    init_stddev: the standard devation to use for initialization.
+    init_stddev: the standard deviation to use for initialization.
 
   Returns:
     Predictions and loss tensors.
@@ -274,10 +274,10 @@ def bidirectional_rnn(cell_fw,
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [
-      array_ops_.concat_v2([fw, bw], 1) for fw, bw in zip(output_fw, output_bw)
+      array_ops_.concat([fw, bw], 1) for fw, bw in zip(output_fw, output_bw)
   ]
 
-  return outputs, array_ops_.concat_v2([state_fw, state_bw], 1)
+  return outputs, array_ops_.concat([state_fw, state_bw], 1)
 
 
 # End of TensorFlow 0.7
@@ -331,27 +331,34 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     # TODO(ipolosukhin): state_is_tuple=False is deprecated
     if bidirectional:
       # forward direction cell
-      fw_cell = cell_fn(rnn_size)
-      bw_cell = cell_fn(rnn_size)
+      fw_cell = lambda: cell_fn(rnn_size)
+      bw_cell = lambda: cell_fn(rnn_size)
       # attach attention cells if specified
       if attn_length is not None:
-        fw_cell = contrib_rnn.AttentionCellWrapper(
-            fw_cell,
-            attn_length=attn_length,
-            attn_size=attn_size,
-            attn_vec_size=attn_vec_size,
-            state_is_tuple=False)
-        bw_cell = contrib_rnn.AttentionCellWrapper(
-            bw_cell,
-            attn_length=attn_length,
-            attn_size=attn_size,
-            attn_vec_size=attn_vec_size,
-            state_is_tuple=False)
+        def attn_fw_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              fw_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+
+        def attn_bw_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              bw_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+      else:
+        attn_fw_cell = fw_cell
+        attn_bw_cell = bw_cell
+
       rnn_fw_cell = contrib_rnn.MultiRNNCell(
-          [fw_cell] * num_layers, state_is_tuple=False)
+          [attn_fw_cell() for _ in range(num_layers)], state_is_tuple=False)
       # backward direction cell
       rnn_bw_cell = contrib_rnn.MultiRNNCell(
-          [bw_cell] * num_layers, state_is_tuple=False)
+          [attn_bw_cell() for _ in range(num_layers)], state_is_tuple=False)
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
       _, encoding = bidirectional_rnn(
           rnn_fw_cell,
@@ -362,16 +369,21 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
           initial_state_fw=initial_state,
           initial_state_bw=initial_state)
     else:
-      rnn_cell = cell_fn(rnn_size)
+      rnn_cell = lambda: cell_fn(rnn_size)
+
       if attn_length is not None:
-        rnn_cell = contrib_rnn.AttentionCellWrapper(
-            rnn_cell,
-            attn_length=attn_length,
-            attn_size=attn_size,
-            attn_vec_size=attn_vec_size,
-            state_is_tuple=False)
+        def attn_rnn_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              rnn_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+      else:
+        attn_rnn_cell = rnn_cell
+
       cell = contrib_rnn.MultiRNNCell(
-          [rnn_cell] * num_layers, state_is_tuple=False)
+          [attn_rnn_cell() for _ in range(num_layers)], state_is_tuple=False)
       _, encoding = contrib_rnn.static_rnn(
           cell,
           x,

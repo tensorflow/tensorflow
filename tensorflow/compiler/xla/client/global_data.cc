@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 
 #include <string>
+#include <utility>
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -23,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 GlobalData::GlobalData(ServiceInterface* parent, GlobalDataHandle handle)
-    : handle_(handle), parent_(parent) {}
+    : handle_(std::move(handle)), parent_(parent) {}
 
 GlobalData::~GlobalData() {
   UnregisterRequest request;

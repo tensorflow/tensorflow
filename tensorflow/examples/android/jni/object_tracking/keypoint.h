@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
-#include "tensorflow/examples/android/jni/object_tracking/log_streaming.h"
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 #include "tensorflow/examples/android/jni/object_tracking/time_log.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
@@ -35,7 +35,7 @@ struct Keypoint {
 
   Point2f pos_;
   float score_;
-  uint8 type_;
+  uint8_t type_;
 };
 
 inline std::ostream& operator<<(std::ostream& stream, const Keypoint keypoint) {

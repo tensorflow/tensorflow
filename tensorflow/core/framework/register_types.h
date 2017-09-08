@@ -18,7 +18,7 @@ limitations under the License.
 // This file is used by cuda code and must remain compilable by nvcc.
 
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/platform/types.h"
 
 // Two sets of macros:
@@ -95,7 +95,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m) m(::tensorflow::int64)
-#define TF_CALL_bool(m)
+#define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m) m(::tensorflow::qint8)
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
@@ -122,7 +122,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m)
-#define TF_CALL_bool(m)
+#define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m)
 #define TF_CALL_quint8(m)
@@ -167,9 +167,14 @@ limitations under the License.
 // Call "m" on POD and string types.
 #define TF_CALL_POD_STRING_TYPES(m) TF_CALL_POD_TYPES(m) TF_CALL_string(m)
 
-// Call "m" on all types supported on GPU.
+// Call "m" on all number types supported on GPU.
 #define TF_CALL_GPU_NUMBER_TYPES(m) \
   TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
+
+// Call "m" on all types supported on GPU.
+#define TF_CALL_GPU_ALL_TYPES(m) \
+  TF_CALL_GPU_NUMBER_TYPES(m)    \
+  TF_CALL_bool(m) TF_CALL_complex64(m) TF_CALL_complex128(m)
 
 #define TF_CALL_GPU_NUMBER_TYPES_NO_HALF(m) TF_CALL_float(m) TF_CALL_double(m)
 
@@ -177,5 +182,19 @@ limitations under the License.
 // TODO(cwhipkey): include TF_CALL_qint16(m) TF_CALL_quint16(m)
 #define TF_CALL_QUANTIZED_TYPES(m) \
   TF_CALL_qint8(m) TF_CALL_quint8(m) TF_CALL_qint32(m)
+
+#ifdef TENSORFLOW_SYCL_NO_DOUBLE
+#define TF_CALL_SYCL_double(m)
+#else  // TENSORFLOW_SYCL_NO_DOUBLE
+#define TF_CALL_SYCL_double(m) TF_CALL_double(m)
+#endif // TENSORFLOW_SYCL_NO_DOUBLE
+
+#ifdef __ANDROID_TYPES_SLIM__
+#define TF_CALL_SYCL_NUMBER_TYPES(m)  TF_CALL_float(m)
+#else  // __ANDROID_TYPES_SLIM__
+#define TF_CALL_SYCL_NUMBER_TYPES(m)    \
+    TF_CALL_float(m)                    \
+    TF_CALL_SYCL_double(m)
+#endif // __ANDROID_TYPES_SLIM__
 
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_

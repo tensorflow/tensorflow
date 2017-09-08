@@ -64,6 +64,16 @@ void Expect(BundleReader* reader, const string& key,
   test::ExpectTensorEqual<T>(val, expected_val);
 }
 
+template <typename T>
+void ExpectNext(BundleReader* reader, const Tensor& expected_val) {
+  EXPECT_TRUE(reader->Valid());
+  reader->Next();
+  TF_ASSERT_OK(reader->status());
+  Tensor val;
+  TF_ASSERT_OK(reader->ReadCurrent(&val));
+  test::ExpectTensorEqual<T>(val, expected_val);
+}
+
 std::vector<string> AllTensorKeys(BundleReader* reader) {
   std::vector<string> ret;
   reader->Seek(kHeaderEntryKey);
@@ -123,10 +133,10 @@ template <typename T>
 void TestBasic() {
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));
-    writer.Add("foo_003", Constant_2x3<T>(3));
-    writer.Add("foo_000", Constant_2x3<T>(0));
-    writer.Add("foo_002", Constant_2x3<T>(2));
-    writer.Add("foo_001", Constant_2x3<T>(1));
+    TF_EXPECT_OK(writer.Add("foo_003", Constant_2x3<T>(3)));
+    TF_EXPECT_OK(writer.Add("foo_000", Constant_2x3<T>(0)));
+    TF_EXPECT_OK(writer.Add("foo_002", Constant_2x3<T>(2)));
+    TF_EXPECT_OK(writer.Add("foo_001", Constant_2x3<T>(1)));
     TF_ASSERT_OK(writer.Finish());
   }
   {
@@ -141,11 +151,22 @@ void TestBasic() {
     Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
   }
   {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
+  {
     BundleWriter writer(Env::Default(), Prefix("bar"));
-    writer.Add("bar_003", Constant_2x3<T>(3));
-    writer.Add("bar_000", Constant_2x3<T>(0));
-    writer.Add("bar_002", Constant_2x3<T>(2));
-    writer.Add("bar_001", Constant_2x3<T>(1));
+    TF_EXPECT_OK(writer.Add("bar_003", Constant_2x3<T>(3)));
+    TF_EXPECT_OK(writer.Add("bar_000", Constant_2x3<T>(0)));
+    TF_EXPECT_OK(writer.Add("bar_002", Constant_2x3<T>(2)));
+    TF_EXPECT_OK(writer.Add("bar_001", Constant_2x3<T>(1)));
     TF_ASSERT_OK(writer.Finish());
   }
   {
@@ -158,6 +179,17 @@ void TestBasic() {
     Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
     Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
     Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("bar"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
   }
   TF_ASSERT_OK(MergeBundles(Env::Default(), {Prefix("foo"), Prefix("bar")},
                             Prefix("merged")));
@@ -177,15 +209,32 @@ void TestBasic() {
     Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
     Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
   }
+  {
+    BundleReader reader(Env::Default(), Prefix("merged"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
 }
 
 template <typename T>
 void TestNonStandardShapes() {
   {
     BundleWriter writer(Env::Default(), Prefix("nonstandard"));
-    writer.Add("scalar", Constant<T>(0, TensorShape()));
-    writer.Add("non_standard0", Constant<T>(0, TensorShape({0, 1618})));
-    writer.Add("non_standard1", Constant<T>(0, TensorShape({16, 0, 18})));
+    TF_EXPECT_OK(writer.Add("scalar", Constant<T>(0, TensorShape())));
+    TF_EXPECT_OK(
+        writer.Add("non_standard0", Constant<T>(0, TensorShape({0, 1618}))));
+    TF_EXPECT_OK(
+        writer.Add("non_standard1", Constant<T>(0, TensorShape({16, 0, 18}))));
     TF_ASSERT_OK(writer.Finish());
   }
   {
@@ -243,15 +292,14 @@ TEST(TensorBundleTest, PartitionedVariables) {
   // Adds two slices.
   // First slice: column 0, all zeros.
   // Second slice: column 1 to rest, all ones.
+  TensorSlice slice1 = TensorSlice::ParseOrDie("-:0,1");
+  TensorSlice slice2 = TensorSlice::ParseOrDie("-:1,9");
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));
-    TensorSlice slice = TensorSlice::ParseOrDie("-:0,1");
 
-    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape,
-                                 TensorSlice::ParseOrDie("-:0,1"),
+    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape, slice1,
                                  Constant<float>(0., TensorShape({5, 1}))));
-    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape,
-                                 TensorSlice::ParseOrDie("-:1,9"),
+    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape, slice2,
                                  Constant<float>(1., TensorShape({5, 9}))));
     TF_ASSERT_OK(writer.Finish());
   }
@@ -271,6 +319,18 @@ TEST(TensorBundleTest, PartitionedVariables) {
     Tensor val(DT_FLOAT, kFullShape);
     TF_ASSERT_OK(reader.Lookup("foo", &val));
     test::ExpectTensorEqual<float>(val, expected_val);
+  }
+  // Reads all slices.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+
+    std::vector<TensorSlice> slices;
+    TF_ASSERT_OK(reader.LookupTensorSlices("foo", &slices));
+
+    EXPECT_EQ(2, slices.size());
+    EXPECT_EQ(slice1.DebugString(), slices[0].DebugString());
+    EXPECT_EQ(slice2.DebugString(), slices[1].DebugString());
   }
   // Reads a slice consisting of first two columns, "cutting" both slices.
   {
@@ -304,6 +364,56 @@ TEST(TensorBundleTest, PartitionedVariables) {
   }
 }
 
+TEST(TensorBundleTest, EquivalentSliceTest) {
+  const TensorShape kFullShape({5, 10});
+  const Tensor kExpected(Constant<float>(1., kFullShape));
+  {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(writer.AddSlice("no_extents", kFullShape,
+                                 TensorSlice::ParseOrDie("-:-"), kExpected));
+    TF_ASSERT_OK(writer.AddSlice("both_extents", kFullShape,
+                                 TensorSlice::ParseOrDie("0,5:0,10"),
+                                 kExpected));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  // Slices match exactly and are fully abbreviated.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("-:-");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("no_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+  // Slice match exactly and are fully specified.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("0,5:0,10");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("both_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+  // Stored slice has no extents, spec has extents.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("0,5:0,10");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("no_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+  // Stored slice has both extents, spec has no extents.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("-:-");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("both_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+}
+
 TEST(TensorBundleTest, NonStandardShapes) {
   TestNonStandardShapes<float>();
   TestNonStandardShapes<double>();
@@ -323,12 +433,14 @@ TEST(TensorBundleTest, NonStandardShapes) {
 TEST(TensorBundleTest, StringTensors) {
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));
-    writer.Add("string_tensor", Tensor(DT_STRING, TensorShape({1})));  // Empty.
-    writer.Add("scalar", test::AsTensor<string>({"hello"}));
-    writer.Add("strs", test::AsTensor<string>(
-                           {"hello", "", "x01", string(1 << 25, 'c')}));
+    TF_EXPECT_OK(writer.Add("string_tensor",
+                            Tensor(DT_STRING, TensorShape({1}))));  // Empty.
+    TF_EXPECT_OK(writer.Add("scalar", test::AsTensor<string>({"hello"})));
+    TF_EXPECT_OK(writer.Add(
+        "strs",
+        test::AsTensor<string>({"hello", "", "x01", string(1 << 25, 'c')})));
     // Mixes in some floats.
-    writer.Add("floats", Constant_2x3<float>(16.18));
+    TF_EXPECT_OK(writer.Add("floats", Constant_2x3<float>(16.18)));
     TF_ASSERT_OK(writer.Finish());
   }
   {
@@ -355,7 +467,8 @@ TEST(TensorBundleTest, DirectoryStructure) {
                                                Prefix("worker1")};
   for (int i = 0; i < 2; ++i) {
     BundleWriter writer(env, kBundlePrefixes[i]);
-    writer.Add(strings::StrCat("tensor", i), Constant_2x3<float>(0.));
+    TF_EXPECT_OK(
+        writer.Add(strings::StrCat("tensor", i), Constant_2x3<float>(0.)));
     TF_ASSERT_OK(writer.Finish());
   }
 
@@ -396,8 +509,8 @@ TEST(TensorBundleTest, DirectoryStructure) {
 TEST(TensorBundleTest, Error) {
   {  // Dup keys.
     BundleWriter writer(Env::Default(), Prefix("dup"));
-    writer.Add("foo", Constant_2x3(1.f));
-    writer.Add("foo", Constant_2x3(2.f));
+    TF_EXPECT_OK(writer.Add("foo", Constant_2x3(1.f)));
+    EXPECT_FALSE(writer.Add("foo", Constant_2x3(2.f)).ok());
     EXPECT_TRUE(
         StringPiece(writer.status().ToString()).contains("duplicate key"));
     EXPECT_FALSE(writer.Finish().ok());
@@ -446,7 +559,7 @@ TEST(TensorBundleTest, Checksum) {
   // Corrupts a float tensor.
   {
     BundleWriter writer(Env::Default(), Prefix("singleton"));
-    writer.Add("foo", Constant_2x3(1.f));
+    TF_EXPECT_OK(writer.Add("foo", Constant_2x3(1.f)));
     TF_ASSERT_OK(writer.Finish());
 
     FlipByte("singleton", 0 /* corrupts any byte */);
@@ -458,7 +571,8 @@ TEST(TensorBundleTest, Checksum) {
   {
     auto WriteStrings = []() {
       BundleWriter writer(Env::Default(), Prefix("strings"));
-      writer.Add("foo", test::AsTensor<string>({"hello", "world"}));
+      TF_EXPECT_OK(
+          writer.Add("foo", test::AsTensor<string>({"hello", "world"})));
       TF_ASSERT_OK(writer.Finish());
     };
     // Corrupts the first two bytes, which are the varint32-encoded lengths
@@ -482,7 +596,7 @@ TEST(TensorBundleTest, Checksum) {
 
 TEST(TensorBundleTest, Endianness) {
   BundleWriter writer(Env::Default(), Prefix("end"));
-  writer.Add("key", Constant_2x3<float>(1.0));
+  TF_EXPECT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
   TF_ASSERT_OK(writer.Finish());
 
   // Flips the endianness bit.
@@ -497,7 +611,7 @@ TEST(TensorBundleTest, Endianness) {
 TEST(TensorBundleTest, TruncatedTensorContents) {
   Env* env = Env::Default();
   BundleWriter writer(env, Prefix("end"));
-  writer.Add("key", Constant_2x3<float>(1.0));
+  TF_EXPECT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
   TF_ASSERT_OK(writer.Finish());
 
   // Truncates the data file by one byte, so that we hit EOF.
@@ -517,7 +631,7 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
 TEST(TensorBundleTest, HeaderEntry) {
   {
     BundleWriter writer(Env::Default(), Prefix("b"));
-    writer.Add("key", Constant_2x3<float>(1.0));
+    TF_EXPECT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
     TF_ASSERT_OK(writer.Finish());
   }
 

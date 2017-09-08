@@ -34,6 +34,8 @@ namespace tensorflow {
 // 'input_permutation' and 'output_permutation' are initialized to the identity
 // permutation. 'nodedef' is the NodeDef for the call to the function under
 // construction, provided to allow additional attributes to be set.
+// The rewrite may also change the NodeDef's operator name, and that
+// name will be used as the name of the generated function.
 typedef std::function<Status(
     std::unique_ptr<Graph>* graph, std::vector<int>* input_permutation,
     std::vector<int>* output_permutation, NodeDef* node_def)>
@@ -53,6 +55,9 @@ typedef std::function<Status(
 // output graph, together with a "ParallelCheck" operator, that verifies that
 // the original and encapsulated subgraphs produce similar results.
 //
+// If 'reuse_existing_functions' is set, use an existing function with the
+// same name, if any.
+//
 // TODO(phawkins): currently, some information in control edges
 // is not preserved. Suppose you have A and B in the main
 // graph, C and D in a subgraph. B and C have control deps from A, D has control
@@ -61,7 +66,8 @@ typedef std::function<Status(
 Status EncapsulateSubgraphsInFunctions(
     string group_attribute, const Graph& graph_in,
     const RewriteSubgraphFn& rewrite_subgraph_fn, bool parallel_checking,
-    std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);
+    bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
+    FunctionLibraryDefinition* library);
 
 // The attribute that marks function calls produced by the encapsulate
 // subgraphs pass and that should in turn be compiled via _XlaLaunch operators.
@@ -70,11 +76,21 @@ extern const char* const kXlaCompiledKernelAttr;
 // Does `node` have the kXlaCompiledKernelAttr attribute?
 bool IsXlaCompiledKernel(const Node& node);
 
-// Functions produce by the EncapsulateSubgraphs pass have their arguments
-// ordered such that compile-time constant arguments are first in the argument
-// order. The functions are annotated with the following attribute giving the
-// number of constant arguments.
+// Functions produced by the EncapsulateSubgraphs pass have their arguments in
+// the order:
+// 1) compile-time constant arguments, in host memory,
+// 2) other arguments, in device memory.
+// 3) resource variable arguments, in host memory. Note that only the resource
+//    Tensor itself is in host memory; the underlying value may be in device
+//    memory.
+// The functions are annotated with the following attributes that describe how
+// many constant and resource arguments there are:
+
+// Name of the attribute containing the number of constant arguments.
 extern const char* const kXlaNumConstantArgsAttr;
+
+// Name of the attribute containing the number of resource variable arguments.
+extern const char* const kXlaNumResourceArgsAttr;
 
 class EncapsulateSubgraphsPass : public GraphOptimizationPass {
  public:

@@ -32,9 +32,7 @@ namespace tensorflow {
 // description of the operation; and Computation adds the
 // implementation of the operation to a xla::ComputationBuilder. For most
 // arithmetic Ops XLA handles the broadcasting automatically given the input
-// tensors. Ops like ReluGrad that need to map a scalar function over the inputs
-// can use the XlaBinaryMapOp subclass below which handles manual
-// broadcasting of the inputs.
+// tensors.
 class XlaBinaryOp : public XlaOpKernel {
  public:
   explicit XlaBinaryOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -74,34 +72,6 @@ class XlaBinaryOp : public XlaOpKernel {
             const xla::ComputationDataHandle& lhs,
             const xla::ComputationDataHandle& rhs,
             const BCast& broadcast_helper);
-};
-
-// Coefficient-wise binary operations that map a scalar function. Each
-// BinaryMap Op expects two inputs that can be broadcast to the same
-// shape and maps a (scalar,scalar)->scalar function across the zipped
-// elements of its (broadcast) inputs. The base class contains pure
-// virtual methods to override: description is a textual description
-// of the mapped function; and BuildMapLambda adds the
-// implementation of the lambda to a xla::ComputationBuilder.
-class XlaBinaryMapOp : public XlaBinaryOp {
- public:
-  explicit XlaBinaryMapOp(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}
-  ~XlaBinaryMapOp() override {}
-
-  // Implement the (scalar,scalar)->scalar lambda that should be
-  // applied to each pair of elements of the inputs. The desired
-  // computation should be added to 'builder' and
-  // '(scalar_lhs,scalar_rhs)' are the function's inputs.
-  virtual void BuildMapLambda(xla::ComputationBuilder* builder,
-                              const xla::ComputationDataHandle& scalar_lhs,
-                              const xla::ComputationDataHandle& scalar_rhs) = 0;
-
-  xla::ComputationDataHandle Computation(
-      XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs,
-      const gtl::ArraySlice<int64>& lhs_shape,
-      const xla::ComputationDataHandle& rhs,
-      const gtl::ArraySlice<int64>& rhs_shape, const BCast& broadcast_helper,
-      const std::vector<int64>& extend_dimensions) override;
 };
 
 }  // namespace tensorflow

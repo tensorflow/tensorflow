@@ -19,7 +19,7 @@ limitations under the License.
 // Set one PLATFORM_* macro and set IS_MOBILE_PLATFORM if the platform is for
 // mobile.
 
-#if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) && \
+#if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) &&                 \
     !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID) && \
     !defined(PLATFORM_WINDOWS)
 
@@ -43,15 +43,23 @@ limitations under the License.
 #elif defined(__arm__)
 #define PLATFORM_POSIX
 
-// Since there's no macro for the Raspberry Pi, assume we're on a mobile
-// platform if we're compiling for the ARM CPU.
+// Require an outside macro to tell us if we're building for Raspberry Pi.
+#if !defined(RASPBERRY_PI)
 #define IS_MOBILE_PLATFORM
+#endif  // !defined(RASPBERRY_PI)
 
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX
 
 #endif
+#endif
+
+// Look for both gcc/clang and Visual Studio macros indicating we're compiling
+// for an x86 device.
+#if defined(__x86_64__) || defined(__amd64__) || defined(_M_IX86) || \
+    defined(_M_X64)
+#define PLATFORM_IS_X86
 #endif
 
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

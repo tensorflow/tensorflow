@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::int32;
@@ -48,7 +49,7 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
   int lhs_contract_dim = transpose_lhs ? 0 : 1;
   int rhs_contract_dim = transpose_rhs ? 1 : 0;
   const Eigen::array<DimPair, 1> dims(
-      DimPair(lhs_contract_dim, rhs_contract_dim));
+      {DimPair(lhs_contract_dim, rhs_contract_dim)});
 
   // Matrix multiply is a special case of the "contract" operation where
   // the contraction is performed along dimension 1 of the lhs and dimension
@@ -61,13 +62,21 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
 void __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs, int64 m,
     int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
-  MatMul<float>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-                transpose_rhs);
+  if (m == 1 || n == 1) {
+    xla::EigenMatVecF32(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    MatMul<float>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
+                  transpose_rhs);
+  }
 }
 
 void __xla_cpu_runtime_EigenSingleThreadedMatMulF64(
     const void* run_options_ptr, double* out, double* lhs, double* rhs, int64 m,
     int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
-  MatMul<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-                 transpose_rhs);
+  if (m == 1 || n == 1) {
+    xla::EigenMatVecF64(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    MatMul<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
+                   transpose_rhs);
+  }
 }

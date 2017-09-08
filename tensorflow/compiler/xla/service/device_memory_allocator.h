@@ -51,6 +51,10 @@ class DeviceMemoryAllocator {
   // Return the platform that the allocator allocates memory on.
   const perftools::gputools::Platform* platform() const { return platform_; }
 
+  // Can we call Deallocate() as soon as a computation has been scheduled on
+  // a stream, or do we have to wait for the computation to complete first?
+  virtual bool AllowsAsynchronousDeallocation() const = 0;
+
  protected:
   const perftools::gputools::Platform* platform_;
 };
@@ -68,6 +72,8 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
       int device_ordinal, uint64 size, bool retry_on_failure = true) override;
   tensorflow::Status Deallocate(
       int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) override;
+
+  bool AllowsAsynchronousDeallocation() const override;
 
  private:
   StatusOr<perftools::gputools::StreamExecutor*> GetStreamExecutor(

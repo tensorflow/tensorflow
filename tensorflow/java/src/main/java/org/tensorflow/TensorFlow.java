@@ -20,11 +20,20 @@ public final class TensorFlow {
   /** Returns the version of the underlying TensorFlow runtime. */
   public static native String version();
 
+  /**
+   * All the TensorFlow operations available in this address space.
+   *
+   * @return A serialized representation of an <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto">OpList</a>
+   *     protocol buffer, which lists all the available TensorFlow operations.
+   */
+  public static native byte[] registeredOpList();
+
   private TensorFlow() {}
 
   /** Load the TensorFlow runtime C library. */
   static void init() {
-    System.loadLibrary("tensorflow-jni");
+    NativeLibrary.load();
   }
 
   static {

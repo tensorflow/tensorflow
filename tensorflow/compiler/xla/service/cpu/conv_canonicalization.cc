@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -24,16 +23,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace cpu {
 
 StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (!flags->xla_cpu_use_eigen) {
-    return false;
-  }
-
   bool changed = false;
   for (HloInstruction* hlo :
        module->entry_computation()->MakeInstructionPostOrder()) {
@@ -133,10 +128,10 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       // reshape the output back to the shape of the original convolution. This
       // is done by apply the inverse permutation of the collapsing order of the
       // input reshape.
-      module->entry_computation()->ReplaceWithNewInstruction(
-          hlo,
-          HloInstruction::CreateTranspose(
-              hlo->shape(), new_conv, InversePermutation(new_input_dim_order)));
+      TF_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
+          hlo, HloInstruction::CreateTranspose(
+                   hlo->shape(), new_conv,
+                   InversePermutation(new_input_dim_order))));
       changed = true;
     }
   }

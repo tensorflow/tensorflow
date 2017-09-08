@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REFERENCE_GEMM_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REFERENCE_GEMM_H_
 
+#include <stdlib.h>
+
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/platform/types.h"
+
 // This is an unoptimized but debuggable implementation of the GEMM matrix
 // multiply function, used to compare to faster but more opaque versions, or
 // for bit depths or argument combinations that aren't supported by optimized
 // code.
 // It assumes the row-major convention used by TensorFlow, and implements
-// C = A * B, like the standard BLAS GEMM interface. If the tranpose flags are
+// C = A * B, like the standard BLAS GEMM interface. If the transpose flags are
 // true, then the relevant matrix is treated as stored in column-major order.
 
 namespace tensorflow {

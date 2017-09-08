@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -18,10 +20,7 @@ package tensorflow
 // #include "tensorflow/c/c_api.h"
 import "C"
 
-import (
-	"errors"
-	"unsafe"
-)
+import "unsafe"
 
 // Operation that has been added to the graph.
 type Operation struct {
@@ -78,39 +77,47 @@ type Output struct {
 	Index int
 }
 
+// DataType returns the type of elements in the tensor produced by p.
+func (p Output) DataType() DataType {
+	return DataType(C.TF_OperationOutputType(p.c()))
+}
+
 // Shape returns the (possibly incomplete) shape of the tensor produced p.
-//
-// Returns a slice of length 0 if the tensor is a scalar.  Returns a slice
-// where shape[i] is the size of the i-th dimension of the tensor, or -1 if the
-// size of that dimension is not known.
-//
-// Returns an error if the number of dimensions of the tensor is not known.
-func (p Output) Shape() (shape []int64, err error) {
+func (p Output) Shape() Shape {
 	status := newStatus()
 	port := p.c()
 	ndims := C.TF_GraphGetTensorNumDims(p.Op.g.c, port, status.c)
 	if err := status.Err(); err != nil {
-		return nil, err
+		// This should not be possible since an error only occurs if
+		// the operation does not belong to the graph.  It should not
+		// be possible to construct such an Operation object.
+		return Shape{}
 	}
 	if ndims < 0 {
-		return nil, errors.New("unknown number of dimensions")
+		return Shape{}
 	}
 	if ndims == 0 {
-		return nil, nil
+		return ScalarShape()
 	}
 	dims := make([]C.int64_t, ndims)
 	C.TF_GraphGetTensorShape(p.Op.g.c, port, &dims[0], ndims, status.c)
 	if err := status.Err(); err != nil {
-		return nil, err
+		// Same as above, should not be possible.
+		return Shape{}
 	}
-	ret := make([]int64, ndims)
+	ret := Shape{dims: make([]int64, ndims)}
 	for i := 0; i < int(ndims); i++ {
-		ret[i] = int64(dims[i])
+		ret.dims[i] = int64(dims[i])
 	}
-	return ret, nil
+	return ret
 }
 
 func (p Output) c() C.TF_Output {
+	if p.Op == nil {
+		// Attempt to provide a more useful panic message than "nil
+		// pointer dereference".
+		panic("nil-Operation. If the Output was created with a Scope object, see Scope.Err() for details.")
+	}
 	return C.TF_Output{oper: p.Op.c, index: C.int(p.Index)}
 }
 

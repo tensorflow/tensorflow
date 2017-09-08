@@ -27,23 +27,24 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-// Converts Conv2D ops followed by column-wise Muls into equivalent ops with the
-// Mul baked into the convolution weights, to save computation during inference.
+// Converts Conv2D or MatMul ops followed by column-wise Muls into equivalent
+// ops with the Mul baked into the convolution weights, to save computation
+// during inference.
 Status FoldBatchNorms(const GraphDef& input_graph_def,
                       const TransformFuncContext& context,
                       GraphDef* output_graph_def) {
   GraphDef replaced_graph_def;
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
-      {"Mul",             // mul_node
+      {"Mul",                // mul_node
         {
-          {"Conv2D",      // conv_node
+          {"Conv2D|MatMul",  // conv_node
             {
-              {"*"},      // input_node
-              {"Const"},  // weights_node
+              {"*"},         // input_node
+              {"Const"},     // weights_node
             }
           },
-          {"Const"},      // mul_values_node
+          {"Const"},         // mul_values_node
         }
       },  // clang-format on
       [](const NodeMatch& match, const std::set<string>& input_nodes,
@@ -61,7 +62,8 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
 
         // Make sure all the inputs really are vectors, with as many entries as
         // there are columns in the weights.
-        const int64 weights_cols = weights.shape().dim_size(3);
+        const int weights_cols_index = conv_node.op() == "Conv2D" ? 3 : 1;
+        const int64 weights_cols = weights.shape().dim_size(weights_cols_index);
         if ((mul_values.shape().dims() != 1) ||
             (mul_values.shape().dim_size(0) != weights_cols)) {
           return errors::InvalidArgument(
@@ -91,7 +93,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         new_nodes->push_back(input_node);
 
         NodeDef new_conv_node;
-        new_conv_node.CopyFrom(conv_node);
+        new_conv_node = conv_node;
         new_conv_node.set_name(mul_node.name());
         new_nodes->push_back(new_conv_node);
 
