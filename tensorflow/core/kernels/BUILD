@@ -2122,18 +2122,22 @@ genrule(
 
 cc_library(
     name = "jvm",
-    srcs = ["jvm_callback_op.cc", ":jni.h", ":jni_md.h"],
+    srcs = [
+        "jvm_callback_op.cc",
+        ":jni.h",
+        ":jni_md.h",
+    ],
     hdrs = ["jvm_callback_op.h"],
-    includes = ["."],
     copts = tf_copts(),
-    alwayslink = 1,
+    includes = ["."],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:jvm_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 tf_kernel_library(
