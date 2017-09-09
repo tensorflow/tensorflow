@@ -30,9 +30,12 @@
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
 
 namespace tensorflow {
 namespace {
@@ -148,7 +151,12 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   // This callback checks that all batch items in all calls were processed
   // successfully and passes status to the info_checker_callback accordingly.
   auto wrapped_info_checker_callback =
-      [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
+      [](OpKernelContext* context,
+         std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+             info_checker_callback,
+         std::vector<HostLapackInfo> host_lapack_infos) {
+        auto stream = context->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
@@ -166,8 +174,10 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         }
         info_checker_callback(status, host_lapack_infos);
       };
+  
   auto cb =
-      std::bind(wrapped_info_checker_callback, std::move(host_lapack_infos));
+      std::bind(wrapped_info_checker_callback, context_,
+                std::move(info_checker_callback), std::move(host_lapack_infos));
   auto stream = context_->op_device_context()->stream();
   context_->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
       stream, std::move(cb));
@@ -178,6 +188,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
 // numeric types.
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
+#define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, S) m(double, D)
 
 // Macros to construct cusolverDn method names.
 #define DN_SOLVER_FN(method, lapack_prefix) cusolverDn##lapack_prefix##method
@@ -316,6 +327,41 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
   }
 
 TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
+
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status GesvdImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle,
+                               signed char jobu, signed char jobvt, int m,
+                               int n, Scalar* A, int lda, Scalar* S, Scalar* U,
+                               int ldu, Scalar* VT, int ldvt,
+                               int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(bufsize(cusolver_dn_handle, m, n, &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, jobu, jobvt, m, n, CUDAComplex(A), lda, S,
+      CUDAComplex(U), ldu, CUDAComplex(VT), ldvt,
+      CUDAComplex(dev_workspace.mutable_data()), lwork, NULL, dev_lapack_info));
+  return Status::OK();
+}
+
+#define GESVD_INSTANCE(Scalar, lapack_prefix)                            \
+  template <>                                                            \
+  Status CudaSolver::Gesvd<Scalar>(                                      \
+      signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,  \
+      int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,    \
+      int ldvt, int* dev_lapack_info) const {                            \
+    return GesvdImpl(DN_BUFSIZE_FN(gesvd, lapack_prefix),                \
+                     DN_SOLVER_FN(gesvd, lapack_prefix), context_,       \
+                     cusolver_dn_handle_, jobu, jobvt, m, n, dev_A, lda, \
+                     dev_S, dev_U, ldu, dev_VT, ldvt, dev_lapack_info);  \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(GESVD_INSTANCE);
 
 //=============================================================================
 // Wrappers of cuBlas computational methods begin here.

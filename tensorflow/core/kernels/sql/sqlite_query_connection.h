@@ -35,6 +35,10 @@ class SqliteQueryConnection : public QueryConnection {
  private:
   // Executes the query string `query_`.
   Status ExecuteQuery();
+  // Fills `tensor` with the column_index_th element of the current row of
+  // `stmt_`.
+  void FillTensorWithResultSetEntry(const DataType& data_type, int column_index,
+                                    Tensor* tensor);
   sqlite3* db_ = nullptr;
   sqlite3_stmt* stmt_ = nullptr;
   int column_count_ = 0;

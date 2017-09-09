@@ -278,7 +278,7 @@ def _VerifyGeneratedGradients(grads, op):
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
 
 
-def _StopOps(from_ops, pending_count):
+def _StopOps(from_ops, stop_gradient_ops, pending_count):
   """The set of ops that terminate the gradient computation.
 
   This computes the frontier of the forward graph *before* which backprop
@@ -288,8 +288,11 @@ def _StopOps(from_ops, pending_count):
   `_PendingCount(g, xs, from_ops)`. An 'op' has predecessors in `from_ops`
   iff pending_count[op._id] > 0.
 
+  In addition, none of `stop_gradient_ops` will be differentiated.
+
   Args:
     from_ops: list of Operations.
+    stop_gradient_ops: list of Operations never to backprop through.
     pending_count: List of integers, indexed by operation id.
 
   Returns:
@@ -304,6 +307,7 @@ def _StopOps(from_ops, pending_count):
         break
     if is_stop_op:
       stop_ops.add(op._id)
+  stop_ops.update(op._id for op in stop_gradient_ops)  # pylint: disable=protected-access
   return stop_ops
 
 
@@ -374,17 +378,17 @@ def gradients(ys,
               name="gradients",
               colocate_gradients_with_ops=False,
               gate_gradients=False,
-              aggregation_method=None):
-  """Constructs symbolic partial derivatives of sum of `ys` w.r.t. x in `xs`.
+              aggregation_method=None,
+              stop_gradients=None):
+  """Constructs symbolic derivatives of sum of `ys` w.r.t. x in `xs`.
 
   `ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
   is a list of `Tensor`, holding the gradients received by the
   `ys`. The list must be the same length as `ys`.
 
-  `gradients()` adds ops to the graph to output the partial
-  derivatives of `ys` with respect to `xs`.  It returns a list of
-  `Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
-  for y in `ys`.
+  `gradients()` adds ops to the graph to output the derivatives of `ys` with
+  respect to `xs`.  It returns a list of `Tensor` of length `len(xs)` where
+  each tensor is the `sum(dy/dx)` for y in `ys`.
 
   `grad_ys` is a list of tensors of the same length as `ys` that holds
   the initial gradients for each y in `ys`.  When `grad_ys` is None,
@@ -393,6 +397,31 @@ def gradients(ys,
   derivatives using a different initial gradient for each y (e.g., if
   one wanted to weight the gradient differently for each value in
   each y).
+
+  `stop_gradients` is a `Tensor` or a list of tensors to be considered constant
+  with respect to all `xs`. These tensors will not be backpropagated through,
+  as though they had been explicitly disconnected using `stop_gradient`.  Among
+  other things, this allows computation of partial derivatives as opposed to
+  total derivatives. For example:
+
+    a = tf.constant(0.)
+    b = 2 * a
+    g = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
+
+  Here the partial derivatives `g` evaluate to `[1.0, 1.0]`, compared to the
+  total derivatives `tf.gradients(a + b, [a, b])`, which take into account the
+  influence of `a` on `b` and evaluate to `[3.0, 1.0]`.  Note that the above is
+  equivalent to:
+
+    a = tf.stop_gradient(tf.constant(0.))
+    b = tf.stop_gradient(2 * a)
+    g = tf.gradients(a + b, [a, b])
+
+  `stop_gradients` provides a way of stopping gradient after the graph has
+  already been constructed, as compared to `tf.stop_gradient` which is used
+  during graph construction.  When the two approaches are combined,
+  backpropagation stops at both `tf.stop_gradient` nodes and nodes in
+  `stop_gradients`, whichever is encountered first.
 
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
@@ -407,6 +436,8 @@ def gradients(ys,
       for an operations.  This avoids some race conditions.
     aggregation_method: Specifies the method used to combine gradient terms.
       Accepted values are constants defined in the class `AggregationMethod`.
+    stop_gradients: Optional. A `Tensor` or list of tensors not to differentiate
+      through.
 
   Returns:
     A list of `sum(dy/dx)` for each x in `xs`.
@@ -423,12 +454,15 @@ def gradients(ys,
                        "functions in tf.contrib.eager.backprop instead.")
   ys = _AsList(ys)
   xs = _AsList(xs)
+  stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:
     grad_ys = [None] * len(ys)
   else:
     grad_ys = _AsList(grad_ys)
 
-  with ops.name_scope(name, "gradients", ys + xs + grad_ys) as grad_scope:
+  with ops.name_scope(
+      name, "gradients",
+      list(ys) + list(xs) + list(stop_gradients) + list(grad_ys)) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
           else x
@@ -450,6 +484,7 @@ def gradients(ys,
       ys = [array_ops.identity(y) if y.consumers() else y for y in ys]
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
+    stop_gradient_ops = [t.op for t in stop_gradients]
     pending_count, loop_state = _PendingCount(ops.get_default_graph(), to_ops,
                                               from_ops,
                                               colocate_gradients_with_ops)
@@ -488,8 +523,7 @@ def gradients(ys,
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
-    # The set of 'from_ops'.
-    stop_ops = _StopOps(from_ops, pending_count)
+    stop_ops = _StopOps(from_ops, stop_gradient_ops, pending_count)
     while queue:
       # generate gradient subgraph for op.
       op = queue.popleft()

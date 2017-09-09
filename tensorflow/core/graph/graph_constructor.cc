@@ -901,7 +901,7 @@ Status GraphConstructor::PopulateReturnTensors() {
           id.second != Graph::kControlSlot) {
         return errors::InvalidArgument("Invalid return output ", id.second,
                                        " of node '", id.first, "', which has ",
-                                       num_outputs, " outputs");
+                                       num_outputs, " output(s)");
       }
       return_tensors_->push_back({iter->second.node, id.second});
     } else {

@@ -121,7 +121,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
     ],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -153,7 +152,6 @@ cuda_py_test(
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_windows"],
 )
 
 py_library(
@@ -356,7 +354,6 @@ py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":backprop",
         ":context",
@@ -374,7 +371,6 @@ py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":backprop",
         ":context",
@@ -395,7 +391,6 @@ py_test(
     name = "tensor_node_test",
     srcs = ["tensor_node_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":tensor",
         ":tensor_node",

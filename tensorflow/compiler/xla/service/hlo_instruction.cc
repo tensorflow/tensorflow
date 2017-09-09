@@ -512,7 +512,6 @@ HloInstruction::CreateSelectAndScatter(
   instruction->set_parent(fused_root->parent());
   instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
-  instruction->CheckFusionInstruction();
   return instruction;
 }
 
@@ -636,7 +635,6 @@ HloInstruction* HloInstruction::FuseInstructionInternal(
   }
   HloInstruction* fused_instruction =
       CloneAndFuseInternal(instruction_to_fuse, add_output);
-  CheckFusionInstruction();
   return fused_instruction;
 }
 
@@ -793,13 +791,6 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     }
   }
 
-  for (HloComputation* computation :
-       instruction_to_fuse->called_computations()) {
-    if (std::find(called_computations_.begin(), called_computations_.end(),
-                  computation) == called_computations_.end()) {
-      called_computations_.push_back(computation);
-    }
-  }
   VLOG(2) << "New clone:\n" << clone->ToString();
   return clone;
 }
@@ -827,74 +818,6 @@ bool HloInstruction::HasSideEffect() const {
       return false;
     }
   }
-}
-
-void HloInstruction::CheckFusionInstruction() const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-
-  // The parent fusion instruction of the fusion computation must be 'this'.
-  HloComputation* fused_computation = fused_instructions_computation();
-  CHECK_EQ(this, fused_computation->FusionInstruction());
-
-  // Fused root instruction and fused parameters must all be owned by the fusion
-  // computation.
-  bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters_ = fused_parameters();
-  const HloInstruction* fused_root_ = fused_expression_root();
-  std::vector<bool> parameter_owned(fused_parameters_.size(), false);
-  for (auto& instruction : fused_computation->instructions()) {
-    if (fused_root_ == instruction.get()) {
-      CHECK(!root_owned);
-      root_owned = true;
-    }
-    for (int i = 0; i < fused_parameters_.size(); ++i) {
-      if (fused_parameters_[i] == instruction.get()) {
-        CHECK(!parameter_owned[i]);
-        parameter_owned[i] = true;
-      }
-    }
-  }
-  CHECK(root_owned);
-  // Make sure all the parameter_owned entries are set
-  for (int i = 0; i < parameter_owned.size(); i++) {
-    CHECK(parameter_owned[i]);
-  }
-
-  // Fused root must have no users.
-  CHECK_EQ(0, fused_root_->user_count());
-
-  // All uses of fused instructions must be in the fusion computation, and every
-  // non-root instruction must have at least one use.
-  for (auto& instruction : fused_instructions_computation()->instructions()) {
-    if (instruction.get() != fused_root_) {
-      CHECK_GT(instruction->user_count(), 0);
-      for (auto& user : instruction->users()) {
-        CHECK_EQ(fused_computation, user->parent());
-      }
-    }
-  }
-
-  // Fused parameter instructions must be numbered contiguously and match up
-  // (shapes compatible) with their respective operand.
-  CHECK_EQ(operands_.size(), fused_parameters_.size());
-  std::vector<bool> parameter_numbers(fused_parameters_.size(), false);
-  for (auto fused_param : fused_parameters_) {
-    int64 param_no = fused_param->parameter_number();
-    CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, fused_parameters_.size());
-    CHECK(!parameter_numbers[param_no]);
-    parameter_numbers[param_no] = true;
-    CHECK(ShapeUtil::Compatible(fused_param->shape(),
-                                operands_[param_no]->shape()));
-  }
-  // Make sure all the parameter_numbers entries were seen
-  for (int i = 0; i < parameter_numbers.size(); i++) {
-    CHECK(parameter_numbers[i]);
-  }
-
-  // Operands must be distinct.
-  std::set<HloInstruction*> operand_set(operands_.begin(), operands_.end());
-  CHECK_EQ(operand_set.size(), operands_.size());
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCall(
@@ -1201,7 +1124,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
           ->AddEmbeddedComputation(
               computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
   new_instruction->set_parent(parent());
-  new_instruction->CheckFusionInstruction();
   return new_instruction;
 }
 
@@ -1669,6 +1591,21 @@ string HloInstruction::ExtendedOpcodeStr() const {
 
 string HloInstruction::ToString(bool compact_operands,
                                 bool include_metadata) const {
+  string result =
+      StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
+             ExtendedOpcodeStr(), "(", OperandsToString(compact_operands), ")");
+  for (const string& extra : ExtraAttributesToString()) {
+    StrAppend(&result, ", ", extra);
+  }
+  if (include_metadata &&
+      (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
+       !metadata_.source_file().empty())) {
+    StrAppend(&result, " # metadata=", metadata_.ShortDebugString());
+  }
+  return result;
+}
+
+string HloInstruction::OperandsToString(bool compact) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
@@ -1697,12 +1634,12 @@ string HloInstruction::ToString(bool compact_operands,
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
     const int64 kMaxOperandsToShowIfCompact = 4;
-    if (compact_operands && slice.size() > kMaxOperandsToShowIfCompact) {
+    if (compact && slice.size() > kMaxOperandsToShowIfCompact) {
       slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
     }
     operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
       *out += ShapeUtil::HumanStringWithLayout(operand->shape());
-      if (!compact_operands) {
+      if (!compact) {
         StrAppend(out, " ", operand->name());
       }
     });
@@ -1711,15 +1648,19 @@ string HloInstruction::ToString(bool compact_operands,
       StrAppend(&operands, ", ...(+", remaining, ")");
     }
   }
-  string extra;
+  return operands;
+}
+
+std::vector<string> HloInstruction::ExtraAttributesToString() const {
+  std::vector<string> extra;
   if (CanHaveDimensionsField()) {
-    StrAppend(&extra, ", dimensions={", Join(dimensions(), ","), "}");
+    extra.push_back(StrCat("dimensions={", Join(dimensions(), ","), "}"));
   }
   if (window_ != nullptr) {
-    StrAppend(&extra, ", ", window_util::ToString(*window_));
+    extra.push_back(window_util::ToString(*window_));
   }
   if (padding_config_ != nullptr) {
-    StrAppend(&extra, ", padding=", padding_config_->ShortDebugString());
+    extra.push_back(StrCat("padding=", padding_config_->ShortDebugString()));
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
@@ -1728,45 +1669,38 @@ string HloInstruction::ToString(bool compact_operands,
       bounds.push_back(
           StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
     }
-    StrAppend(&extra, ", slice={", Join(bounds, ", "), "}");
+    extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
   }
 
   if (convolution_dimension_numbers_ != nullptr) {
-    StrAppend(&extra, ", ", ConvolutionDimensionNumbersToString());
+    extra.push_back(ConvolutionDimensionNumbersToString());
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    StrAppend(&extra, ", condition=", while_condition()->name());
-    StrAppend(&extra, ", body=", while_body()->name());
+    extra.push_back(StrCat("condition=", while_condition()->name()));
+    extra.push_back(StrCat("body=", while_body()->name()));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    StrAppend(&extra, ", select=", select()->name());
-    StrAppend(&extra, ", scatter=", scatter()->name());
+    extra.push_back(StrCat("select=", select()->name()));
+    extra.push_back(StrCat("scatter=", scatter()->name()));
   } else if (!called_computations().empty()) {
-    StrAppend(&extra, ", calls=",
-              Join(called_computations(), ", ",
-                   [](string* out, const HloComputation* computation) {
-                     StrAppend(out, computation->name());
-                   }));
+    extra.push_back(StrCat(
+        "calls=", Join(called_computations(), ", ",
+                       [](string* out, const HloComputation* computation) {
+                         StrAppend(out, computation->name());
+                       })));
   }
 
   if (opcode() == HloOpcode::kGetTupleElement) {
-    StrAppend(&extra, ", index=", tuple_index());
+    extra.push_back(StrCat("index=", tuple_index()));
   }
   if (!control_successors_.empty()) {
-    StrAppend(
-        &extra, ", control-successors=",
+    extra.push_back(StrCat(
+        "control-successors=",
         Join(control_successors_, ", ", [](string* out, HloInstruction* succ) {
           StrAppend(out, succ->name());
-        }));
+        })));
   }
-  if (include_metadata &&
-      (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
-       !metadata_.source_file().empty())) {
-    StrAppend(&extra, " # metadata=", metadata_.ShortDebugString());
-  }
-
-  return StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-                ExtendedOpcodeStr(), "(", operands, ")", extra);
+  return extra;
 }
 
 string HloInstruction::ToShortString() const {

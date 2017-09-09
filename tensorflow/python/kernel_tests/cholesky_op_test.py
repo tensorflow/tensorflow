@@ -183,14 +183,11 @@ class CholeskyGradTest(test.TestCase):
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.float32, dtypes_lib.float64))
 
-  # TODO(eriche): investigate why this test fails only in opensource
-  # ubuntu gpu python3
-
-  # def testSmallMatricesComplex(self):
-    # np.random.seed(0)
-    # shapes = self.getShapes([1, 2, 10])
-    # self.runFiniteDifferences(
-        # shapes, dtypes=(dtypes_lib.complex64, dtypes_lib.complex128))
+  def testSmallMatricesComplex(self):
+    np.random.seed(0)
+    shapes = self.getShapes([1, 2, 10])
+    self.runFiniteDifferences(
+        shapes, dtypes=(dtypes_lib.complex64, dtypes_lib.complex128))
 
   def testOneBlockMatrices(self):
     np.random.seed(0)

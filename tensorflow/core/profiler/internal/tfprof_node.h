@@ -44,27 +44,13 @@ class TFGraphNode;
 
 class ExecStep {
  public:
-  ExecStep(TFGraphNode* node)
-      : node(node),
-        run_count_(0),
-        all_start_micros_(0),
-        latest_end_micros_(0),
-        mem_initiated_(false),
-        requested_bytes_(0),
-        peak_bytes_(0),
-        residual_bytes_(0),
-        output_bytes_(0),
-        host_temp_bytes_(0),
-        host_persistent_bytes_(0),
-        accelerator_temp_bytes_(0),
-        accelerator_persistent_bytes_(0),
-        allocator_bytes_in_use_(0) {}
+  ExecStep() {}
 
   void AddTimeStats(const string& dev, const NodeExecStats& step_stat);
 
   void AddMemoryStats(const string& dev, const NodeExecStats& step_stat);
 
-  int64 run_count() const { return run_count_; }
+  int64 run_count() const { return exec_.run_count(); }
   // The execution time of an op. If it runs on accelerator, then it's
   // accelerator_exec_micros(). Otherwise, it's CPU time.
   int64 exec_micros() const;
@@ -77,31 +63,101 @@ class ExecStep {
       const {
     return op_execs_;
   }
-  int64 all_start_micros() const { return all_start_micros_; }
-  int64 latest_end_micros() const { return latest_end_micros_; }
+  int64 all_start_micros() const { return exec_.all_start_micros(); }
+  int64 latest_end_micros() const { return exec_.latest_end_micros(); }
 
-  int64 requested_bytes() const { return requested_bytes_; }
-  int64 peak_bytes() const { return peak_bytes_; }
-  int64 residual_bytes() const { return residual_bytes_; }
-  int64 output_bytes() const { return output_bytes_; }
-  int64 accelerator_temp_bytes() const { return accelerator_temp_bytes_; }
-  int64 host_temp_bytes() const { return host_temp_bytes_; }
-  int64 accelerator_persistent_bytes() const {
-    return accelerator_persistent_bytes_;
+  int64 requested_bytes() const { return exec_.requested_bytes(); }
+  int64 peak_bytes() const { return exec_.peak_bytes(); }
+  int64 residual_bytes() const { return exec_.residual_bytes(); }
+  int64 output_bytes() const { return exec_.output_bytes(); }
+  int64 accelerator_temp_bytes() const {
+    return exec_.accelerator_temp_bytes();
   }
-  int64 host_persistent_bytes() const { return host_persistent_bytes_; }
-  const std::map<int64, std::pair<int64, uint64>>& output_memory() const {
+  int64 host_temp_bytes() const { return exec_.host_temp_bytes(); }
+  int64 accelerator_persistent_bytes() const {
+    return exec_.accelerator_persistent_bytes();
+  }
+  int64 host_persistent_bytes() const { return exec_.host_persistent_bytes(); }
+  const std::map<int32, std::pair<int64, uint64>>& output_memory() const {
     return output_memory_;
   }
-  int64 allocator_bytes_in_use() const { return allocator_bytes_in_use_; }
+  int64 allocator_bytes_in_use() const {
+    return exec_.allocator_bytes_in_use();
+  }
+
+  const ExecProfile& ToProto() {
+    exec_.mutable_accelerator_execs()->clear();
+    for (const auto& e : accelerator_execs_) {
+      auto& exec_time = (*exec_.mutable_accelerator_execs())[e.first];
+      for (const auto& p : e.second) {
+        auto* t = exec_time.mutable_times()->Add();
+        t->add_int64_values(p.first);
+        t->add_int64_values(p.second);
+      }
+    }
+
+    exec_.mutable_cpu_execs()->clear();
+    for (const auto& e : cpu_execs_) {
+      auto& exec_time = (*exec_.mutable_cpu_execs())[e.first];
+      for (const auto& p : e.second) {
+        auto* t = exec_time.mutable_times()->Add();
+        t->add_int64_values(p.first);
+        t->add_int64_values(p.second);
+      }
+    }
+
+    exec_.mutable_devices()->Clear();
+    exec_.mutable_devices()->Reserve(devices_.size());
+    for (const string& d : devices_) {
+      exec_.add_devices(d);
+    }
+
+    exec_.mutable_output_memory()->clear();
+    for (const auto& mem : output_memory_) {
+      auto& mem_pb = (*exec_.mutable_output_memory())[mem.first];
+      mem_pb.set_bytes(mem.second.first);
+      mem_pb.set_ptr(mem.second.second);
+    }
+
+    return exec_;
+  }
+
+  void FromProto(const ExecProfile& exec) {
+    exec_.Clear();
+    exec_.MergeFrom(exec);
+
+    devices_.clear();
+    devices_.insert(exec.devices().begin(), exec.devices().end());
+
+    accelerator_execs_.clear();
+    cpu_execs_.clear();
+    op_execs_.clear();
+
+    for (const auto& exec_time : exec_.accelerator_execs()) {
+      auto& exec = accelerator_execs_[exec_time.first];
+      auto& op_exec = op_execs_[exec_time.first];
+      for (const auto& p : exec_time.second.times()) {
+        exec.push_back(std::make_pair(p.int64_values(0), p.int64_values(1)));
+        op_exec.push_back(std::make_pair(p.int64_values(0), p.int64_values(1)));
+      }
+    }
+    for (const auto& exec_time : exec_.cpu_execs()) {
+      auto& exec = cpu_execs_[exec_time.first];
+      auto& op_exec = op_execs_[exec_time.first];
+      for (const auto& p : exec_time.second.times()) {
+        exec.push_back(std::make_pair(p.int64_values(0), p.int64_values(1)));
+        op_exec.push_back(std::make_pair(p.int64_values(0), p.int64_values(1)));
+      }
+    }
+    for (const auto& output_mem : exec_.output_memory()) {
+      auto& mem = output_memory_[output_mem.first];
+      mem.first = output_mem.second.bytes();
+      mem.second = output_mem.second.ptr();
+    }
+  }
 
  private:
-  TFGraphNode* node;
-  // Can be larger than 1 if run multiple times in loop.
-  int64 run_count_;
-  // The earliest/latest time including scheduling and execution.
-  int64 all_start_micros_;
-  int64 latest_end_micros_;
+  ExecProfile exec_;
   // device -> vector of {op_start_micros, op_exec_micros} pairs.
   // accelerator_execs: gpu:id/stream:all -> {op_start_micros, op_exec_micros}
   // For accelerator, vector size can be larger than 1, multiple kernel fires
@@ -115,26 +171,8 @@ class ExecStep {
   // All devices the op is associated with (e.g. gpu:0 (scheduling),
   // gpu:0:stream:xx (kernel exec), cpu:0 host)
   std::set<string> devices_;
-
-  bool mem_initiated_;
-  // Total bytes requested by the op.
-  int64 requested_bytes_;
-  // Total bytes requested by the op and released before op end.
-  int64 peak_bytes_;
-  // Total bytes requested by the op and not released after op end.
-  int64 residual_bytes_;
-  // Total bytes output by the op (not necessarily requested by the op).
-  int64 output_bytes_;
-  // Total temporary bytes allocated and released by the op.
-  int64 host_temp_bytes_;
-  // Total persistent bytes (e.g. variable) allocated by the op.
-  int64 host_persistent_bytes_;
-  int64 accelerator_temp_bytes_;
-  int64 accelerator_persistent_bytes_;
-  // The total number of bytes currently allocated by the allocator if >0.
-  int64 allocator_bytes_in_use_;
   // output_idx -> {output_bytes, memory_ptr}
-  std::map<int64, std::pair<int64, uint64>> output_memory_;
+  std::map<int32, std::pair<int64, uint64>> output_memory_;
 };
 
 #define GRAPH_NODE_BYTES(type)                                \
@@ -157,10 +195,18 @@ class ExecStep {
 
 class TFGraphNode {
  public:
-  TFGraphNode(const NodeDef* node)
-      : node_(node), float_ops_(0), op_(node->op()) {
+  TFGraphNode(const ProfileNode& node, const ProfileProto& profile) {
+    FromProto(node, profile);
+  }
+
+  TFGraphNode(const NodeDef* node, int64 id) {
+    node_.set_id(id);
+    node_.set_name(node->name());
+    node_.set_op(node->op());
+    node_.set_float_ops(0);
+
     for (const auto& attr : node->attr()) {
-      op_attrs_[attr.first] = &attr.second;
+      (*node_.mutable_attrs())[attr.first].MergeFrom(attr.second);
       if (attr.first == "shape" && attr.second.has_shape()) {
         if (!shape_.empty()) {
           fprintf(stderr, "Found duplicated shapes!\n");
@@ -180,10 +226,10 @@ class TFGraphNode {
     op_types_.insert(node->op());
   }
 
-  void AddInput(TFGraphNode* input, int64 output_idx, int input_idx) {
+  void AddInput(TFGraphNode* input, int32 output_idx, int input_idx) {
     src_output_idx_[input->name()] = output_idx;
 
-    inputs_[input_idx] = input;
+    inputs_[input_idx] = input->name();
     const auto& output_shape = input->output_shapes().find(output_idx);
     // Always create an empty vec even if the shape info might be missing.
     std::vector<int64>& shape_vec = input_shapes_[input_idx];
@@ -198,28 +244,123 @@ class TFGraphNode {
   void AddStepStat(int64 step, const string& device,
                    const NodeExecStats& step_stat);
 
-  void AddFloatOps(int64 float_ops) { float_ops_ = float_ops; }
+  void AddFloatOps(int64 float_ops) { node_.set_float_ops(float_ops); }
 
   // TODO(xpan): This could take a lot of memory.
-  void AddCode(const CodeDef& code) { code_.MergeFrom(code); }
+  void AddCode(const CodeDef& code) { node_.mutable_trace()->MergeFrom(code); }
 
-  const string& name() const { return node_->name(); }
-  const string& op() const { return op_; }
-  const NodeDef* node_def() { return node_; }
+  const string& name() const { return node_.name(); }
+  int64 id() const { return node_.id(); }
+  const string& op() const { return node_.op(); }
+  const ProfileNode& node() { return node_; }
 
   bool trackable(int64 step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) return false;
 
     if (exec->second.all_start_micros() == 0) return false;
-    if (canonical_device_.empty() || host_device_.empty()) {
+    if (node_.canonical_device().empty() || node_.host_device().empty()) {
       return false;
     }
     return true;
   }
 
-  const std::map<int, TFGraphNode*>& inputs() const { return inputs_; }
-  const std::map<string, int64>& src_output_idx() const {
+  const ProfileNode& ToProto(
+      const std::map<string, std::unique_ptr<TFGraphNode>>& nodes_map) {
+    node_.clear_shape();
+    node_.mutable_shape()->Reserve(shape().size());
+    for (int64 s : shape()) {
+      node_.add_shape(s);
+    }
+
+    node_.clear_op_types();
+    node_.mutable_op_types()->Reserve(op_types().size());
+    for (const string& t : op_types()) {
+      node_.add_op_types(t);
+    }
+
+    node_.clear_execs();
+    for (auto& exec : execs_) {
+      auto& exec_pb = (*node_.mutable_execs())[exec.first];
+      exec_pb.MergeFrom(exec.second.ToProto());
+    }
+
+    node_.clear_inputs();
+    for (const auto& inp : inputs_) {
+      (*node_.mutable_inputs())[inp.first] = nodes_map.at(inp.second)->id();
+    }
+
+    node_.clear_input_shapes();
+    for (const auto& s : input_shapes_) {
+      auto& shape = (*node_.mutable_input_shapes())[s.first];
+      for (int64 d : s.second) {
+        shape.add_int64_values(d);
+      }
+    }
+
+    node_.clear_output_shapes();
+    for (const auto& s : output_shapes_) {
+      auto& shape = (*node_.mutable_output_shapes())[s.first];
+      for (int64 d : s.second) {
+        shape.add_int64_values(d);
+      }
+    }
+
+    node_.clear_src_output_index();
+    for (const auto& s : src_output_idx_) {
+      int64 id = nodes_map.at(s.first)->id();
+      (*node_.mutable_src_output_index())[id] = s.second;
+    }
+    return node_;
+  }
+
+  void FromProto(const ProfileNode& node, const ProfileProto& profile) {
+    node_.Clear();
+    node_.MergeFrom(node);
+
+    op_types_.clear();
+    op_types_.insert(node_.op_types().begin(), node_.op_types().end());
+
+    shape_.clear();
+    for (int64 s : node_.shape()) {
+      shape_.push_back(s);
+    }
+
+    execs_.clear();
+    for (const auto& exec_pb : node.execs()) {
+      auto& exec = execs_[exec_pb.first];
+      exec.FromProto(exec_pb.second);
+    }
+
+    inputs_.clear();
+    for (const auto& inp : node.inputs()) {
+      inputs_[inp.first] = profile.nodes().at(inp.second).name();
+    }
+
+    input_shapes_.clear();
+    for (const auto& s : node.input_shapes()) {
+      auto& shape = input_shapes_[s.first];
+      for (const int64 d : s.second.int64_values()) {
+        shape.push_back(d);
+      }
+    }
+
+    output_shapes_.clear();
+    for (const auto& s : node.output_shapes()) {
+      auto& shape = output_shapes_[s.first];
+      for (const int64 d : s.second.int64_values()) {
+        shape.push_back(d);
+      }
+    }
+
+    src_output_idx_.clear();
+    for (const auto& s : node.src_output_index()) {
+      src_output_idx_[profile.nodes().at(s.first).name()] = s.second;
+    }
+  }
+
+  const std::map<int32, string>& inputs() const { return inputs_; }
+  const std::map<string, int32>& src_output_idx() const {
     return src_output_idx_;
   }
 
@@ -346,7 +487,7 @@ class TFGraphNode {
     CHECK(exec != execs_.end()) << "unknown step " << step;
     return exec->second.host_persistent_bytes();
   }
-  const std::map<int64, std::pair<int64, uint64>>& output_memory(
+  const std::map<int32, std::pair<int64, uint64>>& output_memory(
       int64 step) const {
     auto exec = execs_.find(step);
     CHECK(exec != execs_.end()) << "unknown step " << step;
@@ -382,18 +523,22 @@ class TFGraphNode {
   int64 float_ops(int64 step) const {
     // If not run, return static analysis.
     if (execs_.empty()) {
-      return float_ops_;
+      return node_.float_ops();
     }
     // Otherwise, return dynamic float_ops.
-    return float_ops_ * run_count(step);
+    return node_.float_ops() * run_count(step);
   }
-  const CodeDef& code() { return code_; }
-  string canonical_device() const { return canonical_device_; }
-  string host_device() const { return host_device_; }
+  const CodeDef& code() { return node_.trace(); }
+  string canonical_device() const { return node_.canonical_device(); }
+  string host_device() const { return node_.host_device(); }
   const std::set<string>& op_types() const { return op_types_; }
 
-  const std::map<string, const AttrValue*>& op_attrs() const {
-    return op_attrs_;
+  const AttrValue* op_attrs(const string& name) const {
+    const auto it = node_.attrs().find(name);
+    if (it == node_.attrs().end()) {
+      return nullptr;
+    }
+    return &it->second;
   }
 
   const std::vector<int64>& shape() const { return shape_; }
@@ -406,12 +551,10 @@ class TFGraphNode {
   }
 
  private:
-  std::map<int, TFGraphNode*> inputs_;
-  std::map<string, int64> src_output_idx_;
+  std::map<int, string> inputs_;
+  std::map<string, int32> src_output_idx_;
 
-  const NodeDef* node_;
-
-  CodeDef code_;
+  ProfileNode node_;
 
   std::vector<int64> shape_;
   // Won't missing input_idx. But some shapes might be empty (unknown).
@@ -421,18 +564,8 @@ class TFGraphNode {
   std::map<int, std::vector<int64>> output_shapes_;
 
   std::set<string> op_types_;
-  std::map<string, const AttrValue*> op_attrs_;
 
   std::map<int64, ExecStep> execs_;
-
-  // /j:#/t:#/r:#/device:#. A canonical device name without extra suffix.
-  string canonical_device_;
-  // The host device name.
-  string host_device_;
-
-  int64 float_ops_;
-
-  string op_;
 };
 
 class TFMultiGraphNode {

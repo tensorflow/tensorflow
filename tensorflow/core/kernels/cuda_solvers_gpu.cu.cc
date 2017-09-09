@@ -51,55 +51,57 @@ namespace {
 
 // Hacks around missing support for complex arithmetic in nvcc.
 template <typename Scalar>
-__host__ __device__ inline Scalar Multiply(Scalar x, Scalar y) {
+__device__ inline Scalar Multiply(Scalar x, Scalar y) {
   return x * y;
 }
 
 template <>
-__host__ __device__ inline cuComplex Multiply(cuComplex x, cuComplex y) {
+__device__ inline cuComplex Multiply(cuComplex x, cuComplex y) {
   return cuCmulf(x, y);
 }
 
 template <>
-__host__ __device__ inline cuDoubleComplex Multiply(cuDoubleComplex x,
-                                                    cuDoubleComplex y) {
+__device__ inline cuDoubleComplex Multiply(cuDoubleComplex x,
+                                           cuDoubleComplex y) {
   return cuCmul(x, y);
 }
 
 template <typename Scalar>
-__host__ __device__ inline Scalar Negate(Scalar x) {
+__device__ inline Scalar Negate(Scalar x) {
   return -x;
 }
 
 template <>
-__host__ __device__ inline cuComplex Negate(cuComplex x) {
+__device__ inline cuComplex Negate(cuComplex x) {
   return make_cuComplex(-cuCrealf(x), -cuCimagf(x));
 }
 
 template <>
-__host__ __device__ inline cuDoubleComplex Negate(cuDoubleComplex x) {
+__device__ inline cuDoubleComplex Negate(cuDoubleComplex x) {
   return make_cuDoubleComplex(-cuCreal(x), -cuCimag(x));
 }
 
 template <typename Scalar>
-__host__ __device__ inline bool IsFinite(Scalar x) {
-  return isfinite(x);
+__device__ inline bool IsFinite(Scalar x) {
+  return Eigen::numext::isfinite(x);
 }
 
 template <>
-__host__ __device__ inline bool IsFinite(cuComplex x) {
-  return isfinite(cuCrealf(x)) && isfinite(cuCimagf(x));
+__device__ inline bool IsFinite(cuComplex x) {
+  return Eigen::numext::isfinite(cuCrealf(x)) &&
+         Eigen::numext::isfinite(cuCimagf(x));
 }
 
 template <>
-__host__ __device__ inline bool IsFinite(cuDoubleComplex x) {
-  return isfinite(cuCreal(x)) && isfinite(cuCimag(x));
+__device__ inline bool IsFinite(cuDoubleComplex x) {
+  return Eigen::numext::isfinite(cuCreal(x)) &&
+         Eigen::numext::isfinite(cuCimag(x));
 }
 
 template <typename Scalar>
 struct Const {
   template <typename RealScalar>
-  __host__ __device__ static inline Scalar make_const(const RealScalar x) {
+  __device__ static inline Scalar make_const(const RealScalar x) {
     return Scalar(x);
   }
 };
@@ -107,7 +109,7 @@ struct Const {
 template <>
 struct Const<cuComplex> {
   template <typename RealScalar>
-  __host__ __device__ static inline cuComplex make_const(const RealScalar x) {
+  __device__ static inline cuComplex make_const(const RealScalar x) {
     return make_cuComplex(x, 0.0f);
   }
 };
@@ -115,8 +117,7 @@ struct Const<cuComplex> {
 template <>
 struct Const<cuDoubleComplex> {
   template <typename RealScalar>
-  __host__ __device__ static inline cuDoubleComplex make_const(
-      const RealScalar x) {
+  __device__ static inline cuDoubleComplex make_const(const RealScalar x) {
     return make_cuDoubleComplex(x, 0.0f);
   }
 };
