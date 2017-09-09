@@ -37,7 +37,7 @@ void GetTensor(const Scope& scope, Output tensor, Tensor* out) {
 }
 
 void GetTensors(const Scope& scope, const std::vector<Output>& assign_vars,
-                OutputList tensors, std::vector<Tensor>* out) {
+                const OutputList& tensors, std::vector<Tensor>* out) {
   ClientSession session(scope);
   TF_CHECK_OK(session.Run(assign_vars, nullptr));
   TF_CHECK_OK(session.Run(tensors, out));

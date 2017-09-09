@@ -29,6 +29,7 @@ from tensorflow.contrib import cudnn_rnn
 from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
 from tensorflow.contrib import distributions
+from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
 from tensorflow.contrib import gan

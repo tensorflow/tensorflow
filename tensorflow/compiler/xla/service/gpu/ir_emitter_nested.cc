@@ -87,6 +87,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     }
   }
 
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
+
   llvm::BasicBlock* entry_bb =
       llvm::BasicBlock::Create(function->getContext(), "entry", function);
   // Emit a "return void" at entry_bb's end, and sets the insert point before

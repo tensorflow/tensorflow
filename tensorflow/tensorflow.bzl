@@ -167,11 +167,13 @@ def tf_copts():
       "-fno-exceptions",
       "-ftemplate-depth=900",
   ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon", "-fomit-frame-pointer"]) + if_linux_x86_64(["-msse3"]) + select({
+      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",
               "-O2",
+              "-Wno-narrowing",
+              "-fomit-frame-pointer",
           ],
           clean_dep("//tensorflow:darwin"): [],
           clean_dep("//tensorflow:windows"): WIN_COPTS,

@@ -78,13 +78,6 @@ class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
       : llvm::legacy::FunctionPassManager(m),
         disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
-      if (PassName.contains("LICM") || PassName.contains("IndVarSimplify") ||
-          PassName.contains("LoopUnroll")) {
-        return;
-      }
-    }
     llvm::legacy::FunctionPassManager::add(p);
   }
 
@@ -99,8 +92,7 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   void add(llvm::Pass* p) override {
     if (disable_expensive_passes_) {
       llvm::StringRef PassName = p->getPassName();
-      if (PassName.contains("LICM") || PassName.contains("IndVarSimplify") ||
-          PassName.contains("LoopUnroll")) {
+      if (PassName.contains("Unroll loops")) {
         return;
       }
     }

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -118,6 +119,86 @@ Status BiasAddGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BiasAdd", BiasAddGradHelper);
 
+Status Conv2DGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  bool use_cudnn_on_gpu;
+  auto attrs = op.output(0).node()->attrs();
+  GetNodeAttr(attrs, "data_format", &data_format);
+  GetNodeAttr(attrs, "padding", &padding);
+  GetNodeAttr(attrs, "strides", &strides);
+  GetNodeAttr(attrs, "use_cudnn_on_gpu", &use_cudnn_on_gpu);
+  Conv2DBackpropInput::Attrs input_attrs;
+  input_attrs.DataFormat(data_format);
+  input_attrs.UseCudnnOnGpu(use_cudnn_on_gpu);
+  auto dx_1 = Conv2DBackpropInput(scope, Shape(scope, op.input(0)),
+                                  op.input(1), grad_inputs[0],
+                                  strides, padding, input_attrs);
+  grad_outputs->push_back(dx_1);
+  Conv2DBackpropFilter::Attrs filter_attrs;
+  filter_attrs.DataFormat(data_format);
+  filter_attrs.UseCudnnOnGpu(use_cudnn_on_gpu);
+  auto dx_2 = Conv2DBackpropFilter(scope, op.input(0),
+                                   Shape(scope, op.input(1)), grad_inputs[0],
+                                   strides, padding, filter_attrs);
+  grad_outputs->push_back(dx_2);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Conv2D", Conv2DGrad);
+
+Status MaxPoolGradHelper(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> ksize;
+  auto attrs = op.output(0).node()->attrs();
+  GetNodeAttr(attrs, "data_format", &data_format);
+  GetNodeAttr(attrs, "ksize", &ksize);
+  GetNodeAttr(attrs, "padding", &padding);
+  GetNodeAttr(attrs, "strides", &strides);
+  internal::MaxPoolGrad::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
+  auto dx = internal::MaxPoolGrad(scope, op.input(0),
+                                  op.output(0),
+                                  grad_inputs[0],
+                                  ksize, strides,
+                                  padding, grad_attrs);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MaxPool", MaxPoolGradHelper);
+
+Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  string data_format;
+  string padding;
+  auto attrs = op.output(0).node()->attrs();
+  GetNodeAttr(attrs, "data_format", &data_format);
+  GetNodeAttr(attrs, "padding", &padding);
+  MaxPoolGradV2::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
+  auto dx = MaxPoolGradV2(scope, op.input(0),
+                          op.output(0),
+                          grad_inputs[0],
+                          op.input(1),
+                          op.input(2),
+                          padding,
+                          grad_attrs);
+  grad_outputs->push_back(dx);
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
+
+
+  
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

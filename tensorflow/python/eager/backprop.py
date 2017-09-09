@@ -186,7 +186,7 @@ def _aggregate_grads(gradients):
       ret.append(g_list[0])
     else:
       # TODO(xpan): Aggregate IndexedSlices.
-      ret.append((g_list[0][0], math_ops.add_n(zip(*g_list)[1])))
+      ret.append((g_list[0][0], math_ops.add_n(list(zip(*g_list))[1])))
   return ret
 
 
