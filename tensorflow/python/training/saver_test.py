@@ -478,16 +478,17 @@ class SaverTest(test.TestCase):
 
   def _SaveAndLoad(self, var_name, var_value, other_value, save_path):
     with self.test_session() as sess:
-      var = variables.Variable(var_value, name=var_name)
+      var = resource_variable_ops.ResourceVariable(var_value, name=var_name)
       save = saver_module.Saver({var_name: var})
-      var.initializer.run()
+      if context.in_graph_mode():
+        self.evaluate(var.initializer)
       val = save.save(sess, save_path)
       self.assertEqual(save_path, val)
     with self.test_session() as sess:
-      var = variables.Variable(other_value, name=var_name)
+      var = resource_variable_ops.ResourceVariable(other_value, name=var_name)
       save = saver_module.Saver({var_name: var})
       save.restore(sess, save_path)
-      self.assertAllClose(var_value, var.eval())
+      self.assertAllClose(var_value, self.evaluate(var))
 
   def testCacheRereadsFile(self):
     save_path = os.path.join(self.get_temp_dir(), "cache_rereads")
@@ -609,30 +610,32 @@ class SaverTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllClose([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], var.eval())
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSaveWithGlobalStep(self, pad_step_number=False):
     save_path = os.path.join(self.get_temp_dir(), "ckpt_with_global_step")
     global_step_int = 5
     # Save and reload one Variable named "var0".
     self._SaveAndLoad("var0", 0.0, 1.0, save_path)
     for use_tensor in [True, False]:
-      with self.test_session() as sess:
-        var = variables.Variable(1.0, name="var0")
-        save = saver_module.Saver(
-            {
-                var.op.name: var
-            }, pad_step_number=pad_step_number)
-        var.initializer.run()
-        if use_tensor:
-          global_step = constant_op.constant(global_step_int)
-          val = save.save(sess, save_path, global_step=global_step)
-        else:
-          val = save.save(sess, save_path, global_step=global_step_int)
-        if pad_step_number:
-          expected_save_path = "%s-%s" % (save_path,
-                                          "{:08d}".format(global_step_int))
-        else:
-          expected_save_path = "%s-%d" % (save_path, global_step_int)
-        self.assertEqual(expected_save_path, val)
+      var = resource_variable_ops.ResourceVariable(1.0, name="var0")
+      save = saver_module.Saver(
+          {
+              var._shared_name: var
+          }, pad_step_number=pad_step_number)
+      if context.in_graph_mode():
+        self.evaluate(var.initializer)
+      sess = ops_lib.get_default_session() if context.in_graph_mode() else None
+      if use_tensor:
+        global_step = constant_op.constant(global_step_int)
+        val = save.save(sess, save_path, global_step=global_step)
+      else:
+        val = save.save(sess, save_path, global_step=global_step_int)
+      if pad_step_number:
+        expected_save_path = "%s-%s" % (save_path,
+                                        "{:08d}".format(global_step_int))
+      else:
+        expected_save_path = "%s-%d" % (save_path, global_step_int)
+      self.assertEqual(expected_save_path, val)
 
   def testSaveWithGlobalStepWithPadding(self):
     self.testSaveWithGlobalStep(pad_step_number=True)

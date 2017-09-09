@@ -99,6 +99,10 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
+  # Don't check patch on Windows, because patch is only available under bash.
+  if not _is_windows(repo_ctx) and not repo_ctx.which("patch"):
+    fail("patch command is not found, please install it")
+
   cmd = [
       "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
   ]
@@ -699,9 +703,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "bazel_toolchains",
       urls = [
-          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
       ],
-      sha256 = "3903fd93b96b42067e00b7973a2c16c34e761ad7a0b55e1557d408f352849e41",
-      strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
+      sha256 = "0799aa12db5260a499beb40f81744e760c59d055bfc5d271dd2c2ed4d5419faa",
+      strip_prefix = "bazel-toolchains-9dbd803ad3b9447430a296810197b09b3a710956",
   )

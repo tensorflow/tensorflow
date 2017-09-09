@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 #include "tensorflow/core/kernels/captured_function.h"
+#include "tensorflow/core/kernels/dataset_utils.h"
 
 namespace tensorflow {
 
@@ -168,8 +169,9 @@ class InterleaveDatasetOp : public OpKernel {
             TF_RETURN_IF_ERROR(
                 input_impl_->GetNext(ctx, &args, &end_of_input_));
             if (!end_of_input_) {
-              TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                  ctx, args, &current_elements_[cycle_index_]));
+              TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+                  ctx, args, cycle_index_, dataset()->captured_func_.get(),
+                  prefix(), &current_elements_[cycle_index_]));
               ++num_open_;
             }
           } else {
@@ -182,62 +184,6 @@ class InterleaveDatasetOp : public OpKernel {
       }
 
      private:
-      Status MakeIteratorFromInputElement(
-          IteratorContext* ctx, const std::vector<Tensor>& input_element,
-          std::unique_ptr<IteratorBase>* out_iterator)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        FunctionLibraryRuntime::Options opts;
-        opts.runner = ctx->runner();
-        opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer step_container(
-            opts.step_id, [this, ctx](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
-        opts.step_container = &step_container;
-        std::vector<Tensor> return_values;
-        TF_RETURN_IF_ERROR(dataset()->captured_func_->Run(opts, input_element,
-                                                          &return_values));
-
-        if (!(return_values.size() == 1 &&
-              return_values[0].dtype() == DT_RESOURCE &&
-              TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-          return errors::InvalidArgument(
-              "`f` must return a single scalar of dtype DT_RESOURCE.");
-        }
-
-        // Retrieve the dataset that was created in `f`.
-        DatasetBase* returned_dataset;
-        const ResourceHandle& dataset_resource =
-            return_values[0].scalar<ResourceHandle>()();
-
-        // NOTE(mrry): We cannot use the core `LookupResource()` or
-        // `DeleteResource()` functions, because we have an
-        // `IteratorContext*` and not an `OpKernelContext*`, so we
-        // replicate the necessary functionality here.
-        auto type_index = MakeTypeIndex<DatasetBase>();
-        if (type_index.hash_code() != dataset_resource.hash_code()) {
-          return errors::InvalidArgument("`f` must return a Dataset resource.");
-        }
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_func_->resource_manager()->Lookup(
-                dataset_resource.container(), dataset_resource.name(),
-                &returned_dataset));
-        core::ScopedUnref unref_dataset(returned_dataset);
-
-        // Create an iterator for the dataset that was returned by
-        // `f`. This transfers ownership of the dataset to the
-        // iterator, so we can delete it from the resource manager.
-        *out_iterator = returned_dataset->MakeIterator(
-            strings::StrCat(prefix(), "[", cycle_index_, "]"));
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_func_->resource_manager()->Delete<DatasetBase>(
-                dataset_resource.container(), dataset_resource.name()));
-        return Status::OK();
-      }
-
       mutex mu_;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<std::unique_ptr<IteratorBase>> current_elements_

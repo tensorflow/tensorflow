@@ -290,6 +290,7 @@ filegroup(
         "//tensorflow/contrib/decision_trees/proto:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/eager/python:all_files",
+        "//tensorflow/contrib/estimator:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
@@ -407,6 +408,7 @@ filegroup(
         "//tensorflow/python/eager:all_files",
         "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/feature_column:all_files",
+        "//tensorflow/python/keras:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/ops/distributions:all_files",
@@ -464,6 +466,7 @@ cc_binary(
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
             "//tensorflow/c:exported_symbols.lds",
+            "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],

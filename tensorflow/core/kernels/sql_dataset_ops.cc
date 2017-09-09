@@ -34,6 +34,19 @@ class SqlDatasetOp : public DatasetOpKernel {
   explicit SqlDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    // TODO(b/64276939) Remove this check when we add support for other
+    // tensorflow types.
+    for (const DataType& dt : output_types_) {
+      OP_REQUIRES(
+          ctx, dt == DT_STRING || dt == DT_INT32,
+          errors::InvalidArgument(
+              "Each element of `output_types_` must be DT_STRING or DT_INT32"));
+    }
+    for (const PartialTensorShape& pts : output_shapes_) {
+      OP_REQUIRES(ctx, pts.dims() == 0,
+                  errors::InvalidArgument(
+                      "Each element of `output_shapes_` must be a scalar."));
+    }
   }
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     string driver_name;
@@ -54,18 +67,6 @@ class SqlDatasetOp : public DatasetOpKernel {
                     "The database type, %s, is not supported by SqlDataset. "
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));
-    // TODO(b/64276939) Remove this check when we add support for other
-    // tensorflow types.
-    for (const DataType& dt : output_types_) {
-      OP_REQUIRES(ctx, dt == DataType::DT_STRING,
-                  errors::InvalidArgument(
-                      "Each element of `output_types_` must be DT_STRING."));
-    }
-    for (const PartialTensorShape& pts : output_shapes_) {
-      OP_REQUIRES(ctx, pts.dims() == 0,
-                  errors::InvalidArgument(
-                      "Each element of `output_shapes_` must be a scalar."));
-    }
 
     *output = new Dataset(driver_name, data_source_name, query, output_types_,
                           output_shapes_);

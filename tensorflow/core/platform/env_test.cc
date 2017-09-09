@@ -226,14 +226,28 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
+  int expected_num_files = 0;
+  std::vector<string> matching_paths;
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    string filename = io::JoinPath(BaseDir(), strings::StrCat("file", length));
+    string filename = io::JoinPath(BaseDir(), strings::StrCat("len", length));
 
     filename = strings::StrCat("file://", filename);
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
+    ++expected_num_files;
+
+    // Ensure that GetMatchingPaths works as intended.
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it with the "file://" URI scheme.
+        strings::StrCat("file://", io::JoinPath(BaseDir(), "l*")),
+        &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it without any URI scheme.
+        io::JoinPath(BaseDir(), "l*"), &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
 
     // Read the file back and check equality
     string output;

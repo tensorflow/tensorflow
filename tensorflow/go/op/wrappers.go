@@ -12297,172 +12297,6 @@ func SparseTensorDenseMatMul(scope *Scope, a_indices tf.Output, a_values tf.Outp
 	return op.Output(0)
 }
 
-// L2 Loss.
-//
-// Computes half the L2 norm of a tensor without the `sqrt`:
-//
-//     output = sum(t ** 2) / 2
-//
-// Arguments:
-//	t: Typically 2-D, but may have any dimensions.
-//
-// Returns 0-D.
-func L2Loss(scope *Scope, t tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "L2Loss",
-		Input: []tf.Input{
-			t,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes rectified linear: `max(features, 0)`.
-func Relu(scope *Scope, features tf.Output) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Relu",
-		Input: []tf.Input{
-			features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Read an element from the TensorArray into output `value`.
-//
-// Arguments:
-//	handle: The handle to a TensorArray.
-//
-//	flow_in: A float scalar that enforces proper chaining of operations.
-//	dtype: The type of the elem that is returned.
-//
-// Returns The tensor that is read from the TensorArray.
-func TensorArrayReadV3(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayReadV3",
-		Input: []tf.Input{
-			handle, index, flow_in,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Adds up a SparseTensor and a dense Tensor, using these special rules:
-//
-// (1) Broadcasts the dense side to have the same shape as the sparse side, if
-//     eligible;
-// (2) Then, only the dense values pointed to by the indices of the SparseTensor
-//     participate in the cwise addition.
-//
-// By these rules, the result is a logical SparseTensor with exactly the same
-// indices and shape, but possibly with different non-zero values.  The output of
-// this Op is the resultant non-zero values.
-//
-// Arguments:
-//	sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, possibly not in canonical ordering.
-//	sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
-//	sp_shape: 1-D.  Shape of the input SparseTensor.
-//	dense: `R`-D.  The dense Tensor operand.
-//
-// Returns 1-D.  The `N` values that are operated on.
-func SparseDenseCwiseAdd(scope *Scope, sp_indices tf.Output, sp_values tf.Output, sp_shape tf.Output, dense tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseDenseCwiseAdd",
-		Input: []tf.Input{
-			sp_indices, sp_values, sp_shape, dense,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Conv3DAttr is an optional argument to Conv3D.
-type Conv3DAttr func(optionalAttr)
-
-// Conv3DDataFormat sets the optional data_format attribute to value.
-//
-// value: The data format of the input and output data. With the
-// default format "NDHWC", the data is stored in the order of:
-//     [batch, in_depth, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCDHW", the data storage order is:
-//     [batch, in_channels, in_depth, in_height, in_width].
-// If not specified, defaults to "NDHWC"
-func Conv3DDataFormat(value string) Conv3DAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Computes a 3-D convolution given 5-D `input` and `filter` tensors.
-//
-// In signal processing, cross-correlation is a measure of similarity of
-// two waveforms as a function of a time-lag applied to one of them. This
-// is also known as a sliding dot product or sliding inner-product.
-//
-// Our Conv3D implements a form of cross-correlation.
-//
-// Arguments:
-//	input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-//	filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
-// out_channels]`. `in_channels` must match between `input` and `filter`.
-//	strides: 1-D tensor of length 5. The stride of the sliding window for each
-// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-//	padding: The type of padding algorithm to use.
-func Conv3D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...Conv3DAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv3D",
-		Input: []tf.Input{
-			input, filter,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the truth value of (x >= y) element-wise.
-//
-// *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func GreaterEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "GreaterEqual",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // OrderedMapUnstageNoKeyAttr is an optional argument to OrderedMapUnstageNoKey.
 type OrderedMapUnstageNoKeyAttr func(optionalAttr)
 
@@ -12669,6 +12503,172 @@ func SparseAddGrad(scope *Scope, backprop_val_grad tf.Output, a_indices tf.Outpu
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Read an element from the TensorArray into output `value`.
+//
+// Arguments:
+//	handle: The handle to a TensorArray.
+//
+//	flow_in: A float scalar that enforces proper chaining of operations.
+//	dtype: The type of the elem that is returned.
+//
+// Returns The tensor that is read from the TensorArray.
+func TensorArrayReadV3(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayReadV3",
+		Input: []tf.Input{
+			handle, index, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Adds up a SparseTensor and a dense Tensor, using these special rules:
+//
+// (1) Broadcasts the dense side to have the same shape as the sparse side, if
+//     eligible;
+// (2) Then, only the dense values pointed to by the indices of the SparseTensor
+//     participate in the cwise addition.
+//
+// By these rules, the result is a logical SparseTensor with exactly the same
+// indices and shape, but possibly with different non-zero values.  The output of
+// this Op is the resultant non-zero values.
+//
+// Arguments:
+//	sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, possibly not in canonical ordering.
+//	sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
+//	sp_shape: 1-D.  Shape of the input SparseTensor.
+//	dense: `R`-D.  The dense Tensor operand.
+//
+// Returns 1-D.  The `N` values that are operated on.
+func SparseDenseCwiseAdd(scope *Scope, sp_indices tf.Output, sp_values tf.Output, sp_shape tf.Output, dense tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseDenseCwiseAdd",
+		Input: []tf.Input{
+			sp_indices, sp_values, sp_shape, dense,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv3DAttr is an optional argument to Conv3D.
+type Conv3DAttr func(optionalAttr)
+
+// Conv3DDataFormat sets the optional data_format attribute to value.
+//
+// value: The data format of the input and output data. With the
+// default format "NDHWC", the data is stored in the order of:
+//     [batch, in_depth, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCDHW", the data storage order is:
+//     [batch, in_channels, in_depth, in_height, in_width].
+// If not specified, defaults to "NDHWC"
+func Conv3DDataFormat(value string) Conv3DAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Computes a 3-D convolution given 5-D `input` and `filter` tensors.
+//
+// In signal processing, cross-correlation is a measure of similarity of
+// two waveforms as a function of a time-lag applied to one of them. This
+// is also known as a sliding dot product or sliding inner-product.
+//
+// Our Conv3D implements a form of cross-correlation.
+//
+// Arguments:
+//	input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
+//	filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
+// out_channels]`. `in_channels` must match between `input` and `filter`.
+//	strides: 1-D tensor of length 5. The stride of the sliding window for each
+// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+//	padding: The type of padding algorithm to use.
+func Conv3D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...Conv3DAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv3D",
+		Input: []tf.Input{
+			input, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// L2 Loss.
+//
+// Computes half the L2 norm of a tensor without the `sqrt`:
+//
+//     output = sum(t ** 2) / 2
+//
+// Arguments:
+//	t: Typically 2-D, but may have any dimensions.
+//
+// Returns 0-D.
+func L2Loss(scope *Scope, t tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "L2Loss",
+		Input: []tf.Input{
+			t,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes rectified linear: `max(features, 0)`.
+func Relu(scope *Scope, features tf.Output) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Relu",
+		Input: []tf.Input{
+			features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the truth value of (x >= y) element-wise.
+//
+// *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func GreaterEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GreaterEqual",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ResourceApplyMomentumAttr is an optional argument to ResourceApplyMomentum.
@@ -25972,6 +25972,26 @@ func MatrixInverse(scope *Scope, input tf.Output, optional ...MatrixInverseAttr)
 			input,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Transforms a Tensor into a serialized TensorProto proto.
+//
+// Arguments:
+//	tensor: A Tensor of type `T`.
+//
+// Returns A serialized TensorProto proto of the input tensor.
+func SerializeTensor(scope *Scope, tensor tf.Output) (serialized tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SerializeTensor",
+		Input: []tf.Input{
+			tensor,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
