@@ -19,24 +19,35 @@ limitations under the License.
 #include <jni.h>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace {
-template <class T>
-inline T* require_handle(JNIEnv* env, jlong handle, const char* object_name) {
-  static_assert(sizeof(jlong) >= sizeof(T*), "Cannot package C object pointers as a Java long");
-  if (handle == 0) {
-    std::stringstream msg;
-    msg << "Object '" << object_name << "' has been disposed already.";
-    throw_exception(env, jvm_null_pointer_exception, msg.str().c_str());
-    return nullptr;
-  }
-  return reinterpret_cast<T*>(handle);
+// Copy of the C Eager API struct due to the circular dependency issue.
+  struct TF_Status {
+  tensorflow::Status status;
+};
+
+// Copy of the C Eager API struct due to the circular dependency issue.
+struct TFE_TensorHandle {
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
+      : t(t), d(d) {}
+
+  tensorflow::Tensor t;
+  tensorflow::Device* d;
+};
+
+template <typename T>
+T pointerFromString(const std::string &text, typename std::enable_if<std::is_pointer<T>::value>::type* = nullptr) {
+  std::stringstream ss(text);
+  void* pointer;
+  ss >> pointer;
+  return (T) pointer;
 }
 }
 
 namespace tensorflow {
-
 // A call to the registered JVM function.
 struct JVMCall {
   JNIEnv* env;
@@ -49,12 +60,6 @@ struct JVMCall {
   // Inputs and outputs of this function invocation.
   std::vector<Tensor> inputs;
   std::vector<Tensor> outputs;
-};
-
-struct JVMCallbackOp : public OpKernel {
-  explicit JVMCallbackOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) {}
 };
 
 }  // namespace tensorflow

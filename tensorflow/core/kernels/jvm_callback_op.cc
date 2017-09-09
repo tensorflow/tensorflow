@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -22,6 +23,25 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
+
+namespace {
+// Copy of the C Eager API struct due to the circular dependency issue.
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
+  return new TFE_TensorHandle(t, nullptr);
+}
+
+// Copy of the C Eager API struct due to the circular dependency issue.
+const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
+    TFE_TensorHandle* h, TF_Status* status) {
+  if (h->d != nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "TFE_TensorHandle is placed in device (not host) memory. Cannot return "
+            "a tensorflow::Tensor");
+    return nullptr;
+  }
+  return &h->t;
+}
+}
 
 namespace tensorflow {
 namespace {
@@ -45,7 +65,12 @@ namespace {
     jsize n = call->env->GetArrayLength(call_outputs);
     jlong* outputs_array = call->env->GetLongArrayElements(call_outputs, nullptr);
     for (int i = 0; i < n; ++i) {
-      auto* h = require_handle<TFE_TensorHandle>(call->env, outputs_array[i], "output");
+      static_assert(sizeof(jlong) >= sizeof(TFE_TensorHandle*), "Cannot package C object pointers as a Java long");
+      if (outputs_array[i] == 0) {
+        status->status = errors::InvalidArgument("One of the op output tensors has been disposed already.");
+        return;
+      }
+      auto* h = reinterpret_cast<TFE_TensorHandle*>(outputs_array[i]);
       if (h == nullptr) {
         status->status = errors::InvalidArgument("Could not obtain tensor handle to one of the outputs.");
         return;
@@ -84,7 +109,7 @@ public:
     OP_REQUIRES_OK(ctx, ctx->GetAttr("jvm_pointer", &jvm_pointer));
     jvm_ = pointerFromString<JavaVM*>(jvm_pointer);
     JNIEnv* env;
-    jint status = jvm_->AttachCurrentThread((void **) &env, nullptr);
+    jint status = jvm_->AttachCurrentThread((void**) &env, nullptr);
     assert(status == JNI_OK);
     string registry_class_name_;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("registry_class_name", &registry_class_name_));
