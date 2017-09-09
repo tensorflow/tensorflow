@@ -20,7 +20,7 @@ py_library(
         "python/training/moving_average_optimizer.py",
         "python/training/nadam_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
-        "python/training/elastic_average_optimizer.py”,
+        "python/training/elastic_average_optimizer.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -154,8 +154,8 @@ tf_py_test(
 )
 
 py_test(
-    name = "model_average_optimizer_test",
-    srcs =["python/training/elastic_average_optimizer_test.py”],
+    name = "elastic_average_optimizer_test",
+    srcs =["python/training/elastic_average_optimizer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",

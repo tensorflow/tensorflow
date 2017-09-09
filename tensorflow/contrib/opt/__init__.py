@@ -36,8 +36,8 @@ _allowed_symbols = [
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer', 'ExternalOptimizerInterface',
     'LazyAdamOptimizer', 'NadamOptimizer', 'MovingAverageOptimizer',
-    'ScipyOptimizerInterface', 'VariableClippingOptimizer’,
-    ‘ElasticAverageOptimizer’, ‘ElasticAverageCustomGetter’
+    'ScipyOptimizerInterface', 'VariableClippingOptimizer',
+    'ElasticAverageOptimizer', 'ElasticAverageCustomGetter'
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
