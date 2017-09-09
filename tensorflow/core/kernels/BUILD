@@ -2102,6 +2102,44 @@ IO_DEPS = [
     "//tensorflow/core/util/tensor_bundle",
 ]
 
+# Copy of the rules from the Java module.
+genrule(
+    name = "copy_jni_h",
+    srcs = ["@bazel_tools//tools/jdk:jni_header"],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "//tensorflow:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+)
+
+cc_library(
+    name = "jvm",
+    srcs = [
+        "jvm_callback_op.cc",
+        ":jni.h",
+        ":jni_md.h",
+    ],
+    hdrs = ["jvm_callback_op.h"],
+    copts = tf_copts(),
+    includes = ["."],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:jvm_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_library(
     name = "fixed_length_record_reader_op",
     prefix = "fixed_length_record_reader_op",
