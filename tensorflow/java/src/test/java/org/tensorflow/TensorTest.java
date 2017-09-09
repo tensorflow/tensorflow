@@ -411,6 +411,19 @@ public class TensorTest {
   }
 
   @Test
+  public void testUInt8Tensor() {
+    byte[] vector = new byte[] { 1, 2, 3, 4 };
+    try (Tensor t = Tensor.create(vector, DataType.UINT8)) {
+      assertEquals(DataType.UINT8, t.dataType());
+      assertEquals(1, t.numDimensions());
+      assertArrayEquals(new long[] {4}, t.shape());
+
+      byte[] got = t.copyTo(new byte[4]);
+      assertArrayEquals(got, vector);
+    }
+  }
+
+  @Test
   public void failCreateOnMismatchedDimensions() {
     int[][][] invalid = new int[3][1][];
     for (int x = 0; x < invalid.length; ++x) {
