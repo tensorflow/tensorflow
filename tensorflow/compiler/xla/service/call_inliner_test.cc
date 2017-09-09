@@ -44,6 +44,8 @@ namespace {
 using CallInlinerTest = HloTestBase;
 
 TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
+  // "inner" computation just has a control dependency from the "zero" value to
+  // the "one" value.
   HloComputation::Builder inner(TestName() + ".inner");
   HloInstruction* zero = inner.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(24.0f)));
@@ -54,6 +56,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   HloComputation* inner_computation =
       module->AddEmbeddedComputation(inner.Build());
 
+  // "outer" computation just calls the "inner" computation.
   HloComputation::Builder outer(TestName() + ".outer");
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   outer.AddInstruction(
