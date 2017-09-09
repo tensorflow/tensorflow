@@ -421,7 +421,19 @@ def max_pooling2d(inputs,
 
 
 
-def max_pool_2d_nxn_regions(inputs, output_size, mode):
+def max_pool_2d_nxn_regions(inputs, pool_dimension, mode):
+  """
+
+  Args:
+    inputs: The tensor over which to pool. Must have rank 5.
+    pool_dimension: The dimenstion level(bin size)
+      over which spatial pooling is performed.
+    mode: Pooling mode 'max' or 'avg'.
+
+  Returns:
+    The output list of (pool_dimension * pool_dimension) tensors.
+
+  """
   inputs_shape = array_ops.shape(inputs)
   h = math_ops.cast(array_ops.gather(inputs_shape, 1), dtypes.int32)
   w = math_ops.cast(array_ops.gather(inputs_shape, 2), dtypes.int32)
@@ -435,9 +447,9 @@ def max_pool_2d_nxn_regions(inputs, output_size, mode):
     raise ValueError(msg.format(mode))
 
   result = []
-  n = output_size
-  for row in range(output_size):
-    for col in range(output_size):
+  n = pool_dimension
+  for row in range(pool_dimension):
+    for col in range(pool_dimension):
       # start_h = floor(row / n * h)
       start_h = math_ops.cast(math_ops.floor(math_ops.multiply(math_ops.divide(row, n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
       # end_h = ceil((row + 1) / n * h)
@@ -453,6 +465,33 @@ def max_pool_2d_nxn_regions(inputs, output_size, mode):
 
 
 def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation='kaiming'):
+  """
+    Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
+    It will turn a 2D input of arbitrary size into an output of fixed
+    dimenson.
+    Hence, the convlutional part of a DNN can be connected to a dense part
+    with a fixed number of nodes even if the dimensions of the input
+    image are unknown.
+
+    The pooling is performed over :math:`l` pooling levels.
+    Each pooling level :math:`i` will create :math:`M_i` output features.
+    :math:`M_i` is given by :math:`n_i * n_i`, with :math:`n_i` as the number
+    of pooling operations per dimension level :math:`i`.
+    The length of the parameter dimensions is the level of the spatial pyramid.
+
+
+  Args:
+    inputs: The tensor over which to pool. Must have rank 4.
+    dimensions: The list of bin sizes over which pooling is to be done.
+    mode: Pooling mode 'max' or 'avg'.
+    implementation: The implementation to use, either 'kaiming' or 'fast'.
+      kamming is the original implementation from the paper, and supports variable
+      sizes of input vectors, which fast does not support.
+
+  Returns:
+    Output tensor.
+
+  """
   layer = SpatialPyramidPooling(dimensions=dimensions,
                                 mode=mode,
                                 implementation=implementation)
@@ -461,57 +500,36 @@ def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation=
 
 class SpatialPyramidPooling(base.Layer):
   """
-    Spatial Pyramid Pooling Layer
-    Performs spatial pyramid pooling (SPP) over the input.
-    It will turn a 2D input of arbitrary size into an output of fixed
-    dimension.
-    Hence, the convolutional part of a DNN can be connected to a dense part
-    with a fixed number of nodes even if the dimensions of the
-    input image are unknown.
-    The pooling is performed over :math:`l` pooling levels.
-    Each pooling level :math:`i` will create :math:`M_i` output features.
-    :math:`M_i` is given by :math:`n_i * n_i`,
-    with :math:`n_i` as the number of pooling operation per dimension in
-    level :math:`i`, and we use a list of the :math:`n_i`'s as a
-    parameter for SPP-Layer.
-    The length of this list is the level of the spatial pyramid.
-    Parameters
-    ----------
-    incoming : a :class:`Layer` instance or tuple
-        The layer feeding into this layer, or the expected input shape.
-    pool_dims : list of integers
-        The list of :math:`n_i`'s that define the output dimension of each
-        pooling level :math:`i`. The length of pool_dims is the level of
-        the spatial pyramid.
-    mode : string
-        Pooling mode, one of 'max', 'average_inc_pad', 'average_exc_pad'
-        Defaults to 'max'.
-    implementation : string
-        Either 'fast' or 'kaiming'. The 'fast' version uses theano's pool_2d
-        operation, which is fast but does not work for all input sizes.
-        The 'kaiming' mode is slower but implements the pooling as described
-        in [1], and works with any input size.
-    **kwargs
-        Any additional keyword arguments are passed to the :class:`Layer`
-        superclass.
-    Notes
-    -----
-    This layer should be inserted between the convolutional part of a
-    DNN and its dense part. Convolutions can be used for
-    arbitrary input dimensions, but the size of their output will
-    depend on their input dimensions. Connecting the output of the
-    convolutional to the dense part then usually demands us to fix
-    the dimensions of the network's InputLayer.
-    The spatial pyramid pooling layer, however, allows us to leave the
-    network input dimensions arbitrary. The advantage over a global
-    pooling layer is the added robustness against object deformations
-    due to the pooling on different scales.
-    References
-    ----------
-    [1] He, Kaiming et al (2015): Spatial Pyramid Pooling in Deep Convolutional Networks for 
-    Visual Recognition. http://arxiv.org/pdf/1406.4729.pdf.
+    Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
+
+    Arguments:
+        dimensions: The list of :math:`n_i`'s that define the output dimension
+          of each pooling level :math:`i`. The length of dimensions is the level of
+          the spatial pyramid.
+        mode: Pooling mode 'max' or 'avg'.
+        implementation: The implementation to use, either 'kaiming' or 'fast'.
+          kamming is the original implementation from the paper, and supports variable
+          sizes of input vectors, which fast does not support.
+
+    Notes:
+        SPP should be inserted between the convolutional part of a Deep Network and it's
+        dense part. Convolutions can be used for arbitrary input dimensions, but
+        the size of their output will depend on their input dimensions.
+        Connecting the output of the convolutional to the dense part then
+        usually demands us to fix the dimensons of the network's input.
+        The spatial pyramid pooling layer, however, allows us to leave
+        the network input dimensions arbitrary.
+        The advantage over a global pooling layer is the added robustness
+        against object deformations due to the pooling on different scales.
+
+    References:
+        [1] He, Kaiming et al (2015): Spatial Pyramid Pooling in Deep Convolutional Networks
+            for Visual Recognition. https://arxiv.org/pdf/1406.4729.pdf.
+
+    Ported from: https://github.com/luizgh/Lasagne/commit/c01e3d922a5712ca4c54617a15a794c23746ac8c
 
   """
+
 
   def __init__(self, dimensions=None, mode='max', implementation='kaiming', **kwargs):
     super(SpatialPyramidPooling, self).__init__(**kwargs)
