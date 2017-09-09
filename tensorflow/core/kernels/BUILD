@@ -2129,8 +2129,8 @@ cc_library(
     alwayslink = 1,
     deps = [
         "//third_party/eigen3",
-        "//tensorflow/core:jvm_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:jvm_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
