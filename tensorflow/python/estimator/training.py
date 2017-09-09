@@ -110,7 +110,7 @@ class EvalSpec(
               hooks=None,
               export_strategies=None,
               delay_secs=120,
-              throttle_secs=60):
+              throttle_secs=600):
     """Creates a validated `EvalSpec` instance.
 
     Args:

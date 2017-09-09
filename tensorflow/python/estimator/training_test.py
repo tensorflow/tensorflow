@@ -25,7 +25,7 @@ from tensorflow.python.training import session_run_hook
 
 _DEFAULT_EVAL_STEPS = 100
 _DEFAULT_EVAL_DELAY_SECS = 120
-_DEFAULT_EVAL_THROTTLE_SECS = 60
+_DEFAULT_EVAL_THROTTLE_SECS = 600
 _INVALID_INPUT_FN_MSG = '`input_fn` must be callable'
 _INVALID_HOOK_MSG = 'All hooks must be `SessionRunHook` instances'
 _INVALID_MAX_STEPS_MSG = 'Must specify max_steps > 0'
