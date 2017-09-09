@@ -175,22 +175,22 @@ class ExecStep {
   std::map<int32, std::pair<int64, uint64>> output_memory_;
 };
 
-#define GRAPH_NODE_BYTES(type)                                \
-  do {                                                        \
-    if (execs_.empty()) {                                     \
-      return 0;                                               \
-    }                                                         \
-    if (step >= 0) {                                          \
-      auto exec = execs_.find(step);                          \
-      CHECK(exec != execs_.end()) << "unknown step " << step; \
-      return exec->second.type##_bytes();                     \
-    }                                                         \
-                                                              \
-    int64 bytes = 0;                                          \
-    for (const auto& exec : execs_) {                         \
-      bytes += exec.second.type##_bytes();                    \
-    }                                                         \
-    return bytes / execs_.size();                             \
+#define GRAPH_NODE_BYTES(type)             \
+  do {                                     \
+    if (execs_.empty()) {                  \
+      return 0;                            \
+    }                                      \
+    if (step >= 0) {                       \
+      auto exec = execs_.find(step);       \
+      if (exec == execs_.end()) return 0;  \
+      return exec->second.type##_bytes();  \
+    }                                      \
+                                           \
+    int64 bytes = 0;                       \
+    for (const auto& exec : execs_) {      \
+      bytes += exec.second.type##_bytes(); \
+    }                                      \
+    return bytes / execs_.size();          \
   } while (0)
 
 class TFGraphNode {
@@ -372,7 +372,9 @@ class TFGraphNode {
     }
     if (step >= 0) {
       auto exec = execs_.find(step);
-      CHECK(exec != execs_.end());
+      if (exec == execs_.end()) {
+        return 0;
+      }
       return exec->second.run_count();
     }
     int64 total_run_count = 0;
@@ -390,7 +392,9 @@ class TFGraphNode {
     }
     if (step >= 0) {
       auto exec = execs_.find(step);
-      CHECK(exec != execs_.end());
+      if (exec == execs_.end()) {
+        return 0;
+      }
       return exec->second.exec_micros();
     }
 
@@ -410,7 +414,9 @@ class TFGraphNode {
     }
     if (step >= 0) {
       auto exec = execs_.find(step);
-      CHECK(exec != execs_.end());
+      if (exec == execs_.end()) {
+        return 0;
+      }
       return exec->second.accelerator_exec_micros();
     }
 
@@ -430,7 +436,9 @@ class TFGraphNode {
     }
     if (step >= 0) {
       auto exec = execs_.find(step);
-      CHECK(exec != execs_.end());
+      if (exec == execs_.end()) {
+        return 0;
+      }
       return exec->second.cpu_exec_micros();
     }
 
@@ -448,20 +456,26 @@ class TFGraphNode {
 
   int64 all_start_micros(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.all_start_micros();
   }
 
   int64 latest_end_micros(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.latest_end_micros();
   }
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs(
       int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return empty_op_execs_;
+    }
     return exec->second.op_execs();
   }
 
@@ -469,33 +483,45 @@ class TFGraphNode {
 
   int64 accelerator_temp_bytes(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.accelerator_temp_bytes();
   }
   int64 host_temp_bytes(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.host_temp_bytes();
   }
   int64 accelerator_persistent_bytes(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.accelerator_persistent_bytes();
   }
   int64 host_persistent_bytes(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.host_persistent_bytes();
   }
   const std::map<int32, std::pair<int64, uint64>>& output_memory(
       int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return empty_output_memory_;
+    }
     return exec->second.output_memory();
   }
   int64 allocator_bytes_in_use(int64 step) const {
     auto exec = execs_.find(step);
-    CHECK(exec != execs_.end()) << "unknown step " << step;
+    if (exec == execs_.end()) {
+      return 0;
+    }
     return exec->second.allocator_bytes_in_use();
   }
 
@@ -566,6 +592,9 @@ class TFGraphNode {
   std::set<string> op_types_;
 
   std::map<int64, ExecStep> execs_;
+
+  std::map<int32, std::pair<int64, uint64>> empty_output_memory_;
+  std::map<string, std::vector<std::pair<int64, int64>>> empty_op_execs_;
 };
 
 class TFMultiGraphNode {
