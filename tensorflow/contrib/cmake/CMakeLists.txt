@@ -33,6 +33,7 @@ option(tensorflow_BUILD_MORE_PYTHON_TESTS "Build more python unit tests for cont
 option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
+option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -121,9 +122,11 @@ include(jsoncpp)
 include(farmhash)
 include(fft2d)
 include(highwayhash)
+include(nsync)
 include(protobuf)
 include(re2)
 include(cub)
+include(sqlite)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -138,8 +141,10 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${farmhash_STATIC_LIBRARIES}
     ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
+    ${nsync_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
+    ${sqlite_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
@@ -150,12 +155,14 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     jsoncpp
     farmhash_copy_headers_to_destination
     highwayhash_copy_headers_to_destination
+    nsync_copy_headers_to_destination
     protobuf
     eigen
     gemmlowp
     cub
     fft2d
     re2
+    sqlite_copy_headers_to_destination
 )
 
 include_directories(
@@ -174,8 +181,10 @@ include_directories(
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
     ${cub_INCLUDE_DIR}
+    ${nsync_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
+    ${sqlite_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)
@@ -195,6 +204,12 @@ if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${jemalloc_STATIC_LIBRARIES})
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES jemalloc)
   include_directories(${jemalloc_INCLUDE_DIRS})
+endif()
+if(tensorflow_ENABLE_SNAPPY_SUPPORT)
+  include(snappy)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${snappy_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES snappy)
+  include_directories(${snappy_INCLUDE_DIR})
 endif()
 if(WIN32)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES wsock32 ws2_32 shlwapi)

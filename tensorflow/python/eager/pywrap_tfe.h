@@ -64,4 +64,7 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
 // class registered via TFE_Py_RegisterExceptionClass) and returns -1.
 int TFE_Py_MayBeRaiseException(TF_Status* status);
 
+// Returns the string associated with the passed-in python object/
+char* TFE_GetPyThonString(PyObject* o);
+
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

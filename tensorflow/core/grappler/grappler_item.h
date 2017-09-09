@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -49,6 +50,11 @@ struct GrapplerItem {
   // Expected initialization time in seconds, or 0 if unknown
   int64 expected_init_time = 0;
 
+  // Save/restore ops (if any)
+  string save_op;
+  string restore_op;
+  string save_restore_loc_tensor;
+
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
 
@@ -60,6 +66,8 @@ struct GrapplerItem {
   std::vector<const NodeDef*> InitOpsFanin() const;
   // Return the set of variables accessed during a regular train/inference step.
   std::vector<const NodeDef*> MainVariables() const;
+  // Return a set of node names that must be preserved.
+  std::unordered_set<string> NodesToPreserve() const;
 };
 
 // Return the transitive fanin of a set of terminal nodes.

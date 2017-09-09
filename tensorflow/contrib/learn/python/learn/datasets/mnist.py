@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
+from tensorflow.python.platform import gfile
 
 # CVDF mirror of http://yann.lecun.com/exdb/mnist/
 SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
@@ -233,22 +234,22 @@ def read_data_sets(train_dir,
 
   local_file = base.maybe_download(TRAIN_IMAGES, train_dir,
                                    SOURCE_URL + TRAIN_IMAGES)
-  with open(local_file, 'rb') as f:
+  with gfile.Open(local_file, 'rb') as f:
     train_images = extract_images(f)
 
   local_file = base.maybe_download(TRAIN_LABELS, train_dir,
                                    SOURCE_URL + TRAIN_LABELS)
-  with open(local_file, 'rb') as f:
+  with gfile.Open(local_file, 'rb') as f:
     train_labels = extract_labels(f, one_hot=one_hot)
 
   local_file = base.maybe_download(TEST_IMAGES, train_dir,
                                    SOURCE_URL + TEST_IMAGES)
-  with open(local_file, 'rb') as f:
+  with gfile.Open(local_file, 'rb') as f:
     test_images = extract_images(f)
 
   local_file = base.maybe_download(TEST_LABELS, train_dir,
                                    SOURCE_URL + TEST_LABELS)
-  with open(local_file, 'rb') as f:
+  with gfile.Open(local_file, 'rb') as f:
     test_labels = extract_labels(f, one_hot=one_hot)
 
   if not 0 <= validation_size <= len(train_images):

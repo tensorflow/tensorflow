@@ -127,7 +127,7 @@ class ReduceSliceKernel : public OpKernel {
     const Tensor& data = context->input(0);
     const Tensor& indices = context->input(1);
     const Tensor& _axis = context->input(2);
-    int64 axis = _axis.scalar<int64>()(0);
+    int64 axis = _axis.scalar<int64>()();
 
     int indices_width = 2;
     int out_axis_dim_size = indices.shape().dim_size(0);

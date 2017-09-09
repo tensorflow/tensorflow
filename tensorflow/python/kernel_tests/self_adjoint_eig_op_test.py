@@ -66,7 +66,7 @@ def NormalizeEigenvectorsPhase(v):
   return v * reference.conj()
 
 
-def _GetSelfAdjointEigTest(dtype_, shape_):
+def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
 
   def CompareEigenVectors(self, x, y, tol):
     x = NormalizeEigenvectorsPhase(x)
@@ -102,26 +102,25 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
       atol = 1e-4
     else:
       atol = 1e-12
-    for compute_v in False, True:
-      np_e, np_v = np.linalg.eigh(a)
-      with self.test_session():
-        if compute_v:
-          tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
+    np_e, np_v = np.linalg.eigh(a)
+    with self.test_session():
+      if compute_v_:
+        tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
-          # Check that V*diag(E)*V^T is close to A.
-          a_ev = math_ops.matmul(
-              math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
-              tf_v,
-              adjoint_b=True)
-          self.assertAllClose(a_ev.eval(), a, atol=atol)
+        # Check that V*diag(E)*V^T is close to A.
+        a_ev = math_ops.matmul(
+            math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
+            tf_v,
+            adjoint_b=True)
+        self.assertAllClose(a_ev.eval(), a, atol=atol)
 
-          # Compare to numpy.linalg.eigh.
-          CompareEigenDecompositions(self, np_e, np_v,
-                                     tf_e.eval(), tf_v.eval(), atol)
-        else:
-          tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
-          self.assertAllClose(
-              np.sort(np_e, -1), np.sort(tf_e.eval(), -1), atol=atol)
+        # Compare to numpy.linalg.eigh.
+        CompareEigenDecompositions(self, np_e, np_v,
+                                   tf_e.eval(), tf_v.eval(), atol)
+      else:
+        tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
+        self.assertAllClose(
+            np.sort(np_e, -1), np.sort(tf_e.eval(), -1), atol=atol)
 
   return Test
 
@@ -130,7 +129,7 @@ class SelfAdjointEigGradTest(test.TestCase):
   pass  # Filled in below
 
 
-def _GetSelfAdjointEigGradTest(dtype_, shape_):
+def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
 
   def Test(self):
     np.random.seed(1)
@@ -155,13 +154,18 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
       tol = 1e-7
     with self.test_session():
       tf_a = constant_op.constant(a)
-      tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
-      # (complex) Eigenvectors are only unique up to an arbitrary phase
-      # We normalize the vectors such that the first component has phase 0.
-      reference = tf_v / linalg_ops.norm(
-          tf_v[..., 0:1, :], axis=-1, keep_dims=True)
-      tf_v *= math_ops.conj(reference)
-      for b in tf_e, tf_v:
+      if compute_v_:
+        tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
+        # (complex) Eigenvectors are only unique up to an arbitrary phase
+        # We normalize the vectors such that the first component has phase 0.
+        reference = tf_v / linalg_ops.norm(
+            tf_v[..., 0:1, :], axis=-1, keep_dims=True)
+        tf_v *= math_ops.conj(reference)
+        outputs = [tf_e, tf_v]
+      else:
+        tf_e = linalg_ops.self_adjoint_eigvals(tf_a)
+        outputs = [tf_e,]
+      for b in outputs:
         x_init = np.random.uniform(
             low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
         if dtype_.is_complex:
@@ -182,15 +186,16 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
 
 
 if __name__ == '__main__':
-  for dtype in (
-      dtypes_lib.float32, dtypes_lib.float64,
-      dtypes_lib.complex64, dtypes_lib.complex128):
-    for size in 1, 2, 5, 10:
-      for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
-        shape = batch_dims + (size, size)
-        name = '%s_%s' % (dtype, '_'.join(map(str, shape)))
-        setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
-                _GetSelfAdjointEigTest(dtype, shape))
-        setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
-                _GetSelfAdjointEigGradTest(dtype, shape))
+  for compute_v in [True, False]:
+    for dtype in (
+        dtypes_lib.float32, dtypes_lib.float64,
+        dtypes_lib.complex64, dtypes_lib.complex128):
+      for size in 1, 2, 5, 10:
+        for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
+          shape = batch_dims + (size, size)
+          name = '%s_%s_%s' % (dtype, '_'.join(map(str, shape)), compute_v)
+          setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
+                  _GetSelfAdjointEigTest(dtype, shape, compute_v))
+          setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
+                  _GetSelfAdjointEigGradTest(dtype, shape, compute_v))
   test.main()

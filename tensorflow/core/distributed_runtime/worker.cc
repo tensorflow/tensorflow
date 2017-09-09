@@ -34,8 +34,8 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
   response->mutable_device_attributes()->Reserve(devices.size());
-  for (size_t i = 0; i < devices.size(); ++i) {
-    response->add_device_attributes()->Swap(&devices[i]);
+  for (auto& d : devices) {
+    response->add_device_attributes()->Swap(&d);
   }
   done(Status::OK());
 }

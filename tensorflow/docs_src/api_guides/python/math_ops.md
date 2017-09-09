@@ -124,6 +124,7 @@ functions to your graph.
 *   @{tf.complex}
 *   @{tf.conj}
 *   @{tf.imag}
+*   @{tf.angle}
 *   @{tf.real}
 
 

@@ -259,10 +259,6 @@ class DebugNumericSummaryOpTest : public OpsTestBase {
 
 #if defined(PLATFORM_GOOGLE)
   void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
-
-  void CreateEmptyEnabledSet(const string& grpc_debug_url) {
-    DebugGrpcIO::CreateEmptyEnabledSet(grpc_debug_url);
-  }
 #endif
 };
 
@@ -577,7 +573,8 @@ TEST_F(DebugNumericSummaryOpTest, UInt8Success) {
 
 TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
   TF_ASSERT_OK(Init(DT_BOOL));
-  AddInputFromArray<bool>(TensorShape({2, 3}), {0, 0, 1, 1, 1, 0});
+  AddInputFromArray<bool>(TensorShape({2, 3}),
+                          {false, false, true, true, true, false});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({16}));
@@ -604,7 +601,6 @@ TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
   ClearEnabledWatchKeys();
-  CreateEmptyEnabledSet("grpc://server:3333");
 
   std::vector<string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
@@ -617,8 +613,9 @@ TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
 
 TEST_F(DebugNumericSummaryOpTest, DisabledDueToNonMatchingWatchKey) {
   ClearEnabledWatchKeys();
-  DebugGrpcIO::EnableWatchKey("grpc://server:3333",
-                              "FakeTensor:1:DebugNumeriSummary");
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      "grpc://server:3333", "FakeTensor:1:DebugNumeriSummary",
+      EventReply::DebugOpStateChange::READ_ONLY);
 
   std::vector<string> debug_urls({"grpc://server:3333"});
   TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));

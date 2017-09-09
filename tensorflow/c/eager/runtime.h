@@ -174,7 +174,8 @@ class KernelAndDevice {
   static Status InitFn(const NodeDef& ndef, FunctionLibraryRuntime* flib,
                        KernelAndDevice* out);
 
-  KernelAndDevice() : device_(nullptr), flib_(nullptr) {}
+  KernelAndDevice(tensorflow::Rendezvous* rendez)
+      : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
 
   // TODO(ashankar): Handle list-valued inputs.
   Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs);
@@ -186,6 +187,7 @@ class KernelAndDevice {
   tensorflow::Device* device_;
   tensorflow::FunctionLibraryRuntime* flib_;
   tensorflow::checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
+  tensorflow::Rendezvous* rendez_;
 };
 
 }  // namespace tensorflow

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <unordered_set>
+
 #include "tensorflow/core/debug/debug_io_utils.h"
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
@@ -60,6 +62,39 @@ TEST_F(DebugIOUtilsTest, ConstructDebugNodeKey) {
   EXPECT_EQ("hidden_1/MatMul:0:DebugIdentity", debug_node_key.debug_node_name);
   EXPECT_EQ("_tfdbg_device_,job_worker,replica_1,task_0,device_GPU_2",
             debug_node_key.device_path);
+}
+
+TEST_F(DebugIOUtilsTest, EqualityOfDebugNodeKeys) {
+  const DebugNodeKey debug_node_key_1("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_2("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_3("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/BiasAdd", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_4("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0,
+                                      "DebugNumericSummary");
+  EXPECT_EQ(debug_node_key_1, debug_node_key_2);
+  EXPECT_NE(debug_node_key_1, debug_node_key_3);
+  EXPECT_NE(debug_node_key_1, debug_node_key_4);
+  EXPECT_NE(debug_node_key_3, debug_node_key_4);
+}
+
+TEST_F(DebugIOUtilsTest, DebugNodeKeysIsHashable) {
+  const DebugNodeKey debug_node_key_1("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_2("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/MatMul", 0, "DebugIdentity");
+  const DebugNodeKey debug_node_key_3("/job:worker/replica:1/task:0/gpu:2",
+                                      "hidden_1/BiasAdd", 0, "DebugIdentity");
+
+  std::unordered_set<DebugNodeKey> keys;
+  keys.insert(debug_node_key_1);
+  ASSERT_EQ(1, keys.size());
+  keys.insert(debug_node_key_3);
+  ASSERT_EQ(2, keys.size());
+  keys.erase(debug_node_key_2);
+  ASSERT_EQ(1, keys.size());
 }
 
 TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {

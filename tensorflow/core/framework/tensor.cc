@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -53,6 +54,12 @@ limitations under the License.
 #include "tensorflow/core/platform/variant_coding.h"
 
 namespace tensorflow {
+
+// Allow Tensors to be stored inside Variants with automatic
+// encoding/decoding when those Variants are themselves being decoded
+// in a Tensor's FromProto.
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(Tensor, "tensorflow::Tensor");
+
 namespace {
 
 // An un-templated base class for Buffer.
@@ -491,6 +498,14 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
   } else {
     for (int64 i = 0; i < in_n; ++i) {
       data[i] = in.variant_val(i);
+      if (!DecodeUnaryVariant(&data[i])) {
+        LOG(ERROR) << "Could not decode variant with type_name: \""
+                   << data[i].TypeName()
+                   << "\".  Perhaps you forgot to register a "
+                      "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
+        buf->Unref();
+        return nullptr;
+      }
     }
     for (int64 i = in_n; i < n; ++i) {
       data[i] = Variant();
@@ -948,6 +963,10 @@ string Tensor::SummarizeValue(int64 max_entries) const {
           case DT_STRING:
             strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
             break;
+          case DT_VARIANT: {
+            const Variant& v = flat<Variant>()(i);
+            strings::StrAppend(&ret, v.DebugString());
+          } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
             // complex64, quantized).

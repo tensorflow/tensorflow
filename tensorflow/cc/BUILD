@@ -91,6 +91,7 @@ cc_library(
     name = "grad_ops",
     deps = [
         ":array_grad",
+        ":data_flow_grad",
         ":math_grad",
         ":nn_grad",
     ],
@@ -228,6 +229,41 @@ tf_cc_test(
     ],
 )
 
+cc_library_with_android_deps(
+    name = "while_loop",
+    srcs = ["ops/while_loop.cc"],
+    hdrs = ["ops/while_loop.h"],
+    android_deps = [
+        "//tensorflow/core:android_tensorflow_lib",
+    ],
+    common_deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":ops",
+        ":scope",
+        ":scope_internal",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_while_loop_test",
+    size = "small",
+    srcs = ["ops/while_loop_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":testutil",
+        ":while_loop",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "grad_op_registry",
     srcs = ["framework/grad_op_registry.cc"],
@@ -274,7 +310,9 @@ cc_library(
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
+        ":gradients",
     ],
     alwayslink = 1,
 )
@@ -287,6 +325,7 @@ tf_cc_test(
         ":cc_ops",
         ":grad_op_registry",
         ":grad_testutil",
+        ":gradient_checker",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",
@@ -303,6 +342,7 @@ cc_library(
         ":cc_ops",
         ":cc_ops_internal",
         ":grad_op_registry",
+        ":gradients",
     ],
     alwayslink = 1,
 )
@@ -325,6 +365,36 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "data_flow_grad",
+    srcs = ["gradients/data_flow_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_op_registry",
+        ":gradients",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_data_flow_grad_test",
+    size = "small",
+    srcs = ["gradients/data_flow_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":data_flow_grad",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":testutil",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [
@@ -337,6 +407,7 @@ tf_gen_op_wrappers_cc(
         "io_ops",
         "linalg_ops",
         "logging_ops",
+        "lookup_ops",
         "math_ops",
         "nn_ops",
         "no_op",

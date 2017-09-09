@@ -92,6 +92,9 @@
 #   TF_SKIP_CONTRIB_TESTS:
 #                     If set to any non-empty or non-0 value, will skipp running
 #                     contrib tests.
+#   TF_NIGHTLY:
+#                     If this run is being used to build the tf_nightly pip
+#                     packages.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -445,6 +448,11 @@ elif [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
   MAIN_CMD="${NO_PIP_MAIN_CMD} && ${PIP_MAIN_CMD}"
 else
   die "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
+fi
+
+# Check if this is a tf_nightly build
+if [[ "${TF_NIGHTLY}" == "1" ]]; then
+  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_NIGHTLY=1"
 fi
 
 # Process Python version

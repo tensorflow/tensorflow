@@ -276,7 +276,7 @@ class XlaCompiler {
   xla::Client* client() const { return options_.client; }
   XlaCompilationDevice* device() const { return device_; }
   const DeviceMgr* device_mgr() const { return &device_mgr_; }
-  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_.get(); }
+  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -303,9 +303,11 @@ class XlaCompiler {
   // library and runtime for functions created as part of the functionalize
   // control flow transformation.
   std::unique_ptr<FunctionLibraryDefinition> local_flib_def_;
-  std::unique_ptr<FunctionLibraryRuntime> local_flib_runtime_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> local_pflr_;
 
-  std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
+  FunctionLibraryRuntime* local_flib_runtime_;  // owned by local_pflr_.
+  FunctionLibraryRuntime* flib_runtime_;        // owned by pflr_.
 
   struct SignatureHash {
     uint64 operator()(

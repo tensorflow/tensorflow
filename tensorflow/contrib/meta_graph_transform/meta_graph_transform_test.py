@@ -21,14 +21,18 @@ from __future__ import print_function
 from google.protobuf.any_pb2 import Any
 from tensorflow.contrib.meta_graph_transform import meta_graph_transform
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import constants as saved_model_constants
 from tensorflow.python.training import saver
 from tensorflow.python.util import compat
+from tensorflow.tools import graph_transforms
 
 
 def _make_asset_file_def_any(node_name):
@@ -77,6 +81,89 @@ class MetaGraphTransformTest(test.TestCase):
         base_meta_graph_def, input_names, output_names, transforms, tags)
 
     self.assertEqual(expected_meta_graph_def, transformed_meta_graph_def)
+
+  @test.mock.patch.object(graph_transforms, 'TransformGraph')
+  @test.mock.patch.object(meta_graph_transform, '_freeze_graph_with_def_protos')
+  def test_freeze(self, freeze_mock, graph_transform_mock):
+    tag_name = 'tag'
+    input_nodes = 'input_nodes'
+    output_nodes = 'output_nodes'
+    freeze_transform = 'freeze_graph'
+    sparsify_transform = 'sparsify_graph'
+
+    base_meta_graph_def = meta_graph_pb2.MetaGraphDef()
+
+    # Add a table initializer.
+    table_init_name = 'table_init'
+    node_def = node_def_pb2.NodeDef(
+        name=table_init_name, op='InitializeTableV2')
+    base_meta_graph_def.graph_def.node.extend([node_def])
+
+    # Add a group_deps node.
+    group_deps_name = 'group_deps'
+    node_def = node_def_pb2.NodeDef(name=group_deps_name, op='NoOp')
+    node_def.input.extend(['^table_init'])
+    base_meta_graph_def.graph_def.node.extend([node_def])
+
+    base_meta_graph_def.collection_def[
+        ops.GraphKeys.TABLE_INITIALIZERS].node_list.value.extend(
+            [table_init_name])
+    base_meta_graph_def.collection_def[
+        saved_model_constants.LEGACY_INIT_OP_KEY].node_list.value.extend(
+            [group_deps_name])
+
+    # Expected metagraphdef.
+    expected_meta_graph_def = meta_graph_pb2.MetaGraphDef()
+    expected_meta_graph_def.CopyFrom(base_meta_graph_def)
+    expected_meta_graph_def.meta_info_def.tags.append(tag_name)
+
+    transformed_graph_def = graph_pb2.GraphDef()
+    transformed_graph_def.CopyFrom(expected_meta_graph_def.graph_def)
+    freeze_mock.return_value = transformed_graph_def
+    graph_transform_mock.return_value = transformed_graph_def
+
+    # Add unsaved init node.
+    unsaved_init_name = 'unsaved_node'
+    node_def = node_def_pb2.NodeDef(name=unsaved_init_name, op='NoOp')
+    base_meta_graph_def.graph_def.node.extend([node_def])
+
+    # Add a saver.
+    base_meta_graph_def.saver_def.filename_tensor_name = 'node1'
+    base_meta_graph_def.saver_def.save_tensor_name = 'node3'
+    base_meta_graph_def.saver_def.restore_op_name = 'node6'
+
+    transformed_meta_graph_def = meta_graph_transform.meta_graph_transform(
+        base_meta_graph_def, [input_nodes], [output_nodes],
+        [freeze_transform, sparsify_transform], [tag_name])
+
+    self.assertEqual(expected_meta_graph_def, transformed_meta_graph_def)
+    freeze_mock.assert_called_once_with(
+        base_meta_graph_def.graph_def, [output_nodes], [table_init_name],
+        group_deps_name, base_meta_graph_def.saver_def, None)
+    graph_transform_mock.assert_called_once_with(
+        transformed_graph_def, [input_nodes],
+        [output_nodes, group_deps_name, table_init_name], [sparsify_transform])
+
+  def test_connect_to_shared_init_op(self):
+    group_deps_name = 'group_deps'
+    init_node_1 = 'table_init_1'
+    init_node_2 = 'table_init_2'
+
+    orig_graph_def = graph_pb2.GraphDef()
+    expected_graph_def_1 = graph_pb2.GraphDef()
+
+    meta_graph_transform._connect_to_shared_init_op(orig_graph_def,
+                                                    group_deps_name, [])
+    self.assertEqual(expected_graph_def_1, orig_graph_def)
+
+    expected_graph_def_2 = graph_pb2.GraphDef()
+    node_def = node_def_pb2.NodeDef(name=group_deps_name, op='NoOp')
+    node_def.input.extend(['^' + init_node_1, '^' + init_node_2])
+    expected_graph_def_2.node.extend([node_def])
+
+    meta_graph_transform._connect_to_shared_init_op(
+        orig_graph_def, group_deps_name, [init_node_1, init_node_2])
+    self.assertEqual(expected_graph_def_2, orig_graph_def)
 
   def test_add_pruned_collection_node(self):
     collection_name = 'node_collection'

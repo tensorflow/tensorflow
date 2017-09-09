@@ -52,4 +52,6 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
   MakeDataset(ctx, input, another_input, output);
 }
 
+const char IteratorBase::kIteratorExhausted[] = "ITERATOR_EXHAUSTED";
+
 }  // namespace tensorflow

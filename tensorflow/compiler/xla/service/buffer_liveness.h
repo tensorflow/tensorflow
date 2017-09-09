@@ -54,8 +54,7 @@ class BufferLiveness {
   bool MaybeLiveOut(const LogicalBuffer& buffer) const;
 
   // Returns the complete set of buffers that may be live out of the module.
-  const tensorflow::gtl::FlatSet<const LogicalBuffer*>& maybe_live_out_buffers()
-      const {
+  const PointsToSet::BufferSet& maybe_live_out_buffers() const {
     return maybe_live_out_buffers_;
   }
 
@@ -77,7 +76,7 @@ class BufferLiveness {
            id < buffer_liveness.points_to_analysis().num_logical_buffers();
            id++) {
         auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
-        buffer->set_color(LogicalBuffer::Color(0));
+        buffer.set_color(LogicalBuffer::Color(0));
       }
       return Status::OK();
     };
@@ -106,7 +105,7 @@ class BufferLiveness {
   tensorflow::gtl::FlatSet<const LogicalBuffer*> aliased_buffers_;
 
   // LogicalBuffers that may be live out of the entry computation.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers_;
+  PointsToSet::BufferSet maybe_live_out_buffers_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 };

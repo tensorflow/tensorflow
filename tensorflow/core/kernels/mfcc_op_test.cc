@@ -35,7 +35,7 @@ namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
 
 TEST(MfccOpTest, SimpleTest) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
 
   Tensor spectrogram_tensor(DT_FLOAT, TensorShape({1, 1, 513}));
   test::FillIota<float>(&spectrogram_tensor, 1.0f);

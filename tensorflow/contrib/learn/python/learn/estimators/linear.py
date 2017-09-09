@@ -441,18 +441,16 @@ class LinearClassifier(estimator.Estimator):
 
     Raises:
       ValueError: if n_classes < 2.
+      ValueError: if enable_centered_bias=True and optimizer is SDCAOptimizer.
     """
-    # TODO(zoy): Give an unsupported error if enable_centered_bias is
-    #    requested for SDCA once its default changes to False.
+    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
+        enable_centered_bias):
+      raise ValueError("enable_centered_bias is not supported with SDCA")
+
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
 
     chief_hook = None
-    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
-        enable_centered_bias):
-      enable_centered_bias = False
-      logging.warning("centered_bias is not supported with SDCA, "
-                      "please disable it explicitly.")
     head = head_lib.multi_class_head(
         n_classes,
         weight_column_name=weight_column_name,

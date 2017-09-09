@@ -376,9 +376,19 @@ class CheckpointSaverHookTest(test.TestCase):
   def tearDown(self):
     shutil.rmtree(self.model_dir, ignore_errors=True)
 
-  def test_raise_when_saver_and_scaffold_both_missing(self):
-    with self.assertRaises(ValueError):
-      basic_session_run_hooks.CheckpointSaverHook(self.model_dir)
+  def test_saves_when_saver_and_scaffold_both_missing(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir, save_steps=1)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+        self.assertEqual(1,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
 
   def test_raise_when_saver_and_scaffold_both_present(self):
     with self.assertRaises(ValueError):

@@ -60,13 +60,16 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       to_concatenate_->Unref();
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::Concatenate")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
       return input_->output_dtypes();
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return output_shapes_;
     }
@@ -76,13 +79,15 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Dataset* dataset)
-          : DatasetIterator<Dataset>(dataset),
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params),
             i_(0),
-            input_impl_(dataset->input_->MakeIterator()) {}
+            input_impl_(params.dataset->input_->MakeIterator(
+                strings::StrCat(params.prefix, "[0]"))) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         mutex_lock l(mu_);
         while (i_ < 2) {
           TF_RETURN_IF_ERROR(
@@ -91,7 +96,8 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
             return Status::OK();
           }
           if (++i_ < 2) {
-            input_impl_ = dataset()->to_concatenate_->MakeIterator();
+            input_impl_ = dataset()->to_concatenate_->MakeIterator(
+                strings::StrCat(prefix(), "[1]"));
           }
         }
         *end_of_sequence = true;
