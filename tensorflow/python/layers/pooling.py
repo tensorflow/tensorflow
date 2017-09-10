@@ -423,7 +423,6 @@ def max_pooling2d(inputs,
 
 def max_pool_2d_nxn_regions(inputs, pool_dimension, mode):
   """
-
   Args:
     inputs: The tensor over which to pool. Must have rank 5.
     pool_dimension: The dimenstion level(bin size)
@@ -464,21 +463,19 @@ def max_pool_2d_nxn_regions(inputs, pool_dimension, mode):
   return result
 
 
-def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation='kaiming'):
+def spatial_pyramid_pooling(inputs, dimensions=None,
+                            mode='max', implementation='kaiming'):
   """
     Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
-    It will turn a 2D input of arbitrary size into an output of fixed
-    dimenson.
+    It will turn a 2D input of arbitrary size into an output of fixed dimension.
     Hence, the convlutional part of a DNN can be connected to a dense part
     with a fixed number of nodes even if the dimensions of the input
     image are unknown.
-
     The pooling is performed over :math:`l` pooling levels.
     Each pooling level :math:`i` will create :math:`M_i` output features.
     :math:`M_i` is given by :math:`n_i * n_i`, with :math:`n_i` as the number
     of pooling operations per dimension level :math:`i`.
     The length of the parameter dimensions is the level of the spatial pyramid.
-
 
   Args:
     inputs: The tensor over which to pool. Must have rank 4.
@@ -490,7 +487,6 @@ def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation=
 
   Returns:
     Output tensor.
-
   """
   layer = SpatialPyramidPooling(dimensions=dimensions,
                                 mode=mode,
@@ -501,16 +497,14 @@ def spatial_pyramid_pooling(inputs, dimensions=None, mode='max', implementation=
 class SpatialPyramidPooling(base.Layer):
   """
     Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
-
     Arguments:
         dimensions: The list of :math:`n_i`'s that define the output dimension
           of each pooling level :math:`i`. The length of dimensions is the level of
           the spatial pyramid.
         mode: Pooling mode 'max' or 'avg'.
         implementation: The implementation to use, either 'kaiming' or 'fast'.
-          kamming is the original implementation from the paper, and supports variable
+          kaiming is the original implementation from the paper, and supports variable
           sizes of input vectors, which fast does not support.
-
     Notes:
         SPP should be inserted between the convolutional part of a Deep Network and it's
         dense part. Convolutions can be used for arbitrary input dimensions, but
@@ -521,13 +515,10 @@ class SpatialPyramidPooling(base.Layer):
         the network input dimensions arbitrary.
         The advantage over a global pooling layer is the added robustness
         against object deformations due to the pooling on different scales.
-
     References:
         [1] He, Kaiming et al (2015): Spatial Pyramid Pooling in Deep Convolutional Networks
             for Visual Recognition. https://arxiv.org/pdf/1406.4729.pdf.
-
-    Ported from: https://github.com/luizgh/Lasagne/commit/c01e3d922a5712ca4c54617a15a794c23746ac8c
-
+    Ported from: https://github.com/Lasagne/Lasagne/pull/799
   """
 
 
@@ -544,13 +535,13 @@ class SpatialPyramidPooling(base.Layer):
         pool_list += max_pool_2d_nxn_regions(inputs, pool_dim, self.mode)
     else:
       input_shape = inputs.get_shape().as_list()
-      for d in self.dimensions:
+      for pool_dim in self.dimensions:
         h, w = input_shape[1], input_shape[2]
 
-        ph = np.ceil(h * 1.0 / d).astype(np.int32)
-        pw = np.ceil(w * 1.0 / d).astype(np.int32)
-        sh = np.floor(h * 1.0 / d + 1).astype(np.int32)
-        sw = np.floor(w * 1.0 / d + 1).astype(np.int32)
+        ph = np.ceil(h * 1.0 / pool_dim).astype(np.int32)
+        pw = np.ceil(w * 1.0 / pool_dim).astype(np.int32)
+        sh = np.floor(h * 1.0 / pool_dim + 1).astype(np.int32)
+        sw = np.floor(w * 1.0 / pool_dim + 1).astype(np.int32)
         pool_result = nn.max_pool(inputs,
                                   ksize=[1, ph, pw, 1],
                                   strides=[1, sh, sw, 1],
