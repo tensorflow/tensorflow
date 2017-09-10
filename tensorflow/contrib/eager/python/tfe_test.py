@@ -27,6 +27,10 @@ class TFETest(test.TestCase):
     # Expect at least one device.
     self.assertTrue(tfe.list_devices())
 
+  def testNumGPUs(self):
+    devices = tfe.list_devices()
+    self.assertEqual(len(devices) - 1, tfe.num_gpus())
+
 
 if __name__ == "__main__":
   test.main()

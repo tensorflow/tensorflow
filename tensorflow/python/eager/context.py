@@ -414,9 +414,18 @@ def enable_eager_execution():
 
 
 def list_devices():
-  """List the names of the devices available to the default context.
+  """List the names of the available devices.
 
   Returns:
     Names of the available devices, as a `list`.
   """
   return context().devices()
+
+
+def num_gpus():
+  """Get the number of available GPU devices.
+
+  Returns:
+    The number of available GPU devices.
+  """
+  return context().num_gpus()

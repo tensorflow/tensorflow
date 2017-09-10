@@ -20,6 +20,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 
 @@device
 @@list_devices
+@@num_gpus
 
 @@defun
 @@implicit_gradients
@@ -60,6 +61,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager.context import device
 from tensorflow.python.eager.context import enable_eager_execution
 from tensorflow.python.eager.context import list_devices
+from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.context import run
 from tensorflow.python.eager.core import enable_tracing
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
