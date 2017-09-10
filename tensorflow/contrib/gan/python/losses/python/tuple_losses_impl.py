@@ -29,7 +29,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.gan.python.losses import losses_impl
+from tensorflow.contrib.gan.python.losses.python import losses_impl
 from tensorflow.python.util import tf_inspect
 
 

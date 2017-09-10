@@ -20,13 +20,13 @@ from __future__ import print_function
 
 # Collapse features into a single namespace.
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.gan.python.features import clip_weights
-from tensorflow.contrib.gan.python.features import conditioning_utils
-from tensorflow.contrib.gan.python.features import virtual_batchnorm
+from tensorflow.contrib.gan.python.features.python import clip_weights
+from tensorflow.contrib.gan.python.features.python import conditioning_utils
+from tensorflow.contrib.gan.python.features.python import virtual_batchnorm
 
-from tensorflow.contrib.gan.python.features.clip_weights import *
-from tensorflow.contrib.gan.python.features.conditioning_utils import *
-from tensorflow.contrib.gan.python.features.virtual_batchnorm import *
+from tensorflow.contrib.gan.python.features.python.clip_weights import *
+from tensorflow.contrib.gan.python.features.python.conditioning_utils import *
+from tensorflow.contrib.gan.python.features.python.virtual_batchnorm import *
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.gan.python.losses import losses_impl as tfgan_losses
+from tensorflow.contrib.gan.python.losses.python import losses_impl as tfgan_losses
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

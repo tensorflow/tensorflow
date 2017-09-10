@@ -13,20 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """TFGAN grouped API. Please see README.md for details and usage."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse losses into a single namespace.
-from tensorflow.contrib.gan.python.losses.python import losses_wargs as wargs
-from tensorflow.contrib.gan.python.losses.python import tuple_losses
-
 # pylint: disable=wildcard-import
-from tensorflow.contrib.gan.python.losses.python.tuple_losses import *
+from tensorflow.contrib.gan.python.losses.python import losses_impl
+from tensorflow.contrib.gan.python.losses.python.losses_impl import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['wargs'] + tuple_losses.__all__
-remove_undocumented(__name__, _allowed_symbols)
+remove_undocumented(__name__, losses_impl.__all__)

@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables_lib
-from tensorflow.contrib.gan.python.features import virtual_batchnorm
+from tensorflow.contrib.gan.python.features.python import virtual_batchnorm_impl as virtual_batchnorm
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed

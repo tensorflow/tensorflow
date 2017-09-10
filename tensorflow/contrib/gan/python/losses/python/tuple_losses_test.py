@@ -22,7 +22,7 @@ import collections
 
 import numpy as np
 
-from tensorflow.contrib.gan.python.losses import tuple_losses as tfgan_losses
+from tensorflow.contrib.gan.python.losses.python import tuple_losses_impl as tfgan_losses
 
 from tensorflow.python.platform import test
 

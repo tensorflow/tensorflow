@@ -1,10 +1,10 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,21 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""Utilities to clip weights."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse losses into a single namespace.
-from tensorflow.contrib.gan.python.losses.python import losses_wargs as wargs
-from tensorflow.contrib.gan.python.losses.python import tuple_losses
-
+from tensorflow.contrib.gan.python.features.python import clip_weights_impl
 # pylint: disable=wildcard-import
-from tensorflow.contrib.gan.python.losses.python.tuple_losses import *
+from tensorflow.contrib.gan.python.features.python.clip_weights_impl import *
 # pylint: enable=wildcard-import
-
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['wargs'] + tuple_losses.__all__
-remove_undocumented(__name__, _allowed_symbols)
+__all__ = clip_weights_impl.__all__
+remove_undocumented(__name__, __all__)

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.gan.python.features import conditioning_utils
+from tensorflow.contrib.gan.python.features.python import conditioning_utils_impl as conditioning_utils
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops

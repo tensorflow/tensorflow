@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.gan.python.features import clip_weights
+from tensorflow.contrib.gan.python.features.python import clip_weights_impl as clip_weights
 
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
