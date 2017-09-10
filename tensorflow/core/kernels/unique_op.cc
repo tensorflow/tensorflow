@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <unordered_map>
 #include <utility>
 
@@ -42,31 +43,65 @@ class UniqueOp : public OpKernel {
                 errors::InvalidArgument(
                     "unique does not support input tensors larger than ",
                     std::numeric_limits<int32>::max(), " elements"));
-    auto Tin = input.vec<T>();
-    const int64 N = static_cast<int64>(Tin.size());
+
+    int64 axis = 0;
+    std::vector<int64> new_sizes{1, input.NumElements(), 1};
+
+    auto Tin = input.shaped<T, 3>(new_sizes);
 
     Tensor* idx = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 1, input.shape(), &idx));
+                                {0}, 1, TensorShape({Tin.dimension(1)}), &idx));
     auto idx_vec = idx->template vec<TIndex>();
 
-    std::unordered_map<T, TIndex> uniq;
-    uniq.reserve(2 * N);
-    for (int64 i = 0, j = 0; i < N; ++i) {
-      auto it = uniq.insert(std::make_pair(Tin(i), j));
+    auto hash_fn = [&Tin](const int64& key) -> unsigned long {
+      size_t hash = 0;
+      for (int64 i = 0; i < Tin.dimension(0); i++) {
+        for (uint64 j = 0; j < Tin.dimension(2); j++) {
+          hash += std::hash<T>{}(Tin(i, key, j));
+        }
+      }
+      return hash;
+    };
+
+    auto equal_to_fn = [&Tin](const int64& lhs, const int64& rhs) {
+      for (int64 i = 0; i < Tin.dimension(0); i++) {
+        for (uint64 j = 0; j < Tin.dimension(2); j++) {
+          if (Tin(i, lhs, j) != Tin(i, rhs, j)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+
+    std::unordered_map<int64, int64, decltype(hash_fn), decltype(equal_to_fn)>
+        uniq(0, hash_fn, equal_to_fn);
+
+    uniq.reserve(2 * Tin.dimension(1));
+
+    for (int64 i = 0, j = 0; i < Tin.dimension(1); ++i) {
+      auto it = uniq.insert(std::make_pair(i, j));
       idx_vec(i) = it.first->second;
       if (it.second) {
         ++j;
       }
     }
+
     int64 uniq_size = static_cast<int64>(uniq.size());
+    new_sizes[1] = uniq_size;
+    TensorShape output_shape(input.shape());
+    output_shape.set_dim(axis, uniq_size);
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({uniq_size}), &output));
-    auto output_vec = output->template vec<T>();
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    auto Tout = output->shaped<T, 3>(new_sizes);
 
     for (auto it : uniq) {
-      output_vec(it.second) = it.first;
+      for (uint64 i = 0; i < Tin.dimension(0); i++) {
+        for (uint64 j = 0; j < Tin.dimension(2); j++) {
+          Tout(i, it.second, j) = Tin(i, it.first, j);
+        }
+      }
     }
 
     if (num_outputs() > 2) {
@@ -74,7 +109,7 @@ class UniqueOp : public OpKernel {
                                   2, TensorShape({uniq_size}), &output));
       auto count_output_vec = output->template vec<TIndex>();
       count_output_vec.setZero();
-      for (int64 i = 0; i < N; ++i) {
+      for (int64 i = 0; i < Tin.dimension(1); ++i) {
         count_output_vec(idx_vec(i))++;
       }
     }
@@ -176,5 +211,5 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("y")
                             .HostMemory("idx"),
                         UniqueOp<int64, int64>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
