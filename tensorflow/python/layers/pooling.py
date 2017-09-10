@@ -424,7 +424,7 @@ def max_pooling2d(inputs,
 def max_pool_2d_nxn_regions(inputs, pool_dimension, mode):
   """
   Args:
-    inputs: The tensor over which to pool. Must have rank 5.
+    inputs: The tensor over which to pool. Must have rank 4.
     pool_dimension: The dimenstion level(bin size)
       over which spatial pooling is performed.
     mode: Pooling mode 'max' or 'avg'.
