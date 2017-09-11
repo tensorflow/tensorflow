@@ -505,7 +505,7 @@ class ResourceVariable(variables.Variable):
 
   def _read_variable_op(self):
     if hasattr(self, "_trainable") and self._trainable:
-      tape.watch(self._handle)
+      tape.watch_variable(self)
       return read_variable_op(self._handle, dtype=self._dtype)
     else:
       return gen_resource_variable_ops.read_variable_op(self._handle,
@@ -540,7 +540,7 @@ class ResourceVariable(variables.Variable):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       if self._trainable:
-        tape.watch(self._handle)
+        tape.watch_variable(self)
       value = resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
