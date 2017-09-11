@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import six
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
@@ -98,8 +97,6 @@ DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
 DATA_FORMAT_NCDHW = 'NCDHW'
 DATA_FORMAT_NDHWC = 'NDHWC'
-_FUSED_DEFAULT = os.getenv('TF_DEFAULT_USES_FUSED_BATCH_NORM',
-                           '').lower() in ('true', 't', '1')
 
 
 @add_arg_scope
@@ -549,10 +546,8 @@ def batch_norm(inputs,
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
   """
-  # This environment variable is only used during the testing period of fused
-  # batch norm and will be removed after that.
   if fused is None:
-    fused = _FUSED_DEFAULT
+    fused = True
 
   # Only use _fused_batch_norm if all of the following three
   # conditions are true:
