@@ -18,6 +18,7 @@ cc_library(
     name = "dump_tpu_profile",
     srcs = ["dump_tpu_profile.cc"],
     hdrs = ["dump_tpu_profile.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":op_profile_proto_cc",
         ":tpu_profiler_proto_cc",

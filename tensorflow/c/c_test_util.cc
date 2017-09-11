@@ -27,6 +27,10 @@ static void Int32Deallocator(void* data, size_t, void* arg) {
   delete[] static_cast<int32_t*>(data);
 }
 
+static void DoubleDeallocator(void* data, size_t, void* arg) {
+  delete[] static_cast<double*>(data);
+}
+
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
   int64_t num_values = 1;
   for (int i = 0; i < num_dims; ++i) {
@@ -61,6 +65,14 @@ TF_Tensor* Int32Tensor(int32_t v) {
   values[0] = v;
   return TF_NewTensor(TF_INT32, nullptr, 0, values, num_bytes,
                       &Int32Deallocator, nullptr);
+}
+
+TF_Tensor* DoubleTensor(double v) {
+  const int num_bytes = sizeof(double);
+  double* values = new double[1];
+  values[0] = v;
+  return TF_NewTensor(TF_DOUBLE, nullptr, 0, values, num_bytes,
+                      &DoubleDeallocator, nullptr);
 }
 
 // All the *Helper methods are used as a workaround for the restrictions that
@@ -102,6 +114,12 @@ TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
                           const char* name) {
   unique_tensor_ptr tensor(Int32Tensor(v), TF_DeleteTensor);
+  return Const(tensor.get(), graph, s, name);
+}
+
+TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
+                          const char* name) {
+  unique_tensor_ptr tensor(DoubleTensor(v), TF_DeleteTensor);
   return Const(tensor.get(), graph, s, name);
 }
 

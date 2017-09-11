@@ -74,6 +74,10 @@ def _eager_fill(dims, value):
   return result
 
 
+# Rely on the GIL for thread-safety.
+_scalar_cache = {}
+
+
 def convert_to_eager_tensor(t, dtype=None):
   """Converts the given `value` to an `EagerTensor`."""
   if isinstance(ag_core.getval(t), ops.EagerTensor):
@@ -87,6 +91,18 @@ def convert_to_eager_tensor(t, dtype=None):
     return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
   except AttributeError:
     pass
+  if isinstance(t, (int, float)):
+    # Use a scalar cache. This will put each scalar of each type only once on
+    # each device. Scalars don't use much device memory but copying scalars can
+    # trigger memcpys which are slow.
+    device = context.context().device_name
+    cache_key = device, t, dtype, type(t)
+    tensor = _scalar_cache.get(cache_key, None)
+    if tensor is not None:
+      return tensor
+    value = ops.EagerTensor(t, dtype=dtype)
+    _scalar_cache[cache_key] = value
+    return value
   return ops.EagerTensor(t, dtype=dtype)
 
 
