@@ -25,25 +25,40 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.framework import ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
-def GetTestConfigs():
+def GetTestConfigs(include_nchw_vect_c=False):
   """Get all the valid tests configs to run.
+
+  Args:
+    include_nchw_vect_c: Whether to include NCHW_VECT_C in the test configs.
 
   Returns:
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if test.is_gpu_available(cuda_only=True):
-    # "NCHW" format is currently supported exclusively on CUDA GPUs.
-    test_configs += [("NCHW", True)]
+  if not test.is_gpu_available(cuda_only=True):
+    tf_logging.info("NCHW and NCHW_VECT_C tests skipped because not run with "
+                    "--config=cuda or no GPUs available.")
+    return test_configs
+  # "NCHW" format is currently supported exclusively on CUDA GPUs.
+  test_configs += [("NCHW", True)]
+  if include_nchw_vect_c:
+    if test.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(6, 1)):
+      test_configs += [("NCHW_VECT_C", True)]
+    else:
+      tf_logging.info("NCHW_VECT_C test skipped because no GPUs with "
+                      "compute capability >= 6.1 are available.")
+
   return test_configs
 
 
@@ -95,16 +110,32 @@ class PoolingTest(test.TestCase):
     total_size = 1
     for s in input_sizes:
       total_size *= s
+    if v2 and data_format != "NHWC":
+      tf_logging.info("v2 not supported for %s", data_format)
+      return
+    if data_format == "NCHW_VECT_C":
+      if data_type != dtypes.float32:
+        tf_logging.info("quantization to qint8 not implemented for %r",
+                        data_type)
+        return
+      if input_sizes[-1] % 4 != 0:
+        tf_logging.info("Skipping test for depth %d", input_sizes[-1])
+        return
+    tf_logging.info("Running %s test. %r %r %d %r %r %r", data_format, v2,
+                    input_sizes, total_size, pool_func, ksize, strides)
     # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
-    x = [f * 1.0 for f in range(1, total_size + 1)]
+    # numbers from 1, wrapping round to -127 after 127 to support int8.
+    x = [((f + 128) % 255) - 127 for f in range(total_size)]
     with self.test_session(use_gpu=use_gpu):
       t = constant_op.constant(x, shape=input_sizes, dtype=data_type)
-      if data_format == "NCHW":
-        t = test_util.NHWCToNCHW(t)
+      if data_format in ("NCHW", "NCHW_VECT_C"):
+        if data_format == "NCHW_VECT_C":
+          t = test_util.NHWCToNCHW_VECT_C(t)
+          t, _, _ = gen_array_ops.quantize_v2(t, -128.0, 127.0, dtypes.qint8)
+        else:
+          t = test_util.NHWCToNCHW(t)
         ksize = test_util.NHWCToNCHW(ksize)
         strides = test_util.NHWCToNCHW(strides)
-      v2 = v2 and data_format != "NCHW"
       ksize_placeholder = array_ops.placeholder(dtypes.int32, shape=[4])
       strides_placeholder = array_ops.placeholder(dtypes.int32, shape=[4])
       if v2:
@@ -121,7 +152,10 @@ class PoolingTest(test.TestCase):
             strides=strides,
             padding=padding,
             data_format=data_format)
-      if data_format == "NCHW":
+      if data_format == "NCHW_VECT_C":
+        t = gen_array_ops.dequantize(t, -128, 127)
+        t = test_util.NCHW_VECT_CToNHWC(t)
+      elif data_format == "NCHW":
         t = test_util.NCHWToNHWC(t)
       if v2:
         actual = t.eval(feed_dict={ksize_placeholder: ksize,
@@ -146,6 +180,13 @@ class PoolingTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       use_gpu: Whether we are running on GPU.
     """
+    if data_format == "NCHW_VECT_C":
+      avg_pool_func = nn_ops.avg_pool
+      tf_logging.info("pool_func=%s", pool_func)
+      if pool_func == avg_pool_func:
+        tf_logging.info("NCHW_VECT_C not yet implemented for avg_pool")
+        return
+
     self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                         data_format, dtypes.float32, expected, use_gpu, v2)
 
@@ -167,7 +208,7 @@ class PoolingTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       use_gpu: Whether we are running on GPU.
     """
-    for (data_format, use_gpu_2) in GetTestConfigs():
+    for (data_format, use_gpu_2) in GetTestConfigs(True):
       if use_gpu_2 == use_gpu:
         self._VerifyOneTest(pool_func, input_sizes, ksize, strides, padding,
                             data_format, expected, use_gpu, v2)
@@ -296,20 +337,20 @@ class PoolingTest(test.TestCase):
 
   def _testAvgPoolSamePaddingPacket8(self, use_gpu):
     expected_output = [
-        73.0, 74.0, 75.0, 76.0, 77.0, 78.0, 79.0, 80.0, 89.0, 90.0, 91.0, 92.0,
-        93.0, 94.0, 95.0, 96.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0,
-        112.0, 117.0, 118.0, 119.0, 120.0, 121.0, 122.0, 123.0, 124.0, 201.0,
-        202.0, 203.0, 204.0, 205.0, 206.0, 207.0, 208.0, 217.0, 218.0, 219.0,
-        220.0, 221.0, 222.0, 223.0, 224.0, 233.0, 234.0, 235.0, 236.0, 237.0,
-        238.0, 239.0, 240.0, 245.0, 246.0, 247.0, 248.0, 249.0, 250.0, 251.0,
-        252.0, 329.0, 330.0, 331.0, 332.0, 333.0, 334.0, 335.0, 336.0, 345.0,
-        346.0, 347.0, 348.0, 349.0, 350.0, 351.0, 352.0, 361.0, 362.0, 363.0,
-        364.0, 365.0, 366.0, 367.0, 368.0, 373.0, 374.0, 375.0, 376.0, 377.0,
-        378.0, 379.0, 380.0, 425.0, 426.0, 427.0, 428.0, 429.0, 430.0, 431.0,
-        432.0, 441.0, 442.0, 443.0, 444.0, 445.0, 446.0, 447.0, 448.0, 457.0,
-        458.0, 459.0, 460.0, 461.0, 462.0, 463.0, 464.0, 469.0, 470.0, 471.0,
-        472.0, 473.0, 474.0, 475.0, 476.0
+        -12.0, -11.0, -10.0, -9.0, -8.0, -7.0, -6.0, -5.0, 4.0, 5.0, 6.0, 7.0,
+        8.0, 9.0, 10.0, 11.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0,
+        32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, -3.5, -54.0, -53.0, -52.0,
+        -51.0, -50.0, -49.0, -48.0, -47.0, -38.0, -37.0, -36.0, -35.0, -34.0,
+        -33.0, -32.0, -31.0, -22.0, -21.0, -20.0, -19.0, -18.0, -17.0, -16.0,
+        -15.0, -10.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -11.0, -10.0,
+        -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
+        12.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 33.0, 34.0, 35.0,
+        36.0, 37.0, 38.0, -3.5, -2.5, -85.0, -84.0, -83.0, -82.0, -81.0, -80.0,
+        -79.0, -78.0, -69.0, -68.0, -67.0, -66.0, -65.0, -64.0, -63.0, -62.0,
+        -53.0, -52.0, -51.0, -50.0, -49.0, -48.0, -47.0, -46.0, -41.0, -40.0,
+        -39.0, -38.0, -37.0, -36.0, -35.0, -34.0
     ]
+
     self._VerifyValues(
         nn_ops.avg_pool,
         input_sizes=[1, 8, 8, 8],
@@ -468,19 +509,18 @@ class PoolingTest(test.TestCase):
 
   def _testMaxPoolSamePaddingPacket8(self, use_gpu):
     expected_output = [
-        145.0, 146.0, 147.0, 148.0, 149.0, 150.0, 151.0, 152.0, 161.0, 162.0,
-        163.0, 164.0, 165.0, 166.0, 167.0, 168.0, 177.0, 178.0, 179.0, 180.0,
-        181.0, 182.0, 183.0, 184.0, 185.0, 186.0, 187.0, 188.0, 189.0, 190.0,
-        191.0, 192.0, 273.0, 274.0, 275.0, 276.0, 277.0, 278.0, 279.0, 280.0,
-        289.0, 290.0, 291.0, 292.0, 293.0, 294.0, 295.0, 296.0, 305.0, 306.0,
-        307.0, 308.0, 309.0, 310.0, 311.0, 312.0, 313.0, 314.0, 315.0, 316.0,
-        317.0, 318.0, 319.0, 320.0, 401.0, 402.0, 403.0, 404.0, 405.0, 406.0,
-        407.0, 408.0, 417.0, 418.0, 419.0, 420.0, 421.0, 422.0, 423.0, 424.0,
-        433.0, 434.0, 435.0, 436.0, 437.0, 438.0, 439.0, 440.0, 441.0, 442.0,
-        443.0, 444.0, 445.0, 446.0, 447.0, 448.0, 465.0, 466.0, 467.0, 468.0,
-        469.0, 470.0, 471.0, 472.0, 481.0, 482.0, 483.0, 484.0, 485.0, 486.0,
-        487.0, 488.0, 497.0, 498.0, 499.0, 500.0, 501.0, 502.0, 503.0, 504.0,
-        505.0, 506.0, 507.0, 508.0, 509.0, 510.0, 511.0, 512.0
+        81.0, 82.0, 83.0, 84.0, 85.0, 86.0, 87.0, 88.0, 97.0, 98.0, 99.0, 100.0,
+        101.0, 102.0, 103.0, 104.0, 113.0, 114.0, 115.0, 116.0, 117.0, 118.0,
+        119.0, 120.0, 121.0, 122.0, 123.0, 124.0, 125.0, 126.0, 127.0, 120.0,
+        18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 34.0, 35.0, 36.0, 37.0,
+        38.0, 39.0, 40.0, 41.0, 50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 56.0, 57.0,
+        58.0, 59.0, 60.0, 61.0, 62.0, 63.0, 64.0, 65.0, 82.0, 83.0, 84.0, 85.0,
+        86.0, 87.0, 88.0, 89.0, 98.0, 99.0, 100.0, 101.0, 102.0, 103.0, 104.0,
+        105.0, 114.0, 115.0, 116.0, 117.0, 118.0, 119.0, 120.0, 121.0, 122.0,
+        123.0, 124.0, 125.0, 126.0, 127.0, 120.0, 121.0, -45.0, -44.0, -43.0,
+        -42.0, -41.0, -40.0, -39.0, -38.0, -29.0, -28.0, -27.0, -26.0, -25.0,
+        -24.0, -23.0, -22.0, -13.0, -12.0, -11.0, -10.0, -9.0, -8.0, -7.0, -6.0,
+        -5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0
     ]
     self._VerifyValues(
         nn_ops.max_pool,

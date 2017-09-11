@@ -113,6 +113,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "nomac",  # b/63258195
+        "notsan",  # b/62863147
     ],
     deps = [
         ":gbdt_batch",

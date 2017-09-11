@@ -465,7 +465,6 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_oss",  # b/62956105: port conflicts.
-        "noguitar",  # b/64805119
     ],
     deps = [
         ":grpc_channel",

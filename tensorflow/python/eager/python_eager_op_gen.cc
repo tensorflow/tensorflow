@@ -650,7 +650,7 @@ void GenEagerPythonOp::AddEagerAttrs() {
 void GenEagerPythonOp::AddEagerExecute(const string& num_outputs_expr) {
   const string return_prefix = "    _result = _execute.execute(";
   const string return_args =
-      strings::StrCat("\"", op_def_.name(), "\", ", num_outputs_expr,
+      strings::StrCat("b\"", op_def_.name(), "\", ", num_outputs_expr,
                       ", inputs=_inputs_flat, attrs=_attrs, name=name)");
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
