@@ -22,6 +22,7 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
+        ":training",
         "//tensorflow/python:util",
     ],
 )
@@ -67,6 +68,27 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python/saved_model:signature_constants",
+    ],
+)
+
+py_library(
+    name = "training",
+    srcs = ["training.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:training",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "training_test",
+    size = "small",
+    srcs = ["training_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

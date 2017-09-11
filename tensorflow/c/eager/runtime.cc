@@ -238,9 +238,8 @@ Status KernelAndDevice::InitOp(Device* device, const NodeDef& ndef,
 }
 
 // static
-Status KernelAndDevice::InitFn(const NodeDef& ndef,
-                               FunctionLibraryRuntime* flib,
-                               KernelAndDevice* out) {
+Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+                             KernelAndDevice* out) {
   OpKernel* k = nullptr;
   Status s = flib->CreateKernel(ndef, &k);
   out->device_ = flib->device();
