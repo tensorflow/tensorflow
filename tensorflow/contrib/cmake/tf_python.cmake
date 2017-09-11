@@ -361,6 +361,11 @@ add_python_module("tensorflow/contrib/framework/python")
 add_python_module("tensorflow/contrib/framework/python/framework")
 add_python_module("tensorflow/contrib/framework/python/ops")
 add_python_module("tensorflow/contrib/gan")
+add_python_module("tensorflow/contrib/gan/python")
+add_python_module("tensorflow/contrib/gan/python/features")
+add_python_module("tensorflow/contrib/gan/python/features/python")
+add_python_module("tensorflow/contrib/gan/python/losses")
+add_python_module("tensorflow/contrib/gan/python/losses/python")
 add_python_module("tensorflow/contrib/graph_editor")
 add_python_module("tensorflow/contrib/graph_editor/examples")
 add_python_module("tensorflow/contrib/graph_editor/tests")
@@ -1147,12 +1152,24 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/include/unsupported/Eigen)
 
-if(${tensorflow_ENABLE_GPU})
-  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+if(${tensorflow_TF_NIGHTLY})
+  if(${tensorflow_ENABLE_GPU})
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tf_nightly_gpu
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+  else()
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tf_nightly
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+  endif(${tensorflow_ENABLE_GPU})
 else()
-  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
-endif(${tensorflow_ENABLE_GPU})
+  if(${tensorflow_ENABLE_GPU})
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+  else()
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+  endif(${tensorflow_ENABLE_GPU})
+endif(${tensorflow_TF_NIGHTLY})

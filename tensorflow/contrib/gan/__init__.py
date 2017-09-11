@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API."""
+"""TFGAN grouped API. Please see README.md for details and usage."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+# Collapse TFGAN into a tiered namespace.
+from tensorflow.contrib.gan.python import features
+from tensorflow.contrib.gan.python import losses
+
+del absolute_import
+del division
+del print_function

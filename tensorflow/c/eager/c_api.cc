@@ -479,20 +479,16 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
-    if (!op->is_function()) {
-      status->status =
-          tensorflow::KernelAndDevice::InitOp(device, ndef, kernel);
-    } else {
-      // Knowledge of the implementation of InitFn (and in-turn
-      // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
-      // will be accessed, so grab on to the lock.
-      // See WARNING comment below - would be nice to rework to avoid this
-      // subtlety.
-      tensorflow::mutex_lock l(ctx->functions_mu);
-      status->status = tensorflow::KernelAndDevice::InitFn(
-          ndef, ctx->func_lib(device), kernel);
-    }
+    // Knowledge of the implementation of Init (and in-turn
+    // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
+    // will be accessed, so grab on to the lock.
+    // See WARNING comment below - would be nice to rework to avoid this
+    // subtlety.
+    tensorflow::tf_shared_lock l(ctx->functions_mu);
+    status->status =
+        tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
     if (!status->status.ok()) {
+      delete kernel;
       return;
     }
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
