@@ -3042,7 +3042,7 @@ op {
   name: "BatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -3050,7 +3050,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4464,7 +4464,7 @@ op {
   name: "CacheDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "filename"
@@ -4472,7 +4472,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4866,15 +4866,15 @@ op {
   name: "ConcatenateDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "another_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -6849,7 +6849,7 @@ op {
   name: "DenseToSparseBatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -6861,7 +6861,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -9108,7 +9108,7 @@ op {
   name: "FilterDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -9116,7 +9116,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "predicate"
@@ -9165,7 +9165,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   is_stateful: true
 }
@@ -9606,7 +9606,7 @@ op {
   name: "FlatMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -9614,7 +9614,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -10499,7 +10499,7 @@ op {
   name: "GroupByWindowDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "key_func_other_arguments"
@@ -10515,7 +10515,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "key_func"
@@ -10901,11 +10901,11 @@ op {
   name: "IgnoreErrorsDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -11229,7 +11229,7 @@ op {
   name: "InterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -11245,7 +11245,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -12539,7 +12539,7 @@ op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -12589,7 +12589,7 @@ op {
   name: "MapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -12597,7 +12597,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -16237,7 +16237,7 @@ op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -16254,7 +16254,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -16422,7 +16422,7 @@ op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -16434,7 +16434,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -16983,7 +16983,7 @@ op {
   name: "PrefetchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -16991,7 +16991,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -19719,7 +19719,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -20514,7 +20514,7 @@ op {
   name: "RepeatDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -20522,7 +20522,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24723,7 +24723,7 @@ op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -24739,7 +24739,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24913,7 +24913,7 @@ op {
   name: "SkipDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -24921,7 +24921,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -25038,7 +25038,7 @@ op {
   name: "SloppyInterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -25054,7 +25054,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -27776,7 +27776,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Tvalues"
@@ -27978,7 +27978,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -29283,7 +29283,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   is_stateful: true
 }
@@ -29350,7 +29350,7 @@ op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -29358,7 +29358,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -30405,7 +30405,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30429,7 +30429,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30521,7 +30521,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   is_stateful: true
 }
@@ -31528,12 +31528,12 @@ op {
   name: "ZipDataset"
   input_arg {
     name: "input_datasets"
-    type: DT_RESOURCE
+    type: DT_VARIANT
     number_attr: "N"
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
