@@ -343,6 +343,17 @@ py_test(
 )
 
 py_test(
+    name = "tf_export_test",
+    srcs = ["util/tf_export_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":platform",
+        ":util",
+    ],
+)
+
+py_test(
     name = "deprecation_test",
     srcs = ["util/deprecation_test.py"],
     srcs_version = "PY2AND3",
