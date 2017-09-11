@@ -153,7 +153,7 @@ TensorFlow}.
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-There is also a helpful [script](#https://gist.github.com/mrry/ee5dbcfdd045fa48a27d56664411d41c)
+There is also a helpful [script](https://gist.github.com/mrry/ee5dbcfdd045fa48a27d56664411d41c)
 that helps with Windows TensorFlow installation issues.
 
 ## Common installation problems
