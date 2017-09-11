@@ -82,8 +82,6 @@ Status SqliteQueryConnection::GetNext(std::vector<Tensor>* out_tensors,
   int rc = sqlite3_step(stmt_);
   if (rc == SQLITE_ROW) {
     for (int i = 0; i < column_count_; i++) {
-      // TODO(b/64276939) Support other tensorflow types. Interpret columns as
-      // the types that the client specifies.
       DataType dt = output_types_[i];
       Tensor tensor(cpu_allocator(), dt, {});
       FillTensorWithResultSetEntry(dt, i, &tensor);
@@ -125,9 +123,44 @@ void SqliteQueryConnection::FillTensorWithResultSetEntry(
       tensor->scalar<string>()() = value;
       break;
     }
+    case DT_INT8: {
+      int8 value = sqlite3_column_int(stmt_, column_index);
+      tensor->scalar<int8>()() = value;
+      break;
+    }
+    case DT_INT16: {
+      int16 value = sqlite3_column_int(stmt_, column_index);
+      tensor->scalar<int16>()() = value;
+      break;
+    }
     case DT_INT32: {
       int32 value = sqlite3_column_int(stmt_, column_index);
       tensor->scalar<int32>()() = value;
+      break;
+    }
+    case DT_INT64: {
+      int64 value = sqlite3_column_int64(stmt_, column_index);
+      tensor->scalar<int64>()() = value;
+      break;
+    }
+    case DT_UINT8: {
+      uint8 value = sqlite3_column_int(stmt_, column_index);
+      tensor->scalar<uint8>()() = value;
+      break;
+    }
+    case DT_UINT16: {
+      uint16 value = sqlite3_column_int(stmt_, column_index);
+      tensor->scalar<uint16>()() = value;
+      break;
+    }
+    case DT_BOOL: {
+      int value = sqlite3_column_int(stmt_, column_index);
+      tensor->scalar<bool>()() = value ? true : false;
+      break;
+    }
+    case DT_DOUBLE: {
+      double value = sqlite3_column_double(stmt_, column_index);
+      tensor->scalar<double>()() = value;
       break;
     }
     // Error preemptively thrown by SqlDatasetOp::MakeDataset in this case.

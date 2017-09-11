@@ -632,6 +632,22 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
     tf.number_type(t=tf.bool)   # Invalid
     ```
 
+    Lists can be combined with other lists and single types.  The following
+    op allows attr `t` to be any of the numberic types, or the bool type:
+
+    ```c++
+    REGISTER_OP("NumberOrBooleanType")
+        .Attr("t: {numbertype, bool}");
+    ```
+
+    For this op:
+
+    ```python
+    tf.number_or_boolean_type(t=tf.int32)  # Valid
+    tf.number_or_boolean_type(t=tf.bool)   # Valid
+    tf.number_or_boolean_type(t=tf.string) # Invalid
+    ```
+
 * `int >= <n>`: The value must be an int whose value is greater than or equal to
   `<n>`, where `<n>` is a natural number.
 

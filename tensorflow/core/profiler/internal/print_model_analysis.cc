@@ -84,7 +84,6 @@ string RunProfile(const string& command, const string& options,
 }  // namespace
 
 bool NewProfiler(const string* graph, const string* op_log) {
-  CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
   CHECK(graph) << "graph mustn't be null";
   std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
   if (!graph_ptr->ParseFromString(*graph)) {

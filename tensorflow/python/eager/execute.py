@@ -63,15 +63,14 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   device_name = ctx.device_name
   try:
     outh = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                            str(op_name), input_handles, attrs,
+                                            op_name, input_handles, attrs,
                                             num_outputs)
-    # pylint: enable=protected-access
-  except core._NotOkStatusException as e:  # pylint: disable=protected-access
+  except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
     else:
       message = e.message
-    raise core._status_to_exception(e.code, message)  # pylint: disable=protected-access
+    raise core._status_to_exception(e.code, message)
   # pylint: enable=protected-access
 
   tensors = [tensor._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access

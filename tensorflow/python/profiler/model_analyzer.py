@@ -180,8 +180,7 @@ class Profiler(object):
     """
     # pylint: disable=protected-access
     op_log = tfprof_logger._merge_default_with_oplog(
-        self._graph, run_meta=run_meta, add_trace=False,
-        add_trainable_var=False)
+        self._graph, run_meta=run_meta)
     # pylint: enable=protected-access
     # TODO(xpan): P1: Better to find the current graph.
     print_mdl.AddStep(

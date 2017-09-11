@@ -305,7 +305,7 @@ class PrintModelAnalysisTest(test.TestCase):
       _ = model_analyzer.profile(
           sess.graph, run_meta, cmd='graph', options=opts)
 
-      with gfile.Open(outfile, 'r') as f:
+      with gfile.Open(outfile + '_0', 'r') as f:
         # Test that a json file is created.
         # TODO(xpan): tfprof Timeline isn't quite correct on Windows.
         # Investigate why.

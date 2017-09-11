@@ -297,7 +297,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:graph_to_function_def",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",

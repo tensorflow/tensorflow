@@ -216,8 +216,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override {
     TF_RETURN_IF_ERROR(DefaultAction(call));
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
 
