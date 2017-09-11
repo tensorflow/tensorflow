@@ -600,9 +600,6 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("ApplyAdadelta").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -1061,9 +1058,6 @@ class ApplyAdagradOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                        \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("ApplyAdagrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -1170,9 +1164,6 @@ class ApplyProximalAdagradOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -1600,9 +1591,6 @@ class ApplyAdagradDAOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                            \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("ApplyAdagradDA").Device(DEVICE_##D).TypeConstraint<T>("T"),   \
@@ -1924,9 +1912,6 @@ class ApplyFtrlOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -2301,9 +2286,6 @@ class ApplyMomentumOp : public OpKernel {
   bool use_nesterov_;
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("ApplyMomentum").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -2669,9 +2651,6 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 };
 #endif  // TENSORFLOW_USE_SYCL
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -2899,9 +2878,6 @@ class ApplyCenteredRMSPropOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
