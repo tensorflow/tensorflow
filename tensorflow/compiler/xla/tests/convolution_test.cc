@@ -282,6 +282,130 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
                              error_spec_);
 }
 
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithRHSDilation) {
+  ComputationBuilder builder(client_, TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto filter = builder.Parameter(1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bo0.
+    builder.ConvGeneralDilated(
+        input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
+        /*lhs_dilation=*/{1}, /*rhs_dilation=*/{2},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
+  }
+
+  Array3D<float> input({{{1, 2, 3, 4, 5}, {6, 7, 8, 9, 10}}});
+  Array3D<float> filter({{{10, 20}, {30, 40}}});
+
+  Array3D<float> expected({{{570, 670, 770}}});
+
+  auto input_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(input))
+          .ConsumeValueOrDie();
+  auto filter_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(filter))
+          .ConsumeValueOrDie();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSDilation) {
+  ComputationBuilder builder(client_, TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto filter = builder.Parameter(1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bo0.
+    builder.ConvGeneralDilated(
+        input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
+        /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
+  }
+
+  Array3D<float> input({{{1, 2, 3, 4, 5}, {6, 7, 8, 9, 10}}});
+  Array3D<float> filter({{{10, 20}, {30, 40}}});
+
+  Array3D<float> expected({{{190, 320, 230, 380, 270, 440, 310, 500}}});
+
+  auto input_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(input))
+          .ConsumeValueOrDie();
+  auto filter_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(filter))
+          .ConsumeValueOrDie();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
+  ComputationBuilder builder(client_, TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto filter = builder.Parameter(1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bo0.
+    builder.ConvGeneralDilated(
+        input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
+        /*lhs_dilation=*/{2}, /*rhs_dilation=*/{2},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
+  }
+
+  Array3D<float> input({{{1, 2, 3, 4, 5}, {6, 7, 8, 9, 10}}});
+  Array3D<float> filter({{{10, 20}, {30, 40}}});
+
+  Array3D<float> expected({{{510, 0, 610, 0, 710, 0, 810}}});
+
+  auto input_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(input))
+          .ConsumeValueOrDie();
+  auto filter_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(filter))
+          .ConsumeValueOrDie();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithPadding) {
+  ComputationBuilder builder(client_, TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto filter = builder.Parameter(1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bo0.
+    builder.ConvGeneralDilated(
+        input, filter, /*window_strides=*/{1}, /*padding=*/{{2, 2}},
+        /*lhs_dilation=*/{1}, /*rhs_dilation=*/{1},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
+  }
+
+  Array3D<float> input({{{1, 2, 3, 4, 5}, {6, 7, 8, 9, 10}}});
+  Array3D<float> filter({{{10, 20}, {30, 40}}});
+
+  Array3D<float> expected({{{0, 260, 510, 610, 710, 810, 350, 0}}});
+
+  auto input_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(input))
+          .ConsumeValueOrDie();
+  auto filter_literal =
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(filter))
+          .ConsumeValueOrDie();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
 XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   ComputationBuilder builder(client_, TestName());
   std::vector<int64> input_dims = {1, 4, 2, 3, 3};

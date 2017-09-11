@@ -934,6 +934,25 @@ class DebugDumpDir(object):
     return [self._debug_graphs[key].debug_graph_def
             for key in self._debug_graphs]
 
+  def reconstructed_non_debug_partition_graphs(self):
+    """Reconstruct partition graphs with the debugger-inserted ops stripped.
+
+    The reconstructed partition graphs are identical to the original (i.e.,
+    non-debugger-decorated) partition graphs except in the following respects:
+      1) The exact names of the runtime-inserted internal nodes may differ.
+         These include _Send, _Recv, _HostSend, _HostRecv, _Retval ops.
+      2) As a consequence of 1, the nodes that receive input directly from such
+         send- and recv-type ops will have different input names.
+      3) The parallel_iteration attribute of while-loop Enter ops are set to 1.
+
+    Returns:
+      A dict mapping device names (`str`s) to reconstructed `tf.GraphDef`s.
+    """
+    non_debug_graphs = dict()
+    for key in self._debug_graphs:
+      non_debug_graphs[key] = self._debug_graphs[key].non_debug_graph_def
+    return non_debug_graphs
+
   @property
   def run_fetches_info(self):
     """Get a str representation of the fetches used in the Session.run() call.

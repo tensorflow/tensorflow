@@ -24,12 +24,8 @@ limitations under the License.
 #include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
 #include "external/cub_archive/cub/warp/warp_reduce.cuh"
 #include "cuda/include/cuComplex.h"
-#include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
@@ -706,6 +702,214 @@ void ReduceImpl(OpKernelContext* ctx, OUT_T out, IN_T in, int in_rank,
     LOG(FATAL) << ss.str();
   }
 }
+
+template <typename Reducer>
+struct ReduceFunctor<GPUDevice, Reducer> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Reducer& reducer);
+};
+
+template <typename T>
+struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::SumReducer<T>& reducer) {
+    ReduceImpl<T, cub::Sum, T*, T*, ReductionAxes>(
+        ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        cub::Sum(), T(0));
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::SumReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <typename T>
+struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::MeanReducer<T>& reducer) {
+    int divisor = 1;
+    if (out.rank() == 0)
+      divisor = in.size();
+    else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 0)
+      divisor = in.dimension(0);
+    else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 1)
+      divisor = in.dimension(1);
+    else if (out.rank() == 1 && in.rank() == 3 && reduction_axes[0] == 0 &&
+             reduction_axes[1] == 2)
+      divisor = in.dimension(0) * in.dimension(2);
+    else if (out.rank() == 2 && in.rank() == 3 && reduction_axes[0] == 1)
+      divisor = in.dimension(1);
+
+    DividesBy<T> div_op(static_cast<T>(divisor));
+    TransformOutputIterator<T, T, DividesBy<T>> itr((T*)out.data(), div_op);
+    ReduceImpl<T, cub::Sum, TransformOutputIterator<T, T, DividesBy<T>>, T*,
+               ReductionAxes>(ctx, itr, (T*)in.data(), in.rank(),
+                              in.dimension(0),
+                              in.rank() >= 2 ? in.dimension(1) : 1,
+                              in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
+                              reduction_axes, cub::Sum(), T(0));
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::MeanReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <>
+struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<Eigen::half>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::MeanReducer<Eigen::half>& reducer) {
+    float divisor = 1.f;
+    if (out.rank() == 0)
+      divisor = in.size();
+    else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 0)
+      divisor = in.dimension(0);
+    else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 1)
+      divisor = in.dimension(1);
+    else if (out.rank() == 1 && in.rank() == 3 && reduction_axes[0] == 0 &&
+             reduction_axes[1] == 2)
+      divisor = in.dimension(0) * in.dimension(2);
+    else if (out.rank() == 2 && in.rank() == 3 && reduction_axes[0] == 1)
+      divisor = in.dimension(1);
+    DividesBy<float, Eigen::half> div_op(divisor);
+
+    typedef cub::TransformInputIterator<float, HalfToFloat, Eigen::half*>
+        inputIterType;
+    inputIterType input_itr((Eigen::half*)in.data(), HalfToFloat());
+
+    typedef TransformOutputIterator<Eigen::half, float,
+                                    DividesBy<float, Eigen::half>>
+        outputIterType;
+    outputIterType itr((Eigen::half*)out.data(), div_op);
+
+    ReduceImpl<float, cub::Sum, outputIterType, inputIterType, ReductionAxes>(
+        ctx, itr, input_itr, in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        cub::Sum(), 0.f);
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(
+      const GPUDevice& d, OUT_T out,
+      const Eigen::internal::MeanReducer<Eigen::half>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <typename T>
+struct ReduceFunctor<GPUDevice, Eigen::internal::MaxReducer<T>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::MaxReducer<T>& reducer) {
+    ReduceImpl<T, cub::Max, T*, T*, ReductionAxes>(
+        ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        cub::Max(), std::numeric_limits<T>::lowest());
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::MaxReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <typename T>
+struct ReduceFunctor<GPUDevice, Eigen::internal::MinReducer<T>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::MinReducer<T>& reducer) {
+    ReduceImpl<T, cub::Min, T*, T*, ReductionAxes>(
+        ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        cub::Min(), std::numeric_limits<T>::max());
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::MinReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <typename T>
+struct ReduceFunctor<GPUDevice, Eigen::internal::ProdReducer<T>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::ProdReducer<T>& reducer) {
+    ReduceImpl<T, Prod<T>, T*, T*, ReductionAxes>(
+        ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        Prod<T>(), T(1));
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::ProdReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <>
+struct ReduceFunctor<GPUDevice, Eigen::internal::AndReducer> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::AndReducer& reducer) {
+    ReduceImpl<bool, And, bool*, bool*, ReductionAxes>(
+        ctx, (bool*)out.data(), (bool*)in.data(), in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes, And(),
+        true);
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::AndReducer& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+template <>
+struct ReduceFunctor<GPUDevice, Eigen::internal::OrReducer> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::OrReducer& reducer) {
+    ReduceImpl<bool, Or, bool*, bool*, ReductionAxes>(
+        ctx, (bool*)out.data(), (bool*)in.data(), in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes, Or(),
+        false);
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::OrReducer& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
 
 }  // namespace functor
 }  // namespace tensorflow

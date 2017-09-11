@@ -183,8 +183,11 @@ class Profiler(object):
         self._graph, run_meta=run_meta, add_trace=False,
         add_trainable_var=False)
     # pylint: enable=protected-access
+    # TODO(xpan): P1: Better to find the current graph.
     print_mdl.AddStep(
-        step, run_meta.SerializeToString(), op_log.SerializeToString())
+        step,
+        self._graph.as_graph_def(add_shapes=True).SerializeToString(),
+        run_meta.SerializeToString(), op_log.SerializeToString())
 
   def profile_python(self, options):
     """Profile the statistics of the Python codes.
@@ -200,8 +203,11 @@ class Profiler(object):
     """
     opts = _build_options(options)
     tfprof_node = tfprof_output_pb2.MultiGraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.Profile('code'.encode('utf-8'), opts.SerializeToString()))
+    try:
+      tfprof_node.ParseFromString(
+          print_mdl.Profile('code'.encode('utf-8'), opts.SerializeToString()))
+    except message.DecodeError as _:
+      pass
     return tfprof_node
 
   def profile_operations(self, options):
@@ -214,8 +220,11 @@ class Profiler(object):
     """
     opts = _build_options(options)
     tfprof_node = tfprof_output_pb2.MultiGraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.Profile('op'.encode('utf-8'), opts.SerializeToString()))
+    try:
+      tfprof_node.ParseFromString(
+          print_mdl.Profile('op'.encode('utf-8'), opts.SerializeToString()))
+    except message.DecodeError as _:
+      pass
     return tfprof_node
 
   def profile_name_scope(self, options):
@@ -228,8 +237,11 @@ class Profiler(object):
     """
     opts = _build_options(options)
     tfprof_node = tfprof_output_pb2.GraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.Profile('scope'.encode('utf-8'), opts.SerializeToString()))
+    try:
+      tfprof_node.ParseFromString(
+          print_mdl.Profile('scope'.encode('utf-8'), opts.SerializeToString()))
+    except message.DecodeError as _:
+      pass
     return tfprof_node
 
   def profile_graph(self, options):
@@ -242,8 +254,11 @@ class Profiler(object):
     """
     opts = _build_options(options)
     tfprof_node = tfprof_output_pb2.GraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
+    try:
+      tfprof_node.ParseFromString(
+          print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
+    except message.DecodeError as _:
+      pass
     return tfprof_node
 
   def advise(self, options):

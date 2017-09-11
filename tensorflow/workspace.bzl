@@ -99,7 +99,8 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
-  if not repo_ctx.which("patch"):
+  # Don't check patch on Windows, because patch is only available under bash.
+  if not _is_windows(repo_ctx) and not repo_ctx.which("patch"):
     fail("patch command is not found, please install it")
 
   cmd = [

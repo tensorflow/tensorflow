@@ -27,7 +27,7 @@ _VALID_METRIC_FN_ARGS = set(['features', 'labels', 'predictions', 'config'])
 
 
 def add_metrics(estimator, metric_fn):
-  """Creates new ${tf.estimator.Esitmator} which has given metrics.
+  """Creates a new ${tf.estimator.Estimator} which has given metrics.
 
   Example:
 
@@ -54,7 +54,7 @@ def add_metrics(estimator, metric_fn):
   ```
 
   Args:
-    estimator: A ${tf.estimator.Esitmator} object.
+    estimator: A ${tf.estimator.Estimator} object.
     metric_fn: A function which should obey the following signature:
       - Args: can only have following four arguments in any order:
         * predictions: Predictions `Tensor` or dict of `Tensor` created by given
@@ -77,12 +77,12 @@ def add_metrics(estimator, metric_fn):
   """
   _verify_metric_fn_args(metric_fn)
 
-  def new_model_fn(features, labels, mode):
-    spec = _get_model_fn(estimator)(features, labels, mode)
+  def new_model_fn(features, labels, mode, config):
+    spec = estimator.model_fn(features, labels, mode, config)
     if mode != model_fn_lib.ModeKeys.EVAL:
       return spec
     new_metrics = _call_metric_fn(metric_fn, features, labels, spec.predictions,
-                                  estimator.config)
+                                  config)
     all_metrics = spec.eval_metric_ops or {}
     all_metrics.update(new_metrics)
     return spec._replace(eval_metric_ops=all_metrics)
@@ -91,11 +91,6 @@ def add_metrics(estimator, metric_fn):
       model_fn=new_model_fn,
       model_dir=estimator.model_dir,
       config=estimator.config)
-
-
-# TODO(ispir): Move this to tf.estimator.Estimator.
-def _get_model_fn(estimator):
-  return estimator._call_model_fn  # pylint: disable=protected-access
 
 
 def _verify_metric_fn_args(metric_fn):

@@ -193,7 +193,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
     long_description='',
-    url='http://tensorflow.org/',
+    url='https://www.tensorflow.org/',
     author='Google Inc.',
     author_email='opensource@google.com',
     # Contained modules and scripts.
