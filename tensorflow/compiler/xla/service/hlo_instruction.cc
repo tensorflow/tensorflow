@@ -664,12 +664,12 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     bool in_operand_list = std::find(operands_.begin(), operands_.end(),
                                      instruction_to_fuse) != operands_.end();
     CHECK(add_output || in_operand_list);
-    const std::vector<HloInstruction*>& fused_parameters_ =
+    const std::vector<HloInstruction*>& fused_parameters =
         fused_instructions_computation()->parameter_instructions();
     for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
       if (instruction_to_fuse == operands_[operand_num]) {
         // replace the fused parameter instruction's uses with the clone.
-        HloInstruction* fused_parameter = fused_parameters_[operand_num];
+        HloInstruction* fused_parameter = fused_parameters[operand_num];
         TF_CHECK_OK(fused_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding fused parameter and operand from their
@@ -693,7 +693,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   }
 
   // Reread the parameters in the computation.
-  const std::vector<HloInstruction*>& fused_parameters_ =
+  const std::vector<HloInstruction*>& fused_parameters =
       fused_instructions_computation()->parameter_instructions();
 
   // Add each operand of the clone as an operand of the fusion instruction. A
@@ -704,11 +704,11 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     HloInstruction* operand = clone->mutable_operand(operand_num);
 
     // See if this operand is already an operand of the fusion node.
-    CHECK_EQ(operands_.size(), fused_parameters_.size());
+    CHECK_EQ(operands_.size(), fused_parameters.size());
     HloInstruction* fused_param = nullptr;
     for (int64 i = 0; i < operands_.size(); ++i) {
       if (operands_[i] == operand) {
-        fused_param = fused_parameters_[i];
+        fused_param = fused_parameters[i];
         break;
       }
     }
@@ -717,7 +717,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // Clone's operand was not already an operand of the fusion
       // instruction. Add it as an operand and add a corresponding fused
       // parameter instruction.
-      int64 param_no = fused_parameters_.size();
+      int64 param_no = fused_parameters.size();
       // Name the parameter after the instruction it represents in the outer
       // (non-fusion) computation. Strip the leading "%" from the operand name
       // to avoid a double %%.
