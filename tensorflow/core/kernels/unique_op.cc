@@ -34,8 +34,6 @@ class UniqueOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
-                errors::InvalidArgument("unique expects a 1D vector."));
     // TODO(dga):  Make unique polymorphic for returning int32 and int64
     // vectors to support large tensors.
     OP_REQUIRES(context,
@@ -46,6 +44,43 @@ class UniqueOp : public OpKernel {
 
     int64 axis = 0;
     std::vector<int64> new_sizes{1, input.NumElements(), 1};
+    if (context->num_inputs() == 1) {
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
+                  errors::InvalidArgument("unique expects a 1D vector."));
+    } else {
+      // In case of UniqueV2, the axis is a 1D vector. The purpose is
+      // to allow specifying either "no axis" or "axis". The `[]` means
+      // "no axis", while `[x]` means `axis = x`.
+      const Tensor& axis_tensor = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(axis_tensor.shape()),
+                  errors::InvalidArgument("axis expects a 1D vector."));
+      OP_REQUIRES(
+          context, axis_tensor.NumElements() <= 1,
+          errors::InvalidArgument(
+              "axis does not support input tensors larger than 1 elements"));
+      if (axis_tensor.NumElements() == 0) {
+        OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
+                    errors::InvalidArgument("unique expects a 1D vector."));
+      } else {
+        auto axis_vec = axis_tensor.vec<int64>();
+        axis = axis_vec(0);
+        axis = axis < 0 ? axis + input.dims() : axis;
+        OP_REQUIRES(context, 0 <= axis && axis < input.dims(),
+                    errors::InvalidArgument("axis has to be between [0, ",
+                                            input.dims(), ")"));
+        if (axis > 0) {
+          for (int64 i = 0; i < axis; i++) {
+            new_sizes[0] *= input.dim_size(i);
+          }
+        }
+        new_sizes[1] = input.dim_size(axis);
+        if (axis + 1 < input.dims()) {
+          for (int64 i = axis + 1; i < input.dims(); i++) {
+            new_sizes[2] *= input.dim_size(i);
+          }
+        }
+      }
+    }
 
     auto Tin = input.shaped<T, 3>(new_sizes);
 
@@ -123,6 +158,16 @@ class UniqueOp : public OpKernel {
                               .TypeConstraint<int32>("out_idx"), \
                           UniqueOp<type, int32>);                \
   REGISTER_KERNEL_BUILDER(Name("Unique")                         \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("out_idx"), \
+                          UniqueOp<type, int64>);                \
+  REGISTER_KERNEL_BUILDER(Name("UniqueV2")                       \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("out_idx"), \
+                          UniqueOp<type, int32>);                \
+  REGISTER_KERNEL_BUILDER(Name("UniqueV2")                       \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \
