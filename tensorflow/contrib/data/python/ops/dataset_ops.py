@@ -2276,6 +2276,23 @@ class SqlDataset(Dataset):
   def __init__(self, driver_name, data_source_name, query, output_types):
     """Creates a `SqlDataset`.
 
+    `SqlDataset` allows a user to read data from the result set of a SQL query.
+    For example:
+
+    ```python
+    dataset = tf.contrib.data.SqlDataset("sqlite", "/foo/bar.sqlite3",
+                                         "SELECT name, age FROM people",
+                                         (tf.string, tf.int32))
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    # Prints the rows of the result set of the above query.
+    while True:
+      try:
+        print(sess.run(next_element))
+      except tf.errors.OutOfRangeError:
+        break
+    ```
+
     Args:
       driver_name: A 0-D `tf.string` tensor containing the database type.
         Currently, the only supported value is 'sqlite'.

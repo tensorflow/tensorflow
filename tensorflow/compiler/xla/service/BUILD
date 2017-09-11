@@ -286,6 +286,7 @@ cc_library(
     srcs = ["call_inliner.cc"],
     hdrs = ["call_inliner.h"],
     deps = [
+        ":call_graph",
         ":hlo_pass",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",

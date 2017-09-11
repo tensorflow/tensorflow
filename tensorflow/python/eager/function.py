@@ -26,14 +26,13 @@ import threading
 from autograd import core as ag_core
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
@@ -59,10 +58,8 @@ def capture_tensors(captures):
     _scoped_captures.tensors = old
 
 
-def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
-  """Captures a tfe Tensor while building a graph mode function.
-
-  Creates a placeholder to pass the tensor as an argument.
+def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
+  """Captures a Tensor while building a graph mode function.
 
   Arguments:
     value: A tfe.Tensor object
@@ -71,19 +68,17 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
     as_ref: Ignored (required by register_tensor_conversion_function).
 
   Returns:
-    A placeholder which will, at runtime, have the value of this tensor.
-
-  Raises:
-    ValueError: if called outside a defun context.
+    Returns a constant (the current value of the tensor) if capturing
+    is not enabled. A placeholder which will have the value of the
+    tensor at runtime otherwise.
   """
   if context.in_eager_mode():
     return value
   _ = as_ref
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
-    raise ValueError(
-        "Trying to use tfe.Tensor objects in a graph outside graph mode. "
-        "To build a graph use tfe.defun or tfe.make_template.")
+    # Capturing is not enabled.
+    return constant_op.constant(value.numpy())
   captured_value = tensor_map.get(ops.tensor_id(value), None)
   if captured_value is None:
     captured_value = graph_placeholder(
@@ -100,7 +95,7 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
 # Note that we register this at a higher priority than ops.Tensor since we want
 # to handle subclass specific conversion before a superclass conversion.
 ops.register_tensor_conversion_function(
-    tensor.Tensor, _convert_to_graph_constant, priority=-1)
+    tensor.Tensor, _convert_to_graph_tensor, priority=-1)
 
 
 class _CapturingContext(object):
@@ -261,7 +256,7 @@ class _GraphModeFunction(object):
         outputs[i].set_shape(s)
     else:
       outputs = execute.execute(
-          signature.name,
+          str(signature.name),
           num_outputs=len(signature.output_arg),
           inputs=all_args)
     real_outputs = outputs[:len(self._returns)]
@@ -321,7 +316,7 @@ class _GraphModeFunction(object):
           for x in tensor_inputs
       ]
       result = execute.execute(
-          self._func_name,
+          str(self._func_name),
           num_outputs=self._num_outputs,
           inputs=tensor_inputs + self._extra_inputs)
 
@@ -438,20 +433,10 @@ def _cache_key(x):
   return x
 
 
-def register_function_def(fdef):
-  fdef_string = fdef.SerializeToString()
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.TFE_ContextAddFunctionDef(
-        context.get_default_context()._handle,  # pylint: disable=protected-access
-        fdef_string,
-        len(fdef_string),
-        status)
-
-
 def _register_with_name(name, fdef):
   """Registers the function `fdef` with the name `name`."""
   fdef.signature.name = name
-  register_function_def(fdef)
+  context.context().add_function_def(fdef)
 
 
 # TODO(apassos): better error messages for non-hashable arguments.
