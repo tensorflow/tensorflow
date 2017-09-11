@@ -109,10 +109,10 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir=`ls $RUNFILES | grep solib`
-      if [ -n ${so_lib_dir} ]; then
-        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl)
-        if [ $? -eq 0 ]; then
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
           mkdir "${TMPDIR}/${so_lib_dir}"
           cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
@@ -128,10 +128,10 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir=`ls $RUNFILES | grep solib`
-      if [ -n ${so_lib_dir} ]; then
-        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl)
-        if [ $? -eq 0 ]; then
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
           mkdir "${TMPDIR}/${so_lib_dir}"
           cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
