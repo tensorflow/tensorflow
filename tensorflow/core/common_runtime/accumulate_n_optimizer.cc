@@ -25,27 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-const int kNotAnIndex = -1;
-
-// Utility function to retrieve the index of a given named input of an op
-int op_input_index(const char* op_name, const char* input_name) {
-  const OpDef* op_def;
-  if (!OpRegistry::Global()->LookUpOpDef(op_name, &op_def).ok()) {
-    return kNotAnIndex;
-  }
-
-  // n.b. OpDef is defined in op_def.proto
-  for (int i = 0; i < op_def->input_arg_size(); i++) {
-    const OpDef::ArgDef& arg = op_def->input_arg(i);
-    if (arg.name() == input_name) {
-      return i;
-    }
-  }
-
-  // Name not found
-  return kNotAnIndex;
-}
-
 Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
   Tensor tensor(dtype, TensorShape(shape));
 
@@ -57,9 +36,12 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
   return tensor;
 }
 
+// TEMPORARY debugging code
+#define CHECKPOINT(ix) fprintf(stderr, "Checkpoint " #ix "\n");
+
 // Replaces occurrences of the AccumulateN stub operator with a graph of
-// lower-level ops.  The graph is equivalent to what the following Python
-// code used to produce:
+// lower-level ops. The graph is equivalent (modulo certain corner cases)
+// to what the following Python code used to produce:
 //  with ops.name_scope(name, "AccumulateN", inputs) as name:
 //    var = gen_state_ops._temporary_variable(
 //        shape=tensor_shape.vector(0), dtype=tensor_dtype)
@@ -76,18 +58,6 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 //            ref, var_name=var.op.name, name=name)
 class AccumulateNRemovePass : public GraphOptimizationPass {
  public:
-  // Indices of named arguments to operators we generate.
-  // Constants initialized in the class's constructor so that init code
-  // runs after the OpRegistry is initialized.
-  int kAssignAddRefIx, kAssignAddValueIx, kAssignRefIx, kAssignValueIx;
-
-  AccumulateNRemovePass() :
-    kAssignAddRefIx(op_input_index("AssignAdd", "ref")), 
-    kAssignAddValueIx(op_input_index("AssignAdd", "value")), 
-    kAssignRefIx(op_input_index("Assign", "ref")), 
-    kAssignValueIx(op_input_index("Assign", "value"))
-  { }
-
   Status Run(const GraphOptimizationPassOptions& options) override {
     // TODO(freiss.oss@gmail.com): Substantial shared code with
     // ParallelConcatRemovePass::Run(). Consider refactoring if someone makes
@@ -105,12 +75,6 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
           "graph should be available.");
     }
 
-    if (kNotAnIndex == kAssignAddRefIx) {
-      // i.e. we couldn't figure out what input of the Assign op is called
-      // "ref"
-      return Status(error::INTERNAL, "Failed to query operator registry");
-    }
-
     // Build up a todo list of ops to replace, *then* modify the graph
     gtl::InlinedVector<Node*, 2> matches;
     for (Node* n : g->op_nodes()) {
@@ -124,7 +88,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
     return Status::OK();
   }
 
-  Status rewriteNode(Node *n, Graph* g) {
+  Status rewriteNode(Node* n, Graph* g) {
     AttrSlice n_attrs = n->attrs();
     auto base_make_node = [n, g, &n_attrs](const string& op,
                                            const string& name) {
@@ -157,92 +121,77 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
       }
     }
 
-    // Create graph nodes.
-    Node* tmp_var = nullptr;
-    Node* initial_val = nullptr;
-    Node* assign = nullptr;
-    std::vector<Node*> add_nodes(data_edges.size(), nullptr);
-    Node* destroy_var = nullptr;
-    {
-      const string accumulator_name =
-          strings::StrCat(n->name(), "/Internal/Accumulator");
-      TF_RETURN_IF_ERROR(make_node("TemporaryVariable")
-                             .Attr("shape", shape)
-                             .Attr("dtype", dtype)
-                             .Attr("var_name", accumulator_name)
-                             .Finalize(g, &tmp_var));
-      TF_RETURN_IF_ERROR(make_node("Const")
-                             .Attr("value", make_zeros(dtype, shape))
-                             .Attr("dtype", dtype)
-                             .Finalize(g, &initial_val));
-      TF_RETURN_IF_ERROR(
-          make_node("Assign").Attr("T", dtype).Finalize(g, &assign));
-      for (int i = 0; i < data_edges.size(); ++i) {
-        Node* assignAdd;
-        TF_RETURN_IF_ERROR(make_node("AssignAdd")
-                               .Attr("T", dtype)
-                               .Attr("use_locking", true)
-                               .Finalize(g, &assignAdd));
+    // Create the following ops to replace the AccumulateN placeholder:
+    Node* create_accumulator = nullptr;            // TemporaryVariable op
+    Node* initial_val = nullptr;                   // Const op
+    Node* initialize_accumulator = nullptr;        // Assign op
+    std::vector<Node*> add_values_to_accumulator;  // AssignAdd ops
+    Node* clean_up_accumulator = nullptr;          // DestroyTemporaryVariable
 
-        add_nodes.push_back(assignAdd);
-      }
-      TF_RETURN_IF_ERROR(make_node("DestroyTemporaryVariable")
+    const string accumulator_name =
+        strings::StrCat(n->name(), "/Internal/Accumulator");
+    TF_RETURN_IF_ERROR(make_node("TemporaryVariable")
+                           .Attr("shape", shape)
+                           .Attr("dtype", dtype)
+                           .Attr("var_name", accumulator_name)
+                           .Finalize(g, &create_accumulator));
+    TF_RETURN_IF_ERROR(make_node("Const")
+                           .Attr("value", make_zeros(dtype, shape))
+                           .Attr("dtype", dtype)
+                           .Finalize(g, &initial_val));
+    TF_RETURN_IF_ERROR(make_node("Assign")
+                           .Attr("T", dtype)
+                           .Input(create_accumulator)  // ref: Ref(T)
+                           .Input(initial_val)         // value: T
+                           .Finalize(g, &initialize_accumulator));
+    for (int i = 0; i < data_edges.size(); ++i) {
+      Node* assignAdd;
+      TF_RETURN_IF_ERROR(make_node("AssignAdd")
                              .Attr("T", dtype)
-                             .Attr("var_name", accumulator_name)
-                             .Finalize(g, &destroy_var));
+                             .Attr("use_locking", true)
+                             .Input(initialize_accumulator)  // ref: Ref(T)
+                             .Input(data_edges[i]->src(),
+                                    data_edges[i]->src_output())  // value: T
+                             .Finalize(g, &assignAdd));
+
+      add_values_to_accumulator.push_back(assignAdd);
     }
 
-    // Add edges for data dependencies.
-    {
-      for (int i = 0; i < data_edges.size(); i++) {
-        // Input[i] --> AssignAdd[i].value
-        g->AddEdge(data_edges[i]->src(), data_edges[i]->src_output(),
-                   add_nodes[i], kAssignAddValueIx);
+    // Note that we use the original placeholder op's name here
+    TF_RETURN_IF_ERROR(base_make_node("DestroyTemporaryVariable", n->name())
+                           .Attr("T", dtype)
+                           .Attr("var_name", accumulator_name)
+                           .Input(initialize_accumulator)
+                           .Finalize(g, &clean_up_accumulator));
 
-        // Assign --> AssignAdd[1...n]
-        g->AddEdge(assign, 0, add_nodes[i], kAssignAddRefIx);
-      }
-
-      // TempVar --> Assign
-      g->AddEdge(tmp_var, 0, assign, kAssignValueIx);
-
-      // Const --> Assign
-      g->AddEdge(initial_val, 0, assign, kAssignRefIx);
-
-      // Assign --> Destroy
-      g->AddEdge(assign, 0, destroy_var, 0);
-
-      // Redirect original outgoing data edges
-      for (const Edge* out_edge : n->out_edges()) {
-        if (!out_edge->IsControlEdge()) {
-          g->AddEdge(destroy_var, 0, out_edge->dst(), out_edge->dst_input());
-        }
-      }
+    // Add edges to the graph to ensure that operations occur in the right
+    // order:
+    // 1. Do anything that had a control edge to the AccumulateN placeholder
+    // 2. Initialize accumulator
+    // 3. Add input values to accumulator (already handled by data edges
+    //    added above)
+    // 4. Reclaim the buffer that held the accumulator
+    // 5. Do anything that depended on the AccumulateN placeholder
+    for (const Edge* control_edge : control_edges) {
+      g->AddControlEdge(control_edge->src(), initialize_accumulator);
     }
 
-    // Add edges for control dependencies.
-    {
-      for (const Edge* data_edge : data_edges) {
-        // Inputs --> Assign
-        g->AddControlEdge(data_edge->src(), assign);
-      }
-      for (const Edge* control_edge : control_edges) {
-        // Original incoming control edges --> Assign
-        g->AddControlEdge(control_edge->src(), assign);
-      }
-      for (Node* assign_add : add_nodes) {
-        // AssignAdds --> Destroy
-        g->AddControlEdge(assign_add, destroy_var);
-      }
-      // Redirect original outgoing control edges
-      for (const Edge* out_edge : n->out_edges()) {
-        if (out_edge->IsControlEdge()) {
-          g->AddControlEdge(destroy_var, out_edge->dst());
-        }
+    for (Node* assign_add : add_values_to_accumulator) {
+      g->AddControlEdge(assign_add, clean_up_accumulator);
+    }
+
+    for (const Edge* out_edge : n->out_edges()) {
+      if (out_edge->IsControlEdge()) {
+        g->AddControlEdge(clean_up_accumulator, out_edge->dst());
+      } else {
+        g->AddEdge(clean_up_accumulator, 0, out_edge->dst(),
+                   out_edge->dst_input());
       }
     }
 
-    // Remove the original placeholder.
+    // Remove the original AccumulateN placeholder op.
+    // This removal modifies the op and must happen after we have finished
+    // using its incoming/outgoing edge sets.
     g->RemoveNode(n);
 
     return Status::OK();
