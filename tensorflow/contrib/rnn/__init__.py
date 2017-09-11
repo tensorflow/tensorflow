@@ -38,6 +38,7 @@ See @{$python/contrib.rnn} guide.
 @@LSTMBlockWrapper
 @@LSTMBlockCell
 @@GRUBlockCell
+@@GRUBlockCellV2
 @@FusedRNNCell
 @@FusedRNNCellAdaptor
 @@TimeReversedFusedRNN

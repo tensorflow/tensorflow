@@ -91,10 +91,11 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   string node_name;
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
-  if (instruction->IsFused()) {
-    node_name = GetNodeNameForInstruction(instruction->fusion_instruction());
+  const HloComputation* computation = instruction->parent();
+  if (computation->IsFusionComputation()) {
+    node_name = GetNodeNameForInstruction(computation->FusionInstruction());
   } else {
-    node_name = instruction->parent()->name();
+    node_name = computation->name();
     if (!instruction->metadata().op_name().empty()) {
       // Always make computations contain TF ops but not the other way around.
       StrAppend(&node_name, "/", instruction->metadata().op_name());

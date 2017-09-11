@@ -35,6 +35,12 @@ EAGER_MODE = 1
 # Default execution mode.
 _default_mode = GRAPH_MODE
 
+# Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
+# new_device_spec).
+# Note that we do not protect this with a lock and instead rely on python's GIL
+# and the idempotent nature of writes to provide thread safety.
+_device_parsing_cache = {}
+
 
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
@@ -172,16 +178,6 @@ class Context(object):
     self._summary_writer_resource = resource
 
   @property
-  def recording_summaries(self):
-    """Returns True if recording summaries is enabled in current thread.."""
-    return self._eager_context.recording_summaries
-
-  @recording_summaries.setter
-  def recording_summaries(self, val):
-    """Enables recording summaries is enabled in current thread.."""
-    self._eager_context.recording_summaries = val
-
-  @property
   def device_name(self):
     """Returns the device name for the current thread."""
     return self._eager_context.device_name
@@ -207,22 +203,33 @@ class Context(object):
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
-    if name is not None:
-      if not isinstance(name, str):
-        raise ValueError("Expecting a string device name. Got %s(%s)" %
-                         (type(name), name))
-      device_spec = pydev.DeviceSpec.from_string(name)
-      if old_device_name:
-        new_device_spec = copy.copy(old_device_spec)
+    cache_key = (old_device_name, name)
+    try:
+      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
+    except TypeError:
+      # Error while trying to compute the cache key.
+      raise ValueError("Expecting a string device name. Got %s(%s)" %
+                       (type(name), name))
+    except KeyError:
+      # Handle a cache miss.
+      if name is not None:
+        if not isinstance(name, str):
+          raise ValueError("Expecting a string device name. Got %s(%s)" %
+                           (type(name), name))
+        device_spec = pydev.DeviceSpec.from_string(name)
+        if old_device_name:
+          new_device_spec = copy.copy(old_device_spec)
+        else:
+          new_device_spec = pydev.DeviceSpec.from_string(
+              "/job:localhost/replica:0/task:0/device:CPU:0")
+        new_device_spec.merge_from(device_spec)
       else:
-        new_device_spec = pydev.DeviceSpec.from_string(
-            "/job:localhost/replica:0/task:0/device:CPU:0")
-      new_device_spec.merge_from(device_spec)
-    else:
-      new_device_spec = pydev.DeviceSpec.from_string("")
+        new_device_spec = pydev.DeviceSpec.from_string("")
+      new_device_name = new_device_spec.to_string()
+      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
 
     try:
-      eager_context.device_name = new_device_spec.to_string()
+      eager_context.device_name = new_device_name
       eager_context.device_spec = new_device_spec
       yield
     finally:
@@ -358,24 +365,6 @@ def device(name):
     Context manager for setting the device.
   """
   return context().device(name)
-
-
-@contextlib.contextmanager
-def record_summaries():
-  """Context-manager to enable recording of summaries."""
-  ctx = context()
-  old = ctx.recording_summaries
-  ctx.recording_summaries = True
-  try:
-    yield
-  finally:
-    ctx.recording_summaries = old
-
-
-def should_record_summary():
-  """True if a summary should be recorded now."""
-  c = context()
-  return c.recording_summaries and c.summary_writer_resource is not None
 
 
 def run(main=None, argv=None):

@@ -71,3 +71,29 @@ cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "frame",
+    srcs = ["frame.cc"],
+    hdrs = ["frame.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+cc_test(
+    name = "frame_test",
+    size = "small",
+    srcs = ["frame_test.cc"],
+    deps = [
+        ":frame",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)

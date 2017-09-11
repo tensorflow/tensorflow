@@ -57,7 +57,7 @@ void ReadFileToStringOrDie(Env* env, const string& filename, string* output) {
 void TestJPEG(Env* env, const string& jpegfile) {
   // Read the data from the jpeg file into memory
   string jpeg;
-  ReadFileToStringOrDie(Env::Default(), jpegfile, &jpeg);
+  ReadFileToStringOrDie(env, jpegfile, &jpeg);
   const int fsize = jpeg.size();
   const uint8* const temp = bit_cast<const uint8*>(jpeg.data());
 
@@ -93,6 +93,194 @@ TEST(JpegMemTest, Jpeg) {
 
   // Exercise CMYK machinery as well
   TestJPEG(env, data_path + "jpeg_merge_test1_cmyk.jpg");
+}
+
+void TestCropAndDecodeJpeg(Env* env, const string& jpegfile,
+                           const UncompressFlags& default_flags) {
+  // Read the data from the jpeg file into memory
+  string jpeg;
+  ReadFileToStringOrDie(env, jpegfile, &jpeg);
+  const int fsize = jpeg.size();
+  auto temp = bit_cast<const uint8*>(jpeg.data());
+
+  // Decode the whole image.
+  std::unique_ptr<uint8[]> imgdata1;
+  int w1, h1, c1;
+  {
+    UncompressFlags flags = default_flags;
+    if (flags.stride == 0) {
+      imgdata1.reset(Uncompress(temp, fsize, flags, &w1, &h1, &c1, nullptr));
+    } else {
+      // If stride is not zero, the default allocator would fail because it
+      // allocate w*h*c bytes, but the actual required bytes should be stride*h.
+      // Therefore, we provide a specialized allocator here.
+      uint8* buffer = nullptr;
+      imgdata1.reset(Uncompress(temp, fsize, flags, nullptr,
+                                [&](int width, int height, int components) {
+                                  w1 = width;
+                                  h1 = height;
+                                  c1 = components;
+                                  buffer = new uint8[flags.stride * height];
+                                  return buffer;
+                                }));
+    }
+    ASSERT_NE(imgdata1, nullptr);
+  }
+
+  auto check_crop_and_decode_func = [&](int crop_x, int crop_y, int crop_width,
+                                        int crop_height) {
+    std::unique_ptr<uint8[]> imgdata2;
+    int w, h, c;
+    UncompressFlags flags = default_flags;
+    flags.crop = true;
+    flags.crop_x = crop_x;
+    flags.crop_y = crop_y;
+    flags.crop_width = crop_width;
+    flags.crop_height = crop_height;
+    if (flags.stride == 0) {
+      imgdata2.reset(Uncompress(temp, fsize, flags, &w, &h, &c, nullptr));
+    } else {
+      uint8* buffer = nullptr;
+      imgdata2.reset(Uncompress(temp, fsize, flags, nullptr,
+                                [&](int width, int height, int components) {
+                                  w = width;
+                                  h = height;
+                                  c = components;
+                                  buffer = new uint8[flags.stride * height];
+                                  return buffer;
+                                }));
+    }
+    ASSERT_NE(imgdata2, nullptr);
+
+    ASSERT_EQ(w, crop_width);
+    ASSERT_EQ(h, crop_height);
+    ASSERT_EQ(c, c1);
+
+    const int stride1 = (flags.stride != 0) ? flags.stride : w1 * c;
+    const int stride2 = (flags.stride != 0) ? flags.stride : w * c;
+    for (int i = 0; i < crop_height; i++) {
+      const uint8* p1 = &imgdata1[(i + crop_y) * stride1 + crop_x * c];
+      const uint8* p2 = &imgdata2[i * stride2];
+
+      for (int j = 0; j < c * w; j++) {
+        ASSERT_EQ(p1[j], p2[j])
+            << "p1 != p2 in [" << i << "][" << j / 3 << "][" << j % 3 << "]";
+      }
+    }
+  };
+
+  // Check different crop windows.
+  check_crop_and_decode_func(0, 0, 5, 5);
+  check_crop_and_decode_func(0, 0, w1, 5);
+  check_crop_and_decode_func(0, 0, 5, h1);
+  check_crop_and_decode_func(0, 0, w1, h1);
+  check_crop_and_decode_func(w1 - 5, h1 - 6, 5, 6);
+  check_crop_and_decode_func(5, 6, 10, 15);
+}
+
+TEST(JpegMemTest, CropAndDecodeJpeg) {
+  Env* env = Env::Default();
+  const string data_path = kTestData;
+  UncompressFlags flags;
+
+  // Test basic flags for jpeg and cmyk jpeg.
+  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1_cmyk.jpg", flags);
+}
+
+TEST(JpegMemTest, CropAndDecodeJpegWithRatio) {
+  Env* env = Env::Default();
+  const string data_path = kTestData;
+  UncompressFlags flags;
+  for (int ratio : {1, 2, 4, 8}) {
+    flags.ratio = ratio;
+    TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  }
+}
+
+TEST(JpegMemTest, CropAndDecodeJpegWithComponents) {
+  Env* env = Env::Default();
+  const string data_path = kTestData;
+  UncompressFlags flags;
+  for (const int components : {0, 1, 3}) {
+    flags.components = components;
+    TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  }
+}
+
+TEST(JpegMemTest, CropAndDecodeJpegWithUpScaling) {
+  Env* env = Env::Default();
+  const string data_path = kTestData;
+  UncompressFlags flags;
+  flags.fancy_upscaling = true;
+  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+}
+
+TEST(JpegMemTest, CropAndDecodeJpegWithStride) {
+  Env* env = Env::Default();
+  const string data_path = kTestData;
+
+  // Read the data from the jpeg file into memory
+  string jpeg;
+  ReadFileToStringOrDie(env, data_path + "jpeg_merge_test1.jpg", &jpeg);
+  const int fsize = jpeg.size();
+  auto temp = bit_cast<const uint8*>(jpeg.data());
+
+  int w, h, c;
+  ASSERT_TRUE(GetImageInfo(temp, fsize, &w, &h, &c));
+
+  // stride must be either 0 or > w*c; otherwise, uncompress would fail.
+  UncompressFlags flags;
+  flags.stride = w * c;
+  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  flags.stride = w * c * 3;
+  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  flags.stride = w * c + 100;
+  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+}
+
+void CheckInvalidCropWindowFailed(const uint8* const temp, int fsize, int x,
+                                  int y, int w, int h) {
+  std::unique_ptr<uint8[]> imgdata;
+  int ww, hh, cc;
+  UncompressFlags flags;
+  flags.components = 3;
+  flags.crop = true;
+  flags.crop_x = x;
+  flags.crop_y = y;
+  flags.crop_width = w;
+  flags.crop_height = h;
+  imgdata.reset(Uncompress(temp, fsize, flags, &ww, &hh, &cc, nullptr));
+  CHECK(imgdata == nullptr);
+}
+
+TEST(JpegMemTest, CropAndDecodeJpegWithInvalidCropWindow) {
+  Env* env = Env::Default();
+  const string data_path = kTestData;
+
+  // Read the data from the jpeg file into memory
+  string jpeg;
+  ReadFileToStringOrDie(env, data_path + "jpeg_merge_test1.jpg", &jpeg);
+  const int fsize = jpeg.size();
+  auto temp = bit_cast<const uint8*>(jpeg.data());
+
+  int w, h, c;
+  ASSERT_TRUE(GetImageInfo(temp, fsize, &w, &h, &c));
+
+  // Width and height for the crop window must be non zero.
+  CheckInvalidCropWindowFailed(temp, fsize, 11, 11, /*w=*/0, 11);
+  CheckInvalidCropWindowFailed(temp, fsize, 11, 11, 11, /*h=*/0);
+
+  // Crop window must be non negative.
+  CheckInvalidCropWindowFailed(temp, fsize, /*x=*/-1, 11, 11, 11);
+  CheckInvalidCropWindowFailed(temp, fsize, 11, /*y=*/-1, 11, 11);
+  CheckInvalidCropWindowFailed(temp, fsize, 11, 11, /*w=*/-1, 11);
+  CheckInvalidCropWindowFailed(temp, fsize, 11, 11, 11, /*h=*/-1);
+
+  // Invalid crop window width: x + crop_width = w + 1 > w
+  CheckInvalidCropWindowFailed(temp, fsize, /*x=*/w - 10, 11, 11, 11);
+  // Invalid crop window height: y + crop_height= h + 1 > h
+  CheckInvalidCropWindowFailed(temp, fsize, 11, /*y=*/h - 10, 11, 11);
 }
 
 TEST(JpegMemTest, Jpeg2) {

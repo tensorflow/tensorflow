@@ -172,6 +172,8 @@ def tf_copts():
               "-std=c++11",
               "-DTF_LEAN_BINARY",
               "-O2",
+              "-Wno-narrowing",
+              "-fomit-frame-pointer",
           ],
           clean_dep("//tensorflow:darwin"): [],
           clean_dep("//tensorflow:windows"): WIN_COPTS,

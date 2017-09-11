@@ -71,12 +71,14 @@ Use that package at your own risk.
 
 ## Installing with native pip
 
-If the following version of Python is not installed on your machine,
+If one of the following versions of Python is not installed on your machine,
 install it now:
 
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
+  * [Python 3.6.x 64-bit from python.org](https://www.python.org/downloads/release/python-362/)
 
-Note that Python 3.5.x comes with the pip3 package manager, which is the
+-TensorFlow supports Python 3.5.x and 3.6.x on Windows.
+Note that Python 3 comes with the pip3 package manager, which is the
 program you'll use to install TensorFlow.
 
 To install TensorFlow, start a terminal. Then issue the appropriate

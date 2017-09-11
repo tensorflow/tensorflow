@@ -335,7 +335,9 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # For class instance without __repr__, some special cares are required.
     # Otherwise, the object address will be used.
     if '_cluster_spec' in ordered_state:
-      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
+      ordered_state['_cluster_spec'] = collections.OrderedDict(
+          sorted(ordered_state['_cluster_spec'].as_dict().items(),
+                 key=lambda t: t[0]))
     return ', '.join(
         '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 

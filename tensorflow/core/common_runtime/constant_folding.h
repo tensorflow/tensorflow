@@ -32,8 +32,8 @@ struct ConstantFoldingOptions {
   // If shape_map is not a nullptr, it is a map from node n to a
   // vector of the (potentially partially-known) shapes of its
   // outputs.
-  const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
-      shape_map = nullptr;  // not owned
+  const std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map =
+      nullptr;  // not owned
 };
 
 // Perform constant folding optimization on "graph".

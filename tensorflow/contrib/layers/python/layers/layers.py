@@ -50,6 +50,7 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
+from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
@@ -92,7 +93,8 @@ __all__ = ['avg_pool2d',
            'unit_norm',
            'legacy_fully_connected',
            'legacy_linear',
-           'legacy_relu']
+           'legacy_relu',
+           'maxout']
 
 DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
@@ -810,7 +812,8 @@ def batch_norm(inputs,
     if data_format == DATA_FORMAT_NCHW:
       mean = array_ops.reshape(mean, params_shape_broadcast)
       variance = array_ops.reshape(variance, params_shape_broadcast)
-      beta = array_ops.reshape(beta, params_shape_broadcast)
+      if beta is not None:
+        beta = array_ops.reshape(beta, params_shape_broadcast)
       if gamma is not None:
         gamma = array_ops.reshape(gamma, params_shape_broadcast)
 
@@ -2650,14 +2653,19 @@ def spatial_softmax(features,
       [x1, y1, ... xN, yN].
   Raises:
     ValueError: If unexpected data_format specified.
+    ValueError: If num_channels dimension is unspecified.
   """
   shape = array_ops.shape(features)
+  static_shape = features.shape
   if data_format == DATA_FORMAT_NHWC:
-    height, width, num_channels = shape[1], shape[2], shape[3]
+    height, width, num_channels = shape[1], shape[2], static_shape[3]
   elif data_format == DATA_FORMAT_NCHW:
-    num_channels, height, width = shape[1], shape[2], shape[3]
+    num_channels, height, width = static_shape[1], shape[2], shape[3]
   else:
     raise ValueError('data_format has to be either NCHW or NHWC.')
+  if num_channels.value is None:
+    raise ValueError('The num_channels dimension of the inputs to '
+                     '`spatial_softmax` should be defined. Found `None`.')
 
   with ops.name_scope(name, 'spatial_softmax', [features]) as name:
     # Create tensors for x and y coordinate values, scaled to range [-1, 1].
@@ -2688,7 +2696,9 @@ def spatial_softmax(features,
     expected_y = math_ops.reduce_sum(
         pos_y * softmax_attention, [1], keep_dims=True)
     expected_xy = array_ops.concat([expected_x, expected_y], 1)
-    feature_keypoints = array_ops.reshape(expected_xy, [-1, num_channels * 2])
+    feature_keypoints = array_ops.reshape(
+        expected_xy, [-1, num_channels.value * 2])
+    feature_keypoints.set_shape([None, num_channels.value * 2])
     return feature_keypoints
 
 

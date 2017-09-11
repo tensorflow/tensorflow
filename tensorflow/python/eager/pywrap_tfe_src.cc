@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/python/lib/core/py_func.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 
 using tensorflow::string;
 
@@ -328,7 +328,7 @@ PyObject* TFE_Py_TensorHandleToNumpy(TFE_TensorHandle* h, TF_Status* status) {
     Py_RETURN_NONE;
   }
   PyObject* ret = nullptr;
-  auto cppstatus = tensorflow::ConvertTensorToNdarray(*t, &ret);
+  auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
   if (!cppstatus.ok()) {
     TF_SetStatus(status, TF_Code(cppstatus.code()),
                  cppstatus.error_message().c_str());
@@ -345,7 +345,7 @@ PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
 
 TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
   tensorflow::Tensor t;
-  auto cppstatus = tensorflow::ConvertNdarrayToTensor(obj, &t);
+  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
   if (cppstatus.ok()) {
     return TFE_NewTensorHandle(t);
   } else {

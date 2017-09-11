@@ -22,7 +22,6 @@ from autograd import core as ag_core
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import custom_gradient
-from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
@@ -247,22 +246,18 @@ class TensorVSpace(ag_core.VSpace):
   """VSpace for tf/tfe Tensors in autograd."""
 
   def __init__(self, value):
+    self.size = 1
     if isinstance(value, ops.IndexedSlices):
       self.shape = tensor_shape.TensorShape(value.dense_shape.numpy())
       self.dtype = value.values.dtype
     else:
-      self.shape = value.shape
+      self.shape = value._shape_tuple()  # pylint: disable=protected-access
       self.dtype = value.dtype
-    self.size = self.shape.num_elements()
     # TODO(apassos) put gradients on the same device as ops.
 
   def __eq__(self, other):
-    if isinstance(other, tape.NoneVSpace):
-      return True
-    if self.dtype == dtypes.resource or other.dtype == dtypes.resource:
-      return True
-    return (type(self) == type(other)  # pylint: disable=unidiomatic-typecheck
-            and self.dtype == other.dtype)
+    # TODO(apassos) consider revisiting this if not performance sensitive.
+    return True
 
   def __ne__(self, other):
     return not self.__eq__(other)
@@ -292,6 +287,10 @@ class TensorVSpace(ag_core.VSpace):
       x = _indexed_slices_to_tensor(x)
     if isinstance(y, ops.IndexedSlices):
       y = _indexed_slices_to_tensor(y)
+    if x is None:
+      return y
+    if y is None:
+      return x
     return math_ops.add(x, y)
 
 

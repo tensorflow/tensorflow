@@ -27,6 +27,7 @@ import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
@@ -706,8 +707,8 @@ class NodeStepper(object):
       if ":" in element_name:
         debug_utils.add_debug_tensor_watch(
             run_options,
-            debug_data.get_node_name(element_name),
-            output_slot=debug_data.get_output_slot(element_name),
+            debug_graphs.get_node_name(element_name),
+            output_slot=debug_graphs.get_output_slot(element_name),
             debug_urls=["file://" + dump_path])
 
     return dump_path, run_options
@@ -961,5 +962,5 @@ class NodeStepper(object):
       The node associated with element in the graph.
     """
 
-    node_name, _ = debug_data.parse_node_or_tensor_name(element.name)
+    node_name, _ = debug_graphs.parse_node_or_tensor_name(element.name)
     return self._sess.graph.as_graph_element(node_name)

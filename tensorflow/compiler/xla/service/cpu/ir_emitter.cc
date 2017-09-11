@@ -79,6 +79,9 @@ IrEmitter::IrEmitter(
       hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
+      parallel_cpu_backend_(
+          options::CpuParallelBackendRequested(hlo_module_config_)),
+      is_top_level_computation_(false),
       target_machine_features_(target_machine) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
@@ -87,23 +90,24 @@ IrEmitter::IrEmitter(
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
-    bool is_entry_computation,
+    bool is_top_level_computation,
     std::vector<const HloInstruction*>* instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
           << "]; ordered? " << (instruction_order != nullptr);
+  is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     num_dynamic_loop_bounds_ =
         computation->root_instruction()->outer_dimension_partitions().size();
   }
 
-  InitializeIrFunction(function_name, is_entry_computation);
+  InitializeIrFunction(function_name);
   // The rdtscp instruction is x86 specific.  We will fallback to LLVM's generic
   // readcyclecounter if it is unavailable.
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
-  profiling_state_ = ProfilingState(is_entry_computation, use_rdtscp,
+  profiling_state_ = ProfilingState(is_top_level_computation_, use_rdtscp,
                                     GetProfileCountersArgument());
   if (instruction_order == nullptr) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
@@ -121,8 +125,7 @@ static llvm::Argument* GetArg(llvm::Function* f, int idx) {
   return &*arg_iter;
 }
 
-void IrEmitter::InitializeIrFunction(const string& function_name,
-                                     bool is_entry_computation) {
+void IrEmitter::InitializeIrFunction(const string& function_name) {
   // The function signature is:
   //   void function(i8* retval, i8* run_options, i8** params, i8** temps,
   //                 i64* dynamic_loop_bounds, i64* prof_counters)
@@ -181,7 +184,7 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
   llvm::Type* i64_ptr_type = llvm::Type::getInt64PtrTy(module_->getContext());
   std::vector<llvm::Type*> compute_function_params(
       {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
-  if (num_dynamic_loop_bounds_ > 0) {
+  if (IsParallelContext()) {
     compute_function_params.push_back(i64_ptr_type);
   }
   if (hlo_to_profile_idx_) {
@@ -196,8 +199,8 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
   // a-priori that embedded functions (non-entry functions) will not have its
   // name resolved, give it local linkage.
   llvm::Function::LinkageTypes linkage =
-      is_entry_computation ? llvm::GlobalValue::ExternalLinkage
-                           : llvm::GlobalValue::InternalLinkage;
+      is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
+                                : llvm::GlobalValue::InternalLinkage;
   compute_function_ = llvm::Function::Create(/*Ty=*/compute_function_type,
                                              /*Linkage=*/linkage,
                                              /*Name=*/function_name.c_str(),
@@ -210,7 +213,7 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
   (++arg_iter)->setName("run_options");
   (++arg_iter)->setName("params");
   (++arg_iter)->setName("temps");
-  if (num_dynamic_loop_bounds_ > 0) {
+  if (IsParallelContext()) {
     (++arg_iter)->setName("dynamic_loop_bounds");
   }
   if (hlo_to_profile_idx_) {
@@ -235,6 +238,13 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
   // unrolling).
   if (options::OptimizeForSizeRequested(hlo_module_config_)) {
     compute_function_->addFnAttr(llvm::Attribute::OptimizeForSize);
+  }
+
+  if (hlo_module_config_.debug_options().xla_enable_fast_math()) {
+    compute_function_->addFnAttr("unsafe-fp-math", "true");
+    compute_function_->addFnAttr("no-infs-fp-math", "true");
+    compute_function_->addFnAttr("no-nans-fp-math", "true");
+    compute_function_->addFnAttr("no-signed-zeros-fp-math", "true");
   }
 
   ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(
@@ -910,6 +920,11 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
     if (LayoutUtil::IsMonotonicWithDim0Major(lhs_shape.layout()) &&
         LayoutUtil::IsMonotonicWithDim0Major(rhs_shape.layout()) &&
         LayoutUtil::IsMonotonicWithDim0Major(convolution_shape.layout())) {
+      // We lower 1D convolutions into calls to the same Eigen function as 2D
+      // convolutions, except that we pretend that the 1D convolution is really
+      // a 2D convolution with the missing dimension set to 1.  We also adjust
+      // the padding, dilation parameters as needed.
+      bool one_dim_convolution = lhs_shape.dimensions_size() == 3;
       llvm::Value* lhs_address = GetEmittedValueFor(lhs);
       llvm::Value* rhs_address = GetEmittedValueFor(rhs);
       TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
@@ -922,7 +937,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       const Shape& input_shape = convolution->operand(0)->shape();
       int64 input_batch = input_shape.dimensions(dnums.batch_dimension());
       int64 input_rows = input_shape.dimensions(dnums.spatial_dimensions(0));
-      int64 input_cols = input_shape.dimensions(dnums.spatial_dimensions(1));
+      int64 input_cols =
+          one_dim_convolution
+              ? 1
+              : input_shape.dimensions(dnums.spatial_dimensions(1));
       int64 input_channels = input_shape.dimensions(dnums.feature_dimension());
 
       // Kernel tensor.
@@ -930,7 +948,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       int64 kernel_rows =
           kernel_shape.dimensions(dnums.kernel_spatial_dimensions(0));
       int64 kernel_cols =
-          kernel_shape.dimensions(dnums.kernel_spatial_dimensions(1));
+          one_dim_convolution
+              ? 1
+              : kernel_shape.dimensions(dnums.kernel_spatial_dimensions(1));
       int64 kernel_channels =
           kernel_shape.dimensions(dnums.kernel_input_feature_dimension());
       int64 kernel_filters =
@@ -941,22 +961,29 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       int64 output_rows =
           convolution_shape.dimensions(dnums.spatial_dimensions(0));
       int64 output_cols =
-          convolution_shape.dimensions(dnums.spatial_dimensions(1));
+          one_dim_convolution
+              ? 1
+              : convolution_shape.dimensions(dnums.spatial_dimensions(1));
 
       // Extract the window stride for the convolution.
       const Window& window = convolution->window();
       int64 row_stride = window.dimensions(0).stride();
-      int64 col_stride = window.dimensions(1).stride();
+      int64 col_stride =
+          one_dim_convolution ? 1 : window.dimensions(1).stride();
 
       int64 padding_top = window.dimensions(0).padding_low();
       int64 padding_bottom = window.dimensions(0).padding_high();
-      int64 padding_left = window.dimensions(1).padding_low();
-      int64 padding_right = window.dimensions(1).padding_high();
+      int64 padding_left =
+          one_dim_convolution ? 0 : window.dimensions(1).padding_low();
+      int64 padding_right =
+          one_dim_convolution ? 0 : window.dimensions(1).padding_high();
 
       int64 lhs_row_dilation = window.dimensions(0).base_dilation();
-      int64 lhs_col_dilation = window.dimensions(1).base_dilation();
+      int64 lhs_col_dilation =
+          one_dim_convolution ? 1 : window.dimensions(1).base_dilation();
       int64 rhs_row_dilation = window.dimensions(0).window_dilation();
-      int64 rhs_col_dilation = window.dimensions(1).window_dilation();
+      int64 rhs_col_dilation =
+          one_dim_convolution ? 1 : window.dimensions(1).window_dilation();
 
       // Args have been computed, make the call.
       llvm::Type* float_ptr_type = ir_builder_.getFloatTy()->getPointerTo();
@@ -2660,7 +2687,23 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   llvm::Value* root_value = GetEmittedValueFor(root);
   VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
 
-  if (auto* prof_counter = GetProfileCounterFor(/*hlo=*/nullptr)) {
+  // For the parallel cpu backend, we record the total for each embedded
+  // computation callee with its caller kCall HLO.
+  HloInstruction* hlo_to_lookup = nullptr;
+  if (IsParallelContext()) {
+    auto* computation = root->parent();
+    auto* entry_computation = computation->parent()->entry_computation();
+    if (computation != entry_computation) {
+      for (auto& instruction : entry_computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kCall &&
+            instruction->to_apply()->root_instruction() == root) {
+          hlo_to_lookup = instruction.get();
+          break;
+        }
+      }
+    }
+  }
+  if (auto* prof_counter = GetProfileCounterFor(hlo_to_lookup)) {
     profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
   }
 
@@ -2755,7 +2798,7 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* ir_builder,
 
 void IrEmitter::ProfilingState::RecordCompleteComputation(
     llvm::IRBuilder<>* ir_builder, llvm::Value* prof_counter) {
-  if (is_entry_computation_ && last_read_cycle_end_ &&
+  if (is_top_level_computation_ && last_read_cycle_end_ &&
       first_read_cycle_start_) {
     UpdateProfileCounter(ir_builder, prof_counter, last_read_cycle_end_,
                          first_read_cycle_start_);
@@ -2802,7 +2845,7 @@ llvm::Argument* IrEmitter::GetResultArgument() {
 }
 
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
-  const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
+  const int64 arg_index = IsParallelContext() ? 5 : 4;
   return hlo_to_profile_idx_ ? GetArg(compute_function_, arg_index) : nullptr;
 }
 

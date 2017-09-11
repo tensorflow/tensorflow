@@ -42,6 +42,8 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@inf_nan_callback
 @@nan_callback
 @@seterr
+
+@@Saver
 """
 
 from __future__ import absolute_import
@@ -51,6 +53,7 @@ from __future__ import print_function
 
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
+from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager.custom_gradient import custom_gradient
