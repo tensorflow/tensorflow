@@ -1091,6 +1091,18 @@ TEST_F(NaryGradTest, Minimum) {
   RunTest(x, x_init_value, y, shape);
 }
 
+TEST_F(NaryGradTest, Erf) {
+  TensorShape shape({3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Erf(scope_, x);
+  // Ref: https://en.wikipedia.org/wiki/File:Error_Function.svg
+  Tensor x_init_value =
+      test::AsTensor<float>({-1.2f, -1.0f, -0.5f, 0.3f, 0.5f, 1.3f}, {3, 2});
+  RunTest(x, x_init_value, y, shape);
+  // TODO(suharshs): add test case for complex values
+  // Ref: https://en.wikipedia.org/wiki/Error_function#/media/File:ComplexErf.jpg
+}
+
 TEST_F(NaryGradTest, Lgamma) {
   TensorShape shape({3, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
