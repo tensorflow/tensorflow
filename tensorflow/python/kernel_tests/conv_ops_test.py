@@ -156,11 +156,11 @@ class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
     if use_gpu and not test_util.CudaSupportsHalfMatMulAndConv():
-      return [dtypes.float32]
+      return [dtypes.float64, dtypes.float32]
     else:
       # It is important that float32 comes before float16 here,
       # as we will be using its gradients as reference for fp16 gradients.
-      return [dtypes.float32, dtypes.float16]
+      return [dtypes.float64, dtypes.float32, dtypes.float16]
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, strides,
                             padding, data_format, dtype, use_gpu):
@@ -754,7 +754,7 @@ class Conv2DTest(test.TestCase):
                                                                filter_shape,
                                                                conv,
                                                                output_shape)
-        if dtype == dtypes.float32:
+        if dtype == dtypes.float32 or dtype == dtypes.float64:
           reference_jacob_t = jacob_t
           err = np.fabs(jacob_t - jacob_n).max()
         else:
