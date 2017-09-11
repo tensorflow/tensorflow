@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
@@ -145,6 +146,32 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(indices, [[0, 0], [1, 0], [2, 0]])
       self.assertAllEqual(shape, [3, 1])
 
+  def testStringSplitWithUtf8AndEmptyDelimiter(self):
+    # utf8 \xE6\x82\xA8 \xE5\xA5\xBD, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE6\x82\xA8\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split(strings, delimiter="", encoding="utf8")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"\xE6\x82\xA8", b"\xE5\xA5\xBD",
+                                   b"\xE4\xB8\x96", b"\xE7\x95\x8C"])
+      self.assertAllEqual(shape, [2, 2])
+
+  def testStringSplitWithInvalidUtf8(self):
+    # Invalid char
+    strings1 = [b"\xE2\x28\xA1"]
+    tokens1 = string_ops.string_split(strings1, delimiter="", encoding="utf8")
+    with self.assertRaisesRegexp(errors.InternalError, "invalid utf8 encoding"):
+      with self.test_session() as sess:
+        indices, values, shape = sess.run(tokens1)
+
+    # Not enough char
+    strings2 = [b"\xE6\x82"]
+    tokens2 = string_ops.string_split(strings2, delimiter="", encoding="utf8")
+    with self.assertRaisesRegexp(errors.InternalError, "invalid utf8 encoding"):
+      with self.test_session() as sess:
+        indices, values, shape = sess.run(tokens2)
 
 if __name__ == "__main__":
   test.main()
