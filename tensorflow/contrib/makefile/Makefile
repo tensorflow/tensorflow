@@ -247,7 +247,8 @@ ifeq ($(TARGET),ANDROID)
 -march=armv7-a \
 -mfloat-abi=softfp \
 -mfpu=neon \
--fPIE
+-fPIE \
+-fPIC
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
