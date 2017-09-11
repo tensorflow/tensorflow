@@ -28,19 +28,62 @@ namespace tensorflow {
 
 namespace {
 
-std::vector<string> Split(const string& str, const string& delimiter,
-                          const bool skipEmpty) {
+Status Split(std::vector<string>& char_vector, const string& str,
+             const string& delimiter, const bool skipEmpty,
+             const string& encoding) {
   if (!delimiter.empty()) {
     if (skipEmpty) {
-      return str_util::Split(str, delimiter, str_util::SkipEmpty());
+      char_vector = str_util::Split(str, delimiter, str_util::SkipEmpty());
+      return Status::OK();
     }
-    return str_util::Split(str, delimiter);
+    char_vector = str_util::Split(str, delimiter);
+    return Status::OK();
   }
-  std::vector<string> char_vector(str.size());
-  for (size_t i = 0; i < str.size(); ++i) {
-    char_vector[i] = str[i];
+  if (encoding == "utf8") {
+    // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
+    //   1     0xxxxxxx
+    //   2     110xxxxx  10xxxxxx
+    //   3     1110xxxx  10xxxxxx  10xxxxxx
+    //   4     11110xxx  10xxxxxx  10xxxxxx  10xxxxxx
+    char_vector.reserve(str.size());
+    size_t off = 0, len = 0;
+    for (size_t i = 0; i < str.size(); ++i) {
+      if (off == i) {
+        if ((str[i] & 0x80) == 0x00) {
+          char_vector.push_back(str.substr(off, 1));
+          off++;
+        } else if ((str[i] & 0xE0) == 0xC0) {
+          len = 2;
+        } else if ((str[i] & 0xF0) == 0xE0) {
+          len = 3;
+        } else if ((str[i] & 0xF8) == 0xF0) {
+          len = 4;
+        } else {
+          char_vector.clear();
+          return errors::Internal("invalid utf8 encoding");
+        }
+      } else {
+        if ((str[i] & 0xC0) != 0x80) {
+          char_vector.clear();
+          return errors::Internal("invalid utf8 encoding");
+        }
+        if (off + len == i + 1) {
+          char_vector.push_back(str.substr(off, len));
+          off += len;
+        }
+      }
+    }
+    if (off < str.size()) {
+      // Not enough chars
+      return errors::Internal("invalid utf8 encoding");
+    }
+  } else {
+    char_vector.resize(str.size());
+    for (size_t i = 0; i < str.size(); ++i) {
+      char_vector[i] = str[i];
+    }
   }
-  return char_vector;
+  return Status::OK();
 }
 
 }  // namespace
@@ -54,6 +97,14 @@ class StringSplitOp : public OpKernel {
     // available, so that it is backward compatible.
     if (context->GetAttr("skip_empty", &skip_empty).ok()) {
       skip_empty_ = skip_empty;
+    }
+    string encoding;
+    if (context->GetAttr("encoding", &encoding).ok()) {
+      // If encoding is specified, make sure it is either "" or "utf8".
+      OP_REQUIRES(
+          context, encoding == "" || encoding == "utf8",
+          errors::InvalidArgument("encoding must be either '' or 'utf8'"));
+      encoding_ = encoding;
     }
   }
 
@@ -76,6 +127,12 @@ class StringSplitOp : public OpKernel {
     const auto delimiter_vec = delimiter_tensor->flat<string>();
     const string& delimiter = delimiter_vec(0);
     // Empty delimiter means split the input character by character.
+    // Empty delimiter could be combined with a non-empty encoding.
+    if (encoding_ != "") {
+      OP_REQUIRES(ctx, delimiter == "",
+                  errors::InvalidArgument(
+                      "delimiter must be '' if encoding is not ''"));
+    }
     std::vector<string> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
     static constexpr int kReserveSize = 4;
@@ -85,7 +142,9 @@ class StringSplitOp : public OpKernel {
     int64 max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<string> parts = Split(input_vec(i), delimiter, skip_empty_);
+      std::vector<string> parts;
+      OP_REQUIRES_OK(
+          ctx, Split(parts, input_vec(i), delimiter, skip_empty_, encoding_));
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
@@ -120,6 +179,7 @@ class StringSplitOp : public OpKernel {
 
  private:
   bool skip_empty_;
+  string encoding_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);

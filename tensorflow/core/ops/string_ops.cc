@@ -123,6 +123,7 @@ REGISTER_OP("StringSplit")
     .Output("values: string")
     .Output("shape: int64")
     .Attr("skip_empty: bool = true")
+    .Attr("encoding: string = ''")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));

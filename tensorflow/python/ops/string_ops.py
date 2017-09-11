@@ -43,7 +43,7 @@ from tensorflow.python.util.tf_export import tf_export
 tf_export("strings.regex_full_match")(regex_full_match)
 
 @tf_export("string_split")
-def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
+def string_split(source, delimiter=" ", skip_empty=True, encoding=""):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
@@ -72,6 +72,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
     skip_empty: A `bool`. If `True`, skip the empty strings from the result.
+    encoding: A string. The string of the encoding (e.g., utf8). Default is "".
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -85,7 +86,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
   indices, values, shape = gen_string_ops.string_split(
-      source, delimiter=delimiter, skip_empty=skip_empty)
+      source, delimiter=delimiter, skip_empty=skip_empty, encoding=encoding)
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
