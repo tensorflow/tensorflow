@@ -875,7 +875,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
     auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
     OP_REQUIRES_OK(
         ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
@@ -1524,8 +1524,8 @@ class ApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
     Tensor var;
     OP_REQUIRES_OK(
         ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
@@ -1626,8 +1626,8 @@ class SparseApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
     Tensor var;
     OP_REQUIRES_OK(
         ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
