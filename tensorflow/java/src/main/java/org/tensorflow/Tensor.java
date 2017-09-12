@@ -103,8 +103,8 @@ public final class Tensor implements AutoCloseable {
 
   /**
    * Create a Tensor of data type {@code dtype} from a Java object.
-   * @param dtype the intended tensor data type. It must match the
-   *        the run-time type of the object.
+   *
+   * @param dtype the intended tensor data type. It must match the the run-time type of the object.
    */
   static Tensor create(Object obj, DataType dtype) {
     Tensor t = new Tensor();
@@ -201,8 +201,7 @@ public final class Tensor implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
-   * API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
    *
    * @param dataType the tensor datatype.
    * @param shape the tensor shape.
@@ -548,20 +547,21 @@ public final class Tensor implements AutoCloseable {
     }
   }
 
-  static HashMap<Class<?>, DataType> class_datatypes = new HashMap<>();
+  private static HashMap<Class<?>, DataType> classDataTypes = new HashMap<>();
+
   static {
-    class_datatypes.put(int.class, DataType.INT32);
-    class_datatypes.put(Integer.class, DataType.INT32);
-    class_datatypes.put(long.class, DataType.INT64);
-    class_datatypes.put(Long.class, DataType.INT64);
-    class_datatypes.put(float.class, DataType.FLOAT);
-    class_datatypes.put(Float.class, DataType.FLOAT);
-    class_datatypes.put(double.class, DataType.DOUBLE);
-    class_datatypes.put(Double.class, DataType.DOUBLE);
-    class_datatypes.put(byte.class, DataType.STRING);
-    class_datatypes.put(Byte.class, DataType.STRING);
-    class_datatypes.put(boolean.class, DataType.BOOL);
-    class_datatypes.put(Boolean.class, DataType.BOOL);
+    classDataTypes.put(int.class, DataType.INT32);
+    classDataTypes.put(Integer.class, DataType.INT32);
+    classDataTypes.put(long.class, DataType.INT64);
+    classDataTypes.put(Long.class, DataType.INT64);
+    classDataTypes.put(float.class, DataType.FLOAT);
+    classDataTypes.put(Float.class, DataType.FLOAT);
+    classDataTypes.put(double.class, DataType.DOUBLE);
+    classDataTypes.put(Double.class, DataType.DOUBLE);
+    classDataTypes.put(byte.class, DataType.STRING);
+    classDataTypes.put(Byte.class, DataType.STRING);
+    classDataTypes.put(boolean.class, DataType.BOOL);
+    classDataTypes.put(Boolean.class, DataType.BOOL);
   }
 
   private static DataType dataTypeOf(Object o) {
@@ -569,15 +569,15 @@ public final class Tensor implements AutoCloseable {
     while (c.isArray()) {
       c = c.getComponentType();
     }
-    DataType ret = class_datatypes.get(c);
-    if (ret != null) { 
+    DataType ret = classDataTypes.get(c);
+    if (ret != null) {
       return ret;
     }
     throw new IllegalArgumentException("cannot create Tensors of type " + c.getName());
   }
 
-  /** Returns the number of dimensions of a tensor of type dtype
-   *  when represented by the object o.
+  /**
+   * Returns the number of dimensions of a tensor of type dtype when represented by the object o.
    */
   private static int numDimensions(Object o, DataType dtype) {
     int ret = numArrayDimensions(o);
@@ -586,25 +586,22 @@ public final class Tensor implements AutoCloseable {
     }
     return ret;
   }
-  
-  /** Returns the number of dimensions of the array object o.
-   *  Returns 0 if o is not an array.
-   */
+
+  /** Returns the number of dimensions of the array object o. Returns 0 if o is not an array. */
   private static int numArrayDimensions(Object o) {
     Class<?> c = o.getClass();
-    if (!c.isArray()) return 0;
-    String s = c.getName();
     int i = 0;
-    while (s.charAt(i) == '[') {
+    while (c.isArray()) {
+      c = c.getComponentType();
       i++;
     }
     return i;
   }
 
-  /** Fills in the remaining entries in the shape array starting from position
-   *  {@code dim} with the dimension sizes of the multidimensional array o.
-   *  Checks that all arrays reachable from o have sizes consistent with
-   *  the filled-in shape, throwing IllegalArgumentException otherwise.
+  /**
+   * Fills in the remaining entries in the shape array starting from position {@code dim} with the
+   * dimension sizes of the multidimensional array o. Checks that all arrays reachable from o have
+   * sizes consistent with the filled-in shape, throwing IllegalArgumentException otherwise.
    */
   private static void fillShape(Object o, int dim, long[] shape) {
     if (shape == null || dim == shape.length) {
@@ -625,9 +622,7 @@ public final class Tensor implements AutoCloseable {
     }
   }
 
-  /** Returns whether the object {@code obj} can represent a tensor with
-   *  data type {@code dtype}.
-   */
+  /** Returns whether the object {@code obj} can represent a tensor with data type {@code dtype}. */
   private static boolean objectCompatWithType(Object obj, DataType dtype) {
     DataType dto = dataTypeOf(obj);
     if (dto.equals(dtype)) {
