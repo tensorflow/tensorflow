@@ -184,7 +184,8 @@ Status BuildArguments(int num_constant_args,
     XlaCompiler::Argument& arg = (*args)[input_num];
 
     arg.name = variable_args[variable_id].name;
-    arg.kind = XlaCompiler::Argument::kVariable;
+    arg.kind = XlaCompiler::Argument::kResource;
+    arg.resource_kind = XlaResource::kVariable;
     if (variable_args[variable_id].present) {
       const Tensor& value = variable_args[variable_id].value;
       arg.type = value.dtype();
