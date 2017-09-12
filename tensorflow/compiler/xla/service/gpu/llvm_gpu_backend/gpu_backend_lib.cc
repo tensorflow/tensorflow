@@ -71,7 +71,17 @@ const int kDefaultInlineThreshold = 1100;
 // Gets the libdevice filename for a particular compute capability.  When
 // presented with a GPU we don't recognize, we just return the libdevice from
 // compute_20.
-static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
+static string GetLibdeviceFilename(const string& libdevice_dir_path,
+                                   std::pair<int, int> compute_capability) {
+  // Since CUDA 9.0, all GPU versions are included in a single file
+  const char* unified_libdevice_filename = "libdevice.10.bc";
+  std::vector<string> unified_libdevice_files;
+  tensorflow::Env::Default()->GetMatchingPaths(
+      tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
+      &unified_libdevice_files);
+  if( unified_libdevice_files.size() == 1 ) {
+    return unified_libdevice_filename;
+  }
   // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
   // version gets mapped to one of these.  Note in particular that sm_60 and
   // sm_61 map to libdevice.compute_30.
@@ -101,7 +111,7 @@ static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
 }
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_20".
+// we see an unrecognized compute capability, we return "sm_30".
 static string GetSmName(std::pair<int, int> compute_capability) {
   static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
                                                            {{2, 1}, 21},
@@ -114,8 +124,10 @@ static string GetSmName(std::pair<int, int> compute_capability) {
                                                            {{5, 3}, 53},
                                                            {{6, 0}, 60},
                                                            {{6, 1}, 61},
-                                                           {{6, 2}, 62}});
-  int sm_version = 20;
+                                                           {{6, 2}, 62},
+                    // TODO: Change this to 70 once LLVM NVPTX supports it
+                                                           {{7, 0}, 60}});
+  int sm_version = 30;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
     sm_version = it->second;
@@ -306,7 +318,8 @@ tensorflow::Status LinkLibdeviceIfNecessary(
 
   llvm::Linker linker(*module);
   string libdevice_path = tensorflow::io::JoinPath(
-      libdevice_dir_path, GetLibdeviceFilename(compute_capability));
+      libdevice_dir_path, GetLibdeviceFilename(libdevice_dir_path,
+                                               compute_capability));
   TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(libdevice_path));
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
