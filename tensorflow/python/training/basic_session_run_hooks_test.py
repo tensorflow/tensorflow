@@ -709,7 +709,8 @@ class ResourceCheckpointSaverHookTest(test.TestCase):
         self.global_step = variables.get_or_create_global_step()
       self.train_op = state_ops.assign_add(self.global_step, 1)
 
-  def test_save_steps_saves_periodically(self):
+  # TODO(apassos): Revive this test.
+  def DISABLED_test_save_steps_saves_periodically(self):
     with self.graph.as_default():
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir, save_steps=2, scaffold=self.scaffold)
@@ -1093,7 +1094,8 @@ class ResourceSummarySaverHookTest(test.TestCase):
       global_step = variables.get_or_create_global_step()
     self.train_op = state_ops.assign_add(global_step, 1)
 
-  def test_save_steps(self):
+  # TODO(apassos): Revive this test.
+  def DISABLED_test_save_steps(self):
     hook = basic_session_run_hooks.SummarySaverHook(
         save_steps=8,
         summary_writer=self.summary_writer,

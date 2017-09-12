@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Flatten"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "InputSpec"
     mtype: "<type \'type\'>"
   }
@@ -119,6 +123,10 @@ tf_module {
   member_method {
     name: "dropout"
     argspec: "args=[\'inputs\', \'rate\', \'noise_shape\', \'seed\', \'training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "flatten"
+    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "max_pooling1d"

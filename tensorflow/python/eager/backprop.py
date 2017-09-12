@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import threading
 
 from autograd import container_types
@@ -171,22 +172,22 @@ execute.record_gradient = _record_gradient
 
 def _aggregate_grads(gradients):
   """Aggregate gradients of the same tensor."""
-  grad_lists = dict()
-  for t, g in gradients:
+  grad_lists = collections.OrderedDict()
+  for g, v in gradients:
     if g is None:
       continue
-    if id(t) not in grad_lists:
-      grad_lists[id(t)] = [(t, g)]
+    if id(v) not in grad_lists:
+      grad_lists[id(v)] = [(g, v)]
     else:
-      grad_lists[id(t)].append((t, g))
+      grad_lists[id(v)].append((g, v))
 
   ret = []
-  for t, g_list in six.iteritems(grad_lists):
+  for _, g_list in six.iteritems(grad_lists):
     if len(g_list) == 1:
       ret.append(g_list[0])
     else:
       # TODO(xpan): Aggregate IndexedSlices.
-      ret.append((g_list[0][0], math_ops.add_n(list(zip(*g_list))[1])))
+      ret.append((math_ops.add_n(list(zip(*g_list))[0]), g_list[1][1]))
   return ret
 
 
@@ -200,11 +201,27 @@ def implicit_val_and_grad(f):
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
 
+  Example:
+
+    ```python
+    def train(model, inputs, labels, optimizer):
+
+      def forward_fn():
+        prediction = model(inputs)
+        return loss_fn(labels, prediction)
+
+      loss, grads_and_vars = implicit_val_and_grad(forward_fn)()
+      optimizer.apply_gradients(grads_and_vars)
+      return loss
+    ```
+
   Args:
     f: The function to be differentiated.
 
   Returns:
-    A function which, when called, returns the value and gradients.
+    A function which, when called, returns a tuple pair.
+    Its first element is the value to which the function evaluates.
+    Its second element is list of (gradient, variable) pairs.
   """
 
   def grad_fn(*args, **kwds):
@@ -242,7 +259,7 @@ def implicit_grad(f):
     f: The function to be differentiated.
 
   Returns:
-    A function which, when called, returns the gradients.
+    A function which, when called, returns a list of (gradient, variable) pairs.
   """
 
   def grad_fn(*args, **kwds):

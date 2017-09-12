@@ -82,6 +82,7 @@ py_library(
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:flops_registry",
         "@six_archive//:six",
     ],
 )
