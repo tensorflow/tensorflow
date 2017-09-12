@@ -16,6 +16,60 @@ py_library(
     deps = [
         ":features",
         ":losses",
+        ":namedtuples",
+        ":train",
+    ],
+)
+
+py_library(
+    name = "namedtuples",
+    srcs = ["python/namedtuples.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "train",
+    srcs = ["python/train.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":losses",
+        ":namedtuples",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/slim:learning",
+        "//tensorflow/contrib/training:training_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "train_test",
+    srcs = ["python/train_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":namedtuples",
+        ":train",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/slim:learning",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/ops/distributions",
+        "//third_party/py/numpy",
     ],
 )
 

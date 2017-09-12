@@ -36,6 +36,7 @@ namespace tensorflow {
 // symbols can be removed from .so exports.
 class AllocationDescription;
 class Allocator;
+class OpKernelContext;
 class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
@@ -480,9 +481,12 @@ class Tensor {
   friend class VariableOp;            // For access to set_shape
   friend class AutoReloadVariableOp;  // For access to set_shape
   friend class TensorTestHelper;      // For access to set_shape
+  friend class OpKernelContext;       // For access to RefCountIsOne().
   template <typename Device, typename T>
-  friend class CreateVariableOp;
-  friend class OpKernelContext;  // For access to RefCountIsOne().
+  friend class AssignVariableOp;  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status PrepareToUpdateVariable(
+      OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
   friend class NumpyTensorBuffer;  // For access to the private constructor
                                    // taking the buffer.
 

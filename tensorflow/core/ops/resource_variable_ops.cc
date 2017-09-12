@@ -106,23 +106,6 @@ resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
 )");
 
-REGISTER_OP("_UnsafeReadVariable")
-    .Input("resource: resource")
-    .Output("value: dtype")
-    .Attr("dtype: type")
-    .SetShapeFn(ReadVariableShapeFn)
-    .Doc(R"(
-Reads the value of a variable without any memory model.
-
-The tensor returned by this operation aliases a mutable Tensor, and its value
-can be observed to be different by different ops.
-
-Internal and private to the tensorflow implementation.
-
-resource: handle to the resource in which to store the variable.
-dtype: the dtype of the value.
-)");
-
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
     .Attr("ignore_lookup_error: bool = true")

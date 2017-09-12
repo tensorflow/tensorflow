@@ -445,12 +445,14 @@ class Dataset(object):
   def __init__(self):
     pass
 
+  # TODO(mrry): Rename this to `make_dataset_variant()`,
+  # `make_dataset_tensor()`, or something else more accurate.
   @abc.abstractmethod
   def make_dataset_resource(self):
-    """Creates a `tf.Tensor` of  `tf.resource` tensor representing this dataset.
+    """Creates a scalar `tf.Tensor` of `tf.variant` representing this dataset.
 
     Returns:
-      A scalar `tf.Tensor` of `tf.resource` type, which represents this dataset.
+      A scalar `tf.Tensor` of `tf.variant` type, which represents this dataset.
     """
     raise NotImplementedError("Dataset.make_dataset_resource")
 
@@ -1924,17 +1926,17 @@ def _should_unpack_args(args):
   return type(args) is tuple  # pylint: disable=unidiomatic-typecheck
 
 
-class _ResourceDataset(Dataset):
-  """A Dataset wrapper for a tf.resource-typed function argument."""
+class _VariantDataset(Dataset):
+  """A Dataset wrapper for a tf.variant-typed function argument."""
 
-  def __init__(self, dataset_resource, output_types, output_shapes):
-    super(_ResourceDataset, self).__init__()
-    self._dataset_resource = dataset_resource,
+  def __init__(self, dataset_variant, output_types, output_shapes):
+    super(_VariantDataset, self).__init__()
+    self._dataset_variant = dataset_variant
     self._output_types = output_types
     self._output_shapes = output_shapes
 
   def make_dataset_resource(self):
-    return self._dataset_resource
+    return self._dataset_variant
 
   @property
   def output_shapes(self):
@@ -2686,13 +2688,13 @@ class GroupByWindowDataset(Dataset):
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping Defun for reduce_func."""
 
-    @function.Defun(dtypes.int64, dtypes.resource)
-    def tf_reduce_func(key, window_dataset_resource):
+    @function.Defun(dtypes.int64, dtypes.variant)
+    def tf_reduce_func(key, window_dataset_variant):
       """A wrapper for Defun that facilitates shape inference."""
       key.set_shape([])
-      window_dataset = _ResourceDataset(window_dataset_resource,
-                                        input_dataset.output_types,
-                                        input_dataset.output_shapes)
+      window_dataset = _VariantDataset(window_dataset_variant,
+                                       input_dataset.output_types,
+                                       input_dataset.output_shapes)
       output_dataset = reduce_func(key, window_dataset)
       if not isinstance(output_dataset, Dataset):
         raise TypeError("`reduce_func` must return a `Dataset` object.")

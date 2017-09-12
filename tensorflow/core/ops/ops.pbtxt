@@ -2793,7 +2793,7 @@ op {
   name: "BatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -2802,7 +2802,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -2817,7 +2817,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that batches `batch_size` elements from `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "BatchFFT"
@@ -4229,7 +4228,7 @@ op {
   name: "CacheDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "filename"
@@ -4238,7 +4237,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4254,7 +4253,6 @@ op {
   }
   summary: "Creates a dataset that caches elements from `input_dataset`."
   description: "A CacheDataset will iterate over the input_dataset, and store tensors. If the\ncache already exists, the cache will be used. If the cache is inappropriate\n(e.g. cannot be opened, contains tensors of the wrong shape / size), an error\nwill the returned when used."
-  is_stateful: true
 }
 op {
   name: "Cast"
@@ -4660,15 +4658,15 @@ op {
   name: "ConcatenateDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "another_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4683,7 +4681,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that concatenates `input_dataset` with `another_dataset`."
-  is_stateful: true
 }
 op {
   name: "ConditionalAccumulator"
@@ -6366,7 +6363,7 @@ op {
   input_arg {
     name: "input_dataset"
     description: "A handle to an input dataset. Must have a single component."
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -6380,7 +6377,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -6395,7 +6392,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that yields a SparseTensor for each element of the input."
-  is_stateful: true
 }
 op {
   name: "DenseToSparseSetOperation"
@@ -8296,7 +8292,7 @@ op {
   name: "FilterDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -8305,7 +8301,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "predicate"
@@ -8331,7 +8327,6 @@ op {
   }
   summary: "Creates a dataset containing elements of `input_dataset` matching `predicate`."
   description: "The `predicate` function must return a scalar boolean and accept the\nfollowing arguments:\n\n* One tensor for each component of an element of `input_dataset`.\n* One tensor for each value in `other_arguments`."
-  is_stateful: true
 }
 op {
   name: "FixedLengthRecordDataset"
@@ -8362,7 +8357,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   summary: "Creates a dataset that emits the records from one or more binary files."
   is_stateful: true
@@ -8610,7 +8605,7 @@ op {
   name: "FlatMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -8618,12 +8613,12 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
     type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
   }
   attr {
     name: "Targuments"
@@ -8643,8 +8638,7 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "Unlike MapDataset, the `f` in FlatMapDataset is expected to return a\nDataset resource, and FlatMapDataset will flatten successive results\ninto a single Dataset."
-  is_stateful: true
+  description: "Unlike MapDataset, the `f` in FlatMapDataset is expected to return a\nDataset variant, and FlatMapDataset will flatten successive results\ninto a single Dataset."
 }
 op {
   name: "Floor"
@@ -9601,7 +9595,7 @@ op {
   name: "GroupByWindowDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "key_func_other_arguments"
@@ -9617,7 +9611,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "key_func"
@@ -9661,7 +9655,6 @@ op {
   }
   summary: "Creates a dataset that computes a windowed group-by on `input_dataset`."
   description: "// TODO(mrry): Support non-int64 keys."
-  is_stateful: true
 }
 op {
   name: "HSVToRGB"
@@ -10075,11 +10068,11 @@ op {
   name: "IgnoreErrorsDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -10094,7 +10087,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that contains the elements of `input_dataset` ignoring errors."
-  is_stateful: true
 }
 op {
   name: "Imag"
@@ -10454,7 +10446,7 @@ op {
   name: "InterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -10470,12 +10462,12 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
     type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
   }
   attr {
     name: "Targuments"
@@ -10495,8 +10487,7 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "Unlike MapDataset, the `f` in InterleaveDataset is expected to return\na Dataset resource, and InterleaveDataset will flatten successive\nresults into a single Dataset. Unlike FlatMapDataset,\nInterleaveDataset will interleave sequences of up to `block_length`\nconsecutive elements from `cycle_length` input elements."
-  is_stateful: true
+  description: "Unlike MapDataset, the `f` in InterleaveDataset is expected to return\na Dataset variant, and InterleaveDataset will flatten successive\nresults into a single Dataset. Unlike FlatMapDataset,\nInterleaveDataset will interleave sequences of up to `block_length`\nconsecutive elements from `cycle_length` input elements."
 }
 op {
   name: "Inv"
@@ -11794,7 +11785,7 @@ op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -11847,7 +11838,7 @@ op {
   name: "MapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -11855,7 +11846,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -11879,7 +11870,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "MapIncompleteSize"
@@ -14652,7 +14642,7 @@ op {
   attr {
     name: "dataset_factory"
     type: "func"
-    description: "A function of type `() -> DT_RESOURCE`, where the returned\nDT_RESOURCE is a handle to a dataset."
+    description: "A function of type `() -> DT_VARIANT`, where the returned\nDT_VARIANT is a dataset."
   }
   attr {
     name: "output_types"
@@ -15172,7 +15162,7 @@ op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -15192,7 +15182,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -15213,7 +15203,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that batches and pads `batch_size` elements from the input."
-  is_stateful: true
 }
 op {
   name: "PaddingFIFOQueue"
@@ -15384,7 +15373,7 @@ op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -15397,7 +15386,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -15422,7 +15411,6 @@ op {
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
   description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `num_parallel_calls` copies of `f` in parallel."
-  is_stateful: true
 }
 op {
   name: "ParameterizedTruncatedNormal"
@@ -15991,7 +15979,7 @@ op {
   name: "PrefetchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -16000,7 +15988,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -16015,7 +16003,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that asynchronously prefetches elements from `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "PreventGradient"
@@ -18950,7 +18937,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -19878,7 +19865,7 @@ op {
   name: "RepeatDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -19887,7 +19874,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -19902,7 +19889,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that emits the outputs of `input_dataset` `count` times."
-  is_stateful: true
 }
 op {
   name: "RequantizationRange"
@@ -24214,7 +24200,7 @@ op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -24233,7 +24219,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24248,7 +24234,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that shuffles elements from `input_dataset` pseudorandomly."
-  is_stateful: true
 }
 op {
   name: "Sigmoid"
@@ -24418,7 +24403,7 @@ op {
   name: "SkipDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -24427,7 +24412,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24442,7 +24427,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that skips `count` elements from the `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "Skipgram"
@@ -24563,7 +24547,7 @@ op {
   name: "SloppyInterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -24579,12 +24563,12 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
     type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
   }
   attr {
     name: "Targuments"
@@ -24605,7 +24589,6 @@ op {
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
   description: "The resulting dataset is similar to the `InterleaveDataset`, with the exception\nthat if retrieving the next value from a dataset would cause the requester to\nblock, it will skip that input dataset. This dataset is especially useful\nwhen loading data from a variable-latency datastores (e.g. HDFS, GCS), as it\nallows the training step to proceed so long as some data is available.\n\n!! WARNING !! This dataset is not deterministic!"
-  is_stateful: true
 }
 op {
   name: "Softmax"
@@ -27644,7 +27627,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Tvalues"
@@ -27879,7 +27862,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -29226,7 +29209,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   summary: "Creates a dataset that emits the records from one or more TFRecord files."
   is_stateful: true
@@ -29302,7 +29285,7 @@ op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -29311,7 +29294,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -29326,7 +29309,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that contains `count` elements from the `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "TakeManySparseFromTensorsMap"
@@ -30463,7 +30445,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30488,7 +30470,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30594,7 +30576,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   summary: "Creates a dataset that emits the lines of one or more text files."
   is_stateful: true
@@ -31588,12 +31570,12 @@ op {
   name: "ZipDataset"
   input_arg {
     name: "input_datasets"
-    type: DT_RESOURCE
+    type: DT_VARIANT
     number_attr: "N"
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -31614,5 +31596,4 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that zips together `input_datasets`."
-  is_stateful: true
 }

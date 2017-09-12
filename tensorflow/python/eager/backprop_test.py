@@ -90,8 +90,9 @@ class BackpropTest(test.TestCase):
       c = math_ops.add(x.value(), b)
       return math_ops.add(c, tensor.Tensor(3.0))
 
-    grad = backprop.implicit_grad(fn)()[0][1]
-    self.assertEqual(grad.numpy(), 1.0)
+    grads_and_vars = backprop.implicit_grad(fn)()
+    self.assertEqual(grads_and_vars[0][0].numpy(), 1.0)
+    self.assertEqual(id(grads_and_vars[0][1]), id(x))
 
   def testImplicitGradOverEmbeddingLookup(self):
     batch_size = 8
@@ -105,11 +106,11 @@ class BackpropTest(test.TestCase):
         initial_value=random_init, dtype=dtypes.float32, name='embedding')
 
     def f():
-      tape.watch(embedding.handle)
+      tape.watch_variable(embedding)
       embedded_x = embedding_ops.embedding_lookup(embedding, x)
       return tensor.Tensor(1.0, dtypes.float32) - embedded_x
 
-    grad = backprop.implicit_grad(f)()[0][1]
+    grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
     with context.graph_mode(), self.test_session():
@@ -207,11 +208,11 @@ class BackpropTest(test.TestCase):
 
     def f():
       with context.device('gpu:0'):
-        tape.watch(v.handle)
+        tape.watch_variable(v)
         return v.read_value()
 
     self.assertEqual(
-        backprop.implicit_grad(f)()[0][1].as_cpu_tensor().numpy(), 1.0)
+        backprop.implicit_grad(f)()[0][0].as_cpu_tensor().numpy(), 1.0)
 
   def testCPU(self):
 
@@ -318,7 +319,7 @@ class BackpropTest(test.TestCase):
       b = array_ops.stack([a, a], axis=0)
       return math_ops.reduce_mean(b)
 
-    grad = backprop.implicit_grad(fn)()[0][1]
+    grad = backprop.implicit_grad(fn)()[0][0]
     self.assertAllEqual([1.0], grad.numpy())
 
 
