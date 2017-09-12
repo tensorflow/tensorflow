@@ -2,13 +2,14 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "cuda_py_test")
 
 py_library(
     name = "tfe",
     srcs = ["tfe.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":datasets",
         ":saver",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
@@ -28,6 +29,34 @@ cuda_py_test(
         ":tfe",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "datasets",
+    srcs = ["datasets.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/util:nest",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_test(
+    name = "datasets_test",
+    srcs = ["datasets_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":datasets",
+        "//tensorflow/contrib/data",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
     ],
 )
 

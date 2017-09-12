@@ -462,6 +462,17 @@ filegroup(
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
+
+# TensorFlow uses several libraries that may also be used by applications
+# linking against the C and C++ APIs (such as libjpeg).  When we create
+# the shared library, only export the core TF API functions to avoid
+# causing library conflicts (e.g., those reported in github issue 1924).
+# On Linux, tell the linker (-Wl,<option>) to use a version script that
+# excludes all but a subset of function names.
+# On MacOS, the linker does not support version_script, but has an
+# an "-exported_symbols_list" command.  -z defs disallows undefined
+# symbols in object files and -s strips the output.
+
 cc_binary(
     name = "libtensorflow.so",
     linkopts = select({
@@ -491,8 +502,24 @@ cc_binary(
 
 cc_binary(
     name = "libtensorflow_cc.so",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "//tensorflow:tf_exported_symbols.lds",
+        ],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//conditions:default": [
+            "-z defs",
+            "-s",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "//tensorflow:tf_version_script.lds",
+        ],
+    }),
     linkshared = 1,
     deps = [
+        "//tensorflow:tf_exported_symbols.lds",
+        "//tensorflow:tf_version_script.lds",
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/cc:cc_ops",

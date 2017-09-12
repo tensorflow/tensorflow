@@ -286,8 +286,8 @@ class Context(object):
         it is unset.
       `attrs` contains the attributes of the operation as a `tuple` of
         alternating attribute names and attribute values.
-      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
-      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+      `inputs` is the `list` of input `Tensor`(s) to the op.
+      `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
     """
     # TODO(cais): (b/64674139) Allow access to function-internal operations.
@@ -314,7 +314,7 @@ def _initialize_context():
 
 
 def context():
-  """Returns a singleton Context object."""
+  """Returns a singleton context object."""
   if _context is None:
     _initialize_context()
   return _context
@@ -373,7 +373,7 @@ def device(name):
   ```python
   with tfe.device('gpu:0'):
     with tfe.device('cpu:0'):
-      shape = tfe.Tensor([], dtype=tf.int32)
+      shape = Tensor([], dtype=tf.int32)
     x = ops.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
@@ -390,13 +390,13 @@ def device(name):
 
 
 def run(main=None, argv=None):
-  """Runs the program with an optional 'main' function and 'argv' list.
+  """Runs the program with an optional main function and argv list.
 
   The program will run with eager execution enabled.
 
   Args:
-    main: the main function to run
-    argv: the arguments to pass to it
+    main: the main function to run.
+    argv: the arguments to pass to it.
   """
   enable_eager_execution()
   app.run(main, argv)
