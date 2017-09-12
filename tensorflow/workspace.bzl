@@ -580,7 +580,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "http://mirror.bazel.build/github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",
           "https://github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",  # 2017-07-07
       ],
-      sha256 = "02f5950f93c4fd3691771c07c9d04cf2999ab01383ff99da345249e93b0fcfb2",
+      sha256 = "a9a3673b1f7bd80ef563e9de1d9ccdb5126dc0cce6377977009092148993c4fe",
       strip_prefix = "boringssl-e3860009a091cd1bd2bc189cdbc3c6d095abde84",
       # Add patch to boringssl code to support s390x
       patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
