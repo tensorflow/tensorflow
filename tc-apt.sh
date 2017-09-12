@@ -19,8 +19,7 @@ apt-get -qq -y install \
 	pixz \
 	zip \
 	zlib1g-dev \
-	unzip \
-	libboost-locale-dev
+	unzip
 
 echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections
 add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update

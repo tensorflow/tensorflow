@@ -28,8 +28,7 @@ fi;
 
 # coreutils, pyenv-virtualenv required for build of tensorflow
 # node@6 pkg-config sox swig required for later build of deepspeech
-# boost required by native_client decoder
-all_pkgs="coreutils pyenv-virtualenv node@6 pkg-config sox swig boost"
+all_pkgs="coreutils pyenv-virtualenv node@6 pkg-config sox swig"
 
 for pkg in ${all_pkgs};
 do
