@@ -228,8 +228,8 @@ def add_execution_callback(callback):
         it is unset.
       `attrs` contains the attributes of the operation as a `tuple` of
         alternating attribute name and attribute value.
-      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
-      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+      `inputs` is the `list` of input `Tensor`(s) to the op.
+      `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
   """
   context.get_default_context().add_post_execution_callback(callback)
@@ -246,8 +246,8 @@ def seterr(inf_or_nan=None):
   Example:
   ``` python
   tfe.seterr(inf_or_nan="raise")
-  a = tfe.Tensor(10.0)
-  b = tfe.Tensor(0.0)
+  a = Tensor(10.0)
+  b = Tensor(0.0)
   c = a / b  # <-- Raises InfOrNanError.
 
   tfe.seterr(inf_or_nan="ignore")

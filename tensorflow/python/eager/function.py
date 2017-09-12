@@ -41,7 +41,7 @@ from tensorflow.python.util import nest
 # Thread-local storage for tfe Tensors which are referenced while evaluating a
 # graph-mode function.
 _scoped_captures = threading.local()
-# _scoped_captures.tensors is either None or a map from tfe.Tensor id to a pair
+# _scoped_captures.tensors is either None or a map from Tensor id to a pair
 # of a tfe tensor and its corresponding placeholder to pass as a function
 # argument. The value should be None unless we're in function definition
 # context.
@@ -62,7 +62,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   """Captures a Tensor while building a graph mode function.
 
   Arguments:
-    value: A tfe.Tensor object
+    value: A Tensor object.
     dtype: The datatype of the value produced by the node in the graph.
     name:  Name of the node in the graph.
     as_ref: Ignored (required by register_tensor_conversion_function).
@@ -482,12 +482,12 @@ def defun(func):
   func must be a Python function that constructs a TensorFlow graph,
   typically using functions in the tensorflow module.
 
-  Arguments to func can be either tfe.Tensor objects or Python
+  Arguments to func can be either Tensor objects or Python
   objects. Non-Tensor python objects are treated as constants, and new function
   definitions are created internally based on their values.
 
-  func must return a tf.Tensor (NOT a tfe.Tensor) or a list of tf.Tensor (NOT a
-  tfe.Tensor). TODO(apassos) make the wrapped tfe ops return tf.Tensors when in
+  func must return a tf.Tensor (NOT a Tensor) or a list of tf.Tensor (NOT a
+  Tensor). TODO(apassos) make the wrapped tfe ops return tf.Tensors when in
   graph mode.
 
   TODO(apassos): deal with captured global state. Deal with control flow.
@@ -497,6 +497,6 @@ def defun(func):
 
   Returns:
      A callable that will execute the compiled function (and return zero
-     or more tfe.Tensor objects)
+     or more Tensor objects).
   """
   return named_defun(func, func.__name__)

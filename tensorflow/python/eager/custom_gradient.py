@@ -38,7 +38,7 @@ def custom_gradient(f):
   """Decorator to define a function with a custom gradient.
 
   The input function is expected to return the tuple
-    (results, gradient_function)
+    (results, gradient_function).
 
   The output function will return results while possibly recording the
   gradient_function and inputs in the tape.

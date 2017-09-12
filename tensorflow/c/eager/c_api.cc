@@ -289,11 +289,11 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
   }
 }
 
-void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
-                     TF_Status* status) {
+void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status =
+        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   TFE_OpSetDeviceHelper(op, d, status);
