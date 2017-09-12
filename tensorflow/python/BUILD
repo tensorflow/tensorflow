@@ -637,6 +637,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:tape",
         "@six_archive//:six",
     ],
 )
@@ -1800,7 +1801,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/eager:tensor_node",
     ],
 )
 

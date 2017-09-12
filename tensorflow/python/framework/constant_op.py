@@ -41,7 +41,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -76,7 +75,7 @@ def _eager_fill(dims, value):
 
 def convert_to_eager_tensor(t, dtype=None):
   """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(ag_core.getval(t), ops.EagerTensor):
+  if isinstance(t, ops.EagerTensor):
     if dtype is not None and t.dtype != dtype:
       raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
     return t

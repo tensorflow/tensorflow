@@ -291,10 +291,11 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
                           sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
-      if optimize and input_shape.is_fully_defined():
-        return constant(input_shape.as_list(), out_type, name=name)
+      if context.in_graph_mode():
+        input_tensor = ops.convert_to_tensor(input)
+        input_shape = input_tensor.get_shape()
+        if optimize and input_shape.is_fully_defined():
+          return constant(input_shape.as_list(), out_type, name=name)
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
@@ -1428,7 +1429,9 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
-    if context.in_eager_mode():
+    # Checking for boolean dtype to prevent attempting to run fill on the GPU
+    # which does not have a boolean kernel registered.
+    if context.in_eager_mode() and dtype != dtypes.bool:
       return fill(shape, constant(zero, dtype=dtype), name=name)
     try:
       shape = tensor_shape.as_shape(shape)

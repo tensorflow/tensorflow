@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 import six
 
@@ -607,7 +606,7 @@ def ShapeEquals(tensor_proto, shape):
 
 def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
-  if not isinstance(ag_core.getval(tensor), ops.Tensor):
+  if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
   if tensor.op.type == "Const":
     return MakeNdarray(tensor.op.get_attr("value"))
@@ -737,7 +736,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  if isinstance(ag_core.getval(tensor), ops.EagerTensor):
+  if isinstance(tensor, ops.EagerTensor):
     return tensor.numpy()
   ret = _ConstantValue(tensor, partial)
   if ret is not None:

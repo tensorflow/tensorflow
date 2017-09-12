@@ -82,7 +82,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
     ],
 )
@@ -308,25 +307,6 @@ py_library(
 )
 
 py_library(
-    name = "tensor_node",
-    srcs = ["tensor_node.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        ":custom_gradient",
-        ":tape",
-        ":tensor",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:common_shapes",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:tensor_shape",
-    ],
-)
-
-py_library(
     name = "backprop",
     srcs = ["backprop.py"],
     srcs_version = "PY2AND3",
@@ -344,7 +324,6 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/eager:tensor",
-        "//tensorflow/python/eager:tensor_node",
         "@six_archive//:six",
     ],
 )
@@ -383,18 +362,6 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-    ],
-)
-
-py_test(
-    name = "tensor_node_test",
-    srcs = ["tensor_node_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":tensor",
-        ":tensor_node",
-        ":test",
-        "//tensorflow/python:framework_test_lib",
     ],
 )
 
