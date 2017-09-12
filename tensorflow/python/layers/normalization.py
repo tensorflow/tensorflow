@@ -20,7 +20,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+import six
+from six.moves import xrange  # pylint: disable=redefined-builtin
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -36,9 +38,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import moving_averages
-
-_FUSED_DEFAULT = os.getenv('TF_DEFAULT_USES_FUSED_BATCH_NORM',
-                           '').lower() in ('true', 't', '1')
 
 
 class BatchNormalization(base.Layer):
@@ -131,10 +130,8 @@ class BatchNormalization(base.Layer):
     self.beta_constraint = beta_constraint
     self.gamma_constraint = gamma_constraint
     self.renorm = renorm
-    # This environment variable is only used during the testing period of fused
-    # batch norm and will be removed after that.
     if fused is None:
-      fused = _FUSED_DEFAULT
+      fused = True
 
     self.fused = fused
     self._bessels_correction_test_only = True

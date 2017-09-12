@@ -391,5 +391,56 @@ class DropoutTest(test.TestCase):
       self.assertAllClose(np.ones((5, 5)), np_output)
 
 
+class FlattenTest(test.TestCase):
+
+  def testCreateFlatten(self):
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((3, 2, 3))})
+      self.assertEqual(list(np_output.shape), [3, 6])
+      self.assertEqual(y.get_shape().as_list(), [None, 6])
+
+      x = array_ops.placeholder(shape=(1, 2, 3, 2), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((1, 2, 3, 2))})
+      self.assertEqual(list(np_output.shape), [1, 12])
+      self.assertEqual(y.get_shape().as_list(), [1, 12])
+
+  def testComputeShape(self):
+    shape = core_layers.Flatten()._compute_output_shape((1, 2, 3, 2))
+    self.assertEqual(shape.as_list(), [1, 12])
+
+    shape = core_layers.Flatten()._compute_output_shape((None, 3, 2))
+    self.assertEqual(shape.as_list(), [None, 6])
+
+    shape = core_layers.Flatten()._compute_output_shape((None, 3, None))
+    self.assertEqual(shape.as_list(), [None, None])
+
+  def testFunctionalFlatten(self):
+    x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
+    y = core_layers.flatten(x, name='flatten')
+    self.assertEqual(y.get_shape().as_list(), [None, 6])
+
+  def testFlattenValueError(self):
+    x = array_ops.placeholder(shape=(None,), dtype='float32')
+    with self.assertRaises(ValueError):
+      core_layers.Flatten()(x)
+
+  def testFlattenUnknownAxes(self):
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(5, None, None), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((5, 2, 3))})
+      self.assertEqual(list(np_output.shape), [5, 6])
+      self.assertEqual(y.get_shape().as_list(), [5, None])
+
+      x = array_ops.placeholder(shape=(5, None, 2), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((5, 3, 2))})
+      self.assertEqual(list(np_output.shape), [5, 6])
+      self.assertEqual(y.get_shape().as_list(), [5, None])
+
+
 if __name__ == '__main__':
   test.main()
