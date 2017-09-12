@@ -92,13 +92,15 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
-py_test(
+cuda_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
+        ":context",
         ":tensor",
         ":test",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//third_party/py/numpy",
     ],
 )
