@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_SIMPLE_PLACER_H_
-#define TENSORFLOW_COMMON_RUNTIME_SIMPLE_PLACER_H_
+#ifndef TENSORFLOW_COMMON_RUNTIME_PLACER_H_
+#define TENSORFLOW_COMMON_RUNTIME_PLACER_H_
 
 #include <string>
 #include <unordered_map>
@@ -53,25 +53,24 @@ namespace tensorflow {
 // TODO(mrry): Create a common interface for this and the other
 // placement algorithms so that they may be injected into the graph
 // builder.
-class SimplePlacer {
+class Placer {
  public:
   // A map from graph node names to numerical IDs (in a Graph object).
   typedef std::unordered_map<string, int> NodeNameToIdMap;
 
-  // Creates an instance of the SimplePlacer algorithm for the given
+  // Creates an instance of the Placer algorithm for the given
   // Graph "graph" (nodes in which may or may not be assigned) on the
   // given DeviceSet "devices".
   //
   // The "graph", and "devices" pointer arguments
-  // are borrowed by this SimplePlacer, and must outlive it.
-  SimplePlacer(Graph* graph, const DeviceSet* devices,
-               const SessionOptions* options);
+  // are borrowed by this Placer, and must outlive it.
+  Placer(Graph* graph, const DeviceSet* devices, const SessionOptions* options);
 
-  SimplePlacer(Graph* graph, const DeviceSet* devices);
+  Placer(Graph* graph, const DeviceSet* devices);
 
-  ~SimplePlacer();
+  ~Placer();
 
-  // Assigns each node in this SimplePlacer's graph to a device in its
+  // Assigns each node in this Placer's graph to a device in its
   // set of devices.
   //
   // This method is not thread-safe.
@@ -94,9 +93,9 @@ class SimplePlacer {
   const SessionOptions* options_;                // Not owned.
   const bool log_device_placement_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SimplePlacer);
+  TF_DISALLOW_COPY_AND_ASSIGN(Placer);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_SIMPLE_PLACER_H_
+#endif  // TENSORFLOW_COMMON_RUNTIME_PLACER_H_

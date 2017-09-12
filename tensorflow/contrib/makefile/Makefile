@@ -243,6 +243,7 @@ ifeq ($(TARGET),ANDROID)
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
+-fomit-frame-pointer \
 -march=armv7-a \
 -mfloat-abi=softfp \
 -mfpu=neon \
@@ -267,7 +268,8 @@ $(TARGET_NSYNC_LIB) \
 -lprotobuf \
 -llog \
 -lz \
--lm
+-lm \
+-ldl
 
 	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
 

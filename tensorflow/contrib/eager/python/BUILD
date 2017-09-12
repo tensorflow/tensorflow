@@ -21,6 +21,16 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "tfe_test",
+    srcs = ["tfe_test.py"],
+    additional_deps = [
+        ":tfe",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 py_library(
     name = "saver",
     srcs = ["saver.py"],

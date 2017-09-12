@@ -35,6 +35,12 @@ EAGER_MODE = 1
 # Default execution mode.
 _default_mode = GRAPH_MODE
 
+# Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
+# new_device_spec).
+# Note that we do not protect this with a lock and instead rely on python's GIL
+# and the idempotent nature of writes to provide thread safety.
+_device_parsing_cache = {}
+
 
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
@@ -47,6 +53,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.scalar_cache = {}
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -151,6 +158,10 @@ class Context(object):
     """Returns True if current thread is in EAGER mode."""
     return self._eager_context.mode == EAGER_MODE
 
+  def scalar_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.scalar_cache
+
   @property
   def scope_name(self):
     """Returns scope name for the current thread."""
@@ -197,22 +208,33 @@ class Context(object):
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
-    if name is not None:
-      if not isinstance(name, str):
-        raise ValueError("Expecting a string device name. Got %s(%s)" %
-                         (type(name), name))
-      device_spec = pydev.DeviceSpec.from_string(name)
-      if old_device_name:
-        new_device_spec = copy.copy(old_device_spec)
+    cache_key = (old_device_name, name)
+    try:
+      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
+    except TypeError:
+      # Error while trying to compute the cache key.
+      raise ValueError("Expecting a string device name. Got %s(%s)" %
+                       (type(name), name))
+    except KeyError:
+      # Handle a cache miss.
+      if name is not None:
+        if not isinstance(name, str):
+          raise ValueError("Expecting a string device name. Got %s(%s)" %
+                           (type(name), name))
+        device_spec = pydev.DeviceSpec.from_string(name)
+        if old_device_name:
+          new_device_spec = copy.copy(old_device_spec)
+        else:
+          new_device_spec = pydev.DeviceSpec.from_string(
+              "/job:localhost/replica:0/task:0/device:CPU:0")
+        new_device_spec.merge_from(device_spec)
       else:
-        new_device_spec = pydev.DeviceSpec.from_string(
-            "/job:localhost/replica:0/task:0/device:CPU:0")
-      new_device_spec.merge_from(device_spec)
-    else:
-      new_device_spec = pydev.DeviceSpec.from_string("")
+        new_device_spec = pydev.DeviceSpec.from_string("")
+      new_device_name = new_device_spec.to_string()
+      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
 
     try:
-      eager_context.device_name = new_device_spec.to_string()
+      eager_context.device_name = new_device_name
       eager_context.device_spec = new_device_spec
       yield
     finally:
@@ -227,6 +249,23 @@ class Context(object):
     """The number of GPUs available to execute operations."""
     # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
     return len(self._devices) - 1
+
+  def add_function_def(self, fdef):
+    """Add a function definition to the context.
+
+    Once added, the function (identified by its name) can be executed like any
+    other operation.
+
+    Args:
+      fdef: A FunctionDef protocol buffer message.
+    """
+    fdef_string = fdef.SerializeToString()
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAddFunctionDef(
+          self._handle,  # pylint: disable=protected-access
+          fdef_string,
+          len(fdef_string),
+          status)
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -372,3 +411,21 @@ def enable_eager_execution():
   global _default_mode
   assert _default_mode == GRAPH_MODE
   _default_mode = EAGER_MODE
+
+
+def list_devices():
+  """List the names of the available devices.
+
+  Returns:
+    Names of the available devices, as a `list`.
+  """
+  return context().devices()
+
+
+def num_gpus():
+  """Get the number of available GPU devices.
+
+  Returns:
+    The number of available GPU devices.
+  """
+  return context().num_gpus()

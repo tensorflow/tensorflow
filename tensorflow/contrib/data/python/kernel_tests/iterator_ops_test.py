@@ -27,10 +27,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -420,7 +423,7 @@ class IteratorTest(test.TestCase):
 
   def testRemoteIteratorUsingRemoteCallOpDirectSession(self):
     worker_config = config_pb2.ConfigProto()
-    worker_config.device_count["CPU"] = 2
+    worker_config.device_count["CPU"] = 3
 
     with ops.device("/job:localhost/replica:0/task:0/cpu:1"):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
@@ -448,12 +451,12 @@ class IteratorTest(test.TestCase):
               target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
           })
       self.assertEqual(elem, [1])
-      # Fails when target is cpu:0 where the resource is not located.
+      # Fails when target is cpu:2 where the resource is not located.
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(
             remote_op,
             feed_dict={
-                target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:2"
             })
       elem = sess.run(
           remote_op,
@@ -472,6 +475,61 @@ class IteratorTest(test.TestCase):
             remote_op,
             feed_dict={
                 target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+            })
+
+  def testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3_handle = iterator_3.string_handle()
+
+    def _encode_raw(byte_array):
+      return "".join([chr(item) for item in byte_array])
+
+    @function.Defun(dtypes.uint8)
+    def _remote_fn(h):
+      handle = script_ops.py_func(_encode_raw, [h], dtypes.string)
+      remote_iterator = dataset_ops.Iterator.from_string_handle(
+          handle, dataset_3.output_types, dataset_3.output_shapes)
+      return remote_iterator.get_next()
+
+    with ops.device("/job:localhost/replica:0/task:0/device:GPU:0"):
+      target_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      iterator_3_handle_uint8 = parsing_ops.decode_raw(
+          bytes=iterator_3_handle, out_type=dtypes.uint8)
+      remote_op = functional_ops.remote_call(
+          args=[iterator_3_handle_uint8],
+          Tout=[dtypes.int32],
+          f=_remote_fn,
+          target=target_placeholder)
+
+    with self.test_session() as sess:
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+          })
+      self.assertEqual(elem, [1])
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+          })
+      self.assertEqual(elem, [2])
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+          })
+      self.assertEqual(elem, [3])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(
+            remote_op,
+            feed_dict={
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
             })
 
 

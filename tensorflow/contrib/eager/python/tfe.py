@@ -18,9 +18,9 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 To use, at program startup, call `tfe.enable_eager_execution()`.
 
-@@list_devices
 @@device
-
+@@list_devices
+@@num_gpus
 
 @@defun
 @@implicit_gradients
@@ -58,9 +58,10 @@ from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager import function
-from tensorflow.python.eager.context import context
 from tensorflow.python.eager.context import device
 from tensorflow.python.eager.context import enable_eager_execution
+from tensorflow.python.eager.context import list_devices
+from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.context import run
 from tensorflow.python.eager.core import enable_tracing
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
@@ -69,10 +70,6 @@ from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
-
-
-def list_devices():
-  return context().devices()
 
 defun = function.defun
 implicit_gradients = backprop.implicit_grad

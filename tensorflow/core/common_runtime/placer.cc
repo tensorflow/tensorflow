@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/common_runtime/placer.h"
 
 #include <memory>
 #include <set>
@@ -636,20 +636,20 @@ bool IsGeneratorNode(const Node* node) {
 
 }  // namespace
 
-SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
-                           const SessionOptions* options)
+Placer::Placer(Graph* graph, const DeviceSet* devices,
+               const SessionOptions* options)
     : graph_(graph),
       devices_(devices),
       options_(options),
       log_device_placement_(options != nullptr &&
                             options->config.log_device_placement()) {}
 
-SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices)
-    : SimplePlacer(graph, devices, nullptr) {}
+Placer::Placer(Graph* graph, const DeviceSet* devices)
+    : Placer(graph, devices, nullptr) {}
 
-SimplePlacer::~SimplePlacer() {}
+Placer::~Placer() {}
 
-Status SimplePlacer::Run() {
+Status Placer::Run() {
   if (devices_->devices().empty()) {
     return errors::FailedPrecondition("No devices are registered");
   }
@@ -771,7 +771,7 @@ Status SimplePlacer::Run() {
     // choose the same device.
     //
     // TODO(vrv): Factor this assignment out into a pluggable
-    // algorithm, so that SimplePlacer is responsible for enforcing
+    // algorithm, so that Placer is responsible for enforcing
     // preconditions and we can experiment with other algorithms when
     // given a choice of devices. Once we have a better idea of the
     // types of heuristics we want to use and the information needed
@@ -844,9 +844,8 @@ Status SimplePlacer::Run() {
   return Status::OK();
 }
 
-bool SimplePlacer::CanAssignToDevice(
-    const string& candidate_device_name,
-    const std::vector<Device*>& devices) const {
+bool Placer::CanAssignToDevice(const string& candidate_device_name,
+                               const std::vector<Device*>& devices) const {
   if (!candidate_device_name.empty()) {
     // 'devices' lists the set of devices that the placer or the user has
     // constrained the operation to.  "candidate_device_name" must
@@ -862,12 +861,12 @@ bool SimplePlacer::CanAssignToDevice(
   return false;
 }
 
-void SimplePlacer::AssignAndLog(int assigned_device, Node* node) const {
+void Placer::AssignAndLog(int assigned_device, Node* node) const {
   node->set_assigned_device_name_index(assigned_device);
   LogDeviceAssignment(node);
 }
 
-void SimplePlacer::LogDeviceAssignment(const Node* node) const {
+void Placer::LogDeviceAssignment(const Node* node) const {
   // Log placement if log_device_placement is set.
   if (log_device_placement_) {
     printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),

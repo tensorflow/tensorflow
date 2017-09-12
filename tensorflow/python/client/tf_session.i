@@ -75,6 +75,11 @@ tensorflow::ImportNumpy();
   $result = PyUnicode_FromString($1);
 }
 
+// Convert TF_DeviceListMemoryBytes and TF_Dim int64_t output to Python integers
+%typemap(out) int64_t {
+  $result = PyInt_FromLong($1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;

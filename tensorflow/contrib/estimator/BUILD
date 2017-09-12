@@ -26,6 +26,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":extenders",
+        ":head",
     ],
 )
 
@@ -57,5 +58,16 @@ py_test(
         "//tensorflow/python/estimator:linear",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "head",
+    srcs = [
+        "python/estimator/head.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator:head",
     ],
 )

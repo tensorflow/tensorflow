@@ -334,6 +334,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_VARIANT
       }
     }
   }
@@ -12628,6 +12629,7 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_QINT8
       }
     }
   }
@@ -12667,6 +12669,7 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "NCHW_VECT_C"
       }
     }
   }
@@ -13401,6 +13404,7 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_QINT8
       }
     }
   }
@@ -13426,6 +13430,7 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "NCHW_VECT_C"
       }
     }
   }

@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -345,20 +344,20 @@ Status DirectSession::MaybeInitializeExecutionState(
   // all subsequent extensions of the graph.
   flib_def_.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
-  SimpleGraphExecutionStateOptions options;
+  GraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
   // TODO(mrry,suharshs): We explicitly copy `graph` so that
   // `MakeForBaseGraph()` can take ownership of its
   // contents. Previously this happened implicitly in calls to the
-  // `SimpleGraphExecutionState`. Other sessions call
+  // `GraphExecutionState`. Other sessions call
   // `MakeForBaseGraph` in such a way that we can destructively read
   // the passed-in `GraphDef`. In principle we could do the same here,
   // with a wider refactoring; we might revise the direct session so
   // that it copies the graph fewer times.
   GraphDef temp(graph);
-  TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
-      &temp, options, &execution_state_));
+  TF_RETURN_IF_ERROR(
+      GraphExecutionState::MakeForBaseGraph(&temp, options, &execution_state_));
   graph_created_ = true;
   *out_already_initialized = false;
   return Status::OK();
@@ -391,7 +390,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
       MaybeInitializeExecutionState(graph, &already_initialized));
   if (already_initialized) {
     TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
-    std::unique_ptr<SimpleGraphExecutionState> state;
+    std::unique_ptr<GraphExecutionState> state;
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
   }
@@ -1280,19 +1279,19 @@ Status DirectSession::CreateGraphs(
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types) {
   mutex_lock l(graph_def_lock_);
-  std::unique_ptr<SimpleClientGraph> client_graph;
+  std::unique_ptr<ClientGraph> client_graph;
 
-  std::unique_ptr<SimpleGraphExecutionState> temp_exec_state_holder;
-  SimpleGraphExecutionState* execution_state = nullptr;
+  std::unique_ptr<GraphExecutionState> temp_exec_state_holder;
+  GraphExecutionState* execution_state = nullptr;
   if (options_.config.graph_options().place_pruned_graph()) {
     // Because we are placing pruned graphs, we need to create a
-    // new SimpleGraphExecutionState for every new unseen graph,
+    // new GraphExecutionState for every new unseen graph,
     // and then place it.
-    SimpleGraphExecutionStateOptions prune_options;
+    GraphExecutionStateOptions prune_options;
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
     prune_options.stateful_placements = stateful_placements_;
-    TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForPrunedGraph(
+    TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
         execution_state_->original_graph_def().library(), prune_options,
         execution_state_->original_graph_def(), subgraph_options,
         &temp_exec_state_holder, &client_graph));

@@ -515,8 +515,6 @@ public final class Tensor implements AutoCloseable {
 
   private static int elemByteSize(DataType dataType) {
     switch (dataType) {
-      case UINT8:
-        return 1;
       case FLOAT:
       case INT32:
         return 4;
@@ -524,6 +522,7 @@ public final class Tensor implements AutoCloseable {
       case INT64:
         return 8;
       case BOOL:
+      case UINT8:
         return 1;
       case STRING:
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");

@@ -216,8 +216,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override {
     TF_RETURN_IF_ERROR(DefaultAction(call));
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
 
@@ -236,12 +235,11 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
-        &candidates_for_condition));
+    TF_RETURN_IF_ERROR(
+        xla_while->while_condition()->Accept(&candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
-        &candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return Status::OK();
   }
